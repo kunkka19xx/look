@@ -22,6 +22,7 @@ let package = Package(
                 "Support/Launcher/ProcessScoring.swift",
                 "Support/Launcher/ClipboardQueryPrefix.swift",
                 "Support/Launcher/DeleteTargetLogic.swift",
+                "Support/Launcher/ClipboardPasteTarget.swift",
                 "Support/Launcher/RevealTargetLogic.swift",
                 "Support/Launcher/BridgeErrorMapping.swift",
                 "Support/Launcher/SyntheticRow.swift",

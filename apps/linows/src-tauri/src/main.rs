@@ -4,6 +4,7 @@
 mod answers;
 mod autostart;
 mod calc;
+mod cli_path;
 mod clipboard;
 mod clipimage;
 mod commands;
@@ -13,10 +14,12 @@ mod crash;
 mod files;
 mod health;
 mod highlight;
+mod launcher_hotkey;
 mod lunar;
 mod music;
 mod netspeed;
 mod nowplaying;
+mod paste;
 mod platform;
 mod process;
 mod qactions;
@@ -38,7 +41,7 @@ use state::AppState;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// Timestamp (ms) of last window show, used to debounce focus-loss auto-hide.
 static LAST_SHOWN_AT: AtomicU64 = AtomicU64::new(0);
@@ -364,52 +367,55 @@ fn setup_dev_env() {
     );
 }
 
-/// Sync autostart registration with config on every launch.
+/// Sync OS integrations (autostart, PATH) with config on every launch, so the
+/// registered exe path stays valid after updates or reinstalls.
 ///
-/// On first launch (no `launch_at_login` key yet) - enable autostart and persist.
-/// On subsequent launches - re-sync the registry/desktop-entry with the current
-/// exe path so it stays valid after updates or reinstalls.
-fn sync_autostart() {
-    // Debug builds live under target/debug and (when produced by `tauri dev`)
-    // load the frontend from devUrl. If we wrote them into autostart, login
-    // would launch a binary that fails with "Could not connect to 127.0.0.1"
-    // because the dev server isn't running. Leave the installed binary's
-    // autostart entry alone.
+/// Debug builds live under target/debug and (when produced by `tauri dev`)
+/// load the frontend from devUrl. Registering them would launch or shadow the
+/// installed binary with one that fails without the dev server, so skip.
+fn sync_integrations() {
     if cfg!(debug_assertions) {
         return;
     }
 
+    let content = std::fs::read_to_string(config::config_file_path()).unwrap_or_default();
+
     const KEY: &str = "launch_at_login";
-
-    let config_path = config::config_file_path();
-    let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
-
-    let config_value = config_content.lines().find_map(|l| {
-        let l = l.trim();
-        if !l.starts_with('#') {
-            l.split_once('=')
-                .filter(|(k, _)| k.trim() == KEY)
-                .map(|(_, v)| v.trim() == "true")
-        } else {
-            None
-        }
-    });
-
-    let enabled = if let Some(val) = config_value {
-        val
-    } else {
-        // First launch - enable by default and persist.
+    let enabled = config_flag(&content, KEY).unwrap_or_else(|| {
+        // First launch: enable by default and persist.
         let _ = config::set_config(vec![config::ConfigUpdate {
             key: KEY.into(),
             value: "true".into(),
         }]);
         true
-    };
-
+    });
     let _ = autostart::set_autostart(enabled);
+
+    // No default for PATH: an absent key leaves it alone, since the install
+    // script may have added the entry already. Off the main thread because the
+    // environment broadcast can block for up to a second.
+    if let Some(enabled) = config_flag(&content, "add_to_path") {
+        std::thread::spawn(move || {
+            let _ = cli_path::set_cli_path(enabled);
+        });
+    }
 }
 
-/// Register global shortcuts (Alt+Space to toggle, Alt+Shift+Q to quit).
+/// Reads a `key=true|false` line straight off the config text. Cheaper than a
+/// full parse, and runs before the window opens.
+fn config_flag(content: &str, key: &str) -> Option<bool> {
+    content.lines().find_map(|line| {
+        let line = line.trim();
+        if line.starts_with('#') {
+            return None;
+        }
+        line.split_once('=')
+            .filter(|(k, _)| k.trim() == key)
+            .map(|(_, v)| v.trim() == "true")
+    })
+}
+
+/// Register global shortcuts (the launcher toggle, Alt+Shift+Q to quit).
 /// Uses compositor-specific keybinding on Wayland, tauri-plugin on X11/macOS/Windows.
 ///
 /// Registration failures never abort startup: a launcher with a dead hotkey
@@ -432,31 +438,14 @@ fn register_shortcuts(app: &tauri::App, use_wayland: bool) {
             }
 
             let handle = app_handle.clone();
-            platform::linux::wayland_shortcut::start(move || {
+            let bind_key = launcher_hotkey::configured().enabled;
+            platform::linux::wayland_shortcut::start(bind_key, move || {
                 toggle_window(&handle);
             });
         }
     } else {
         use tauri_plugin_global_shortcut::GlobalShortcutExt;
-        let handle = app_handle.clone();
-        if let Err(e) =
-            app.global_shortcut()
-                .on_shortcut("Alt+Space", move |_app, _shortcut, event| {
-                    if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        return;
-                    }
-                    toggle_window(&handle);
-                })
-        {
-            health::report(
-                health::ISSUE_HOTKEY,
-                format!(
-                    "Alt+Space could not be registered ({e}). Another app may hold \
-                     the key - free it and restart Look. Until then, open Look \
-                     again from the app menu to show this window."
-                ),
-            );
-        }
+        launcher_hotkey::register(&app_handle);
         if let Err(e) = app
             .global_shortcut()
             .on_shortcut("Alt+Shift+Q", |app, _shortcut, event| {
@@ -616,14 +605,23 @@ fn main() {
     #[cfg(target_os = "linux")]
     let disable_gpu = gpu::detect_and_disable_virtual_gpu() || gpu::disable_gpu_from_config();
 
-    sync_autostart();
+    sync_integrations();
 
     let single_instance =
         tauri_plugin_single_instance::Builder::<tauri::Wry>::new().callback(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window(consts::MAIN_WINDOW) {
+                let launch = modes::parse_args(args.iter().skip(1));
+                if launch == modes::Launch::ReloadConfig {
+                    let _ = window.emit(consts::EVENT_CONFIG_RELOAD_REQUESTED, ());
+                    return;
+                }
+                if launch == modes::Launch::Toggle {
+                    toggle_window(app);
+                    return;
+                }
                 // The second launch's argv, discarded here until now. Parked
                 // before the show, which is what the frontend pulls on.
-                park_launch(&modes::parse_args(args.iter().skip(1)));
+                park_launch(&launch);
                 // The hotkey's summon, not a bare show: an explicit
                 // `lookapp <mode>` races no auto-hide, so it never toggles.
                 show_window(&window);
@@ -657,6 +655,12 @@ fn main() {
 
     builder
         .setup(move |app| {
+            // Reaching setup means the single-instance plugin found no running
+            // Look to forward to. Headless by contract, so do not start one.
+            if launch == modes::Launch::ReloadConfig {
+                eprintln!("lookapp: Look is not running, config will load on next launch");
+                std::process::exit(0);
+            }
             #[cfg(target_os = "linux")]
             if disable_gpu {
                 gpu::disable_gpu_acceleration(app);
@@ -740,9 +744,9 @@ fn main() {
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
             }
 
-            // Only when a mode was named: a normal launch keeps whatever
-            // startup visibility it has today.
-            if matches!(launch, modes::Launch::Query { .. }) {
+            // Only when asked for: a normal launch keeps whatever startup
+            // visibility it has today. A cold `--toggle` has nothing to hide.
+            if matches!(launch, modes::Launch::Query { .. } | modes::Launch::Toggle) {
                 park_launch(&launch);
                 show_window(&window);
             }
@@ -768,6 +772,9 @@ fn main() {
             // Config
             config::get_config,
             config::set_config,
+            launcher_hotkey::launcher_hotkey_state,
+            launcher_hotkey::hotkey_check,
+            launcher_hotkey::launcher_hotkey_set_active,
             config::reset_config,
             // Files: meta, version, clipboard, music, folder
             files::get_file_meta,
@@ -857,6 +864,8 @@ fn main() {
             clipboard::copy_clipboard_image,
             clipboard::copy_to_clipboard,
             clipboard::copy_to_clipboard_labeled,
+            paste::clipboard_paste_blocker,
+            paste::paste_into_focused_app,
             // Music
             music::music_play,
             music::music_pause,
@@ -870,6 +879,8 @@ fn main() {
             // Autostart
             autostart::set_autostart,
             autostart::get_autostart,
+            cli_path::set_cli_path,
+            cli_path::get_cli_path,
             // Setup health (hotkey/extension problems shown in the UI)
             health::get_health_issues,
             // Highlight
@@ -878,6 +889,8 @@ fn main() {
             // About widget: version only. The update check itself runs in
             // the webview via fetch() - no Rust HTTP/TLS dep needed.
             files::get_lookapp_version,
+            commands::get_install_method,
+            commands::start_windows_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building look desktop")

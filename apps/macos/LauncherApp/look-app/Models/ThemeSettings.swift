@@ -289,5 +289,14 @@ struct ThemeSettings: Codable, Equatable {
     /// under `super_actions_enabled`.
     var superActionsEnabled: Bool = true
 
+    /// Whether the launcher animates: the open cascade, the selection glide,
+    /// the caret glide. Off shows every change instantly. macOS Reduce Motion
+    /// still applies when this is on. Persisted in `~/.look/config` under
+    /// `animations_enabled`.
+    var animationsEnabled: Bool = true
+
+    /// Hotkey specs keyed by config key, see `ConfigurableShortcut`.
+    var shortcutBindings: [String: String] = [:]
+
     static let `default` = ThemeSettings()
 }

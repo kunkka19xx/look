@@ -388,6 +388,9 @@ extension LauncherView {
             onToggleQuickAction: { [self] in
                 togglePrimaryQuickAction()
             },
+            onPasteSelection: { [self] in
+                pasteSelectedClipboardEntry()
+            },
             hasToggleQuickAction: { [self] in
                 hasToggleQuickAction
             },

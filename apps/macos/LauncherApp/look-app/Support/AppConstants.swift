@@ -431,6 +431,11 @@ enum AppConstants {
             static let nonFileBanner = "Clipboard items are not files"
             static let copiedBannerDuration = 1.2
             static let infoBannerDuration = 1.1
+            /// Why a Cmd+I paste could not happen.
+            static let accessibilityDeniedBanner =
+                "Allow Look under Privacy > Accessibility to paste into other apps"
+            static let secureInputBanner = "Secure input is on, so paste is blocked here"
+            static let blockedBannerDuration = 3.0
         }
 
         /// The `ci"` history. Shares rows and storage with Clipboard above;
@@ -577,6 +582,10 @@ enum AppConstants {
             static let clockTickSeconds: TimeInterval = 20
             /// Crossfade duration when the L slot's active source changes.
             static let rotateFadeSeconds: TimeInterval = 0.45
+
+            /// Size every tile draws its leading glyph at, so a user tile sits
+            /// level with the built-ins beside it.
+            static let tileIconFontSize: CGFloat = 18
 
             static let titleFontSize: CGFloat = 12.5
             static let valueFontSize: CGFloat = 22

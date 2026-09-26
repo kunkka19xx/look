@@ -1,3 +1,4 @@
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
@@ -16,6 +17,13 @@ const IFACE = `
     </method>
     <method name="ListWindowedApps">
       <arg type="as" direction="out" name="desktop_ids"/>
+    </method>
+    <method name="SendPaste">
+      <arg type="b" direction="in" name="shift"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+    <method name="FocusedAppId">
+      <arg type="s" direction="out" name="app_id"/>
     </method>
   </interface>
 </node>`;
@@ -41,6 +49,41 @@ export default class LookIntegration extends Extension {
             Gio.bus_unown_name(this._owner);
             this._owner = null;
         }
+        this._keyboard = null;
+    }
+
+    // Mutter implements no virtual-keyboard protocol, so a Wayland client has
+    // no way to type into the window it just left. The shell does.
+    SendPaste(shift) {
+        if (!this._keyboard) {
+            const seat = Clutter.get_default_backend().get_default_seat();
+            this._keyboard = seat.create_virtual_device(
+                Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        }
+        // notify_keyval counts in microseconds, get_current_time in milliseconds.
+        const time = global.get_current_time() * 1000;
+        const mods = shift
+            ? [Clutter.KEY_Control_L, Clutter.KEY_Shift_L]
+            : [Clutter.KEY_Control_L];
+        for (const key of mods)
+            this._keyboard.notify_keyval(time, key, Clutter.KeyState.PRESSED);
+        this._keyboard.notify_keyval(time, Clutter.KEY_v, Clutter.KeyState.PRESSED);
+        this._keyboard.notify_keyval(time, Clutter.KEY_v, Clutter.KeyState.RELEASED);
+        for (const key of mods.reverse())
+            this._keyboard.notify_keyval(time, key, Clutter.KeyState.RELEASED);
+        return true;
+    }
+
+    // Empty string for "nothing focused": D-Bus carries no null. The desktop id
+    // comes first, since a Wayland window has no WM_CLASS.
+    FocusedAppId() {
+        const win = global.display.focus_window;
+        if (!win)
+            return '';
+        const app = Shell.WindowTracker.get_default().get_window_app(win);
+        if (app)
+            return app.get_id().replace(/\.desktop$/, '');
+        return win.get_wm_class() || '';
     }
 
     GetPointer() {

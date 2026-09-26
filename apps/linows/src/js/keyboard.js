@@ -12,6 +12,8 @@ import {
     copyToClipboard,
     copyToClipboardLabeled,
     copyClipboardImage,
+    clipboardPasteBlocker,
+    pasteIntoFocusedApp,
     deleteClipboardEntry,
     deleteClipboardImage,
     killProcess,
@@ -41,6 +43,12 @@ import * as layout from './layout.js';
 
 // Matches the macOS info banner for the same action.
 const CLIP_BANNER_DURATION = 1.1;
+
+// A refused paste is a sentence to read, not a flash.
+const PASTE_BLOCKED_DURATION = 3.0;
+
+// The backend went quiet on us, so name the one thing the user can still do.
+const PASTE_FAILED_BANNER = 'Nothing typed the paste - the clip is copied, press Ctrl+V';
 
 // The quick-folder pin for the OS trash: `Trash` on Linux/macOS,
 // `Recycle Bin` on Windows (id is `quickfolder:<lowercased title>`).
@@ -456,6 +464,14 @@ function handleKeyDown(e) {
             }
             break;
 
+        case 'i':
+            if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+                e.preventDefault();
+                if (isDiscoveryMode()) break;
+                if (search.isAnyClipboardMode()) pasteSelectedClip();
+            }
+            break;
+
         case 'o':
             // Ctrl+O flips the selected result's toggle Quick Action
             // (Bluetooth, ...). Mirrors Cmd+O on macOS; no-op when the
@@ -768,22 +784,46 @@ async function revealSelected() {
     }
 }
 
+// A labelled entry (a calculator result) writes its value, not its label.
+function writeClip(item) {
+    if (item.clipImageHash) return copyClipboardImage(item.clipImageHash);
+    return copyToClipboard(item.clipPayload || item.clipText);
+}
+
 // Enter and a click do the same thing to a clipboard row, and the row itself
 // says which history it came from.
 export async function copySelectedClip() {
     const item = results.getSelected();
     if (!item || item.kind !== 'clipboard') return;
     try {
-        if (item.clipImageHash) {
-            await copyClipboardImage(item.clipImageHash);
-            banner.show('Copied image', 'success', 1.0);
-            return;
-        }
-        // Labelled entries (calculator results) paste their value, not their label.
-        await copyToClipboard(item.clipPayload || item.clipText);
-        banner.show('Copied to clipboard', 'success', 1.0);
+        await writeClip(item);
+        banner.show(item.clipImageHash ? 'Copied image' : 'Copied to clipboard', 'success', 1.0);
     } catch (err) {
         banner.show(typeof err === 'string' ? err : 'Copy failed', 'error', 1.2);
+    }
+}
+
+// Ctrl+I: the same copy, then out of the way and into the app underneath.
+// Asked before hiding, since a banner behind a closed window explains nothing;
+// the copy happens either way, so a no leaves the clip ready for a hand Ctrl+V.
+async function pasteSelectedClip() {
+    const item = results.getSelected();
+    if (!item || item.kind !== 'clipboard') return;
+    try {
+        await writeClip(item);
+    } catch (err) {
+        banner.show(typeof err === 'string' ? err : 'Copy failed', 'error', 1.2);
+        return;
+    }
+    try {
+        const blocker = await clipboardPasteBlocker();
+        if (blocker) {
+            banner.show(blocker, 'warning', PASTE_BLOCKED_DURATION);
+            return;
+        }
+        await pasteIntoFocusedApp();
+    } catch {
+        banner.show(PASTE_FAILED_BANNER, 'warning', PASTE_BLOCKED_DURATION);
     }
 }
 

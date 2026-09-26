@@ -105,6 +105,7 @@ struct SmoothCaretTextField: NSViewRepresentable {
         field.font = font
         field.textColor = textColor
         field.caretColor = caretColor
+        field.caretGlides = !context.environment.reducesMotion
         applyPlaceholder(to: field)
 
         // Bridge focus INTO first responder only. `currentEditor() != nil` is a
@@ -195,6 +196,7 @@ final class CaretTextField: NSTextField {
     var caretColor: NSColor = .labelColor {
         didSet { caretLayer.backgroundColor = caretColor.cgColor }
     }
+    var caretGlides = true
 
     private static let blinkKey = "blink"
     /// One layout pass away, matching the launcher's other "let AppKit settle"
@@ -298,7 +300,7 @@ final class CaretTextField: NSTextField {
     func refreshCaret(animated: Bool) {
         guard window?.firstResponder === currentEditor(), let rect = caretRect() else { return }
         CATransaction.begin()
-        if animated {
+        if animated && caretGlides {
             CATransaction.setAnimationDuration(Motion.Caret.glideSeconds)
             CATransaction.setAnimationTimingFunction(Self.glideTiming)
         } else {

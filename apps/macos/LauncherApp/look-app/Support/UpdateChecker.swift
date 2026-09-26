@@ -8,7 +8,7 @@ import OSLog
 ///
 /// This is notify-only: Look is distributed via Homebrew, so we never download
 /// or replace the bundle ourselves. The notice links to the release page and
-/// the user runs `brew upgrade --cask kunkka19xx/tap/look` (or downloads the
+/// the user runs `brew upgrade --cask look` (or downloads the
 /// asset). Homebrew stays the source of truth for the installed version.
 final class UpdateChecker: ObservableObject {
     static let shared = UpdateChecker()
@@ -155,7 +155,7 @@ final class UpdateChecker: ObservableObject {
     }
 
     /// The Homebrew command users run to upgrade Look.
-    static let homebrewUpgradeCommand = "brew upgrade --cask kunkka19xx/tap/look"
+    static let homebrewUpgradeCommand = "brew upgrade --cask look"
 
     /// Bundle id of the release app the Homebrew cask installs. The dev build
     /// uses the ".Dev" suffix, but brew always upgrades the release app - so the

@@ -514,6 +514,14 @@ final class ClipboardHistoryStore: ObservableObject {
         return wrote
     }
 
+    /// Marks the change seen, so a clip sent on with ⌘I is not filed twice.
+    func copyTextSilently(_ content: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(content, forType: .string)
+        lastChangeCount = pasteboard.changeCount
+    }
+
     /// The `org.nspasteboard.*` convention: apps mark clips that history tools
     /// must not keep. Concealed is a secret (password managers), transient is
     /// a fleeting intermediate, auto-generated was not typed by the user.

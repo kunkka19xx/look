@@ -60,7 +60,11 @@ extension LauncherView {
                     window.orderFront(nil)
                 }
 
-                if let responder = findEditableTextField(in: window.contentView) {
+                // Re-focusing a field that is already editing makes NSTextField
+                // select all, so the next keystroke replaces what was just typed.
+                if let responder = findEditableTextField(in: window.contentView),
+                    (responder as? NSTextField)?.currentEditor() == nil
+                {
                     window.makeFirstResponder(responder)
                 }
 

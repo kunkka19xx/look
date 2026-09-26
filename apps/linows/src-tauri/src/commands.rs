@@ -361,12 +361,16 @@ pub fn reveal_path(path: String) -> Result<(), String> {
 /// the request thread. Returns what the blocks did, so a script that broke
 /// says so rather than quietly producing no rows.
 #[tauri::command(async)]
-pub fn reload_config(state: State<'_, AppState>) -> look_engine::sources::RefreshOutcome {
+pub fn reload_config(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> look_engine::sources::RefreshOutcome {
     // The engine caches the parsed `~/.look/config` across calls (skips a disk
     // read on every refresh). When the user explicitly reloads, drop the cache
     // so the next bootstrap picks up their edits.
     RuntimeConfig::invalidate_cache();
     crate::clipboard::reload_from_config();
+    crate::launcher_hotkey::launcher_hotkey_set_active(app, true);
     // Before the index pass, never after: the pass reads the rows these blocks
     // write, and the other order indexes the previous run's.
     let sources = look_engine::sources::refresh_run_blocks();
@@ -393,6 +397,36 @@ pub fn force_index_refresh(state: State<'_, AppState>) -> bool {
 pub fn quit_app(app: tauri::AppHandle) {
     eprintln!("look: quit via Alt+Shift+Q");
     app.exit(0);
+}
+
+#[tauri::command]
+pub fn get_install_method() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        crate::platform::windows::update::detect_install_method()
+            .as_str()
+            .to_string()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        "unknown".to_string()
+    }
+}
+
+#[tauri::command]
+pub async fn start_windows_update(app: tauri::AppHandle, version: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::platform::windows::update::start(app, version).await
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        let _ = version;
+        Err("Windows self-update is unsupported on this platform".into())
+    }
 }
 
 /// Longest the window stays up waiting for the frontend to paint the armed

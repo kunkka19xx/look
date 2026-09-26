@@ -29,7 +29,7 @@ flowchart LR
     App --> Clipboard[ClipboardHistoryStore\nSupport/Launcher/ in-memory history]
     App --> Theme[ThemeStore\n.look/config + UserDefaults]
     App --> Bridge[EngineBridge.swift\nSupport/Launcher/]
-    App --> Services[LauncherSearchCoordinator\nLauncherTranslationService\nLauncherWindowCoordinator]
+    App --> Services[LauncherSearchCoordinator\nLauncherTranslationService]
 
     Bridge --> FFI[bridge/ffi\nC ABI]
     FFI --> Engine[core/engine\nQueryEngine]
@@ -54,7 +54,6 @@ flowchart LR
 - `Support/Launcher/`: launcher-specific services and utilities:
   - `LauncherSearchCoordinator`: debounce + async search lifecycle
   - `LauncherTranslationService`: translation lookup
-  - `LauncherWindowCoordinator`: window/focus management
   - `EngineBridge`: search engine communication
   - `ClipboardHistoryStore`, `KeyboardSelectionMonitor`, `GlobalHotKeyManager`
 - `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid) and semantic color tokens
@@ -562,6 +561,7 @@ All settings are persisted to `.look/config`:
 **Runtime:**
 - `backend_log_level` - error, info, debug
 - `launch_at_login` - true/false
+- `add_to_path` - true/false (Windows; puts the install directory on the user PATH)
 
 ### Config Reload Validation
 

@@ -17,6 +17,8 @@ struct ShortcutGroupView: View {
 
     let title: String
     let entries: [ShortcutEntry]
+    /// Given, configurable entries become recorders; the help screen passes nil.
+    var bindings: Binding<[String: String]>? = nil
 
     private enum Metrics {
         static let rowSpacing: CGFloat = 8
@@ -34,11 +36,7 @@ struct ShortcutGroupView: View {
 
             ForEach(entries) { entry in
                 HStack(alignment: .firstTextBaseline, spacing: Metrics.keyToActionSpacing) {
-                    Text(entry.keys)
-                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                        .padding(.horizontal, Metrics.keyHorizontalPadding)
-                        .padding(.vertical, Metrics.keyVerticalPadding)
-                        .background(themeStore.liftColor(opacity: Metrics.keyFillOpacity), in: Capsule())
+                    keys(for: entry)
                     Text(entry.action)
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                         .foregroundStyle(themeStore.secondaryTextColor())
@@ -46,5 +44,26 @@ struct ShortcutGroupView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func keys(for entry: ShortcutEntry) -> some View {
+        if let shortcut = ConfigurableShortcut.forEntry(entry.id) {
+            if let bindings {
+                ShortcutRecorderField(shortcut: shortcut, bindings: bindings)
+            } else {
+                keyCapsule(shortcut.registration.display)
+            }
+        } else {
+            keyCapsule(entry.keys)
+        }
+    }
+
+    private func keyCapsule(_ keys: String) -> some View {
+        Text(keys)
+            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+            .padding(.horizontal, Metrics.keyHorizontalPadding)
+            .padding(.vertical, Metrics.keyVerticalPadding)
+            .background(themeStore.liftColor(opacity: Metrics.keyFillOpacity), in: Capsule())
     }
 }

@@ -33,6 +33,25 @@ pub fn focused_app_id() -> Option<String> {
         .and_then(|t| t.app_id.clone())
 }
 
+/// Whether the compositor advertises `zwlr_foreign_toplevel_manager_v1`, asked
+/// without waiting for the toplevels behind it to report themselves.
+pub fn toplevel_manager_available() -> bool {
+    let Ok(conn) = Connection::connect_to_env() else {
+        return false;
+    };
+    let mut queue = conn.new_event_queue::<State>();
+    let qh = queue.handle();
+    let _registry = conn.display().get_registry(&qh, ());
+
+    let mut state = State {
+        target: String::new(),
+        seat: None,
+        manager_bound: false,
+        toplevels: Vec::new(),
+    };
+    queue.roundtrip(&mut state).is_ok() && state.manager_bound
+}
+
 /// Collect app_ids of all visible toplevels on wlroots-based compositors.
 /// Returns an empty set if the protocol isn't available.
 pub fn list_toplevel_app_ids() -> std::collections::HashSet<String> {

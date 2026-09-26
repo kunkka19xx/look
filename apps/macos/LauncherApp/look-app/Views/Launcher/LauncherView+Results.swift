@@ -525,6 +525,55 @@ extension LauncherView {
         )
     }
 
+    /// Cmd+I: put the selected clip on the pasteboard, get out of the way, and
+    /// type ⌘V into the app that owned the cursor. False leaves the chord
+    /// unclaimed.
+    func pasteSelectedClipboardEntry() -> Bool {
+        guard ClipboardPasteTarget.allowsKeyboardPaste(
+            showsThemeSettings: appUIState.showsThemeSettings,
+            showsHelpScreen: showsHelpScreen,
+            inCommandMode: isCommandMode,
+            inAIMode: isAIMode
+        ) else { return false }
+
+        let selected = displayedResults.first { $0.id == selectedResultID }
+        guard let target = ClipboardPasteTarget.resolve(selected) else { return false }
+
+        // Asked before hiding: a banner behind a closed window explains nothing.
+        if let blocker = FrontmostAppPaste.blocker() {
+            if blocker == .accessibilityDenied {
+                FrontmostAppPaste.requestAccessibilityPermission()
+            }
+            showBanner(
+                blocker.banner,
+                style: .warning,
+                duration: AppConstants.Launcher.Clipboard.blockedBannerDuration
+            )
+            return true
+        }
+
+        // The clip stays on the pasteboard, where Enter leaves it too.
+        guard writeClipboardTargetToPasteboard(target) else { return false }
+        // The hide consumes the restore pid, so the paste target is taken first.
+        let targetPID = pidToRestoreOnHide
+        hideLauncherWindow()
+        FrontmostAppPaste.paste(into: targetPID)
+        return true
+    }
+
+    private func writeClipboardTargetToPasteboard(_ target: ClipboardPasteTarget) -> Bool {
+        switch target {
+        case .text(let content):
+            clipboardStore.copyTextSilently(content)
+            return true
+        case .image(let resultID):
+            guard let entryID = LauncherClipboardImageFeature.entryID(fromResultID: resultID),
+                let entry = clipboardStore.imageEntries.first(where: { $0.id == entryID })
+            else { return false }
+            return clipboardStore.copyImage(entry: entry)
+        }
+    }
+
     // MARK: - Delete to Trash
 
     /// File/folder targets the delete action should act on: the picked basket

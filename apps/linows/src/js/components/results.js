@@ -367,6 +367,12 @@ function pathInfo(path) {
  * line up; `kind` is one word, so it makes a right column with an edge.
  */
 function rowMeta(result) {
+    // Synthetic rows (prefix/command hints, calc, web suggestions/URLs) show
+    // their subtitle as the faint second line, with no kind chip - mirrors
+    // macOS LauncherRowView.meta where `syntheticRow != nil` => (subtitle, "").
+    if (classifyResultId(result.id)) {
+        return { context: result.subtitle || '', kind: '' };
+    }
     if (result.kind === 'clipboard') {
         const kind = result.clipImageHash ? KIND_LABELS.image : KIND_LABELS.clipboard;
         return { context: result.subtitle || '', kind };

@@ -228,6 +228,12 @@ final class ThemeStore: ObservableObject {
         ConfigFileLines.upsert(&lines, key: "backend_log_level", value: settings.backendLogLevel.rawValue)
         ConfigFileLines.upsert(&lines, key: "launch_at_login", value: settings.launchAtLogin ? "true" : "false")
 
+        for shortcut in ConfigurableShortcut.all {
+            if let spec = settings.shortcutBindings[shortcut.configKey], !spec.isEmpty {
+                ConfigFileLines.upsert(&lines, key: shortcut.configKey, value: spec)
+            }
+        }
+
         // Background image
         if let bgPath = settings.backgroundImagePath, !bgPath.isEmpty {
             ConfigFileLines.upsert(&lines, key: "ui_background_image", value: bgPath)
@@ -264,6 +270,8 @@ final class ThemeStore: ObservableObject {
 
         // Empty-state super actions launchpad
         ConfigFileLines.upsert(&lines, key: "super_actions_enabled", value: settings.superActionsEnabled ? "true" : "false")
+
+        ConfigFileLines.upsert(&lines, key: "animations_enabled", value: settings.animationsEnabled ? "true" : "false")
 
         do {
             try ConfigFileLines.render(lines).write(to: path, atomically: true, encoding: .utf8)
@@ -444,6 +452,7 @@ final class ThemeStore: ObservableObject {
         excludedFolderPaths = []
         fileScanRoots = defaultFileScanRoots()
         extraFileScanRoots = []
+        settings.shortcutBindings = [:]
 
         // Base, not override: the ui_* keys below win. Applied last, it threw
         // away tuned values on every load. Accepted cost: a hand-written
@@ -602,6 +611,10 @@ final class ThemeStore: ObservableObject {
                 if let parsed = parseBool(value) {
                     settings.superActionsEnabled = parsed
                 }
+            case "animations_enabled":
+                if let parsed = parseBool(value) {
+                    settings.animationsEnabled = parsed
+                }
             case "ui_background_image":
                 if !value.isEmpty {
                     settings.backgroundImagePath = value
@@ -633,6 +646,8 @@ final class ThemeStore: ObservableObject {
                 } else {
                     settings.runningAppsPlacement = .none
                 }
+            case _ where ConfigurableShortcut.forConfigKey(key) != nil:
+                settings.shortcutBindings[key] = value
             default:
                 continue
             }
@@ -932,6 +947,10 @@ ai_allow_remote_context=false
 # false hides the strip and disables its keyboard accelerators.
 super_actions_enabled=true
 
+# Launcher animations (open cascade, selection glide, caret glide).
+# false shows every change instantly.
+animations_enabled=true
+
 # Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3
 alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq
 alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed
@@ -981,8 +1000,14 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
         if object["superActionsEnabled"] == nil {
             object["superActionsEnabled"] = ThemeSettings.default.superActionsEnabled
         }
+        if object["animationsEnabled"] == nil {
+            object["animationsEnabled"] = ThemeSettings.default.animationsEnabled
+        }
         if object["surfaceRadius"] == nil {
             object["surfaceRadius"] = ThemeSettings.default.surfaceRadius
+        }
+        if object["shortcutBindings"] == nil {
+            object["shortcutBindings"] = ThemeSettings.default.shortcutBindings
         }
 
         guard

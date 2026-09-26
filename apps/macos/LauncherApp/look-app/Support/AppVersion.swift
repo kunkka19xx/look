@@ -1,9 +1,9 @@
 import Foundation
 
 /// Single source of truth for the running app's version, read from the bundle
-/// Info.plist. The CLI `-v` path in look_appApp has its own resilient reader for
-/// the case where the binary is invoked outside the .app; inside the GUI we are
-/// always running from the bundle, so Bundle.main is enough here.
+/// Info.plist. The CLI `-v` path reads through AppBundle for the case where the
+/// binary is invoked outside the .app; inside the GUI we are always running from
+/// the bundle, so Bundle.main is enough here.
 enum AppVersion {
     /// Marketing version, e.g. "1.0.0". nil if missing from the plist.
     static var short: String? {

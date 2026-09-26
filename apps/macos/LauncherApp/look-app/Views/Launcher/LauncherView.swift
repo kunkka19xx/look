@@ -686,11 +686,11 @@ struct LauncherView: View {
         }
 
         if isClipboardImageQuery {
-            return ["Enter copy", "Cmd+D remove"]
+            return ["Enter copy", "Cmd+I paste", "Cmd+D remove"]
         }
 
         if isClipboardQuery {
-            return ["Enter copy clip", "Cmd+D remove clip"]
+            return ["Enter copy clip", "Cmd+I paste", "Cmd+D remove clip"]
         }
 
         // Mirrors the linows ps" hint, with Cmd for Ctrl.
@@ -899,6 +899,12 @@ struct LauncherView: View {
                 LaunchModes.pendingQuery = nil
                 applyLaunchQuery(pending)
             }
+            if LaunchModes.pendingToggle {
+                LaunchModes.pendingToggle = false
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
+                }
+            }
         }
         // A text op reads the picked file rather than the clipboard, so the
         // controller needs the picks as they change.
@@ -1049,6 +1055,13 @@ struct LauncherView: View {
         .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in
             reloadConfig()
         }
+        // `lookapp reload-config` from a script: applied in place, no window.
+        .onReceive(
+            DistributedNotificationCenter.default().publisher(
+                for: LaunchModes.reloadConfigNotification)
+        ) { _ in
+            reloadConfig(announcesSuccess: false)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .lookSourceTargetsLoaded)) { _ in
             refreshQuickActions()
         }
@@ -1081,6 +1094,11 @@ struct LauncherView: View {
             // After the reveal, which runs `clearQueryIfRetentionExpired` and
             // would wipe the mode.
             applyLaunchQuery(text)
+        }
+        .onReceive(
+            DistributedNotificationCenter.default().publisher(for: LaunchModes.toggleNotification)
+        ) { _ in
+            NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookToggleSettingsRequested)) { _ in
             toggleThemeSettings()

@@ -10,6 +10,9 @@ pub const EVENT_WINDOW_SHOWN: &str = "window-shown";
 /// the next summon from flashing the fully-visible strip then rewinding it (see
 /// superactions.armEntrance). Paired with the show-side `window-shown`.
 pub const EVENT_WINDOW_HIDDEN: &str = "window-hidden";
+/// `lookapp reload-config` reaching the running instance. The frontend runs the
+/// same reload as Ctrl+Shift+; so theme and fonts apply too, not just the engine.
+pub const EVENT_CONFIG_RELOAD_REQUESTED: &str = "config-reload-requested";
 
 /// Windows process creation flag to suppress console windows.
 #[cfg(target_os = "windows")]
