@@ -510,7 +510,12 @@ wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and Niri through the
 `ext-background-effect-v1` protocol, older Plasma through KDE's own, and KWin on
 X11 through a window property. There is nothing to switch on - if your
 compositor takes the request the frost is there, and `Blur Opacity` starts
-thinning the tint so more of it shows through. Everywhere else (GNOME today,
+thinning the tint so more of it shows through. The compositor blurs all of that
+area or none of it, so thinning the tint reveals more frost, never a sharp
+desktop. To see through instead, turn off `Settings > Appearance > Blur > Blur
+behind window` (`ui_compositor_blur=false`); the row only appears where the
+compositor grants blur. How strong the frost is belongs to the compositor too -
+on Plasma, `System Settings > Desktop Effects > Blur`. Everywhere else (GNOME today,
 plain sway, X11 without KWin) Look stays clear glass and `Blur Opacity` applies
 only when you have set a background image. Driving blur from your own compositor
 config still works; Look's request is additional, not exclusive.

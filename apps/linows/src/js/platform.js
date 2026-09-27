@@ -33,6 +33,20 @@ export function compositorBlur() {
     return info?.compositor_blur ?? false;
 }
 
+// The user's half of it. The compositor blurs all of the region or none of
+// it - no tint makes the desktop behind sharp - so seeing through takes the
+// frost off entirely (ui_compositor_blur=false).
+let compositorBlurWanted = true;
+
+export function setCompositorBlurWanted(on) {
+    compositorBlurWanted = on;
+}
+
+/** Frost actually behind the window: granted and wanted. */
+export function compositorBlurActive() {
+    return compositorBlur() && compositorBlurWanted;
+}
+
 // True when the blur fallback is forced by the platform (VM GPU) rather than
 // the disable_blur_effect config toggle. Settings must not remove the
 // attribute in this case.
