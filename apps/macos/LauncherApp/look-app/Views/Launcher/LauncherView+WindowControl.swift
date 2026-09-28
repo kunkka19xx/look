@@ -247,12 +247,12 @@ extension LauncherView {
         window.setFrame(frame, display: true)
     }
 
-    /// Resizes a visible launcher in place on a layout change; a hidden one takes
-    /// the new size on its next show.
+    /// Resizes the launcher in place on a layout change, hidden or not: the Dock
+    /// reopen path shows the window without repositioning it.
     func layoutSettingChanged() {
         closeActionMenu()
         refreshLaunchpadState()
-        guard let window = launcherWindow(), window.isVisible,
+        guard let window = launcherWindow(),
             let screen = window.screen ?? NSScreen.main
         else { return }
         // Anchor now, before a growing content minimum can move the window; resize

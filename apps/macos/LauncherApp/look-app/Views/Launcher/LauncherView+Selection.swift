@@ -107,8 +107,6 @@ extension LauncherView {
         }
 
         if isCommandMode {
-            // Arrows walk the sidebar; none shown, nothing to move.
-            guard showsCommandSidebar else { return }
             guard !filteredCommands.isEmpty else {
                 selectedCommandID = nil
                 return

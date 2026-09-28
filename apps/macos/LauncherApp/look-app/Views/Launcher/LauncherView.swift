@@ -247,8 +247,8 @@ struct LauncherView: View {
         // The same gate as `shouldShowRunningAppsStrip`: a chord must never
         // activate an icon that is not on screen, which is also what hands
         // ⌘1-9 to the session list in AI mode.
-        if runningAppsPlacement == .none || !isLauncherIdle || isAIMode {
-            log.debug("⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public) help=\(self.showsHelpScreen, privacy: .public) ai=\(self.isAIMode, privacy: .public))")
+        if runningAppsPlacement == .none || isCompactLayout || !isLauncherIdle || isAIMode {
+            log.debug("⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) compact=\(self.isCompactLayout, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public) help=\(self.showsHelpScreen, privacy: .public) ai=\(self.isAIMode, privacy: .public))")
             return false
         }
         guard let position = AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey: key, total: total) else {

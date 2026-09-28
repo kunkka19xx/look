@@ -48,6 +48,30 @@ final class ConfigFileLinesTests: XCTestCase {
         XCTAssertEqual(ConfigFileLines.render(lines), "# UI theme\nui_font_size=14\n")
     }
 
+    func testUpsertDropsLaterDuplicatesSoTheWrittenValueIsTheOneRead() {
+        var lines = ConfigFileLines.parse("layout=split\nui_font_size=14\nlayout=compact\n")
+        ConfigFileLines.upsert(&lines, key: "layout", value: "split")
+
+        let rendered = ConfigFileLines.render(lines)
+        XCTAssertEqual(rendered, "layout=split\nui_font_size=14\n")
+        XCTAssertEqual(ConfigFileLines.keyValues(rendered)["layout"], "split")
+    }
+
+    func testUpsertAndRemoveMatchAKeyWrittenWithSpacesAroundTheSeparator() {
+        var lines = ConfigFileLines.parse("layout = compact\ninner_gap = 8\n")
+        ConfigFileLines.upsert(&lines, key: "layout", value: "split")
+        ConfigFileLines.remove(&lines, key: "inner_gap")
+
+        XCTAssertEqual(ConfigFileLines.render(lines), "layout=split\n")
+    }
+
+    func testUpsertDoesNotMatchAKeyThatOnlySharesAPrefix() {
+        var lines = ConfigFileLines.parse("layout_extra=1\n")
+        ConfigFileLines.upsert(&lines, key: "layout", value: "split")
+
+        XCTAssertEqual(ConfigFileLines.render(lines), "layout_extra=1\nlayout=split\n")
+    }
+
     func testRepeatedSaveCyclesDoNotGrowTheFile() {
         // The regression this guards: both writers rendered with
         // `lines.joined(separator: "\n") + "\n"` over a parse that kept the trailing

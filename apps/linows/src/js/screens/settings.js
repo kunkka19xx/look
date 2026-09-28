@@ -484,6 +484,10 @@ export function init(exitFn) {
             await sourceblocks.reload();
             await forceIndexRefresh();
             await loadConfig();
+            const { layout: restoredLayout } = await loadConfigMap();
+            document.dispatchEvent(
+                new CustomEvent('look:layout-changed', { detail: { value: restoredLayout } }),
+            );
             clearBackgroundImage();
             applyFontFamily(DEFAULT_FONT_NAME);
             applyThemePreset('');
@@ -1068,7 +1072,7 @@ async function loadConfig() {
             document.getElementById('settings-log-level'),
             map.backend_log_level || 'error',
         );
-        selectDropdownItem(document.getElementById('settings-layout'), map.layout || 'split');
+        selectDropdownItem(document.getElementById('settings-layout'), layout.parseLayout(map.layout));
 
         // Launch at login and PATH: read actual system state
         try {

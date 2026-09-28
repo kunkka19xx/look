@@ -15,6 +15,16 @@ import * as blur from './blur.js';
 const GAP_MIN = 0;
 const GAP_MAX = 24;
 
+// `layout` config values; same key and values as macOS `LauncherLayout`.
+export const LAYOUT_SPLIT = 'split';
+export const LAYOUT_COMPACT = 'compact';
+
+/** A `layout` config value read the way the backend reads it: compact in any case, else split. */
+export function parseLayout(value) {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return normalized === LAYOUT_COMPACT ? LAYOUT_COMPACT : LAYOUT_SPLIT;
+}
+
 let innerGap = 0;
 let compact = false;
 let queryEmpty = true;

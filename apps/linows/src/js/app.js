@@ -120,8 +120,6 @@ const LAUNCH_QUERY_GRACE_MS = 500;
 const AI_LAYOUT_CLASSES = ['ai-mode-full', 'ai-mode-two-col', 'ai-mode-stacked'];
 const AI_LAYOUT_STACKED = 'ai-mode-stacked';
 const AI_LAYOUT_TWO_COL = 'ai-mode-two-col';
-// `layout` config value for the single-column window.
-const LAYOUT_COMPACT = 'compact';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const app = document.getElementById('app');
@@ -252,7 +250,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let compactApplied = null;
 
     function applyLayoutSetting(value) {
-        const compact = (value || '').trim().toLowerCase() === LAYOUT_COMPACT;
+        const compact = layout.parseLayout(value) === layout.LAYOUT_COMPACT;
         if (compact === compactApplied) return;
         const isSwitch = compactApplied !== null;
         compactApplied = compact;
