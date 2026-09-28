@@ -19,6 +19,7 @@ import {
     calendar,
     zap,
 } from '../../icons.js';
+import * as tooltip from '../../components/tooltip.js';
 
 // Mirrors macOS TodoState limits: at most 3 unfinished tasks per day
 // (completing one frees a slot) and at most 3 upcoming date groups.
@@ -66,7 +67,7 @@ let onQuickChange = null;
 
 // --- DOM refs ---
 let panel, searchBar, searchInput, statsBar, toolbar;
-let countEl, addDateBtn, saveBtn, daysEl, statsEl, tooltipEl;
+let countEl, addDateBtn, saveBtn, daysEl, statsEl;
 let toastEl, toastTimer;
 
 export function init() {
@@ -132,19 +133,8 @@ export function init() {
         editingAddKey = null;
         renderDays();
     });
-    // Hover tooltip for heatmap cells. Delegated on statsEl so it survives
-    // the wholesale innerHTML re-renders; the bubble itself lives outside.
-    tooltipEl = document.createElement('div');
-    tooltipEl.className = 'cmd-todo-tooltip';
-    tooltipEl.hidden = true;
-    panel.appendChild(tooltipEl);
-    statsEl.addEventListener('mouseover', (e) => {
-        const el = e.target.closest('[data-tip]');
-        if (el) showTooltip(el);
-    });
-    statsEl.addEventListener('mouseout', (e) => {
-        if (e.target.closest('[data-tip]')) tooltipEl.hidden = true;
-    });
+    // Above the hovered heatmap cell, the default placement.
+    tooltip.attach(statsEl);
 
     // Click-away from an open field cancels it (Enter commits, Esc cancels).
     daysEl.addEventListener('focusout', (e) => {
@@ -172,7 +162,7 @@ export function enter() {
 export function exit() {
     visible = false;
     panel.hidden = true;
-    tooltipEl.hidden = true;
+    tooltip.hide();
     toastEl.classList.remove('show');
     editingAddKey = null;
     editingTaskRef = null;
@@ -187,20 +177,6 @@ function showToast(html, isError, secs) {
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = secs ? setTimeout(() => toastEl.classList.remove('show'), secs * 1000) : null;
-}
-
-// Anchored above the hovered cell, clamped to the window edges.
-function showTooltip(el) {
-    tooltipEl.textContent = el.dataset.tip;
-    tooltipEl.hidden = false;
-    const rect = el.getBoundingClientRect();
-    const w = tooltipEl.offsetWidth;
-    const left = Math.min(
-        Math.max(rect.left + rect.width / 2 - w / 2, 4),
-        window.innerWidth - w - 4,
-    );
-    tooltipEl.style.left = `${left}px`;
-    tooltipEl.style.top = `${rect.top - tooltipEl.offsetHeight - 6}px`;
 }
 
 export function handleKey(e) {
@@ -545,7 +521,7 @@ const dateSearchText = (date, diff) =>
 
 function setPage(p) {
     page = p;
-    tooltipEl.hidden = true;
+    tooltip.hide();
     searchBar.hidden = p !== 'tasks';
     toolbar.hidden = p !== 'tasks';
     daysEl.hidden = p !== 'tasks';
@@ -866,7 +842,7 @@ function heatmapHtml(counts, width) {
             }
             const c = counts.get(keyOf(date)) || { done: 0, total: 0 };
             const opacity = HEAT_LEVEL_OPACITY[HEAT_LEVEL_FOR_DONE(c.done)];
-            // data-tip (custom bubble) instead of title: WebKitGTK doesn't render
+            // data-tip (shared bubble) instead of title: WebKitGTK doesn't render
             // native title tooltips inside this undecorated window.
             const tip = `${WEEKDAYS[date.getDay()]}, ${monthDay(date)}: ${c.total > 0 ? `${c.done}/${c.total} done` : 'no tasks'}`;
             cells += `<span class="cmd-todo-heat-cell" style="opacity:${opacity}" data-tip="${tip}"></span>`;

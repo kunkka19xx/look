@@ -1486,19 +1486,6 @@ button.cmd-todo-add:hover {
     --heat-cell: 10px;
 }
 
-.cmd-todo-tooltip {
-    position: fixed;
-    z-index: 20;
-    padding: 4px 8px;
-    background: var(--bg-tint);
-    border: 1px solid var(--divider-color);
-    border-radius: var(--chip-radius);
-    font-size: calc(var(--font-size) - 3px);
-    color: var(--font-color);
-    white-space: nowrap;
-    pointer-events: none;
-}
-
 .cmd-todo-heat-col {
     display: flex;
     flex-direction: column;

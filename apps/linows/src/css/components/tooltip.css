@@ -1,0 +1,30 @@
+/* Hover bubble, driven by js/components/tooltip.js. Fixed and transform-placed
+   so it escapes panel clipping and costs nothing to move. */
+.tip-bubble {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 200;
+    padding: 4px 8px;
+    background: var(--overlay-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--chip-radius);
+    box-shadow: 0 4px 10px rgba(var(--shadow), 0.35);
+    color: var(--font-color);
+    font-size: calc(var(--font-size) - 2px);
+    line-height: 1.35;
+    white-space: nowrap;
+    pointer-events: none;
+    visibility: hidden;
+}
+
+/* Wrapping variant, matching the macOS bubble's width and padding. */
+.tip-bubble-wide {
+    width: 240px;
+    padding: 9px 12px;
+    white-space: normal;
+}
+
+.tip-bubble-on {
+    visibility: visible;
+}
