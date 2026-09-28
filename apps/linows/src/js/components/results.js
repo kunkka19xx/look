@@ -11,7 +11,7 @@ import {
 } from '../icons.js';
 import * as sourceblocks from './sourceblocks.js';
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
-import { classifyResultId, CLIPBOARD_EMPTY_COPY } from '../catalog.js';
+import { classifyResultId, CLIPBOARD_EMPTY_COPY, clipboardTipsHtml } from '../catalog.js';
 import { prefersReducedMotion } from '../platform.js';
 import * as layout from '../layout.js';
 
@@ -88,15 +88,18 @@ export function setEmptyState(state) {
 function renderEmptyState() {
     // Left half of a clipboard empty state; the preview column shows the
     // "How to use" half (macOS ClipboardEmptyInfoView / ClipboardEmptyHelpView).
+    // Compact has no preview column, so the tips stack under the info.
     const clipboardCopy = CLIPBOARD_EMPTY_COPY[emptyState.mode];
     if (clipboardCopy) {
-        return `
+        const info = `
       <div class="empty-state empty-state-rich">
         <div class="empty-state-icon">${clipboardCopy.icon}</div>
         <div class="empty-state-title">${clipboardCopy.title}</div>
         <div class="empty-state-body">${clipboardCopy.body}</div>
         <div class="empty-state-help">${clipboardCopy.help}</div>
       </div>`;
+        if (!layout.isCompact()) return info;
+        return `<div class="empty-state-stack">${info}${clipboardTipsHtml(clipboardCopy)}</div>`;
     }
     if (emptyState.mode === 'recent') {
         return `

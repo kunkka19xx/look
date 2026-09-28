@@ -248,20 +248,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     // null until the config is first read: the backend sizes the window at
     // startup, so only a later switch asks it to resize.
     let compactApplied = null;
+    let configLayout = null;
+    // Ctrl+Shift+C's layout for this run only, never saved; null follows the config.
+    let sessionLayout = null;
+    // The override the backend last heard, so clearing it reaches the backend
+    // even when the layout on screen stays the same.
+    let backendSessionLayout = null;
 
-    function applyLayoutSetting(value) {
-        const compact = layout.parseLayout(value) === layout.LAYOUT_COMPACT;
-        if (compact === compactApplied) return;
-        const isSwitch = compactApplied !== null;
-        compactApplied = compact;
-        layout.setCompact(compact);
-        runningApps.setCompact(compact);
-        superactions.setCompact(compact);
-        actionmenu.setCompact(compact);
-        syncControlStrip();
-        applyAiLayoutMode();
-        if (isSwitch) {
-            applyLayout().catch((err) => console.error('[layout] resize failed:', err));
+    /**
+     * A configured layout arrived. Settings (the picker, a reset) drop the
+     * session override; a reload drops it only if it changed `layout`.
+     */
+    function applyLayoutSetting(value, { fromSettings = false } = {}) {
+        const configured = layout.parseLayout(value);
+        if (fromSettings || configured !== configLayout) sessionLayout = null;
+        configLayout = configured;
+        applyEffectiveLayout();
+    }
+
+    function toggleSessionLayout() {
+        const current = sessionLayout ?? configLayout;
+        const next = current === layout.LAYOUT_COMPACT ? layout.LAYOUT_SPLIT : layout.LAYOUT_COMPACT;
+        sessionLayout = next === configLayout ? null : next;
+        applyEffectiveLayout();
+    }
+
+    function applyEffectiveLayout() {
+        const compact = (sessionLayout ?? configLayout) === layout.LAYOUT_COMPACT;
+        const isSwitch = compactApplied !== null && compact !== compactApplied;
+        if (compact !== compactApplied) {
+            compactApplied = compact;
+            layout.setCompact(compact);
+            runningApps.setCompact(compact);
+            superactions.setCompact(compact);
+            actionmenu.setCompact(compact);
+            syncControlStrip();
+            applyAiLayoutMode();
+        }
+        if (isSwitch || sessionLayout !== backendSessionLayout) {
+            backendSessionLayout = sessionLayout;
+            applyLayout(sessionLayout).catch((err) => console.error('[layout] resize failed:', err));
         }
     }
 
@@ -1051,8 +1077,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.addEventListener('look:layout-changed', (e) => {
-        applyLayoutSetting(e.detail.value);
+        applyLayoutSetting(e.detail.value, { fromSettings: true });
     });
+
+    document.addEventListener('look:toggle-session-layout', toggleSessionLayout);
 
     // Live-update when the Settings → Appearance → Super Actions toggle changes.
     document.addEventListener('look:super-actions-changed', (e) => {

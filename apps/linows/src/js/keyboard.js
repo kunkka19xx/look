@@ -214,6 +214,15 @@ function handleKeyDown(e) {
         }
     }
 
+    // Ctrl+Shift+C: flip split/compact until Look quits; the config is untouched.
+    // Not from settings, whose picker shows the configured layout.
+    if (e.ctrlKey && (e.shiftKey || shiftHeld) && !e.altKey && (e.key === 'C' || e.key === 'c')) {
+        e.preventDefault();
+        if (settingsModule?.isActive()) return;
+        document.dispatchEvent(new CustomEvent('look:toggle-session-layout'));
+        return;
+    }
+
     // Ctrl+Shift+H: hide the selected app from Look
     if (e.ctrlKey && (e.shiftKey || shiftHeld) && (e.key === 'H' || e.key === 'h')) {
         e.preventDefault();

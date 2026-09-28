@@ -194,7 +194,7 @@ pub enum LauncherLayout {
 }
 
 impl LauncherLayout {
-    fn parse(value: &str) -> Option<Self> {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
         match value.to_ascii_lowercase().as_str() {
             "split" => Some(Self::Split),
             "compact" => Some(Self::Compact),

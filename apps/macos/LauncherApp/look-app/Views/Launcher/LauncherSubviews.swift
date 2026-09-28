@@ -507,15 +507,19 @@ struct ClipboardEmptyStateCopy {
 struct ClipboardEmptyStateView: View {
     let themeStore: ThemeStore
     var copy: ClipboardEmptyStateCopy = .text
+    /// Info above help instead of beside it, for the single-column compact layout.
+    var stacked = false
 
     var body: some View {
-        HStack(spacing: 0) {
+        let stack = stacked ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
+        stack {
             ClipboardEmptyInfoView(themeStore: themeStore, copy: copy)
+                .fixedSize(horizontal: false, vertical: stacked)
 
             Rectangle()
                 .fill(themeStore.dividerColor())
-                .frame(width: 1)
-                .padding(.vertical, 4)
+                .frame(width: stacked ? nil : 1, height: stacked ? 1 : nil)
+                .padding(stacked ? .horizontal : .vertical, 4)
 
             ClipboardEmptyHelpView(themeStore: themeStore, copy: copy)
         }

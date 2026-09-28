@@ -44,6 +44,18 @@ export const CLIPBOARD_EMPTY_COPY = {
     },
 };
 
+/** The "How to use" half of a clipboard empty state. */
+export function clipboardTipsHtml(copy) {
+    const tips = copy.tips
+        .map((tip) => `<div class="preview-clip-help-line">• ${tip}</div>`)
+        .join('');
+    return `
+    <div class="preview-clip-help">
+      <div class="preview-clip-help-title">How to use</div>
+      ${tips}
+    </div>`;
+}
+
 // What each history says when a row is forgotten, keyed as above.
 export const CLIPBOARD_DELETED_BANNER = {
     clipboard: 'Clipboard item deleted',

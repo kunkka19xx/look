@@ -347,6 +347,20 @@
     line-height: 1.5;
 }
 
+/* Compact: the clipboard tips sit under the info instead of in the preview
+ * column (macOS ClipboardEmptyStateView stacked). */
+.empty-state-stack .empty-state-rich {
+    min-height: 0;
+    padding-bottom: 16px;
+}
+
+.empty-state-stack .preview-clip-help {
+    align-items: center;
+    margin: 0 24px;
+    border-top: 1px solid var(--divider-color);
+    text-align: center;
+}
+
 .empty-state-help kbd {
     font-family: var(--font-mono);
     font-size: calc(var(--font-size) - 3px);

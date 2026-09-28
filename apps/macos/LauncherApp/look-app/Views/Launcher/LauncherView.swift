@@ -217,7 +217,7 @@ struct LauncherView: View {
     }
 
     var isCompactLayout: Bool {
-        themeStore.settings.layout == .compact
+        themeStore.effectiveLayout == .compact
     }
 
     /// AI mode hides the strip: the assistant screen is about the conversation,
@@ -943,8 +943,8 @@ struct LauncherView: View {
         .onChange(of: themeStore.settings.superActionsEnabled) { _, enabled in
             launchpadSettingChanged(enabled: enabled)
         }
-        .onChange(of: themeStore.settings.layout) { _, _ in
-            layoutSettingChanged()
+        .onChange(of: themeStore.effectiveLayout) { _, _ in
+            layoutChanged()
         }
         // Bumped on every show, so it stands in for the missing re-onAppear.
         .onChange(of: appearanceRevealToken) { _, _ in
@@ -1399,8 +1399,11 @@ struct LauncherView: View {
             } else if (isClipboardQuery || isClipboardImageQuery) && displayedResults.isEmpty {
                 // The empty clipboard screen is naturally two columns (history /
                 // how-to), so float it as the same two-card grid as the results.
+                // Compact has one column, so the two stack in a single card.
                 let copy: ClipboardEmptyStateCopy = isClipboardImageQuery ? .images : .text
-                if showsFloatingCards {
+                if isCompactLayout {
+                    floatingPanel { ClipboardEmptyStateView(themeStore: themeStore, copy: copy, stacked: true) }
+                } else if showsFloatingCards {
                     twoPaneGrid(hasRight: true) {
                         ClipboardEmptyInfoView(themeStore: themeStore, copy: copy)
                     } right: {

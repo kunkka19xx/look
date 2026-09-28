@@ -381,8 +381,9 @@ export async function takeLaunchQuery() {
 }
 
 // Resizes the window to the `layout` currently in the config file.
-export async function applyLayout() {
-    return invoke('apply_layout');
+/** Resize for a layout change; `sessionLayout` is the Ctrl+Shift+C override, or null. */
+export async function applyLayout(sessionLayout) {
+    return invoke('apply_layout', { sessionLayout });
 }
 
 export async function getHealthIssues() {

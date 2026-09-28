@@ -17,12 +17,28 @@ final class ThemeStore: ObservableObject {
     @Published var settings: ThemeSettings {
         didSet {
             save()
+            if oldValue.layout != settings.layout {
+                sessionLayout = nil
+            }
             if oldValue.backgroundImagePath != settings.backgroundImagePath
                 || oldValue.backgroundImageBookmark != settings.backgroundImageBookmark
             {
                 refreshBackgroundImageURL()
             }
         }
+    }
+
+    /// Cmd+Shift+C's layout for this run only. Never saved. A change to the
+    /// configured layout (Settings, or a reload that edits it) or a reset drops
+    /// it; a reload that leaves `layout` alone keeps it.
+    @Published private(set) var sessionLayout: LauncherLayout?
+
+    /// The layout on screen: the session override, else the configured one.
+    var effectiveLayout: LauncherLayout { sessionLayout ?? settings.layout }
+
+    func toggleSessionLayout() {
+        let next: LauncherLayout = effectiveLayout == .split ? .compact : .split
+        sessionLayout = next == settings.layout ? nil : next
     }
 
     @Published private(set) var excludedFolderPaths: [String] = []
@@ -67,6 +83,7 @@ final class ThemeStore: ObservableObject {
     }
 
     func reset() {
+        sessionLayout = nil
         settings = .default
         applyThemeOverridesFromConfigFile()
     }
@@ -303,6 +320,7 @@ final class ThemeStore: ObservableObject {
             return false
         }
 
+        sessionLayout = nil
         settings = .default
         applyThemeOverridesFromConfigFile()
         _ = applyLaunchAtLoginSetting()

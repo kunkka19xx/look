@@ -61,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// window on first appearance - corner radius, floating level, multi-display
     /// autoscale.
     private func makeLauncherWindow() {
-        let baseSize = WindowAutoScale.baseSize(for: ThemeStore.shared.settings.layout)
+        let baseSize = WindowAutoScale.baseSize(for: ThemeStore.shared.effectiveLayout)
         let (minW, minH) = (baseSize.width, baseSize.height)
         let content = ContentView()
             .background(WindowConfigurator(themeStore: .shared))

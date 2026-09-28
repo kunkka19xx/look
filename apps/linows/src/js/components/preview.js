@@ -33,6 +33,7 @@ import {
     classifyResultId,
     WEB_URL_OPEN_SUBTITLE,
     CLIPBOARD_EMPTY_COPY,
+    clipboardTipsHtml,
     CLIPBOARD_DELETED_BANNER,
 } from '../catalog.js';
 import * as qactions from './qactions.js';
@@ -724,14 +725,7 @@ export function showClipboardHelp(mode = 'clipboard') {
     qactions.clear();
     actionmenu.close();
     panel.hidden = false;
-    const tips = copy.tips
-        .map((tip) => `<div class="preview-clip-help-line">• ${tip}</div>`)
-        .join('');
-    panel.innerHTML = `
-    <div class="preview-clip-help">
-      <div class="preview-clip-help-title">How to use</div>
-      ${tips}
-    </div>`;
+    panel.innerHTML = clipboardTipsHtml(copy);
 }
 
 /**

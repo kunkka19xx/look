@@ -85,6 +85,17 @@ pub(crate) const BASE_H: f64 = 600.0;
 /// `WindowAutoScale.compactBaseWidth/Height`.
 const COMPACT_W: f64 = 680.0;
 const COMPACT_H: f64 = 440.0;
+/// Ctrl+Shift+C's layout for this run only; `None` follows the config file.
+static SESSION_LAYOUT: Mutex<Option<config::LauncherLayout>> = Mutex::new(None);
+
+fn effective_layout() -> config::LauncherLayout {
+    SESSION_LAYOUT
+        .lock()
+        .ok()
+        .and_then(|session| *session)
+        .unwrap_or_else(config::launcher_layout)
+}
+
 /// Grace period (ms) after show - ignore focus-loss within this window.
 const AUTO_HIDE_GRACE_MS: u64 = 300;
 /// Guard (ms) to prevent re-showing after auto-hide (GNOME X11 race).
@@ -97,11 +108,11 @@ fn hide_launcher(window: &tauri::WebviewWindow) {
 
 /// Scale window size (logical pixels) to fit the current monitor.
 /// Base size targets 1080p (1.0×). Scales up for larger logical screens
-/// (1440p → 1.2×, 4K → 1.3× cap). The base follows the configured layout.
+/// (1440p → 1.2×, 4K → 1.3× cap). The base follows the effective layout.
 fn scaled_window_size(screen_w: u32, screen_h: u32, scale: f64) -> (u32, u32) {
     let ratio = screen_ratio(screen_h, scale);
     let _ = screen_w; // used only for centering
-    let (base_w, base_h) = match config::launcher_layout() {
+    let (base_w, base_h) = match effective_layout() {
         config::LauncherLayout::Split => (BASE_W, BASE_H),
         config::LauncherLayout::Compact => (COMPACT_W, COMPACT_H),
     };
@@ -334,11 +345,17 @@ fn resize_locked(window: &tauri::WebviewWindow, size: tauri::LogicalSize<f64>) {
     let _ = window.set_max_size(Some(tauri::Size::Logical(size)));
 }
 
-/// Resizes for a `layout` change, keeping a visible window's top edge and
-/// centre. A hidden window is resized by `recenter_window` on its next show;
-/// the layer surface is not, so it is resized here either way.
+/// Resizes for a layout change, keeping a visible window's top edge and centre.
+/// `session_layout` is the Ctrl+Shift+C override, `None` to follow the config.
+/// A hidden window is resized by `recenter_window` on its next show; the layer
+/// surface is not, so it is resized here either way.
 #[tauri::command]
-fn apply_layout(window: tauri::WebviewWindow) {
+fn apply_layout(window: tauri::WebviewWindow, session_layout: Option<String>) {
+    if let Ok(mut session) = SESSION_LAYOUT.lock() {
+        *session = session_layout
+            .as_deref()
+            .and_then(config::LauncherLayout::parse);
+    }
     let Some(monitor) = window
         .current_monitor()
         .ok()
