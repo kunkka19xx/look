@@ -637,8 +637,7 @@ enum AppConstants {
         }
 
         /// Catalog order is the whole shortcut mapping: ⌘N selects the Nth entry
-        /// (see `onSelectCommandByIndex`), so the number in each title is
-        /// derived rather than written, and reordering this list is enough.
+        /// (see `onSelectCommandByIndex`), so reordering this list is enough.
         private static let commandDefinitions: [(id: String, detail: String, placeholder: String)] = [
             (Command.calc, "Evaluate math expression", "Type math expression"),
             (Command.pomo, "Pomodoro focus timer", "Manage focus sessions"),
@@ -649,10 +648,10 @@ enum AppConstants {
             (Command.sys, "Show system information", "View system info"),
         ]
 
-        static let commandCatalog: [AppCommand] = commandDefinitions.enumerated().map { index, definition in
+        static let commandCatalog: [AppCommand] = commandDefinitions.map { definition in
             AppCommand(
                 id: definition.id,
-                title: "\(definition.id) (⌘\(index + 1))",
+                title: definition.id,
                 detail: definition.detail,
                 placeholder: definition.placeholder
             )

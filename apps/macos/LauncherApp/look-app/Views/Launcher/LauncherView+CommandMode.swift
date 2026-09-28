@@ -369,6 +369,8 @@ extension LauncherView {
                     )
                     .frame(width: leftWidth)
                     .frame(maxHeight: .infinity, alignment: .topLeading)
+                    // Keeps the row tooltip above the panel drawn after it.
+                    .zIndex(1)
 
                     Rectangle()
                         .fill(themeStore.dividerColor())

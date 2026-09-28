@@ -159,6 +159,8 @@ struct CommandListView: View {
     let themeStore: ThemeStore
     let onSelect: (String) -> Void
 
+    private static let tooltipWidth: CGFloat = 240
+
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 3) {
@@ -185,11 +187,20 @@ struct CommandListView: View {
                             ? themeStore.selectionFillColor() : Color.clear,
                         in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
                     )
+                    .contentShape(Rectangle())
                     .onTapGesture { onSelect(command.id) }
+                    .hoverBubble(width: Self.tooltipWidth, trailing: true) {
+                        Text(command.detail)
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                            .foregroundStyle(themeStore.fontColor())
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             .padding(2)
         }
+        // Lets the row tooltip extend past the sidebar.
+        .scrollClipDisabled()
         .padding(5)
         // No outer panel-fill: matches the bg-less right column. Rows
         // sit directly on the command-mode backdrop. Only the selected /
