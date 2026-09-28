@@ -422,17 +422,12 @@ export function init(exitFn) {
 
     // Window layout: saved before app.js applies it, since the backend reads
     // the file to size the window.
-    const layoutDD = document.getElementById('settings-layout');
-    const layoutMenu = layoutDD.querySelector('.settings-dropdown-menu');
-    layoutDD.querySelector('.settings-dropdown-btn').addEventListener('click', () => {
-        layoutMenu.hidden = !layoutMenu.hidden;
-    });
-    layoutMenu.addEventListener('click', async (e) => {
-        const item = e.target.closest('.settings-dropdown-item');
-        if (!item) return;
+    const layoutSeg = document.getElementById('settings-layout');
+    layoutSeg.addEventListener('click', async (e) => {
+        const item = e.target.closest('.settings-segment-item');
+        if (!item || item.classList.contains('settings-segment-active')) return;
         const value = item.dataset.value;
-        selectDropdownItem(layoutDD, value);
-        layoutMenu.hidden = true;
+        selectSegmentItem(layoutSeg, value);
         if (await saveConfig({ layout: value })) {
             document.dispatchEvent(new CustomEvent('look:layout-changed', { detail: { value } }));
         }
@@ -658,7 +653,7 @@ export function init(exitFn) {
 
             const activeLayout = document
                 .getElementById('settings-layout')
-                ?.querySelector('.settings-dropdown-active');
+                ?.querySelector('.settings-segment-active');
             if (activeLayout) updates.layout = activeLayout.dataset.value;
 
             // Advanced: launch at login
@@ -1072,7 +1067,10 @@ async function loadConfig() {
             document.getElementById('settings-log-level'),
             map.backend_log_level || 'error',
         );
-        selectDropdownItem(document.getElementById('settings-layout'), layout.parseLayout(map.layout));
+        selectSegmentItem(
+            document.getElementById('settings-layout'),
+            layout.parseLayout(map.layout),
+        );
 
         // Launch at login and PATH: read actual system state
         try {
@@ -1532,6 +1530,12 @@ function selectDropdownItem(dropdown, value) {
     dropdown.querySelector('.settings-dropdown-label').textContent = item.textContent.trim();
     for (const el of dropdown.querySelector('.settings-dropdown-menu').children) {
         el.classList.toggle('settings-dropdown-active', el === item);
+    }
+}
+
+function selectSegmentItem(segment, value) {
+    for (const el of segment.querySelectorAll('.settings-segment-item')) {
+        el.classList.toggle('settings-segment-active', el.dataset.value === value);
     }
 }
 
