@@ -67,7 +67,9 @@ enum WindowAutoScale {
         let size = size(for: screen, layout: layout)
         let visible = screen.visibleFrame
         // middle + height/2 + lift = window top; center the panel, then lift it.
-        let top = visible.midY + size.height / 2 + spotlightLift
+        // Every layout takes the split panel's top edge so the search bar never moves.
+        let anchorHeight = self.size(for: screen, layout: .split).height
+        let top = visible.midY + anchorHeight / 2 + spotlightLift
         return frame(size: size, midX: visible.midX, top: top, within: visible)
     }
 

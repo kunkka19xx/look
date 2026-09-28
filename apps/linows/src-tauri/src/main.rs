@@ -99,14 +99,7 @@ fn hide_launcher(window: &tauri::WebviewWindow) {
 /// Base size targets 1080p (1.0×). Scales up for larger logical screens
 /// (1440p → 1.2×, 4K → 1.3× cap). The base follows the configured layout.
 fn scaled_window_size(screen_w: u32, screen_h: u32, scale: f64) -> (u32, u32) {
-    let logical_h = screen_h as f64 / scale;
-    let ratio = if logical_h <= 1080.0 {
-        1.0
-    } else {
-        // Linear from 1.0 at 1080 to 1.2 at 1440, capped at 1.3
-        let r = 1.0 + (logical_h - 1080.0) / (1440.0 - 1080.0) * 0.2;
-        r.min(1.3)
-    };
+    let ratio = screen_ratio(screen_h, scale);
     let _ = screen_w; // used only for centering
     let (base_w, base_h) = match config::launcher_layout() {
         config::LauncherLayout::Split => (BASE_W, BASE_H),
@@ -115,6 +108,31 @@ fn scaled_window_size(screen_w: u32, screen_h: u32, scale: f64) -> (u32, u32) {
     let w = (base_w * ratio).round() as u32;
     let h = (base_h * ratio).round() as u32;
     (w, h)
+}
+
+fn screen_ratio(screen_h: u32, scale: f64) -> f64 {
+    let logical_h = screen_h as f64 / scale;
+    if logical_h <= 1080.0 {
+        1.0
+    } else {
+        // Linear from 1.0 at 1080 to 1.2 at 1440, capped at 1.3
+        let r = 1.0 + (logical_h - 1080.0) / (1440.0 - 1080.0) * 0.2;
+        r.min(1.3)
+    }
+}
+
+/// Logical distance from the monitor's top to where a centred split panel's top
+/// sits. Every layout uses it, so the search bar never moves between layouts.
+fn top_offset(monitor: &tauri::Monitor) -> f64 {
+    let scale = monitor.scale_factor();
+    let screen_h = monitor.size().height;
+    let split_h = (BASE_H * screen_ratio(screen_h, scale)).round();
+    (screen_h as f64 / scale - split_h) / 2.0
+}
+
+/// Logical top edge for a shown window.
+fn window_top(monitor: &tauri::Monitor) -> f64 {
+    monitor.position().y as f64 / monitor.scale_factor() + top_offset(monitor)
 }
 
 /// Toggle the main window: hide if visible, show (centered) if hidden.
@@ -184,10 +202,11 @@ fn show_window(window: &tauri::WebviewWindow) {
 /// Center and scale a window to fit the current monitor.
 /// Called once at startup. Avoid calling on toggle - see toggle_window.
 ///
-/// Returns the logical size it settled on. The layer surface needs it from
-/// here rather than reading `inner_size` back: a Wayland window the compositor
-/// has not configured yet still reports tauri.conf's default.
-fn center_and_scale_window(window: &tauri::WebviewWindow) -> Option<(i32, i32)> {
+/// Returns the logical size and monitor-relative top edge it settled on. The
+/// layer surface needs them from here rather than reading `inner_size` back: a
+/// Wayland window the compositor has not configured yet still reports
+/// tauri.conf's default.
+fn center_and_scale_window(window: &tauri::WebviewWindow) -> Option<((i32, i32), i32)> {
     let monitor = monitor_at_cursor(window)?;
     let pos = monitor.position();
     let screen = monitor.size();
@@ -204,9 +223,12 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) -> Option<(i32, i32)> 
     // producing a visible "big rectangle then snap" on toggle.
     resize_locked(window, tauri::LogicalSize::new(win_w as f64, win_h as f64));
     let lx = pos.x as f64 / scale + (logical_screen_w - win_w as f64) / 2.0;
-    let ly = pos.y as f64 / scale + (logical_screen_h - win_h as f64) / 2.0;
+    let ly = window_top(&monitor);
     let _ = window.set_position(tauri::LogicalPosition::new(lx, ly));
-    Some((win_w as i32, win_h as i32))
+    Some((
+        (win_w as i32, win_h as i32),
+        top_offset(&monitor).round() as i32,
+    ))
 }
 
 /// Find the monitor that contains the cursor. Falls back to the window's
@@ -296,10 +318,9 @@ fn recenter_window(window: &tauri::WebviewWindow) {
     let scale = monitor.scale_factor();
     let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
     let logical_screen_w = screen.width as f64 / scale;
-    let logical_screen_h = screen.height as f64 / scale;
     resize_locked(window, tauri::LogicalSize::new(win_w as f64, win_h as f64));
     let lx = pos.x as f64 / scale + (logical_screen_w - win_w as f64) / 2.0;
-    let ly = pos.y as f64 / scale + (logical_screen_h - win_h as f64) / 2.0;
+    let ly = window_top(&monitor);
     let _ = window.set_position(tauri::LogicalPosition::new(lx, ly));
 }
 
@@ -756,11 +777,15 @@ fn main() {
                 let _ = window.hide();
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
             }
-            let scaled_size = center_and_scale_window(&window);
+            let placement = center_and_scale_window(&window);
             #[cfg(target_os = "linux")]
-            platform::linux::layer_shell::attach(&window, scaled_size);
+            platform::linux::layer_shell::attach(
+                &window,
+                placement.map(|(size, _)| size),
+                placement.map(|(_, top)| top),
+            );
             #[cfg(not(target_os = "linux"))]
-            let _ = scaled_size;
+            let _ = placement;
             apply_transparency(&window);
             // Needs the main thread and a live window: the surface pointer
             // comes off the window handle.
