@@ -64,8 +64,13 @@ extension LauncherView {
                 // select all, so the next keystroke replaces what was just typed.
                 // Selection on show is therefore explicit, and happens once the
                 // field is editing, whichever pass gets it there.
+                // A field that took focus on appear (command mode's input) keeps
+                // it: the first editable field here can be the outgoing search
+                // bar, still in the window while SwiftUI removes it.
+                let editingField = (window.firstResponder as? NSTextView)?.delegate as? CaretTextField
+                let focusClaimed = editingField?.focusesOnAppear == true
                 if let field = findEditableTextField(in: window.contentView) as? NSTextField {
-                    if field.currentEditor() == nil {
+                    if field.currentEditor() == nil, !focusClaimed {
                         window.makeFirstResponder(field)
                     }
                     if let editor = field.currentEditor() {

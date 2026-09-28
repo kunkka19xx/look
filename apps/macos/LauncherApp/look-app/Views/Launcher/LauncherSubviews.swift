@@ -216,6 +216,7 @@ struct CommandInputBar: View {
                 placeholder: command.placeholder,
                 isFocused: isQueryFocused,
                 themeStore: themeStore,
+                focusesOnAppear: true,
                 onSubmit: onSubmit
             )
                 .frame(maxWidth: .infinity)

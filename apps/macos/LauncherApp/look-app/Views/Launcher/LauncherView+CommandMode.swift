@@ -33,10 +33,6 @@ extension LauncherView {
     }
 
     func enterCommandMode() {
-        showsHelpScreen = false
-        isCommandMode = true
-        commandInput = ""
-        commandFeedback = ""
         // Reopen the last-visited command panel; fall back to /calc on
         // first run (or if the persisted id refers to a command no
         // longer in the catalog).
@@ -44,9 +40,7 @@ extension LauncherView {
         let resolved = commandCatalog.contains { $0.id == preferred }
             ? preferred
             : AppConstants.Launcher.Command.calc
-        activeCommandID = resolved
-        selectedCommandID = resolved
-        focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
+        enterCommandMode(commandID: resolved, prefilledInput: "")
     }
 
     func enterCommandMode(commandID: String, prefilledInput: String) {
