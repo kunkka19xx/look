@@ -9,8 +9,16 @@ struct AIAnswerCardView: View {
     /// window cannot bleed through into the answer text.
     private static let legibilityFloorOpacity = 0.55
 
+    private static let imageSide: CGFloat = 96
+    /// Smaller beside the text, so the reading measure stays usable.
+    private static let compactImageSide: CGFloat = 72
+    private static let blockContentSpacing: CGFloat = 10
+
     @ObservedObject var controller: AIAnswerController
     @ObservedObject var themeStore: ThemeStore
+    /// Compact has no preview pane, so the card is the only thing competing for
+    /// vertical room: the thumbnail sits beside the text instead of above it.
+    let isCompact: Bool
 
     private var fontSize: CGFloat { CGFloat(themeStore.settings.fontSize) }
 
@@ -98,31 +106,45 @@ struct AIAnswerCardView: View {
                 .help("Copy this answer")
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                if let imageURL {
-                    AsyncImage(url: imageURL) { phase in
-                        if let image = phase.image {
-                            image.resizable().aspectRatio(contentMode: .fill)
-                        } else {
-                            Color.clear
-                        }
-                    }
-                    .frame(width: 96, height: 96)
-                    .clipShape(RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
-                    .contentShape(RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
-                    .pointingHandCursor(enabled: url != nil)
-                    .onTapGesture { open(url) }
+            if isCompact, let imageURL {
+                HStack(alignment: .top, spacing: Self.blockContentSpacing) {
+                    thumbnail(imageURL, url: url, side: Self.compactImageSide)
+                    answerText(text)
                 }
-
-                Text(text)
-                    .font(themeStore.uiFont(size: fontSize, weight: .regular))
-                    .foregroundStyle(themeStore.secondaryTextColor())
-                    .lineSpacing(fontSize * 0.18)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                VStack(alignment: .leading, spacing: Self.blockContentSpacing) {
+                    if let imageURL {
+                        thumbnail(imageURL, url: url, side: Self.imageSide)
+                    }
+                    answerText(text)
+                }
             }
         }
+    }
+
+    private func thumbnail(_ imageURL: URL, url: URL?, side: CGFloat) -> some View {
+        AsyncImage(url: imageURL) { phase in
+            if let image = phase.image {
+                image.resizable().aspectRatio(contentMode: .fill)
+            } else {
+                Color.clear
+            }
+        }
+        .frame(width: side, height: side)
+        .clipShape(RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
+        .pointingHandCursor(enabled: url != nil)
+        .onTapGesture { open(url) }
+    }
+
+    private func answerText(_ text: String) -> some View {
+        Text(text)
+            .font(themeStore.uiFont(size: fontSize, weight: .regular))
+            .foregroundStyle(themeStore.secondaryTextColor())
+            .lineSpacing(fontSize * 0.18)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder

@@ -2084,12 +2084,12 @@ struct LauncherView: View {
     private var aiAnswerOnlyRow: some View {
         if showsFloatingCards {
             twoPaneGrid(hasRight: false) {
-                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore, isCompact: isCompactLayout)
             } right: {
                 EmptyView()
             }
         } else {
-            AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+            AIAnswerCardView(controller: aiAnswer, themeStore: themeStore, isCompact: isCompactLayout)
                 .frame(maxHeight: .infinity)
         }
     }
@@ -2101,7 +2101,7 @@ struct LauncherView: View {
     private var aiKnowledgeLookupRow: some View {
         if showsFloatingCards {
             twoPaneGrid(hasRight: true) {
-                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore, isCompact: isCompactLayout)
             } right: {
                 ResultsListView(
                     results: displayedResults,
@@ -2116,7 +2116,7 @@ struct LauncherView: View {
             // Answer on the left at a comfortable reading measure; suggestion list
             // pinned to a fixed-width column on the right.
             HStack(alignment: .top, spacing: 8) {
-                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore, isCompact: isCompactLayout)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 resultsListAndPreview
                     .frame(width: AppConstants.Launcher.aiAnswerSuggestionColumnWidth)
@@ -2142,11 +2142,11 @@ struct LauncherView: View {
     private var aiAnswerCard: some View {
         if showsFloatingCards {
             paneCard(padding: 6) {
-                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore, isCompact: isCompactLayout)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         } else {
-            AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+            AIAnswerCardView(controller: aiAnswer, themeStore: themeStore, isCompact: isCompactLayout)
         }
     }
 
