@@ -340,6 +340,13 @@ html:not([data-os="linux"]) .settings-linux-only {
     font-weight: 600;
 }
 
+/* These controls drop the native ring, so keyboard focus needs its own. */
+.settings-dropdown-btn:focus-visible,
+.settings-segment-item:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+}
+
 /* Text input (font name) */
 .settings-text-input {
     width: 200px;
