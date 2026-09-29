@@ -1373,19 +1373,33 @@ function isGhostingStack() {
     return platform.compositor() === 'hyprland';
 }
 
-// Only where the compositor grants blur: elsewhere there is no frost to trade.
-// The hint says what each side costs, since the tint sliders cannot reach a
-// sharp view through while the frost is on.
+// An unset key takes the per-compositor default (platform.compositorBlurDefault),
+// which is the guard: on only where the effect has been seen to render right.
 function compositorBlurWanted(map) {
-    return map.ui_compositor_blur !== 'false';
+    const set = map.ui_compositor_blur;
+    return set === undefined || set === '' ? platform.compositorBlurDefault() : set !== 'false';
 }
 
 function updateCompositorBlurRow() {
-    document.getElementById('settings-compositor-blur-row').hidden = !platform.compositorBlur();
-    document.getElementById('settings-compositor-blur-hint').textContent =
-        platform.compositorBlurActive()
-            ? 'Frosted by the compositor; turn off to see through'
-            : 'Clear glass: the desktop shows sharp behind the tint';
+    document.getElementById('settings-compositor-blur-hint').textContent = compositorBlurHint();
+}
+
+// The hint says what each side costs, since the tint sliders cannot reach a
+// sharp view through while the frost is on. The row stays on every desktop, so
+// the first case is the one most people see: nothing to ask, nothing to switch.
+function compositorBlurHint() {
+    if (!platform.compositorBlur()) {
+        return 'Your compositor does not offer it; Look stays clear glass';
+    }
+    const niri = platform.compositor() === 'niri';
+    if (platform.compositorBlurActive()) {
+        return niri
+            ? 'Frosted by niri: the wallpaper only, unless a niri rule sets xray false'
+            : 'Frosted by the compositor; turn off to see through';
+    }
+    return niri
+        ? 'Clear glass. niri blurs the wallpaper only until a niri rule sets xray false'
+        : 'Clear glass: the desktop shows sharp behind the tint';
 }
 
 function hasDisableBlur() {
@@ -1428,7 +1442,7 @@ function applytint() {
     }
     const tintA = getSliderVal('ui_tint_opacity');
     const blurA = effectiveBlurOpacity(getSliderVal('ui_blur_opacity') || 0.95);
-    const settingsBlur = active ? getSliderVal('settings_blur_multiplier') || 0.5 : 1.0;
+    const settingsBlur = active ? getSliderVal('settings_blur_multiplier') || 1.0 : 1.0;
     const a = tintA * blurA * settingsBlur;
     document.documentElement.style.setProperty(
         '--bg-tint',

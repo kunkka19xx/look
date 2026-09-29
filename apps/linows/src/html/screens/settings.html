@@ -215,14 +215,6 @@
                     <span class="settings-section-arrow">&#9654;</span><span>Blur</span>
                 </div>
                 <div class="settings-section">
-                    <div class="settings-row" id="settings-compositor-blur-row" hidden>
-                        <label class="settings-label">Blur behind window</label>
-                        <label class="settings-toggle">
-                            <input type="checkbox" id="settings-compositor-blur" checked />
-                            <span class="settings-toggle-track"></span>
-                        </label>
-                        <span class="settings-hint-text" id="settings-compositor-blur-hint"></span>
-                    </div>
                     <div class="settings-row" data-key="ui_blur_opacity">
                         <label class="settings-label">Blur Opacity</label>
                         <input
@@ -243,9 +235,9 @@
                             min="0.4"
                             max="1"
                             step="0.01"
-                            value="0.5"
+                            value="1"
                         />
-                        <span class="settings-slider-value">0.50</span>
+                        <span class="settings-slider-value">1.00</span>
                     </div>
                     <div class="settings-row">
                         <label class="settings-label">Blur Style</label>
@@ -900,6 +892,14 @@
                     <span class="settings-section-arrow">&#9654;</span><span>Rendering</span>
                 </div>
                 <div class="settings-section settings-linux-only">
+                    <div class="settings-row" id="settings-compositor-blur-row">
+                        <label class="settings-label">Blur behind window</label>
+                        <label class="settings-toggle">
+                            <input type="checkbox" id="settings-compositor-blur" />
+                            <span class="settings-toggle-track"></span>
+                        </label>
+                        <span class="settings-hint-text" id="settings-compositor-blur-hint"></span>
+                    </div>
                     <div class="settings-row">
                         <label class="settings-label">Disable GPU compositing</label>
                         <label class="settings-toggle">
