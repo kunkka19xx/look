@@ -18,4 +18,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
-        run: gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label picked
+        # The payload is a snapshot of the close, so re-read state in case the
+        # issue was reopened while this job sat in the queue.
+        run: |
+          state=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json state --jq .state)
+          if [ "$state" != "CLOSED" ]; then
+            echo "Issue #$ISSUE is $state now, leaving picked alone."
+            exit 0
+          fi
+          gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label picked
