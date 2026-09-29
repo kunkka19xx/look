@@ -15,7 +15,18 @@ import * as blur from './blur.js';
 const GAP_MIN = 0;
 const GAP_MAX = 24;
 
+// `layout` config values; same key and values as macOS `LauncherLayout`.
+export const LAYOUT_SPLIT = 'split';
+export const LAYOUT_COMPACT = 'compact';
+
+/** A `layout` config value read the way the backend reads it: compact in any case, else split. */
+export function parseLayout(value) {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return normalized === LAYOUT_COMPACT ? LAYOUT_COMPACT : LAYOUT_SPLIT;
+}
+
 let innerGap = 0;
+let compact = false;
 let queryEmpty = true;
 let translateQuery = false;
 let recentEmptyQuery = false;
@@ -40,6 +51,7 @@ let hintMessage = null;
 let copyright = null;
 let leftFooter = null;
 let rightFooter = null;
+let topBar = null;
 
 export function init() {
     win = document.getElementById('app');
@@ -63,7 +75,7 @@ export function init() {
 }
 
 export function initHints(refs) {
-    ({ hintBar, hintMessage, copyright, leftFooter, rightFooter } = refs);
+    ({ hintBar, hintMessage, copyright, leftFooter, rightFooter, topBar } = refs);
     apply();
 }
 
@@ -71,6 +83,20 @@ export function setInnerGap(gap) {
     innerGap = Math.max(GAP_MIN, Math.min(GAP_MAX, Math.round(gap) || 0));
     document.documentElement.style.setProperty('--inner-gap', `${innerGap}px`);
     apply();
+}
+
+export function setCompact(on) {
+    compact = !!on;
+    apply();
+}
+
+export function isCompact() {
+    return compact;
+}
+
+/** Single gate for the command sidebar; a future split-mode setting plugs in here. */
+export function showsCommandSidebar() {
+    return !compact;
 }
 
 export function setModal(screen, on) {
@@ -172,8 +198,10 @@ function apply() {
     const floating = supported && innerGap > 0 && home; // showsFloatingCards
     const resting = supported && queryEmpty && home; // macOS hidesResultsForEmptyQuery, as a CSS state
     const barFree = floating || resting; // barFloatsFree
-    const floatingGrid = floating && !translateQuery && !recentEmptyQuery;
+    const floatingGrid = floating && !translateQuery && !recentEmptyQuery && !compact;
 
+    win.classList.toggle('compact', compact);
+    win.classList.toggle('cmd-sidebar-hidden', !showsCommandSidebar());
     win.classList.toggle('floating', floating);
     win.classList.toggle('resting', resting);
     win.classList.toggle('bar-free', barFree);
@@ -192,7 +220,10 @@ function placeHints(floating, floatingGrid) {
     if (!hintBar) return;
     let msgTarget = hintBar;
     let copyTarget = hintBar;
-    if (floatingGrid) {
+    if (compact) {
+        // Compact has no footer rows; the copyright takes the free end of the bar.
+        copyTarget = topBar;
+    } else if (floatingGrid) {
         msgTarget = leftFooter;
         copyTarget = rightFooter;
     } else if (floating) {

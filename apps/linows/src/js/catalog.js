@@ -44,6 +44,18 @@ export const CLIPBOARD_EMPTY_COPY = {
     },
 };
 
+/** The "How to use" half of a clipboard empty state. */
+export function clipboardTipsHtml(copy) {
+    const tips = copy.tips
+        .map((tip) => `<div class="preview-clip-help-line">• ${tip}</div>`)
+        .join('');
+    return `
+    <div class="preview-clip-help">
+      <div class="preview-clip-help-title">How to use</div>
+      ${tips}
+    </div>`;
+}
+
 // What each history says when a row is forgotten, keyed as above.
 export const CLIPBOARD_DELETED_BANNER = {
     clipboard: 'Clipboard item deleted',
@@ -109,7 +121,7 @@ const COMMAND_DEFINITIONS = [
 export const COMMAND_ENTRIES = COMMAND_DEFINITIONS.map((entry, index) => ({
     ...entry,
     shortcut: index + 1,
-    title: `${entry.id} (Ctrl+${index + 1})`,
+    title: `${entry.id}`,
 }));
 
 // True when `id` names a built-in command, for the `:cmd <args>` live trigger.

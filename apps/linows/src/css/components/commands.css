@@ -1,6 +1,11 @@
 /* Command mode layout */
 
-/* Sidebar */
+/* Sidebar; layout.js showsCommandSidebar() decides */
+.cmd-sidebar-hidden .cmd-sidebar,
+.cmd-sidebar-hidden .cmd-divider {
+    display: none;
+}
+
 .cmd-sidebar {
     width: 180px;
     flex-shrink: 0;
@@ -1479,19 +1484,6 @@ button.cmd-todo-add:hover {
     gap: 3px;
     justify-content: space-between;
     --heat-cell: 10px;
-}
-
-.cmd-todo-tooltip {
-    position: fixed;
-    z-index: 20;
-    padding: 4px 8px;
-    background: var(--bg-tint);
-    border: 1px solid var(--divider-color);
-    border-radius: var(--chip-radius);
-    font-size: calc(var(--font-size) - 3px);
-    color: var(--font-color);
-    white-space: nowrap;
-    pointer-events: none;
 }
 
 .cmd-todo-heat-col {

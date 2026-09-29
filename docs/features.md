@@ -143,6 +143,7 @@ This document tracks what `look` supports today and what is planned next.
 - query alias presets in `~/.look/config` for app + System Settings intent expansion (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`)
 - in-app config reset (`Settings > Advanced > Create Fresh Config`) with confirmation popup
 - semantic color system with auto-derived text colors in Custom mode
+- animations switch (`Settings > Appearance > Animations`, `animations_enabled`): off shows every change instantly on all three shells; on, the OS reduce-motion preference still applies (except on Windows, where that flag tracks the performance preset)
 - indexing, UI, privacy/logging, launch-at-login controls
 - immediate validation feedback for invalid settings input
 - advanced extra scan directory controls (`file_scan_extra_roots`) with overlap/risky-root validation

@@ -54,10 +54,10 @@
     }
 }
 
-@media (prefers-reduced-motion: reduce) {
-    html:not([data-os="windows"]) .smooth-caret {
-        transition: none;
-    }
+/* The caret keeps blinking with motion off (motion.css exempts it); only its
+ * glide to the new column goes. */
+html[data-motion="off"] .smooth-caret {
+    transition: none;
 }
 
 /* Off-screen measuring span: same font metrics as the input, never painted. */

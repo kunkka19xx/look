@@ -91,19 +91,22 @@ enum ConfigFileLines {
         return repaired == raw ? nil : repaired
     }
 
-    /// Rewrites `key` in place, or appends it when absent.
+    /// Rewrites `key` in place, or appends it when absent. Later duplicates are
+    /// dropped: `keyValues` reads the last one, which would otherwise shadow the
+    /// rewritten line.
     static func upsert(_ lines: inout [String], key: String, value: String) {
-        let assignment = "\(key)\(keyValueSeparator)"
-        for index in lines.indices where trim(stripComment(lines[index])).hasPrefix(assignment) {
-            lines[index] = "\(key)\(keyValueSeparator)\(value)"
+        let line = "\(key)\(keyValueSeparator)\(value)"
+        guard let first = lines.firstIndex(where: { assignedKey($0) == key }) else {
+            lines.append(line)
             return
         }
-        lines.append("\(key)\(keyValueSeparator)\(value)")
+        lines[first] = line
+        let tail = lines.index(after: first)
+        lines[tail...].removeAll { assignedKey($0) == key }
     }
 
     static func remove(_ lines: inout [String], key: String) {
-        let assignment = "\(key)\(keyValueSeparator)"
-        lines.removeAll { trim(stripComment($0)).hasPrefix(assignment) }
+        lines.removeAll { assignedKey($0) == key }
     }
 
     /// Splits a list value (`app_exclude_names`, `file_exclude_paths`, ...) into
@@ -169,17 +172,25 @@ enum ConfigFileLines {
     static func keyValues(_ raw: String) -> [String: String] {
         var values: [String: String] = [:]
         for line in parse(raw) {
-            let stripped = trim(stripComment(line))
-            guard let separator = stripped.firstIndex(of: keyValueSeparator) else {
-                continue
+            if let (key, value) = assignment(line) {
+                values[key] = value
             }
-            let key = trim(String(stripped[..<separator]))
-            guard !key.isEmpty else {
-                continue
-            }
-            values[key] = trim(String(stripped[stripped.index(after: separator)...]))
         }
         return values
+    }
+
+    /// The trimmed key and value a line assigns, or nil for a comment, blank or
+    /// malformed line.
+    private static func assignment(_ line: String) -> (key: String, value: String)? {
+        let stripped = trim(stripComment(line))
+        guard let separator = stripped.firstIndex(of: keyValueSeparator) else { return nil }
+        let key = trim(String(stripped[..<separator]))
+        guard !key.isEmpty else { return nil }
+        return (key, trim(String(stripped[stripped.index(after: separator)...])))
+    }
+
+    private static func assignedKey(_ line: String) -> String? {
+        assignment(line)?.key
     }
 
     /// Drops a trailing comment. `#` only starts one at the beginning of the line or

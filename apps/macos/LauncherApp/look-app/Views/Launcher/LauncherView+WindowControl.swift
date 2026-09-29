@@ -64,8 +64,13 @@ extension LauncherView {
                 // select all, so the next keystroke replaces what was just typed.
                 // Selection on show is therefore explicit, and happens once the
                 // field is editing, whichever pass gets it there.
+                // A field that took focus on appear (command mode's input) keeps
+                // it: the first editable field here can be the outgoing search
+                // bar, still in the window while SwiftUI removes it.
+                let editingField = (window.firstResponder as? NSTextView)?.delegate as? CaretTextField
+                let focusClaimed = editingField?.focusesOnAppear == true
                 if let field = findEditableTextField(in: window.contentView) as? NSTextField {
-                    if field.currentEditor() == nil {
+                    if field.currentEditor() == nil, !focusClaimed {
                         window.makeFirstResponder(field)
                     }
                     if let editor = field.currentEditor() {
@@ -237,7 +242,7 @@ extension LauncherView {
             let screen = NSScreen.screens.first(where: { NSMouseInRect(cursor, $0.frame, false) })
                 ?? NSScreen.main
         else { return }
-        let frame = WindowAutoScale.spotlightFrame(on: screen)
+        let frame = WindowAutoScale.spotlightFrame(on: screen, layout: themeStore.effectiveLayout)
         // Log the real screen + placement so the spotlight fraction can be
         // calibrated from actual displays rather than estimates.
         let topGap = screen.visibleFrame.maxY - frame.maxY
@@ -245,6 +250,26 @@ extension LauncherView {
             "position: visible=\(NSStringFromRect(screen.visibleFrame), privacy: .public) frame=\(NSStringFromRect(frame), privacy: .public) topGap=\(topGap, privacy: .public)"
         )
         window.setFrame(frame, display: true)
+    }
+
+    /// Resizes the launcher in place on a layout change (the setting or the
+    /// session toggle), hidden or not: the Dock reopen path shows the window
+    /// without repositioning it.
+    func layoutChanged() {
+        closeActionMenu()
+        refreshLaunchpadState()
+        guard let window = launcherWindow(),
+            let screen = window.screen ?? NSScreen.main
+        else { return }
+        // Anchor now, before a growing content minimum can move the window; resize
+        // a turn later, once a shrinking one has let go. Reading the layout late
+        // makes rapid toggles land on the last value.
+        let anchor = window.frame
+        DispatchQueue.main.async {
+            let frame = WindowAutoScale.resizedFrame(
+                from: anchor, on: screen, layout: themeStore.effectiveLayout)
+            window.setFrame(frame, display: true)
+        }
     }
 
     func hideLauncherWindow(restorePreviousApp: Bool = true) {

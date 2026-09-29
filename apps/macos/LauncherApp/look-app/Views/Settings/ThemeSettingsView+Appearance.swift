@@ -23,22 +23,25 @@ extension ThemeSettingsView {
                 }
 
                 HStack(spacing: 14) {
-                    appearanceSwitch(
-                        "Running Apps",
-                        isOn: Binding(
-                            get: { settings.runningAppsPlacement != .none },
-                            set: { settings.runningAppsPlacement = $0 ? .right : .none }
-                        ),
-                        help: "Show running apps in the right half of the search bar (⌘1-9 to switch)")
+                    // Compact shows neither the strip nor the launchpad.
+                    if settings.layout == .split {
+                        appearanceSwitch(
+                            "Running Apps",
+                            isOn: Binding(
+                                get: { settings.runningAppsPlacement != .none },
+                                set: { settings.runningAppsPlacement = $0 ? .right : .none }
+                            ),
+                            help: "Show running apps in the right half of the search bar (⌘1-9 to switch)")
 
-                    Spacer().frame(width: 40)
+                        Spacer().frame(width: 40)
 
-                    appearanceSwitch(
-                        "Super Actions",
-                        isOn: $settings.superActionsEnabled,
-                        help: "Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
+                        appearanceSwitch(
+                            "Super Actions",
+                            isOn: $settings.superActionsEnabled,
+                            help: "Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
 
-                    Spacer().frame(width: 40)
+                        Spacer().frame(width: 40)
+                    }
 
                     appearanceSwitch(
                         "Animations",
@@ -53,6 +56,25 @@ extension ThemeSettingsView {
                     .padding(.vertical, 4)
 
                 sectionHeader("Layout")
+
+                HStack(spacing: 10) {
+                    Text("Window")
+                        .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
+                        .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+                        .foregroundStyle(themeStore.secondaryTextColor())
+
+                    Picker("Window", selection: $settings.layout) {
+                        ForEach(LauncherLayout.allCases) { layout in
+                            Text(layout.title).tag(layout)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: AppConstants.ThemeUI.pickerWidth)
+                    .help("Split shows results beside a preview; Compact is a smaller window with results only.")
+
+                    Spacer(minLength: 0)
+                }
 
                 LabeledSlider(
                     title: "Inner Gap",

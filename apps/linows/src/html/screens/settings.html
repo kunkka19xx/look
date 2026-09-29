@@ -49,25 +49,41 @@
                             <div class="settings-dropdown-item" data-value="custom">Custom</div>
                         </div>
                     </div>
-                    <span style="margin-left: 40px">Running Apps</span>
+                    <span class="split-only" style="margin-left: 40px">Running Apps</span>
                     <label
-                        class="settings-toggle"
+                        class="settings-toggle split-only"
                         title="Show running apps strip on the main screen (Ctrl+1-9 to switch)"
                     >
                         <input type="checkbox" id="settings-running-apps" checked />
                         <span class="settings-toggle-track"></span>
                     </label>
-                    <span id="settings-super-actions-label" style="margin-left: 40px"
+                    <span
+                        id="settings-super-actions-label"
+                        class="split-only"
+                        style="margin-left: 40px"
                         >Super Actions</span
                     >
                     <label
-                        class="settings-toggle"
+                        class="settings-toggle split-only"
                         title="Show quick-actions launchpad on the empty home screen (Alt+letter)"
                     >
                         <input
                             type="checkbox"
                             id="settings-super-actions"
                             aria-label="Super Actions"
+                            checked
+                        />
+                        <span class="settings-toggle-track"></span>
+                    </label>
+                    <span style="margin-left: 40px">Animations</span>
+                    <label
+                        class="settings-toggle"
+                        title="Animate the launcher as it opens and as the selection moves; off shows every change instantly"
+                    >
+                        <input
+                            type="checkbox"
+                            id="settings-animations"
+                            aria-label="Animations"
                             checked
                         />
                         <span class="settings-toggle-track"></span>
@@ -81,6 +97,28 @@
                     <span class="settings-section-arrow">&#9654;</span><span>Layout</span>
                 </div>
                 <div class="settings-section">
+                    <div
+                        class="settings-row"
+                        title="Split shows results beside a preview; Compact is a smaller window with results only."
+                    >
+                        <label class="settings-label">Window</label>
+                        <div class="settings-segment" id="settings-layout" role="group">
+                            <button
+                                class="settings-segment-item settings-segment-active"
+                                type="button"
+                                data-value="split"
+                            >
+                                Split
+                            </button>
+                            <button
+                                class="settings-segment-item"
+                                type="button"
+                                data-value="compact"
+                            >
+                                Compact
+                            </button>
+                        </div>
+                    </div>
                     <div
                         class="settings-row"
                         data-key="inner_gap"
@@ -399,12 +437,17 @@
             <!-- Shortcuts tab -->
             <div class="settings-tab-content" id="settings-tab-shortcuts" hidden>
                 <div class="settings-shortcuts-list">
-                    <div class="settings-shortcut-notice" id="settings-shortcuts-notice" hidden></div>
+                    <div
+                        class="settings-shortcut-notice"
+                        id="settings-shortcuts-notice"
+                        hidden
+                    ></div>
 
                     <!-- Global -->
                     <div class="settings-shortcut-section">Global</div>
                     <div class="settings-shortcut" data-shortcut-id="global.toggleLauncher">
-                        <button class="settings-shortcut-key" type="button" disabled>Alt+Space</button
+                        <button class="settings-shortcut-key" type="button" disabled>
+                            Alt+Space</button
                         ><button class="settings-shortcut-reset" type="button" hidden>Reset</button
                         ><span>Show or hide Look from any app</span
                         ><span class="settings-shortcut-error" hidden></span>
@@ -497,6 +540,10 @@
                     </div>
                     <div class="settings-shortcut">
                         <kbd>Ctrl+Shift+;</kbd><span>Reload .look/config</span>
+                    </div>
+                    <div class="settings-shortcut">
+                        <kbd>Ctrl+Shift+C</kbd
+                        ><span>Switch split / compact until Look quits (config unchanged)</span>
                     </div>
                     <div class="settings-shortcut">
                         <kbd>Ctrl+Shift+H</kbd><span>Hide the selected app from Look</span>

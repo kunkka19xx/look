@@ -4,7 +4,7 @@
 //! niri paint fullscreen above every layer but `overlay`, and
 //! `set_always_on_top` has no protocol behind it. An overlay surface clears
 //! fullscreen, takes keyboard focus through `keyboard-interactivity`, and is
-//! centred by the compositor when it anchors to no edge.
+//! centred horizontally by the compositor when anchored to the top edge alone.
 //!
 //! GTK cannot turn a mapped toplevel into a layer surface, so the webview's
 //! vbox is reparented into a window of ours, layer-initialised before it is
@@ -47,6 +47,9 @@ const LAYER_OVERLAY: u32 = 3;
 const KEYBOARD_NONE: u32 = 0;
 const KEYBOARD_EXCLUSIVE: u32 = 1;
 
+/// `GtkLayerShellEdge`.
+const EDGE_TOP: u32 = 2;
+
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static VISIBLE: AtomicBool = AtomicBool::new(false);
 
@@ -64,6 +67,8 @@ struct Api {
     set_layer: unsafe extern "C" fn(*mut c_void, u32),
     set_keyboard_mode: unsafe extern "C" fn(*mut c_void, u32),
     set_namespace: unsafe extern "C" fn(*mut c_void, *const std::ffi::c_char),
+    set_anchor: unsafe extern "C" fn(*mut c_void, u32, i32),
+    set_margin: unsafe extern "C" fn(*mut c_void, u32, i32),
 }
 
 /// Opened at runtime rather than linked, so a system without the library falls
@@ -80,6 +85,8 @@ fn api() -> Option<&'static Api> {
         let set_layer = *lib.get(b"gtk_layer_set_layer\0").ok()?;
         let set_keyboard_mode = *lib.get(b"gtk_layer_set_keyboard_mode\0").ok()?;
         let set_namespace = *lib.get(b"gtk_layer_set_namespace\0").ok()?;
+        let set_anchor = *lib.get(b"gtk_layer_set_anchor\0").ok()?;
+        let set_margin = *lib.get(b"gtk_layer_set_margin\0").ok()?;
         Some(Api {
             _lib: lib,
             is_supported,
@@ -87,6 +94,8 @@ fn api() -> Option<&'static Api> {
             set_layer,
             set_keyboard_mode,
             set_namespace,
+            set_anchor,
+            set_margin,
         })
     })
     .as_ref()
@@ -95,7 +104,9 @@ fn api() -> Option<&'static Api> {
 /// Move the webview onto an overlay layer surface. Main thread only, and
 /// before anything shows the Tauri window. `false` leaves every caller on the
 /// toplevel path unchanged.
-pub fn attach(window: &tauri::WebviewWindow, size: Option<(i32, i32)>) -> bool {
+/// `top` is the margin from the output's top edge; `None` leaves the surface
+/// centred on both axes.
+pub fn attach(window: &tauri::WebviewWindow, size: Option<(i32, i32)>, top: Option<i32>) -> bool {
     if super::transparency::window_is_x11() || std::env::var_os(ENV_DISABLE).is_some() {
         return false;
     }
@@ -153,10 +164,14 @@ pub fn attach(window: &tauri::WebviewWindow, size: Option<(i32, i32)>) -> bool {
         (api.set_layer)(ptr, LAYER_OVERLAY);
         (api.set_namespace)(ptr, NAMESPACE.as_ptr());
         (api.set_keyboard_mode)(ptr, KEYBOARD_NONE);
+        if let Some(top) = top {
+            (api.set_anchor)(ptr, EDGE_TOP, 1);
+            (api.set_margin)(ptr, EDGE_TOP, top.max(0));
+        }
     }
 
-    // Anchored nowhere, so the compositor centres it; the size is whatever the
-    // widget asks for, and there is no set_position counterpart.
+    // The size is whatever the widget asks for, and there is no set_position
+    // counterpart: the top margin is the only placement a layer surface takes.
     let (width, height) = usable_size(size.unwrap_or_else(|| fallback_size(window)));
     layer.set_default_size(width, height);
     layer.set_size_request(width, height);
@@ -195,6 +210,16 @@ fn usable_size((width, height): (i32, i32)) -> (i32, i32) {
     }
     eprintln!("[look:layer-shell] no usable size ({width}x{height}), falling back to the default");
     (crate::BASE_W as i32, crate::BASE_H as i32)
+}
+
+/// Resizes the surface; its top edge stays put and it grows or shrinks downward.
+pub fn resize(width: i32, height: i32) {
+    let (width, height) = usable_size((width, height));
+    on_main(move |layer| {
+        layer.set_default_size(width, height);
+        layer.set_size_request(width, height);
+        layer.resize(width, height);
+    });
 }
 
 pub fn is_active() -> bool {

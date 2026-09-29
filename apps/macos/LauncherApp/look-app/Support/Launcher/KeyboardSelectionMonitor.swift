@@ -90,7 +90,8 @@ final class KeyboardSelectionMonitor {
         isLaunchpadActive: @escaping @MainActor () -> Bool = { false },
         onLaunchpadMnemonic: (@MainActor (Character) -> Bool)? = nil,
         onLaunchpadEscape: (@MainActor () -> Bool)? = nil,
-        onHideSelectedApp: (@MainActor () -> Bool)? = nil
+        onHideSelectedApp: (@MainActor () -> Bool)? = nil,
+        onToggleSessionLayout: (@MainActor () -> Void)? = nil
     ) {
         guard monitor == nil else { return }
         self.isKillConfirmationActive = killConfirmationActive
@@ -232,6 +233,14 @@ final class KeyboardSelectionMonitor {
                     return nil
                 }
                 return event
+            }
+
+            if (event.keyCode == KeyCode.c || event.charactersIgnoringModifiers?.lowercased() == "c")
+                && flags == [.command, .shift],
+                let onToggleSessionLayout
+            {
+                onToggleSessionLayout()
+                return nil
             }
 
             // ⌘. stops a running generation (the macOS-standard cancel chord).

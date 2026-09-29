@@ -22,6 +22,9 @@ struct SmoothCaretTextField: NSViewRepresentable {
     /// AI mode asks for it: the search bar is a single line by design, and a
     /// query with a newline in it means nothing to the matcher.
     var allowsMultiline: Bool = false
+    /// Takes focus as soon as the field is in a window, for inputs that replace
+    /// the search bar (command mode) and so must not wait on focus retries.
+    var focusesOnAppear: Bool = false
     var onSubmit: () -> Void
 
     private var font: NSFont { themeStore.uiNSFont(size: fontSize) }
@@ -31,6 +34,7 @@ struct SmoothCaretTextField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> CaretTextField {
         let field = CaretTextField()
+        field.focusesOnAppear = focusesOnAppear
         field.delegate = context.coordinator
         field.isBordered = false
         field.drawsBackground = false
@@ -197,6 +201,16 @@ final class CaretTextField: NSTextField {
         didSet { caretLayer.backgroundColor = caretColor.cgColor }
     }
     var caretGlides = true
+    var focusesOnAppear = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard focusesOnAppear, let window else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window === window, self.currentEditor() == nil else { return }
+            window.makeFirstResponder(self)
+        }
+    }
 
     private static let blinkKey = "blink"
     /// One layout pass away, matching the launcher's other "let AppKit settle"

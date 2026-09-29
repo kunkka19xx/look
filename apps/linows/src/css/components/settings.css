@@ -306,6 +306,47 @@ html:not([data-os="linux"]) .settings-linux-only {
     font-weight: 600;
 }
 
+/* Segmented control (two or three mutually exclusive choices) */
+.settings-segment {
+    display: inline-flex;
+    margin-left: 4px;
+    padding: 2px;
+    gap: 2px;
+    border-radius: var(--control-radius);
+    border: 1px solid var(--divider-color);
+    background: rgba(var(--lift), 0.06);
+}
+
+.settings-segment-item {
+    font-size: calc(var(--font-size) - 1px);
+    font-family: inherit;
+    padding: 3px 14px;
+    border: none;
+    border-radius: calc(var(--control-radius) - 2px);
+    background: transparent;
+    color: var(--font-muted);
+    cursor: pointer;
+    outline: none;
+}
+
+.settings-segment-item:hover:not(.settings-segment-active) {
+    background: rgba(var(--lift), 0.1);
+    color: var(--font-color);
+}
+
+.settings-segment-item.settings-segment-active {
+    background: var(--accent-color);
+    color: var(--on-accent-color);
+    font-weight: 600;
+}
+
+/* These controls drop the native ring, so keyboard focus needs its own. */
+.settings-dropdown-btn:focus-visible,
+.settings-segment-item:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+}
+
 /* Text input (font name) */
 .settings-text-input {
     width: 200px;

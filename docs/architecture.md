@@ -524,9 +524,19 @@ are animated, since they are compositor-handled and animating `filter` /
 zoom uses the `scale` property rather than a `transform` function, because
 `components/results.js` drives the pill's position through `transform` and an
 animation on the same property would take the glide over and land the pill
-without it. `prefers-reduced-motion` is honoured throughout, except on Windows,
-where the flag tracks the "best performance" visual-effects preset rather than
-motion sensitivity.
+without it.
+
+Motion has one off switch, `data-motion="off"` on `<html>`. `js/platform.js`
+sets it, for the `animations_enabled` config key (Settings > Appearance >
+Animations) and for `prefers-reduced-motion` alike, so the two cannot drift
+apart in the stylesheets; Windows is left out of the OS half, where the flag
+tracks the "best performance" visual-effects preset rather than motion
+sensitivity. The attribute drives one rule in `motion.css` that takes every
+duration and delay to near zero, near rather than `none` because the pressed
+and rejected states clear themselves on `animationend`. The blinking caret and
+the answer spinner are exempt: they report state, not movement. Anything that
+cannot be expressed in CSS reads `platform.reducesMotion()` instead, the smooth
+`scrollIntoView` behind the selection and the speed gauge's eased dial.
 
 ### Config File Integration
 

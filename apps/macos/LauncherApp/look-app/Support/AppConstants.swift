@@ -345,6 +345,9 @@ enum AppConstants {
             static let rowVerticalPadding: CGFloat = 7
             static let rowHorizontalPadding: CGFloat = 10
             static let shadowRadius: CGFloat = 14
+            /// Compact floats the menu over the results list, centered on its right edge.
+            static let compactWidth: CGFloat = 320
+            static let compactInset: CGFloat = 10
         }
 
         /// Preferred tools: Cmd+E and Cmd+T act through the tools a user named
@@ -514,6 +517,10 @@ enum AppConstants {
             static let height: CGFloat = 580
         }
 
+        /// Keeps the bar from shrinking to the bare text field when the
+        /// running-apps strip (which sets its height otherwise) is hidden.
+        static let topRowMinHeight: CGFloat = 45
+
         enum RunningAppsStrip {
             static let iconSize: CGFloat = 30
             static let horizontalPadding: CGFloat = 6
@@ -630,8 +637,7 @@ enum AppConstants {
         }
 
         /// Catalog order is the whole shortcut mapping: ⌘N selects the Nth entry
-        /// (see `onSelectCommandByIndex`), so the number in each title is
-        /// derived rather than written, and reordering this list is enough.
+        /// (see `onSelectCommandByIndex`), so reordering this list is enough.
         private static let commandDefinitions: [(id: String, detail: String, placeholder: String)] = [
             (Command.calc, "Evaluate math expression", "Type math expression"),
             (Command.pomo, "Pomodoro focus timer", "Manage focus sessions"),
@@ -642,10 +648,10 @@ enum AppConstants {
             (Command.sys, "Show system information", "View system info"),
         ]
 
-        static let commandCatalog: [AppCommand] = commandDefinitions.enumerated().map { index, definition in
+        static let commandCatalog: [AppCommand] = commandDefinitions.map { definition in
             AppCommand(
                 id: definition.id,
-                title: "\(definition.id) (⌘\(index + 1))",
+                title: definition.id,
                 detail: definition.detail,
                 placeholder: definition.placeholder
             )

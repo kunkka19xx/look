@@ -16,14 +16,6 @@
     animation: results-list-in 140ms ease-out;
 }
 
-/* Windows excluded: see the rationale in superactions.css (its reduce-motion
- * flag tracks the perf preset, not genuine motion sensitivity). */
-@media (prefers-reduced-motion: reduce) {
-    html:not([data-os="windows"]) .results-list.is-entering {
-        animation: none;
-    }
-}
-
 /* Rows and the pill that highlights them share one inset, or the pill cuts
  * into the row it covers (the AI two-column layout insets tighter). */
 .results-list {
@@ -58,12 +50,6 @@
 /* Fresh render / click / data refresh: land without a slide. */
 .results-selection.is-instant {
     transition: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    html:not([data-os="windows"]) .results-selection {
-        transition: none;
-    }
 }
 
 /* Result row */
@@ -345,6 +331,20 @@
     color: var(--font-muted);
     max-width: 360px;
     line-height: 1.5;
+}
+
+/* Compact: the clipboard tips sit under the info instead of in the preview
+ * column (macOS ClipboardEmptyStateView stacked). */
+.empty-state-stack .empty-state-rich {
+    min-height: 0;
+    padding-bottom: 16px;
+}
+
+.empty-state-stack .preview-clip-help {
+    align-items: center;
+    margin: 0 24px;
+    border-top: 1px solid var(--divider-color);
+    text-align: center;
 }
 
 .empty-state-help kbd {

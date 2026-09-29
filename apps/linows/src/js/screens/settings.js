@@ -332,6 +332,14 @@ export function init(exitFn) {
         );
     });
 
+    // Animations toggle (Appearance tab). platform.js flips the attribute every
+    // stylesheet opt-out keys off, so the change lands without a reload.
+    document.getElementById('settings-animations').addEventListener('change', (e) => {
+        const enabled = e.target.checked;
+        platform.setAnimationsEnabled(enabled);
+        saveConfig({ animations_enabled: enabled ? 'true' : 'false' });
+    });
+
     // Extra scan dirs
     const extraDirsList = document.getElementById('settings-extra-dirs');
     extraDirsList.dataset.empty = 'No extra scan directories';
@@ -415,11 +423,22 @@ export function init(exitFn) {
     logMenu.addEventListener('click', (e) => {
         const item = e.target.closest('.settings-dropdown-item');
         if (!item) return;
-        logDD.querySelector('.settings-dropdown-label').textContent = item.textContent;
-        for (const el of logMenu.children) el.classList.remove('settings-dropdown-active');
-        item.classList.add('settings-dropdown-active');
+        selectDropdownItem(logDD, item.dataset.value);
         logMenu.hidden = true;
         saveConfig({ backend_log_level: item.dataset.value });
+    });
+
+    // Window layout: saved before app.js applies it, since the backend reads
+    // the file to size the window.
+    const layoutSeg = document.getElementById('settings-layout');
+    layoutSeg.addEventListener('click', async (e) => {
+        const item = e.target.closest('.settings-segment-item');
+        if (!item || item.classList.contains('settings-segment-active')) return;
+        const value = item.dataset.value;
+        selectSegmentItem(layoutSeg, value);
+        if (await saveConfig({ layout: value })) {
+            document.dispatchEvent(new CustomEvent('look:layout-changed', { detail: { value } }));
+        }
     });
 
     // Rendering workarounds
@@ -476,6 +495,10 @@ export function init(exitFn) {
             await sourceblocks.reload();
             await forceIndexRefresh();
             await loadConfig();
+            const { layout: restoredLayout } = await loadConfigMap();
+            document.dispatchEvent(
+                new CustomEvent('look:layout-changed', { detail: { value: restoredLayout } }),
+            );
             clearBackgroundImage();
             applyFontFamily(DEFAULT_FONT_NAME);
             applyThemePreset('');
@@ -635,6 +658,9 @@ export function init(exitFn) {
                 .checked
                 ? 'true'
                 : 'false';
+            updates.animations_enabled = document.getElementById('settings-animations').checked
+                ? 'true'
+                : 'false';
             updates.ai_enabled = document.getElementById('settings-ai-enabled').checked
                 ? 'true'
                 : 'false';
@@ -643,6 +669,11 @@ export function init(exitFn) {
             const logDD = document.getElementById('settings-log-level');
             const activeLog = logDD?.querySelector('.settings-dropdown-active');
             if (activeLog) updates.backend_log_level = activeLog.dataset.value;
+
+            const activeLayout = document
+                .getElementById('settings-layout')
+                ?.querySelector('.settings-segment-active');
+            if (activeLayout) updates.layout = activeLayout.dataset.value;
 
             // Advanced: launch at login
             updates.launch_at_login = document.getElementById('settings-launch-login').checked
@@ -689,6 +720,8 @@ export async function reloadFromFile({ announceSuccess = true } = {}) {
         platform.setCompositorBlurWanted(compositorBlurWanted(map));
         // Re-sends the blur region, which the switch above may have emptied.
         layout.refresh();
+
+        platform.setAnimationsEnabled(map.animations_enabled !== 'false');
 
         // Background image - apply BEFORE the tint pass: effectiveBlurOpacity
         // keys off whether a bg image is present.
@@ -791,6 +824,8 @@ export function handleKey(e) {
 export async function restoreOnStartup() {
     try {
         const map = await loadConfigMap();
+
+        platform.setAnimationsEnabled(map.animations_enabled !== 'false');
 
         // Apply the blur-disable BEFORE first tint pass so initial render is
         // already opaque if the user toggled it.
@@ -1011,6 +1046,9 @@ async function loadConfig() {
             (map.running_apps_placement || 'right') !== 'none';
         document.getElementById('settings-super-actions').checked =
             map.super_actions_enabled !== 'false';
+        const animationsOn = map.animations_enabled !== 'false';
+        document.getElementById('settings-animations').checked = animationsOn;
+        platform.setAnimationsEnabled(animationsOn);
         document.getElementById('settings-ai-enabled').checked = map.ai_enabled !== 'false';
         document.getElementById('settings-disable-gpu').checked = boolKey(
             map,
@@ -1057,16 +1095,14 @@ async function loadConfig() {
             bgLayoutItem.classList.add('settings-dropdown-active');
         }
 
-        // Log level
-        const logLevel = map.backend_log_level || 'error';
-        const logDD = document.getElementById('settings-log-level');
-        const logItem = logDD.querySelector(`.settings-dropdown-item[data-value="${logLevel}"]`);
-        if (logItem) {
-            logDD.querySelector('.settings-dropdown-label').textContent = logItem.textContent;
-            for (const el of logDD.querySelector('.settings-dropdown-menu').children)
-                el.classList.remove('settings-dropdown-active');
-            logItem.classList.add('settings-dropdown-active');
-        }
+        selectDropdownItem(
+            document.getElementById('settings-log-level'),
+            map.backend_log_level || 'error',
+        );
+        selectSegmentItem(
+            document.getElementById('settings-layout'),
+            layout.parseLayout(map.layout),
+        );
 
         // Launch at login and PATH: read actual system state
         try {
@@ -1534,6 +1570,22 @@ function formatValue(key, v) {
 }
 
 // Reports its own failure, so fire-and-forget callers are covered too.
+/** Marks the item for `value` active and shows its label; unknown values leave it as is. */
+function selectDropdownItem(dropdown, value) {
+    const item = dropdown.querySelector(`.settings-dropdown-item[data-value="${value}"]`);
+    if (!item) return;
+    dropdown.querySelector('.settings-dropdown-label').textContent = item.textContent.trim();
+    for (const el of dropdown.querySelector('.settings-dropdown-menu').children) {
+        el.classList.toggle('settings-dropdown-active', el === item);
+    }
+}
+
+function selectSegmentItem(segment, value) {
+    for (const el of segment.querySelectorAll('.settings-segment-item')) {
+        el.classList.toggle('settings-segment-active', el.dataset.value === value);
+    }
+}
+
 async function saveConfig(updates) {
     try {
         const list = Object.entries(updates).map(([key, value]) => ({ key, value: String(value) }));

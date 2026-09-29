@@ -198,6 +198,53 @@ html[data-os="windows"] .bar-free .pane-tile {
     display: none;
 }
 
+/* Compact: the results list alone (app.js keeps the AI lookup stacked). */
+.launcher-window.compact .results-row {
+    grid-template-columns: 1fr;
+}
+
+.launcher-window.compact #preview-col {
+    display: none;
+}
+
+/* Settings for features compact does not show. */
+.launcher-window.compact .split-only {
+    display: none;
+}
+
+/* Compact floats the action menu over the results list, centered on its right edge. */
+.launcher-window.compact #results-col {
+    position: relative;
+}
+
+.action-menu.action-menu-compact {
+    top: 50%;
+    left: auto;
+    right: 10px;
+    width: 320px;
+    transform: translateY(-50%);
+}
+
+/* Picked count in the top bar, standing in for split's picked panel. */
+.picked-count {
+    flex-shrink: 0;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--selection-fill);
+    font-size: 11px;
+}
+
+.launcher-window:not(.compact) .picked-count,
+.picked-count[hidden] {
+    display: none;
+}
+
+/* No hint rows; layout.js moves the copyright into the top bar. */
+.launcher-window.compact #hint-bar,
+.launcher-window.compact .pane-footer {
+    display: none;
+}
+
 /* Two-col AI (knowledge lookup): app.js moves the suggestion list into the
  * right pane, so the lookup renders through the same two equal columns as
  * normal results (macOS twoPaneGrid) - same tiles, same footers. The
@@ -352,7 +399,8 @@ html[data-os="windows"] .bar-free .pane-tile {
 }
 
 .hint-bar .hint-bar-copy,
-.pane-footer .hint-bar-copy {
+.pane-footer .hint-bar-copy,
+.top-bar .hint-bar-copy {
     font-size: 10px;
     color: var(--font-muted);
     opacity: 0.6;

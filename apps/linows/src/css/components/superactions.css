@@ -87,21 +87,11 @@ html.controls-open #hint-bar {
     transform: translateY(10px) scale(0.985);
 }
 
-/* Windows is excluded on purpose: its prefers-reduced-motion comes from the
- * "Animation effects" system toggle, which the "best performance" visual-effects
- * preset silently turns off, so it is not a reliable motion-sensitivity signal
- * the way macOS "Reduce Motion" is. Keep the launcher's core motion on Windows;
- * Linux/macOS still honor the OS preference. */
-@media (prefers-reduced-motion: reduce) {
-    html:not([data-os="windows"]) .control-strip.is-entering .ctl-tile {
-        animation: none;
-    }
-
-    /* No fade to align to, so don't pre-hide: the strip just reappears. */
-    html:not([data-os="windows"]) .control-strip.is-armed .ctl-tile {
-        opacity: 1;
-        transform: none;
-    }
+/* No fade to align to with motion off, so don't pre-hide: the strip just
+ * reappears. motion.css owns the rest. */
+html[data-motion="off"] .control-strip.is-armed .ctl-tile {
+    opacity: 1;
+    transform: none;
 }
 
 /* --- Tile base -------------------------------------------------------------

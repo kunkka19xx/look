@@ -1,6 +1,6 @@
 import { speedTest, localIpv4, copyToClipboard, onWindowShown, onWindowHidden } from '../../ipc.js';
 import { globe, eye, eyeOff } from '../../icons.js';
-import { prefersReducedMotion, onReducedMotionChange } from '../../platform.js';
+import { reducesMotion, onMotionChange } from '../../platform.js';
 
 // The /speed panel: two counter-rotating comets, download on the outer ring and
 // upload on the inner one, around a centre that beats once per round trip.
@@ -170,7 +170,7 @@ export function init() {
         windowShown = true;
         syncMotion();
     });
-    onReducedMotionChange(syncMotion);
+    onMotionChange(syncMotion);
 }
 
 export function enter() {
@@ -414,22 +414,22 @@ function buildScale() {
 }
 
 // The one place that decides whether the dial should be moving: the panel has to
-// be open, the window up, and the OS not asking for less motion. Under Reduce
-// Motion the dial is placed once instead, since nothing will advance the eased
-// values. Callers re-run this rather than testing a subset of the three.
+// be open, the window up, and motion on. With motion off the dial is placed once
+// instead, since nothing will advance the eased values. Callers re-run this
+// rather than testing a subset of the three.
 function syncMotion() {
     stopMotion();
     lastFrame = null;
     if (panel.hidden || !windowShown) return;
-    if (prefersReducedMotion()) {
+    if (reducesMotion()) {
         snapMotion();
         return;
     }
     frame = requestAnimationFrame(tick);
 }
 
-// A paused dial never advances the eased values, so under Reduce Motion a
-// landed reading has to be placed directly.
+// A paused dial never advances the eased values, so with motion off a landed
+// reading has to be placed directly.
 function snapMotion() {
     shownDownload = reading?.download_bits_per_second ?? 0;
     shownUpload = reading?.upload_bits_per_second ?? 0;
