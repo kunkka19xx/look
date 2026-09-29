@@ -1033,7 +1033,7 @@ async function loadConfig() {
         document.getElementById('settings-running-apps').checked =
             (map.running_apps_placement || 'right') !== 'none';
         document.getElementById('settings-super-actions').checked =
-            map.super_actions_enabled !== 'false';
+            map.super_actions_enabled === 'true';
         const animationsOn = map.animations_enabled !== 'false';
         document.getElementById('settings-animations').checked = animationsOn;
         platform.setAnimationsEnabled(animationsOn);
