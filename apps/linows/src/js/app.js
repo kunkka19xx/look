@@ -268,7 +268,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function toggleSessionLayout() {
         const current = sessionLayout ?? configLayout;
-        const next = current === layout.LAYOUT_COMPACT ? layout.LAYOUT_SPLIT : layout.LAYOUT_COMPACT;
+        const next =
+            current === layout.LAYOUT_COMPACT ? layout.LAYOUT_SPLIT : layout.LAYOUT_COMPACT;
         sessionLayout = next === configLayout ? null : next;
         applyEffectiveLayout();
     }
@@ -287,7 +288,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (isSwitch || sessionLayout !== backendSessionLayout) {
             backendSessionLayout = sessionLayout;
-            applyLayout(sessionLayout).catch((err) => console.error('[layout] resize failed:', err));
+            applyLayout(sessionLayout).catch((err) =>
+                console.error('[layout] resize failed:', err),
+            );
         }
     }
 
@@ -737,6 +740,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let launchQueryAppliedAt = 0;
 
+    // The query as it stood when Look went away. `window-shown` is an async
+    // event, so a keystroke can land between the window taking focus and the
+    // handler running; selecting then would hand the first key the user's own
+    // text to replace. Selection is therefore conditional on the field still
+    // holding exactly what the hide left in it.
+    let queryAtHide = '';
+
     // When the launcher is shown, optionally clear an expired query before the
     // usual focus/refresh/reveal pass runs.
     onWindowShown((event) => {
@@ -747,7 +757,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             resetHomeQuery();
         }
         queryInput.focus();
-        queryInput.select();
+        if (queryInput.value === queryAtHide) {
+            queryInput.select();
+        } else {
+            const end = queryInput.value.length;
+            queryInput.setSelectionRange(end, end);
+        }
         smoothcaret.refresh(queryInput);
         requestIndexRefresh();
         // A block edited while Look was away takes effect on this open.
@@ -812,6 +827,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // be running, and its answer must not open a level on the next summon.
         if (levels.isActive()) resetHomeQuery();
         else levels.clear();
+        queryAtHide = queryInput.value;
         superactions.armEntrance();
         motion.armReveal();
         // The next summon keeps the query and the selection, but an open menu
@@ -829,6 +845,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
+            queryAtHide = queryInput.value;
             superactions.armEntrance();
             motion.armReveal();
         } else {
