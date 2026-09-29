@@ -16,14 +16,6 @@
     animation: results-list-in 140ms ease-out;
 }
 
-/* Windows excluded: see the rationale in superactions.css (its reduce-motion
- * flag tracks the perf preset, not genuine motion sensitivity). */
-@media (prefers-reduced-motion: reduce) {
-    html:not([data-os="windows"]) .results-list.is-entering {
-        animation: none;
-    }
-}
-
 /* Rows and the pill that highlights them share one inset, or the pill cuts
  * into the row it covers (the AI two-column layout insets tighter). */
 .results-list {
@@ -58,12 +50,6 @@
 /* Fresh render / click / data refresh: land without a slide. */
 .results-selection.is-instant {
     transition: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    html:not([data-os="windows"]) .results-selection {
-        transition: none;
-    }
 }
 
 /* Result row */

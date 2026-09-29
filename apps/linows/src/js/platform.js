@@ -25,6 +25,8 @@ export async function init() {
     if (compositorBlur()) {
         document.documentElement.setAttribute('data-blur', 'compositor');
     }
+    // After data-os: the OS half of the signal leaves Windows out.
+    syncMotion();
 }
 
 // True when the compositor grants behind-window blur on request. A capability,
@@ -86,17 +88,40 @@ export function isLinux() {
 }
 
 // Read live off the query list so an OS toggle mid-session takes effect.
-// Windows is excluded to match the CSS: its reduce-motion flag tracks the
-// "best performance" visual-effects preset, not motion sensitivity.
+// Windows is excluded: its reduce-motion flag tracks the "best performance"
+// visual-effects preset, not motion sensitivity the way macOS Reduce Motion
+// does, so the launcher keeps its motion there.
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+reduceMotion.addEventListener('change', syncMotion);
 
-export function prefersReducedMotion() {
-    return reduceMotion.matches && !isWindows();
+// The Animations switch, `animations_enabled` in the config. Same key as macOS.
+let animationsEnabled = true;
+const motionListeners = new Set();
+
+// True when the Animations switch is off or the OS asks for less motion. Read
+// this, never the media query: the switch has to count too.
+export function reducesMotion() {
+    return !animationsEnabled || (reduceMotion.matches && !isWindows());
+}
+
+export function setAnimationsEnabled(on) {
+    if (on === animationsEnabled) return;
+    animationsEnabled = on;
+    syncMotion();
 }
 
 // For surfaces that have to act on the switch rather than read it per frame.
-export function onReducedMotionChange(callback) {
-    reduceMotion.addEventListener('change', callback);
+export function onMotionChange(callback) {
+    motionListeners.add(callback);
+}
+
+// One attribute for the whole stylesheet (motion.css keys every opt-out off
+// it), so the switch and the OS preference cannot drift apart.
+function syncMotion() {
+    const root = document.documentElement;
+    if (reducesMotion()) root.setAttribute('data-motion', 'off');
+    else root.removeAttribute('data-motion');
+    for (const cb of motionListeners) cb();
 }
 
 // Ctrl+Shift+Enter target: exes and look-cmd:// applets. ms-settings: pages

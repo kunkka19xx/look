@@ -332,6 +332,14 @@ export function init(exitFn) {
         );
     });
 
+    // Animations toggle (Appearance tab). platform.js flips the attribute every
+    // stylesheet opt-out keys off, so the change lands without a reload.
+    document.getElementById('settings-animations').addEventListener('change', (e) => {
+        const enabled = e.target.checked;
+        platform.setAnimationsEnabled(enabled);
+        saveConfig({ animations_enabled: enabled ? 'true' : 'false' });
+    });
+
     // Extra scan dirs
     const extraDirsList = document.getElementById('settings-extra-dirs');
     extraDirsList.dataset.empty = 'No extra scan directories';
@@ -642,6 +650,9 @@ export function init(exitFn) {
                 .checked
                 ? 'true'
                 : 'false';
+            updates.animations_enabled = document.getElementById('settings-animations').checked
+                ? 'true'
+                : 'false';
             updates.ai_enabled = document.getElementById('settings-ai-enabled').checked
                 ? 'true'
                 : 'false';
@@ -698,6 +709,8 @@ export async function reloadFromFile({ announceSuccess = true } = {}) {
         // the source blocks are, so this is where an edited one starts showing.
         const launchpadWarnings = await superactions.reload();
         const map = await loadConfigMap();
+
+        platform.setAnimationsEnabled(map.animations_enabled !== 'false');
 
         // Background image - apply BEFORE the tint pass: effectiveBlurOpacity
         // keys off whether a bg image is present.
@@ -800,6 +813,8 @@ export function handleKey(e) {
 export async function restoreOnStartup() {
     try {
         const map = await loadConfigMap();
+
+        platform.setAnimationsEnabled(map.animations_enabled !== 'false');
 
         // Apply the blur-disable BEFORE first tint pass so initial render is
         // already opaque if the user toggled it.
@@ -1019,6 +1034,9 @@ async function loadConfig() {
             (map.running_apps_placement || 'right') !== 'none';
         document.getElementById('settings-super-actions').checked =
             map.super_actions_enabled !== 'false';
+        const animationsOn = map.animations_enabled !== 'false';
+        document.getElementById('settings-animations').checked = animationsOn;
+        platform.setAnimationsEnabled(animationsOn);
         document.getElementById('settings-ai-enabled').checked = map.ai_enabled !== 'false';
         document.getElementById('settings-disable-gpu').checked = boolKey(
             map,

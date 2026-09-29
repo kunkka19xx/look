@@ -12,7 +12,7 @@ import {
 import * as sourceblocks from './sourceblocks.js';
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
 import { classifyResultId, CLIPBOARD_EMPTY_COPY, clipboardTipsHtml } from '../catalog.js';
-import { prefersReducedMotion } from '../platform.js';
+import { reducesMotion } from '../platform.js';
 import * as layout from '../layout.js';
 
 // LRU-bounded icon cache (cacheKey -> data URL | null). A plain Map keeps
@@ -48,8 +48,8 @@ let container = null;
 // crossfading its own background. Lives inside the scrolling list so it tracks
 // scroll for free; wiped with the rows on every render, rebuilt lazily.
 let selectionPill = null;
-// Honor prefers-reduced-motion for the scroll too: the pill glide is killed in
-// CSS, but scrollIntoView's smooth behavior bypasses CSS, so gate it here.
+// The scroll honors the motion switch too: the pill glide is killed in CSS, but
+// scrollIntoView's smooth behavior bypasses CSS, so gate it here.
 let onSelectionChange = null;
 let onPickChange = null;
 let emptyState = { mode: 'default' };
@@ -239,7 +239,7 @@ export function select(index, glide = false) {
         if (glide) playGain(row);
         row.scrollIntoView({
             block: 'nearest',
-            behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+            behavior: reducesMotion() ? 'auto' : 'smooth',
         });
     }
 

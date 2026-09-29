@@ -159,6 +159,10 @@ fn default_config_contents() -> String {
          # false to hide the strip and disable its keyboard accelerators.\n\
          super_actions_enabled=true\n\
          \n\
+         # Launcher animations - the arrival, the entrance staggers, the selection\n\
+         # glide. false shows every change instantly. Same key as macOS.\n\
+         animations_enabled=true\n\
+         \n\
          # UI theme (empty = built-in default; pick one in Settings)\n\
          ui_theme=\n",
     );
