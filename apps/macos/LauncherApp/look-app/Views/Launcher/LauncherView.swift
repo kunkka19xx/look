@@ -876,13 +876,10 @@ struct LauncherView: View {
     var body: some View {
         // Mirrored onto the window's layers in `WindowConfigurator`.
         let windowCornerRadius = themeStore.panelRadius
-        // When floating, use a single uniform gap between the top row and the
-        // columns so it matches the horizontal gap between the columns (i3 style);
-        // otherwise keep the classic fixed spacing.
-        // Seated (gap 0) the bar shares the panel's surface, so the results
-        // start right under its divider - the 12pt band was the other half of
-        // what made the bar read as a separate window.
-        let contentSpacing: CGFloat = showsFloatingCards ? innerGap : (isCommandMode ? 8 : 0)
+        // Floating: one uniform gap everywhere (i3 style). Seated: 0, so the bar
+        // and the results meet at the divider; siblings that need air take
+        // `stackedContentGap`.
+        let contentSpacing: CGFloat = showsFloatingCards ? innerGap : 0
         let contentPadding: CGFloat = isCommandMode ? 10 : 14
 
         // Running apps render inside the search bar (see panelContent), not as a
@@ -1442,11 +1439,14 @@ struct LauncherView: View {
                         themeStore: themeStore,
                         revealToken: appearanceRevealToken
                     )
+                    // Two floating tiles: they must not touch.
+                    .padding(.top, stackedContentGap)
                 }
                 Spacer(minLength: 0)
             } else {
                 if let fileRecallNote {
                     fileRecallNoteLine(fileRecallNote)
+                        .padding(.top, stackedContentGap)
                 }
                 resultsRow
             }
@@ -1466,6 +1466,7 @@ struct LauncherView: View {
                 && !isHideAppConfirmationVisible
             {
                 HintBar(hint: panelHint, todo: todoQuickView, themeStore: themeStore)
+                    .padding(.top, stackedContentGap)
             }
         }
     }
@@ -1498,6 +1499,8 @@ struct LauncherView: View {
         .padding(.vertical, 6)
         .background(bannerStyle.background, in: Capsule())
         .transition(.move(edge: .top).combined(with: .opacity))
+        // Sits between the bar and the results, so it takes a seam on both sides.
+        .padding(.vertical, stackedContentGap)
     }
 
     @ViewBuilder
@@ -2344,6 +2347,12 @@ struct LauncherView: View {
         }
     }
 
+    /// The seam the panel stack no longer gives every child, for the ones that
+    /// still need it. Zero while floating: `innerGap` is already the gap there.
+    private var stackedContentGap: CGFloat {
+        showsFloatingCards ? 0 : (isCommandMode ? 8 : 12)
+    }
+
     /// i3-style inner gap between the three home panes (0 = classic flat layout).
     private var innerGap: CGFloat { CGFloat(themeStore.settings.innerGap) }
     private var usesPanes: Bool { innerGap > 0 }
@@ -2499,9 +2508,8 @@ struct LauncherView: View {
             // in the tree, which would rasterize the backdrop below.
             .spawnReveal(index: Self.searchBarRevealIndex, token: appearanceRevealToken, scales: false)
             .background {
-                // Seated, the panel's backdrop already backs the bar, and a
-                // fill of its own is what made it read as a separate window
-                // floating above the results. That look belongs to the gap.
+                // Seated, the panel's backdrop already backs the bar; a fill of
+                // its own is what made it read as a separate window.
                 if floats {
                     tileBackground(
                         cornerRadius: themeStore.tileRadius,
@@ -2516,8 +2524,7 @@ struct LauncherView: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                // What separates the query from the results once the bar has no
-                // edge of its own: the same hairline the rows use.
+                // The rows' own hairline, once the bar has no edge of its own.
                 if !floats {
                     Rectangle()
                         .fill(themeStore.dividerColor())

@@ -557,13 +557,17 @@ html[data-os="windows"] .bar-free .pane-tile {
  * tile, so they keep the wider one.
  *
  * Seated, the bar shares the window's surface: a fill and a radius of its own
- * are what made it read as a separate window above the results, and that look
- * belongs to --inner-gap. The hairline is the rows' own divider, so the query
- * is separated from them the way they are from each other. */
+ * are what made it read as a separate window. The hairline is the rows' own. */
 .launcher-window:not(.bar-free) .top-bar {
     margin-left: var(--row-inset);
     margin-right: var(--row-inset);
     border-bottom: 1px solid var(--divider-color);
+}
+
+/* Only the bar/results seam is flush; the banner keeps the gap the bar's
+ * bottom margin used to give it. */
+.launcher-window:not(.bar-free) #banner {
+    margin-top: 12px;
 }
 
 .launcher-window:not(.bar-free) .hint-bar {
