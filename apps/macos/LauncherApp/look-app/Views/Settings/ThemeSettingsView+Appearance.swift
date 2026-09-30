@@ -23,8 +23,9 @@ extension ThemeSettingsView {
                 }
 
                 HStack(spacing: 14) {
-                    // Compact shows neither the strip nor the launchpad.
-                    if settings.layout == .split {
+                    // Compact shows neither the strip nor the launchpad, so
+                    // the session override (⌘⇧C) hides these too.
+                    if themeStore.effectiveLayout == .split {
                         appearanceSwitch(
                             "Running Apps",
                             isOn: Binding(
