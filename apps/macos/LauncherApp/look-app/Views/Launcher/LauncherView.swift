@@ -879,7 +879,10 @@ struct LauncherView: View {
         // When floating, use a single uniform gap between the top row and the
         // columns so it matches the horizontal gap between the columns (i3 style);
         // otherwise keep the classic fixed spacing.
-        let contentSpacing: CGFloat = showsFloatingCards ? innerGap : (isCommandMode ? 8 : 12)
+        // Seated (gap 0) the bar shares the panel's surface, so the results
+        // start right under its divider - the 12pt band was the other half of
+        // what made the bar read as a separate window.
+        let contentSpacing: CGFloat = showsFloatingCards ? innerGap : (isCommandMode ? 8 : 0)
         let contentPadding: CGFloat = isCommandMode ? 10 : 14
 
         // Running apps render inside the search bar (see panelContent), not as a
@@ -2496,16 +2499,29 @@ struct LauncherView: View {
             // in the tree, which would rasterize the backdrop below.
             .spawnReveal(index: Self.searchBarRevealIndex, token: appearanceRevealToken, scales: false)
             .background {
-                tileBackground(
-                    cornerRadius: floats ? themeStore.tileRadius : themeStore.barRadius,
-                    floats: floats,
-                    // Seated, the panel's backdrop already backs the bar.
-                    substrate: floats
-                )
+                // Seated, the panel's backdrop already backs the bar, and a
+                // fill of its own is what made it read as a separate window
+                // floating above the results. That look belongs to the gap.
+                if floats {
+                    tileBackground(
+                        cornerRadius: themeStore.tileRadius,
+                        floats: true,
+                        substrate: true
+                    )
+                }
             }
             .overlay {
                 if floats {
                     tileBorder(cornerRadius: themeStore.tileRadius)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                // What separates the query from the results once the bar has no
+                // edge of its own: the same hairline the rows use.
+                if !floats {
+                    Rectangle()
+                        .fill(themeStore.dividerColor())
+                        .frame(height: 1)
                 }
             }
             .shadow(color: floats ? .black.opacity(0.25) : .clear,
