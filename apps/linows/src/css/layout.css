@@ -102,10 +102,8 @@ html[data-os="windows"] .bar-free .pane-tile {
     align-items: center;
     gap: 10px;
     flex-shrink: 0;
-    margin: var(--content-padding) var(--content-padding) 12px;
+    margin: var(--content-padding) var(--content-padding) 0;
     padding: var(--input-padding-y) var(--input-padding-x);
-    background-color: var(--control-fill);
-    border-radius: var(--bar-radius);
 }
 
 .search-bar {
@@ -556,10 +554,16 @@ html[data-os="windows"] .bar-free .pane-tile {
 /* Classic columns run flush to the window, so the chrome around them takes the
  * rows' inset rather than --content-padding: every left edge in the panel lines
  * up and each keeps equal gutters. Floating and resting inset the bar as a
- * tile, so they keep the wider one. */
+ * tile, so they keep the wider one.
+ *
+ * Seated, the bar shares the window's surface: a fill and a radius of its own
+ * are what made it read as a separate window above the results, and that look
+ * belongs to --inner-gap. The hairline is the rows' own divider, so the query
+ * is separated from them the way they are from each other. */
 .launcher-window:not(.bar-free) .top-bar {
     margin-left: var(--row-inset);
     margin-right: var(--row-inset);
+    border-bottom: 1px solid var(--divider-color);
 }
 
 .launcher-window:not(.bar-free) .hint-bar {

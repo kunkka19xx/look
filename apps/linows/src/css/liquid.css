@@ -52,9 +52,12 @@
 }
 
 /* Surfaces with no chrome of their own: bar-free drops the window backdrop, and
- * the classic panel's columns never had one. */
+ * the classic panel's columns never had one. Its top bar has none either seated,
+ * the bar is part of the window's own surface, so a rim around it would
+ * draw back the separate-window edge the gap is for. */
 [data-surface="liquid"] .launcher-window.bar-free::after,
-[data-surface="liquid"] .launcher-window:not(.bar-free) .pane-col::after {
+[data-surface="liquid"] .launcher-window:not(.bar-free) .pane-col::after,
+[data-surface="liquid"] .launcher-window:not(.bar-free) .top-bar::after {
     display: none;
 }
 
