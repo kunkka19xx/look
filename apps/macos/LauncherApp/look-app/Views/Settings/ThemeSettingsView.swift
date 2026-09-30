@@ -72,10 +72,6 @@ struct ThemeSettingsView: View {
                 .opacity(hasIndexingError ? 0.5 : 1)
                 .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
 
-                Button("Back to Launcher") {
-                    closeSettingsPanel()
-                }
-                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
                 Text("Esc or Cmd+Shift+, to close")
                     .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
                     .foregroundStyle(themeStore.mutedTextColor())
