@@ -140,7 +140,7 @@ Restart and Shut Down arm on the first press and only run on the second, so a st
 
 The rest of the strip is read-only: **Battery**, **Weather**, and the large slot on the left, which shows a running Pomodoro session, otherwise today's remaining todos, otherwise the clock.
 
-Turn the strip off in `Settings > Appearance > Super Actions`. Off hides it and disables the letter shortcuts. Saved as `super_actions_enabled=true|false` in `~/.look/config`.
+Turn the strip off in `Settings > Appearance > Super Actions`. Off hides it and disables the letter shortcuts. Saved as `super_actions_enabled=true|false` in `~/.look/config`. It is off by default; turn it on here or set `super_actions_enabled=true`.
 
 ### Rearranging the strip
 
@@ -527,7 +527,7 @@ Behavior:
 
 Saved as `running_apps_placement=<value>` in `~/.look/config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
 
-**Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/super-actions.toml`; see [Rearranging the strip](#rearranging-the-strip).
+**Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`; off by default. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/super-actions.toml`; see [Rearranging the strip](#rearranging-the-strip).
 
 **Animations**: a switch for the launcher's motion, the arrival cascade, the entrance staggers, the selection glide and the caret glide. Off shows every change instantly; the caret still blinks and the answer spinner still turns, since those read as state rather than motion. With it on, the OS preference is still respected (macOS Reduce Motion, the desktop's reduce-motion setting on Linux), except on Windows, where the flag tracks the "best performance" visual-effects preset rather than motion sensitivity. Saved as `animations_enabled=true|false`.
 

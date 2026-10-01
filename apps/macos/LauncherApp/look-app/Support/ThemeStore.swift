@@ -974,7 +974,7 @@ ai_allow_remote_context=false
 
 # Super actions: empty-state launchpad of quick toggles / actions.
 # false hides the strip and disables its keyboard accelerators.
-super_actions_enabled=true
+super_actions_enabled=false
 
 # Launcher animations (open cascade, selection glide, caret glide).
 # false shows every change instantly.

@@ -157,7 +157,7 @@ fn default_config_contents() -> String {
          \n\
          # Super actions - empty-state launchpad of quick toggles / actions. Set\n\
          # false to hide the strip and disable its keyboard accelerators.\n\
-         super_actions_enabled=true\n\
+         super_actions_enabled=false\n\
          \n\
          # Launcher animations - the arrival, the entrance staggers, the selection\n\
          # glide. false shows every change instantly. Same key as macOS.\n\
@@ -609,5 +609,10 @@ mod tests {
             parse_launcher_layout("ui_layout=compact\n"),
             LauncherLayout::Split
         );
+    }
+
+    #[test]
+    fn reset_template_hides_super_actions() {
+        assert!(default_config_contents().contains("\nsuper_actions_enabled=false\n"));
     }
 }
