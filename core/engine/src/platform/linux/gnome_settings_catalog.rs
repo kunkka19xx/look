@@ -1,6 +1,6 @@
 use crate::platform::SettingsCatalogEntry;
 
-pub(crate) static SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
+pub(crate) static GNOME_SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
     // Connectivity
     SettingsCatalogEntry {
         title: "Wi-Fi",

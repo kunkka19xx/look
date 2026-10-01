@@ -78,7 +78,37 @@ pub(crate) fn settings_subtitle_prefix() -> &'static str {
 }
 
 pub(crate) fn settings_catalog() -> &'static [SettingsCatalogEntry] {
-    platform_impl::SETTINGS_CATALOG
+    #[cfg(target_os = "linux")]
+    {
+        linux::settings_catalog()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        platform_impl::SETTINGS_CATALOG
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn all_settings_catalogs() -> Vec<&'static [SettingsCatalogEntry]> {
+    #[cfg(target_os = "linux")]
+    {
+        linux::all_settings_catalogs().to_vec()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        vec![platform_impl::SETTINGS_CATALOG]
+    }
+}
+
+pub(crate) fn settings_entry_available(_entry: &SettingsCatalogEntry) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        linux::settings_entry_available(_entry)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
 }
 
 /// Check if the system has a settings app (e.g. gnome-control-center).
@@ -94,31 +124,7 @@ pub(crate) fn has_settings_app() -> bool {
     }
     #[cfg(target_os = "linux")]
     {
-        // Settings catalog targets gnome-control-center panels.
-        // Only show them on DEs that actually use it (GNOME, Budgie, etc.),
-        // not on standalone WMs (sway, Hyprland, i3) where it may be
-        // installed as a dependency but doesn't integrate properly.
-        let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-        let on_gnome_de = desktop.split(':').any(|s| {
-            matches!(
-                s.trim(),
-                "GNOME" | "Budgie" | "Cinnamon" | "Unity" | "Pantheon"
-            )
-        });
-        if !on_gnome_de {
-            return false;
-        }
-        use std::process::Command;
-        // Scrub the AppImage's LD_LIBRARY_PATH; bundled libs break newer
-        // system binaries.
-        Command::new("which")
-            .arg("gnome-control-center")
-            .env_remove("LD_LIBRARY_PATH")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
+        linux::settings_app().is_some()
     }
 }
 

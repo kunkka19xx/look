@@ -87,8 +87,10 @@ under `apps/windows/`.
 | Hyprland      | Arch   | Tested   | No system settings entries                              |
 | KDE Plasma    |        | Untested |                                                         |
 
-**System settings** (Appearance, Wi-Fi, Sound, etc.) are only shown when `gnome-control-center`
-is detected. On i3, sway, or minimal distros without GNOME, these entries are skipped.
+**System settings** (Appearance, Wi-Fi, Sound, etc.) are shown when the desktop's settings app
+is detected: `gnome-control-center` on GNOME and its relatives, KDE System Settings
+(`systemsettings`) on Plasma, where only the modules your install ships are listed. On i3, sway,
+or minimal distros without either, these entries are skipped.
 
 ## Optional Dependencies
 

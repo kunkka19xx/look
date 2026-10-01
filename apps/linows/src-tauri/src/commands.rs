@@ -165,12 +165,25 @@ pub fn open_path(
         return Ok(());
     }
 
-    // Linux system settings: settings://panel → gnome-control-center panel
+    // Linux system settings: settings://panel → gnome-control-center, settings://kcm_* → KDE
     #[cfg(target_os = "linux")]
     if let Some(panel) = path.strip_prefix("settings://") {
         hide_armed(&window);
         let panel = panel.to_string();
         std::thread::spawn(move || {
+            if panel.starts_with("kcm") {
+                if let Err(e) = host_command("systemsettings")
+                    .arg(&panel)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                {
+                    eprintln!("[open_path] systemsettings {panel:?} failed: {e}");
+                }
+                return;
+            }
+
             // D-Bus activation: works on GNOME, properly focuses the window.
             let dbus_ok = host_command("gdbus")
                 .args([
@@ -193,7 +206,7 @@ pub fn open_path(
                 .map(|s| s.success())
                 .unwrap_or(false);
 
-            // Fallback: direct command (KDE, non-GNOME desktops)
+            // Fallback: direct command
             if !dbus_ok {
                 let _ = host_command("gnome-control-center")
                     .arg(&panel)
