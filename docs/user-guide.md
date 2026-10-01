@@ -546,7 +546,7 @@ protocol, and niri's own `blur true` follows `geometry-corner-radius` instead of
 Look's shape, which frosts the gaps between the floating panes. Dropping xray
 costs GPU time, since the blur is then sampled every frame rather than once.
 
-Where there is no frost at all (GNOME today, plain sway, X11 without KWin) Look
+Where there is no frost at all (GNOME 50 and earlier, plain sway, X11 without KWin) Look
 stays clear glass and `Blur Opacity` applies only when you have set a background
 image. Driving blur from your own compositor config still works; Look's request
 is additional, not exclusive.

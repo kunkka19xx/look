@@ -1,6 +1,6 @@
 //! Behind-window blur on Wayland, over whichever protocol the compositor
-//! advertises: `ext-background-effect-v1` (KWin 6.7+, Hyprland 0.56+, Niri) or
-//! `org_kde_kwin_blur`, which Plasma spoke until 6.7.
+//! advertises: `ext-background-effect-v1` (KWin 6.7+, Mutter 51+, Hyprland
+//! 0.56+, Niri) or `org_kde_kwin_blur`, which Plasma spoke until 6.7.
 //!
 //! Binds against GTK's own `wl_surface` - a second connection cannot address
 //! it - so the pointers come from the window handle rather than
@@ -42,6 +42,9 @@ struct Blur {
 /// it changes, and a re-shown window needs it again.
 #[derive(Default)]
 struct Attached {
+    /// Kept for `org_kde_kwin_blur`, whose object comes and goes with the
+    /// region (see `apply`).
+    surface: Option<WlSurface>,
     effect: Option<ExtBackgroundEffectSurfaceV1>,
     kde: Option<OrgKdeKwinBlur>,
     rects: Vec<BlurRect>,
@@ -88,10 +91,7 @@ pub fn attach(surface: *mut std::ffi::c_void) {
             .effect_manager
             .as_ref()
             .map(|manager| manager.get_background_effect(&wl_surface, &blur.queue_handle, ()));
-        attached.kde = blur
-            .kde_manager
-            .as_ref()
-            .map(|manager| manager.create(&wl_surface, &blur.queue_handle, ()));
+        attached.surface = Some(wl_surface);
         apply(blur, attached);
     });
 }
@@ -127,6 +127,7 @@ fn with_attached(f: impl FnOnce(&Blur, &mut Attached)) {
 }
 
 fn release(attached: &mut Attached) {
+    attached.surface = None;
     if let Some(effect) = attached.effect.take() {
         effect.destroy();
     }
@@ -142,8 +143,23 @@ fn release(attached: &mut Attached) {
 /// committing from here could publish a frame it is still assembling. Both
 /// protocols apply on the next surface commit, and every caller is a map or a
 /// layout change that repaints anyway.
-fn apply(blur: &Blur, attached: &Attached) {
+///
+/// The legacy KDE protocol reads an empty region as "blur the whole window", so
+/// nothing to blur is said there by unsetting, and the object is created again
+/// when a region returns. `ext`'s empty region already means no blur.
+fn apply(blur: &Blur, attached: &mut Attached) {
+    if let (Some(manager), Some(surface)) = (&blur.kde_manager, &attached.surface) {
+        if attached.rects.is_empty() {
+            if let Some(kde) = attached.kde.take() {
+                manager.unset(surface);
+                kde.release();
+            }
+        } else if attached.kde.is_none() {
+            attached.kde = Some(manager.create(surface, &blur.queue_handle, ()));
+        }
+    }
     if attached.effect.is_none() && attached.kde.is_none() {
+        let _ = blur.conn.flush();
         return;
     }
     let region = blur.compositor.create_region(&blur.queue_handle, ());

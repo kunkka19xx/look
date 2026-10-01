@@ -1065,7 +1065,11 @@ async function loadConfig() {
             'disable_gpu_compositing',
             'arch_disable_gpu',
         );
-        document.getElementById('settings-compositor-blur').checked = compositorBlurWanted(map);
+        // The preference, not just the box: a fresh config resets the file under
+        // a running frost, which would otherwise keep the old setting.
+        const blurWanted = compositorBlurWanted(map);
+        platform.setCompositorBlurWanted(blurWanted);
+        document.getElementById('settings-compositor-blur').checked = blurWanted;
         updateCompositorBlurRow();
         document.getElementById('settings-disable-blur').checked = disableBlurSet(map);
         if (disableBlurSet(map)) {
@@ -1073,6 +1077,9 @@ async function loadConfig() {
         } else if (!platform.blurForcedOff()) {
             document.documentElement.removeAttribute('data-disable-blur');
         }
+        // Tint opacity and the blur region both follow the preference.
+        applytint();
+        layout.refresh();
 
         // After the blur attribute above: both read floatingSupported, which
         // depends on it, so a reset or a reload that changes blur would leave
