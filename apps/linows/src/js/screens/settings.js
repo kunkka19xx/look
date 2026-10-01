@@ -435,10 +435,20 @@ export function init(exitFn) {
         const item = e.target.closest('.settings-segment-item');
         if (!item || item.classList.contains('settings-segment-active')) return;
         const value = item.dataset.value;
+        const saved = layoutSeg.querySelector('.settings-segment-active')?.dataset.value;
         selectSegmentItem(layoutSeg, value);
         if (await saveConfig({ layout: value })) {
             document.dispatchEvent(new CustomEvent('look:layout-changed', { detail: { value } }));
+        } else if (saved) {
+            // The file still holds the old layout, so the fill has to go back.
+            selectSegmentItem(layoutSeg, saved);
         }
+        markLiveLayout(layoutSeg);
+    });
+
+    // Ctrl+Shift+C works with Settings open, so the ring has to follow it.
+    document.addEventListener('look:layout-applied', () => {
+        if (active) markLiveLayout(layoutSeg);
     });
 
     // Rendering workarounds
@@ -1033,7 +1043,7 @@ async function loadConfig() {
         document.getElementById('settings-running-apps').checked =
             (map.running_apps_placement || 'right') !== 'none';
         document.getElementById('settings-super-actions').checked =
-            map.super_actions_enabled !== 'false';
+            map.super_actions_enabled === 'true';
         const animationsOn = map.animations_enabled !== 'false';
         document.getElementById('settings-animations').checked = animationsOn;
         platform.setAnimationsEnabled(animationsOn);
@@ -1085,10 +1095,9 @@ async function loadConfig() {
             document.getElementById('settings-log-level'),
             map.backend_log_level || 'error',
         );
-        selectSegmentItem(
-            document.getElementById('settings-layout'),
-            layout.parseLayout(map.layout),
-        );
+        const layoutSeg = document.getElementById('settings-layout');
+        selectSegmentItem(layoutSeg, layout.parseLayout(map.layout));
+        markLiveLayout(layoutSeg);
 
         // Launch at login and PATH: read actual system state
         try {
@@ -1554,6 +1563,20 @@ function selectDropdownItem(dropdown, value) {
 function selectSegmentItem(segment, value) {
     for (const el of segment.querySelectorAll('.settings-segment-item')) {
         el.classList.toggle('settings-segment-active', el.dataset.value === value);
+    }
+}
+
+// The picker shows the saved layout, which Ctrl+Shift+C can differ from for the
+// rest of the run. Ring the one the window is actually in, so the filled item
+// isn't read as both.
+function markLiveLayout(segment) {
+    const live = layout.isCompact() ? layout.LAYOUT_COMPACT : layout.LAYOUT_SPLIT;
+    for (const el of segment.querySelectorAll('.settings-segment-item')) {
+        const ringed =
+            el.dataset.value === live && !el.classList.contains('settings-segment-active');
+        el.classList.toggle('settings-segment-live', ringed);
+        if (ringed) el.title = 'In use this session (Ctrl+Shift+C). The filled one is saved.';
+        else el.removeAttribute('title');
     }
 }
 

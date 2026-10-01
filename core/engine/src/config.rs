@@ -467,6 +467,9 @@ ignored_patterns_sample=\n\
 # ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm\n\
 # ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part\n\
 lazy_indexing_enabled=true\n\
+# Super actions: empty-state launchpad of quick toggles / actions. Hidden by\n\
+# default; set true to show it (Settings > Appearance).\n\
+super_actions_enabled=false\n\
 # Localized app and System Settings names. macOS 15.4+ only. Slows the first\n\
 # index pass (~3ms -> ~35ms on a 134-app machine) and caches bundle metadata\n\
 # for the process lifetime.\n\
@@ -1536,6 +1539,7 @@ mod tests {
         assert!(contents.contains("app_scan_roots=/Applications\n"));
         assert!(contents.contains("alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq"));
         assert!(contents.contains("query_retention_seconds=5"));
+        assert!(contents.contains("super_actions_enabled=false"));
         assert_eq!(
             contents.matches("app_scan_depth=").count(),
             1,
@@ -1543,5 +1547,10 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn fresh_config_hides_super_actions() {
+        assert!(default_config_contents().contains("\nsuper_actions_enabled=false\n"));
     }
 }

@@ -18,9 +18,9 @@ import Foundation
 /// every show (see `LauncherView.toggleWindowVisibility`).
 enum WindowAutoScale {
     // Base size matches the Linux/Windows build (apps/linows/src-tauri):
-    // 860×580 logical, landscape - list pane + preview pane side by side.
-    static let baseWidth: CGFloat = 860
-    static let baseHeight: CGFloat = 600
+    // 840×560 logical (3:2), landscape - list pane + preview pane side by side.
+    static let baseWidth: CGFloat = 840
+    static let baseHeight: CGFloat = 560
 
     // Compact: tall enough for 6-7 rows. Mirrors COMPACT_W/H in the Linux/Windows build.
     static let compactBaseWidth: CGFloat = 680

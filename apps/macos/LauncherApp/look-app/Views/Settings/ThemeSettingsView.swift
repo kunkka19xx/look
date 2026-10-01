@@ -202,6 +202,16 @@ struct ThemeSettingsView: View {
                 return nil
             }
 
+            // ⌘⇧C reaches in here too, so a layout can be tried on from the
+            // picker, which keeps showing the saved one and rings this.
+            if flags == [.command, .shift]
+                && (event.charactersIgnoringModifiers?.lowercased() == "c"
+                    || event.keyCode == AppConstants.Launcher.KeyCode.c)
+            {
+                themeStore.toggleSessionLayout()
+                return nil
+            }
+
             return event
         }
     }

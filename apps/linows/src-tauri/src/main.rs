@@ -78,9 +78,9 @@ fn supports_transparency() -> bool {
     }
 }
 
-/// tauri.conf's window size, and the 1.0x rung of `scaled_window_size`.
-pub(crate) const BASE_W: f64 = 860.0;
-pub(crate) const BASE_H: f64 = 600.0;
+/// tauri.conf's window size (3:2), and the 1.0x rung of `scaled_window_size`.
+pub(crate) const BASE_W: f64 = 840.0;
+pub(crate) const BASE_H: f64 = 560.0;
 /// Compact layout base size, tall enough for 6-7 rows. Mirrors macOS
 /// `WindowAutoScale.compactBaseWidth/Height`.
 const COMPACT_W: f64 = 680.0;
@@ -230,7 +230,7 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) -> Option<((i32, i32),
         screen.width, screen.height, scale, logical_screen_w, logical_screen_h, win_w, win_h,
     );
     // Lock min/max to the scaled size: on Wayland, hide()/show() can
-    // otherwise revert to tauri.conf's default (860×600) on remap,
+    // otherwise revert to tauri.conf's default (840×560) on remap,
     // producing a visible "big rectangle then snap" on toggle.
     resize_locked(window, tauri::LogicalSize::new(win_w as f64, win_h as f64));
     let lx = pos.x as f64 / scale + (logical_screen_w - win_w as f64) / 2.0;
