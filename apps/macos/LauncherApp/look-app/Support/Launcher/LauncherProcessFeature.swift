@@ -20,12 +20,12 @@ enum LauncherProcessFeature {
         return String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// A results-list row for a process. Subtitle is `PID <pid>` plus `· :port`
-    /// per listening port (matches the linows row).
+    /// A results-list row for a process. Subtitle is `PID: <pid>` plus
+    /// `· Port: <ports>` when listening (matches the linows row).
     static func makeResult(_ candidate: ProcessScoring.Candidate) -> LauncherResult {
-        var subtitle = "PID \(candidate.pid)"
+        var subtitle = "PID: \(candidate.pid)"
         if !candidate.ports.isEmpty {
-            subtitle += " · " + candidate.ports.map { ":\($0)" }.joined(separator: " ")
+            subtitle += " · Port: " + candidate.ports.map(String.init).joined(separator: " ")
         }
         var result = LauncherResult(
             id: "\(AppConstants.Launcher.Process.resultIDPrefix)\(candidate.pid)",

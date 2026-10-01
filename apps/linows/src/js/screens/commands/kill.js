@@ -169,6 +169,14 @@ function filterProcesses(query) {
     selectedIndex = Math.min(selectedIndex, Math.max(0, filteredProcesses.length - 1));
 }
 
+// `PID: 1234` plus `• Port: 3000 8080` when the process listens, mirroring the
+// `ps"` row so a service can be identified by port before killing it.
+function pidLabel(proc) {
+    const ports = proc.ports || [];
+    const portHint = ports.length ? ` \u2022 Port: ${ports.join(' ')}` : '';
+    return `PID: ${proc.pid}${portHint}`;
+}
+
 function renderList() {
     listEl.innerHTML = '';
     feedback.textContent = '';
@@ -215,9 +223,9 @@ function renderList() {
         const pid = document.createElement('span');
         pid.className = 'cmd-proc-pid';
         if (i === selectedIndex) {
-            pid.innerHTML = `PID: ${proc.pid} <span class="cmd-proc-enter">\u2192 Enter</span>`;
+            pid.innerHTML = `${pidLabel(proc)} <span class="cmd-proc-enter">\u2192 Enter</span>`;
         } else {
-            pid.textContent = `PID: ${proc.pid}`;
+            pid.textContent = pidLabel(proc);
         }
         row.appendChild(pid);
 
@@ -243,9 +251,9 @@ function updateSelection() {
         if (pidEl) {
             const proc = filteredProcesses[i];
             if (isActive) {
-                pidEl.innerHTML = `PID: ${proc.pid} <span class="cmd-proc-enter">\u2192 Enter</span>`;
+                pidEl.innerHTML = `${pidLabel(proc)} <span class="cmd-proc-enter">\u2192 Enter</span>`;
             } else {
-                pidEl.textContent = `PID: ${proc.pid}`;
+                pidEl.textContent = pidLabel(proc);
             }
         }
     }
@@ -262,7 +270,7 @@ function updateConfirmBar() {
     const proc = filteredProcesses.find((p) => p.pid === confirmPid);
     confirmBar.hidden = false;
     confirmTitle.textContent = `Kill ${proc ? proc.name : ''}?`;
-    confirmPidEl.textContent = `PID: ${confirmPid}`;
+    confirmPidEl.textContent = proc ? pidLabel(proc) : `PID: ${confirmPid}`;
 
     confirmIcon.style.display = 'none';
     if (getIconFn && proc?.desktop_id) {
