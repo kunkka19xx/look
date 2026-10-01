@@ -199,6 +199,17 @@ struct LauncherView: View {
     static let bannerTitleLimit = 32
     static let attachedPanelScrimOpacity = 0.16
 
+    /// The hint band's own insets, shared by the bottom bar and the card footers
+    /// (linows `--hint-inset`); the band owns both, so hiding it leaves no gap
+    /// behind. The surface below it pads more, so the band bleeds back into it
+    /// rather than stacking on top.
+    static let hintBarInset: CGFloat = 4
+    static let hintBarBottomInset: CGFloat = 2
+
+    /// A floating tile's shadow reach (3pt offset + 7pt blur), which is all the
+    /// room the window owes it below.
+    static let tileShadowReach: CGFloat = 10
+
     /// How many shortcuts a hint line may name. Three is what fits the narrowest
     /// card footer in one row, and is the budget linows keeps too.
     static let hintItemBudget = 3
@@ -876,11 +887,10 @@ struct LauncherView: View {
     var body: some View {
         // Mirrored onto the window's layers in `WindowConfigurator`.
         let windowCornerRadius = themeStore.panelRadius
-        // When floating, use a single uniform gap between the top row and the
-        // columns so it matches the horizontal gap between the columns (i3 style);
-        // otherwise keep the classic fixed spacing.
-        let contentSpacing: CGFloat = showsFloatingCards ? innerGap : (isCommandMode ? 8 : 12)
-        let contentPadding: CGFloat = isCommandMode ? 10 : 14
+        // Floating: one uniform gap everywhere (i3 style). Seated: 0, so the bar
+        // and the results meet at the divider; siblings that need air take
+        // `stackedContentGap`.
+        let contentSpacing: CGFloat = showsFloatingCards ? innerGap : 0
 
         // Running apps render inside the search bar (see panelContent), not as a
         // floating strip that grows the window. The launcher is always a single
@@ -1273,11 +1283,11 @@ struct LauncherView: View {
             VStack(alignment: .leading, spacing: contentSpacing) {
                 panelContent
             }
-            // Tighter top inset so the search bar sits closer to the window's
-            // top edge; keep the original padding on the other three sides.
-            .padding(.top, max(4, contentPadding - 8))
+            // Flush: the bar is the window's top edge, or the backdrop paints
+            // above it on the first keystroke. Screens without it keep the inset.
+            .padding(.top, showsTopRowBar ? 0 : max(4, contentPadding - 8))
             .padding(.horizontal, contentPadding)
-            .padding(.bottom, contentPadding)
+            .padding(.bottom, showsFloatingCards ? Self.tileShadowReach : contentPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .font(themeStore.uiFont())
             .foregroundStyle(themeStore.fontColor())
@@ -1329,7 +1339,7 @@ struct LauncherView: View {
         if appUIState.showsThemeSettings {
             ThemeSettingsView(settings: $themeStore.settings)
         } else {
-            if !isCommandMode && !showsHelpScreen {
+            if showsTopRowBar {
                 // The search field and running-apps icons always share one
                 // background so they read as a single unified bar: a frosted
                 // tile when floating, the classic rounded fill otherwise. The
@@ -1439,11 +1449,16 @@ struct LauncherView: View {
                         themeStore: themeStore,
                         revealToken: appearanceRevealToken
                     )
+                    // Two floating tiles: they must not touch.
+                    .padding(.top, stackedContentGap)
+                    // Same edges as the bar above it.
+                    .padding(.horizontal, showsFloatingCards ? 0 : -contentPadding)
                 }
                 Spacer(minLength: 0)
             } else {
                 if let fileRecallNote {
                     fileRecallNoteLine(fileRecallNote)
+                        .padding(.top, stackedContentGap)
                 }
                 resultsRow
             }
@@ -1463,6 +1478,8 @@ struct LauncherView: View {
                 && !isHideAppConfirmationVisible
             {
                 HintBar(hint: panelHint, todo: todoQuickView, themeStore: themeStore)
+                    .padding(.top, Self.hintBarInset)
+                    .padding(.bottom, Self.hintBarBottomInset - contentPadding)
             }
         }
     }
@@ -1495,6 +1512,8 @@ struct LauncherView: View {
         .padding(.vertical, 6)
         .background(bannerStyle.background, in: Capsule())
         .transition(.move(edge: .top).combined(with: .opacity))
+        // Sits between the bar and the results, so it takes a seam on both sides.
+        .padding(.vertical, stackedContentGap)
     }
 
     @ViewBuilder
@@ -2295,9 +2314,9 @@ struct LauncherView: View {
         }
     }
 
-    /// Where a card footer sits, which is what decides its insets: a grid pane
-    /// stops its content right above the footer, while a single panel already
-    /// pads its own edges and the footer only has to match them.
+    /// Where a card footer sits, which decides how far it stays from the card's
+    /// sides and how much card padding it has to eat below. Its height is
+    /// `hintBarInset` / `hintBarBottomInset`, the same on every surface.
     private enum CardFooterPlacement {
         case gridPane
         case singlePanel
@@ -2309,17 +2328,12 @@ struct LauncherView: View {
             }
         }
 
-        var top: CGFloat {
+        /// The card's own padding under the footer, which the band eats so the
+        /// card stops right under the line.
+        var cardPadding: CGFloat {
             switch self {
             case .gridPane: return 6
             case .singlePanel: return 0
-            }
-        }
-
-        var bottom: CGFloat {
-            switch self {
-            case .gridPane: return 2
-            case .singlePanel: return 8
             }
         }
     }
@@ -2336,10 +2350,19 @@ struct LauncherView: View {
                 content()
             }
             .padding(.horizontal, placement.horizontal)
-            .padding(.top, placement.top)
-            .padding(.bottom, placement.bottom)
+            .padding(.top, Self.hintBarInset)
+            .padding(.bottom, Self.hintBarBottomInset - placement.cardPadding)
         }
     }
+
+    /// The seam the panel stack no longer gives every child, for the ones that
+    /// still need it. Zero while floating: `innerGap` is already the gap there.
+    private var stackedContentGap: CGFloat {
+        showsFloatingCards ? 0 : (isCommandMode ? 8 : 12)
+    }
+
+    /// The panel's inset from the window edge; the top bar bleeds back over it.
+    private var contentPadding: CGFloat { isCommandMode ? 10 : 14 }
 
     /// i3-style inner gap between the three home panes (0 = classic flat layout).
     private var innerGap: CGFloat { CGFloat(themeStore.settings.innerGap) }
@@ -2378,6 +2401,11 @@ struct LauncherView: View {
     /// it stays legible on the bare desktop.
     private var barFloatsFree: Bool {
         showsFloatingCards || restsAsBareBar
+    }
+
+    /// The search bar is the panel's first row, so it owns the window's top edge.
+    private var showsTopRowBar: Bool {
+        !appUIState.showsThemeSettings && !isCommandMode && !showsHelpScreen
     }
 
     /// The empty-query rest state as drawn: just the bar. The AI session starts
@@ -2491,25 +2519,44 @@ struct LauncherView: View {
         // focus when the bar flips between the classic fill and the frosted tile
         // (e.g. typing the first character out of the empty-rest state at gap 0).
         let floats = barFloatsFree
+        // Gap 0: the bar is the window's header. It bleeds over the panel's
+        // inset and takes it as padding, so nothing shifts; resting like that it
+        // is the window, so it wears the window's radius and nothing lifts it.
+        let spansWindow = !showsFloatingCards
+        let barRadius = spansWindow ? themeStore.panelRadius : themeStore.tileRadius
+        let lifts = floats && !spansWindow
         return content()
             // Wraps the content, not the chrome: the reveal leaves an opacity
             // in the tree, which would rasterize the backdrop below.
             .spawnReveal(index: Self.searchBarRevealIndex, token: appearanceRevealToken, scales: false)
+            .padding(.horizontal, spansWindow ? contentPadding : 0)
             .background {
-                tileBackground(
-                    cornerRadius: floats ? themeStore.tileRadius : themeStore.barRadius,
-                    floats: floats,
-                    // Seated, the panel's backdrop already backs the bar.
-                    substrate: floats
-                )
+                // Seated, the panel's backdrop already backs the bar; a fill of
+                // its own is what made it read as a separate window.
+                if floats {
+                    tileBackground(
+                        cornerRadius: barRadius,
+                        floats: true,
+                        substrate: true
+                    )
+                }
             }
             .overlay {
                 if floats {
-                    tileBorder(cornerRadius: themeStore.tileRadius)
+                    tileBorder(cornerRadius: barRadius)
                 }
             }
-            .shadow(color: floats ? .black.opacity(0.25) : .clear,
-                    radius: floats ? 7 : 0, x: 0, y: floats ? 3 : 0)
+            .overlay(alignment: .bottom) {
+                // The rows' own hairline, once the bar has no edge of its own.
+                if !floats {
+                    Rectangle()
+                        .fill(themeStore.dividerColor())
+                        .frame(height: 1)
+                }
+            }
+            .padding(.horizontal, spansWindow ? -contentPadding : 0)
+            .shadow(color: lifts ? .black.opacity(0.25) : .clear,
+                    radius: lifts ? 7 : 0, x: 0, y: lifts ? 3 : 0)
     }
 
     /// Wraps a single-panel home state (translation, AI session, recent empty) in
@@ -2614,7 +2661,8 @@ struct LauncherView: View {
         if !showsFloatingCards && !isCompactLayout && !restsAsBareBar && !isHideAppConfirmationVisible {
             copyrightLink
                 .padding(.trailing, 10)
-                .padding(.bottom, 8)
+                // Shares the hint line, as it does inside the linows hint bar.
+                .padding(.bottom, Self.hintBarBottomInset)
         }
     }
 

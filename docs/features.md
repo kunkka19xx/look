@@ -98,7 +98,7 @@ This document tracks what `look` supports today and what is planned next.
 - activation: click a tile, or press the platform modifier + its highlighted letter - `Cmd` (macOS) / `Alt` (Linux, Windows): `B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `R` Restart, `D` Shut Down, `P` Now Playing play/pause
 - Restart and Shut Down arm on the first press and fire on the second; `Esc` (macOS) or the auto-disarm timeout cancels
 - Battery, Weather and the L slot are read-only
-- toggled on/off via `Settings > Appearance > Super Actions`. Persisted as `super_actions_enabled` in `~/.look/config`
+- toggled on/off via `Settings > Appearance > Super Actions`. Persisted as `super_actions_enabled` in `~/.look/config`. Off by default; turn it on here to show the strip
 - off hides the strip and disables its mnemonics
 
 ### Preferred tools and row actions (v0.6.12)

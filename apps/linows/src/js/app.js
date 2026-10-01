@@ -292,6 +292,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.error('[layout] resize failed:', err),
             );
         }
+        // Settings rings the live layout on its picker, and Ctrl+Shift+C can
+        // move it while that screen is open.
+        document.dispatchEvent(new CustomEvent('look:layout-applied'));
     }
 
     // The empty-state control strip (super actions) stands in for the results
@@ -424,10 +427,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         runningApps.setEnabled(on);
         if (on) runningApps.refresh();
 
-        // Super actions launchpad: default ON. A disabled strip stays hidden on
+        // Super actions launchpad: default OFF. A disabled strip stays hidden on
         // the empty home screen and its accelerators go inert (see superactions).
         const superCfg = cfg.entries.find((e) => e.key === 'super_actions_enabled');
-        superactions.setEnabled(!superCfg || superCfg.value !== 'false');
+        superactions.setEnabled(superCfg?.value === 'true');
         syncControlStrip();
 
         // AI / web answers: default ON to match the default_config.txt setting
@@ -1078,7 +1081,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         runningApps.setEnabled(on);
         if (on) runningApps.refresh();
 
-        superactions.setEnabled(map.super_actions_enabled !== 'false');
+        superactions.setEnabled(map.super_actions_enabled === 'true');
         syncControlStrip();
 
         const aiOn = map.ai_enabled !== 'false';

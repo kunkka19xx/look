@@ -77,12 +77,12 @@ import { gridPlacement, gridShape } from './launchpad-grid.js';
 let container = null;
 let built = false;
 // What the user asked for, before the platform gets a say (see applyEnabled).
-let configEnabled = true;
+let configEnabled = false;
 let compact = false;
 let visible = false;
 // User setting (Settings -> Appearance -> Super Actions). When off the strip
 // never shows and its accelerators never fire; setVisible collapses to hidden.
-let enabled = true;
+let enabled = false;
 
 // The shared catalog layout: `{ tiles, columns, rows }`. Rendered from, never
 // mutated. Fetched lazily and retried until it lands (see ensureLayout);

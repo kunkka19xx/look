@@ -517,9 +517,9 @@ enum AppConstants {
             static let height: CGFloat = 580
         }
 
-        /// Keeps the bar from shrinking to the bare text field when the
-        /// running-apps strip (which sets its height otherwise) is hidden.
-        static let topRowMinHeight: CGFloat = 45
+        /// The header's height: the field and the 48pt strip are both shorter,
+        /// so the bar no longer changes height with the strip on or off.
+        static let topRowMinHeight: CGFloat = 54
 
         enum RunningAppsStrip {
             static let iconSize: CGFloat = 30

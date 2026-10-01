@@ -304,7 +304,7 @@ struct ThemeSettings: Codable, Equatable {
     /// Whether the empty-state super actions launchpad is shown. Off hides the
     /// strip and makes its ⌘-mnemonics inert. Persisted in `~/.look/config`
     /// under `super_actions_enabled`.
-    var superActionsEnabled: Bool = true
+    var superActionsEnabled: Bool = false
 
     /// Whether the launcher animates: the open cascade, the selection glide,
     /// the caret glide. Off shows every change instantly. macOS Reduce Motion
