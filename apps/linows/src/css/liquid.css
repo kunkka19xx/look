@@ -51,6 +51,11 @@
     border-radius: var(--bar-radius);
 }
 
+/* Resting at gap 0 the bar is the window, so the rim takes its curve. */
+[data-surface="liquid"] .launcher-window.resting:not(.floating) .top-bar::after {
+    border-radius: var(--corner-radius);
+}
+
 /* Surfaces with no chrome of their own: bar-free drops the window backdrop, and
  * the classic panel's columns never had one, and neither has its top bar: a rim
  * would draw back the separate-window edge. */
