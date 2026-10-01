@@ -886,7 +886,7 @@ struct LauncherView: View {
 
     var body: some View {
         // Mirrored onto the window's layers in `WindowConfigurator`.
-        let windowCornerRadius = themeStore.panelRadius
+        let windowCornerRadius = squaresWindowCorners ? 0 : themeStore.panelRadius
         // Floating: one uniform gap everywhere (i3 style). Seated: 0, so the bar
         // and the results meet at the divider; siblings that need air take
         // `stackedContentGap`.
@@ -924,6 +924,9 @@ struct LauncherView: View {
                     NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
                 }
             }
+        }
+        .onChange(of: squaresWindowCorners, initial: true) { _, squares in
+            appUIState.squaresWindowCorners = squares
         }
         // A text op reads the picked file rather than the clipboard, so the
         // controller needs the picks as they change.
@@ -1478,6 +1481,8 @@ struct LauncherView: View {
                 && !isHideAppConfirmationVisible
             {
                 HintBar(hint: panelHint, todo: todoQuickView, themeStore: themeStore)
+                    // The panel's own inset already covers part of the clearance.
+                    .padding(.horizontal, max(0, hintCornerClearance - contentPadding))
                     .padding(.top, Self.hintBarInset)
                     .padding(.bottom, Self.hintBarBottomInset - contentPadding)
             }
@@ -2414,6 +2419,19 @@ struct LauncherView: View {
         hidesResultsForEmptyQuery && !isActionSessionUI
     }
 
+    /// Resting at gap 0 the bar is the window's only surface, and its curve
+    /// clamps to half its height; the full-height window's would clip its top
+    /// corners flat. Nothing else is drawn then, so the window goes square.
+    private var squaresWindowCorners: Bool {
+        restsAsBareBar && !showsFloatingCards
+    }
+
+    /// Side inset that keeps the bottom hint line out of the window's corner
+    /// arc: half the radius clears the line's height there.
+    private var hintCornerClearance: CGFloat {
+        themeStore.panelRadius / 2
+    }
+
     /// Wraps a home-screen pane in its own rounded, frosted card so the inner gap
     /// reads as real separation between "windows". A no-op when the gap is 0,
     /// preserving the classic flat layout exactly. Each card carries its own blur
@@ -2660,7 +2678,7 @@ struct LauncherView: View {
         // bottom-right corner. Compact carries it in the search bar.
         if !showsFloatingCards && !isCompactLayout && !restsAsBareBar && !isHideAppConfirmationVisible {
             copyrightLink
-                .padding(.trailing, 10)
+                .padding(.trailing, max(10, hintCornerClearance))
                 // Shares the hint line, as it does inside the linows hint bar.
                 .padding(.bottom, Self.hintBarBottomInset)
         }

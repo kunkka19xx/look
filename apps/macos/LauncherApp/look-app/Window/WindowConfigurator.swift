@@ -5,9 +5,10 @@ struct WindowConfigurator: NSViewRepresentable {
     /// Observed, not read off the shared store: only a change SwiftUI sees
     /// re-runs updateNSView to restyle the live window.
     @ObservedObject var themeStore: ThemeStore
+    @ObservedObject var appUIState: AppUIState = .shared
 
     private var cornerRadius: CGFloat {
-        themeStore.panelRadius
+        appUIState.squaresWindowCorners ? 0 : themeStore.panelRadius
     }
 
     func makeNSView(context: Context) -> NSView {

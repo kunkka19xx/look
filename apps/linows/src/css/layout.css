@@ -576,9 +576,13 @@ html[data-os="windows"] .bar-free .pane-tile {
 }
 
 /* Resting at gap 0: the bar draws the window's edge, so it spans the border
- * box the window stops drawing (a negative margin would be clipped). */
+ * box the window stops drawing (a negative margin would be clipped). The
+ * window's own curve goes too: it rounds the full-height window, while the
+ * bar's clamps to half the bar's height, so a large radius clipped the bar's
+ * top corners flat. The bar is flush with the edges and draws its own. */
 .launcher-window.resting:not(.floating) {
     border-width: 0;
+    border-radius: 0;
 }
 
 .launcher-window.resting:not(.floating) .top-bar {
@@ -598,9 +602,11 @@ html[data-os="windows"] .bar-free .pane-tile {
     margin-top: 12px;
 }
 
+/* The band is the window's bottom edge, so its ends sit inside the corner arc:
+ * half the radius clears the text's height there, the row inset when square. */
 .launcher-window:not(.bar-free) .hint-bar {
-    padding-left: var(--row-inset);
-    padding-right: var(--row-inset);
+    padding-left: max(var(--row-inset), calc(var(--corner-radius) / 2));
+    padding-right: max(var(--row-inset), calc(var(--corner-radius) / 2));
 }
 
 .launcher-window:not(.bar-free) .ai-card {
