@@ -435,9 +435,13 @@ export function init(exitFn) {
         const item = e.target.closest('.settings-segment-item');
         if (!item || item.classList.contains('settings-segment-active')) return;
         const value = item.dataset.value;
+        const saved = layoutSeg.querySelector('.settings-segment-active')?.dataset.value;
         selectSegmentItem(layoutSeg, value);
         if (await saveConfig({ layout: value })) {
             document.dispatchEvent(new CustomEvent('look:layout-changed', { detail: { value } }));
+        } else if (saved) {
+            // The file still holds the old layout, so the fill has to go back.
+            selectSegmentItem(layoutSeg, saved);
         }
         markLiveLayout(layoutSeg);
     });
