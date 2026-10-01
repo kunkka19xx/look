@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Look",
-        "width": 860,
-        "height": 600,
+        "width": 840,
+        "height": 560,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

@@ -340,6 +340,13 @@ html:not([data-os="linux"]) .settings-linux-only {
     font-weight: 600;
 }
 
+/* Ctrl+Shift+C can leave the window in the layout the config didn't pick. The
+   filled item is still what's saved; the ring says what's on screen right now. */
+.settings-segment-item.settings-segment-live {
+    box-shadow: inset 0 0 0 1px var(--accent-color);
+    color: var(--font-color);
+}
+
 /* These controls drop the native ring, so keyboard focus needs its own. */
 .settings-dropdown-btn:focus-visible,
 .settings-segment-item:focus-visible {

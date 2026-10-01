@@ -64,15 +64,7 @@ extension ThemeSettingsView {
                         .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
                         .foregroundStyle(themeStore.secondaryTextColor())
 
-                    Picker("Window", selection: $settings.layout) {
-                        ForEach(LauncherLayout.allCases) { layout in
-                            Text(layout.title).tag(layout)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: AppConstants.ThemeUI.pickerWidth)
-                    .help("Split shows results beside a preview; Compact is a smaller window with results only.")
+                    layoutSegment
 
                     Spacer(minLength: 0)
                 }
@@ -210,6 +202,52 @@ extension ThemeSettingsView {
                 }
             }
         }
+    }
+
+    /// Window layout. The fill is the saved layout; ⌘⇧C can leave the window in
+    /// the other one for the rest of the run, and that one takes the ring.
+    var layoutSegment: some View {
+        let live = themeStore.effectiveLayout
+        let itemRadius = max(0, themeStore.controlRadius - 2)
+        return HStack(spacing: 2) {
+            ForEach(LauncherLayout.allCases) { option in
+                let saved = settings.layout == option
+                Button {
+                    settings.layout = option
+                } label: {
+                    Text(option.title)
+                        .font(themeStore.uiFont(
+                            size: CGFloat(settings.fontSize - 1),
+                            weight: saved ? .semibold : .regular))
+                        .foregroundStyle(saved ? themeStore.onAccentColor() : themeStore.secondaryTextColor())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 3)
+                        .background(
+                            saved ? themeStore.accentColor() : Color.clear,
+                            in: RoundedRectangle(cornerRadius: itemRadius, style: .continuous)
+                        )
+                        .overlay {
+                            if !saved && live == option {
+                                RoundedRectangle(cornerRadius: itemRadius, style: .continuous)
+                                    .stroke(themeStore.accentColor(), lineWidth: 1)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .frame(width: AppConstants.ThemeUI.pickerWidth)
+        .background(
+            themeStore.liftColor(opacity: 0.06),
+            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
+                .stroke(themeStore.dividerColor(), lineWidth: 1)
+        )
+        .help("Split shows results beside a preview; Compact is a smaller window with results only. ⌘⇧C switches for this session only, and rings the one in use.")
     }
 
     private var suggestionCornerRadius: CGFloat {

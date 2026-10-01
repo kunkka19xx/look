@@ -292,6 +292,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.error('[layout] resize failed:', err),
             );
         }
+        // Settings rings the live layout on its picker, and Ctrl+Shift+C can
+        // move it while that screen is open.
+        document.dispatchEvent(new CustomEvent('look:layout-applied'));
     }
 
     // The empty-state control strip (super actions) stands in for the results

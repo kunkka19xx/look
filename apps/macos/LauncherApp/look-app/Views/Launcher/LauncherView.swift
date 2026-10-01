@@ -199,6 +199,17 @@ struct LauncherView: View {
     static let bannerTitleLimit = 32
     static let attachedPanelScrimOpacity = 0.16
 
+    /// The hint band's own insets, shared by the bottom bar and the card footers
+    /// (linows `--hint-inset`); the band owns both, so hiding it leaves no gap
+    /// behind. The surface below it pads more, so the band bleeds back into it
+    /// rather than stacking on top.
+    static let hintBarInset: CGFloat = 4
+    static let hintBarBottomInset: CGFloat = 2
+
+    /// A floating tile's shadow reach (3pt offset + 7pt blur), which is all the
+    /// room the window owes it below.
+    static let tileShadowReach: CGFloat = 10
+
     /// How many shortcuts a hint line may name. Three is what fits the narrowest
     /// card footer in one row, and is the budget linows keeps too.
     static let hintItemBudget = 3
@@ -1276,7 +1287,7 @@ struct LauncherView: View {
             // above it on the first keystroke. Screens without it keep the inset.
             .padding(.top, showsTopRowBar ? 0 : max(4, contentPadding - 8))
             .padding(.horizontal, contentPadding)
-            .padding(.bottom, contentPadding)
+            .padding(.bottom, showsFloatingCards ? Self.tileShadowReach : contentPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .font(themeStore.uiFont())
             .foregroundStyle(themeStore.fontColor())
@@ -1467,7 +1478,8 @@ struct LauncherView: View {
                 && !isHideAppConfirmationVisible
             {
                 HintBar(hint: panelHint, todo: todoQuickView, themeStore: themeStore)
-                    .padding(.top, stackedContentGap)
+                    .padding(.top, Self.hintBarInset)
+                    .padding(.bottom, Self.hintBarBottomInset - contentPadding)
             }
         }
     }
@@ -2302,9 +2314,9 @@ struct LauncherView: View {
         }
     }
 
-    /// Where a card footer sits, which is what decides its insets: a grid pane
-    /// stops its content right above the footer, while a single panel already
-    /// pads its own edges and the footer only has to match them.
+    /// Where a card footer sits, which decides how far it stays from the card's
+    /// sides and how much card padding it has to eat below. Its height is
+    /// `hintBarInset` / `hintBarBottomInset`, the same on every surface.
     private enum CardFooterPlacement {
         case gridPane
         case singlePanel
@@ -2316,17 +2328,12 @@ struct LauncherView: View {
             }
         }
 
-        var top: CGFloat {
+        /// The card's own padding under the footer, which the band eats so the
+        /// card stops right under the line.
+        var cardPadding: CGFloat {
             switch self {
             case .gridPane: return 6
             case .singlePanel: return 0
-            }
-        }
-
-        var bottom: CGFloat {
-            switch self {
-            case .gridPane: return 2
-            case .singlePanel: return 8
             }
         }
     }
@@ -2343,8 +2350,8 @@ struct LauncherView: View {
                 content()
             }
             .padding(.horizontal, placement.horizontal)
-            .padding(.top, placement.top)
-            .padding(.bottom, placement.bottom)
+            .padding(.top, Self.hintBarInset)
+            .padding(.bottom, Self.hintBarBottomInset - placement.cardPadding)
         }
     }
 
@@ -2654,7 +2661,8 @@ struct LauncherView: View {
         if !showsFloatingCards && !isCompactLayout && !restsAsBareBar && !isHideAppConfirmationVisible {
             copyrightLink
                 .padding(.trailing, 10)
-                .padding(.bottom, 8)
+                // Shares the hint line, as it does inside the linows hint bar.
+                .padding(.bottom, Self.hintBarBottomInset)
         }
     }
 

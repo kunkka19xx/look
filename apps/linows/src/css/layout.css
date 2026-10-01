@@ -280,7 +280,7 @@ html[data-os="windows"] .bar-free .pane-tile {
     display: none;
     align-items: center;
     flex-shrink: 0;
-    padding: 6px var(--row-padding-x) 2px;
+    padding: var(--hint-inset) var(--row-padding-x) var(--hint-inset-bottom);
 }
 
 /* Floating: both hints on the grid, one card takes both otherwise. */
@@ -372,8 +372,15 @@ html[data-os="windows"] .bar-free .pane-tile {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px var(--content-padding);
+    padding: var(--hint-inset) var(--content-padding) var(--hint-inset-bottom);
     flex-shrink: 0;
+}
+
+/* Default leading gives the line box more half-leading than the band's own
+ * inset, which reads as a thicker bar than it is. */
+.hint-bar,
+.pane-footer {
+    line-height: 1.2;
 }
 
 /* Shared hint-text styling for both homes: the classic bottom bar and the
@@ -606,13 +613,19 @@ html[data-os="windows"] .bar-free .pane-tile {
  * angle. Nothing escapes anyway - tiles scroll their own content, and the
  * window is the viewport. */
 .floating .results-row {
-    margin: 0 var(--content-padding) var(--content-padding);
+    margin: 0 var(--content-padding) var(--tile-shadow-reach);
     column-gap: var(--inner-gap);
     overflow: visible;
 }
 
+/* The footer is the card's last row and carries its own inset, so the card
+ * stops right under it instead of adding a second gap. */
 .floating .pane-col {
-    padding: var(--row-inset);
+    padding: var(--row-inset) var(--row-inset) var(--hint-inset-bottom);
+}
+
+.floating .pane-footer {
+    padding-bottom: 0;
 }
 
 .floating .preview-panel {

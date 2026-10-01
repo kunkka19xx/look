@@ -74,6 +74,13 @@
     /* Two text lines, so a row without a context line is no shorter. */
     --row-height: 48px;
     --row-spacing: 4px;
+    /* The hint band's own insets, shared by the bottom bar and the card
+       footers; the band owns both, so hiding it leaves no gap behind. */
+    --hint-inset: 4px;
+    --hint-inset-bottom: 2px;
+    /* A floating tile's shadow reach (3px offset + 7px blur), which is all the
+       room the window owes it below. */
+    --tile-shadow-reach: 10px;
     --icon-size: 22px;
     --input-padding-x: 12px;
     /* With --top-row-height, the header's height: 26 + 14 * 2. */
