@@ -139,6 +139,7 @@ This document tracks what `look` supports today and what is planned next.
 - runtime reload (`Cmd+Shift+;`)
 - rebindable launcher hotkey: record one in `Settings > Shortcuts` (macOS, Windows) or set `launcher_hotkey` in `~/.look/config`; `none` frees the key for your own binding of `lookapp --toggle`
 - 9 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, Custom)
+- two window layouts, `layout=split` (results beside a preview) and `layout=compact` (Spotlight-width, results list alone)
 - Behind-window blur requested from the compositor where it exists (macOS material; KDE / Hyprland / Niri on Linux), clear glass everywhere else
 - query alias presets in `~/.look/config` for app + System Settings intent expansion (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`)
 - in-app config reset (`Settings > Advanced > Create Fresh Config`) with confirmation popup

@@ -543,7 +543,8 @@ cannot be expressed in CSS reads `platform.reducesMotion()` instead, the smooth
 All settings are persisted to `.look/config`:
 
 **UI Theme:**
-- `ui_theme` - theme name (catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle, liquid). Matched case-insensitively, and applied after the individual `ui_*` keys below, so a preset overrides them. Empty means Custom. Save Config writes a preset name only while the values still match that preset, so a theme you have tweaked is stored as its literal values.
+- `ui_theme` - theme name, applied after the individual `ui_*` keys below, so a preset overrides them. macOS spells the two-word names in camelCase and matches case-insensitively; linows hyphenates them and matches exactly.
+- Empty or absent means Custom on macOS, where Save Config stores a tweaked theme as its literal values. On linows it means `kanagawa`, and a colour slider writes `custom` instead. linows defaults live in `apps/linows/src/js/theme-defaults.js` and are not seeded into the config file.
 
 **Appearance:**
 - `ui_tint_red`, `ui_tint_green`, `ui_tint_blue`, `ui_tint_opacity` - background tint (0-1)

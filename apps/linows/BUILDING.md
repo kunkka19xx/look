@@ -140,8 +140,8 @@ On NixOS the system-wide equivalent is `programs.lookapp.cachix = true` from
 `nixosModules.default`. Elsewhere, `cachix use look` or `/etc/nix/nix.conf`.
 Without one of these, Home Manager will build Look from source.
 
-`theme` accepts `catppuccin` (the default), `tokyo-night`, `rose-pine`,
-`gruvbox`, `dracula`, `kanagawa`, `kindle`, `liquid` and `custom`. Colours are
+`theme` accepts `catppuccin`, `tokyo-night`, `rose-pine`, `gruvbox`, `dracula`,
+`kanagawa` (the default), `kindle`, `liquid` and `custom`. Colours are
 derived from the preset at startup, so the module only writes `ui_theme`, plus
 the opacity values for `kindle` and `liquid` because those two own them. Use
 `custom` to drive every `ui_*` value from `settings` instead.

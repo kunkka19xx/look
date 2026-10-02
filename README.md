@@ -288,7 +288,7 @@ Full reference: [docs/user-guide.md](docs/user-guide.md).
 
 ## Themes
 
-Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, plus Custom.
+Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, plus Custom. Kanagawa is the default on Linux and Windows.
 Kindle is the one light preset - paper, ink, and a serif face.
 Liquid renders on macOS 26's Liquid Glass and is hidden on older releases; on Linux and Windows it ships as clear glass - same palette and geometry, a specular rim instead of refraction, plus real behind-window blur wherever the compositor grants it (KDE, Hyprland 0.56+, Niri).
 Switch in `Settings > Appearance`.

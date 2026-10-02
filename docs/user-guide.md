@@ -476,9 +476,15 @@ Built-in theme presets are available:
 | Custom      | Your own colors derived from tint |
 
 Theme is saved as `ui_theme=<name>` in config, and a name written there overrides
-the individual `ui_*` values. Save Config writes the preset name only while every
-value still matches that preset; once you tweak one, it writes `ui_theme=` and
-your literal `ui_*` values instead, so the edit survives a reload. Kindle is the
+the individual `ui_*` values.
+
+On macOS, Save Config writes the preset name only while every value still matches
+that preset; tweak one and it writes `ui_theme=` with your literal `ui_*` values
+instead. On Linux and Windows the names are hyphenated (`tokyo-night`,
+`rose-pine`), an empty or missing `ui_theme` means the built-in default of
+Kanagawa rather than your literal values, and tweaking a colour writes
+`ui_theme=custom`. Either way the edit survives a reload. A fresh config there
+carries no `ui_*` keys; each one left out takes the shipped default. Kindle is the
 one light preset: it also switches the frosted panels to a light material and the
 font to Charter, macOS' stand-in for Bookerly. Picking a preset overwrites your
 tint, text color, border and font; `Custom` keeps the current values and derives

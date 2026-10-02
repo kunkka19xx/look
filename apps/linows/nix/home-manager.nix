@@ -10,19 +10,19 @@ let
   cfg = config.programs.lookapp;
 
   # `ui_theme` values as written by the settings dropdown
-  # (src/html/screens/settings.html). The default theme is stored as an empty
-  # value, so the friendly name maps to "".
-  themeIds = {
-    catppuccin = "";
-    tokyo-night = "tokyo-night";
-    rose-pine = "rose-pine";
-    gruvbox = "gruvbox";
-    dracula = "dracula";
-    kanagawa = "kanagawa";
-    kindle = "kindle";
-    liquid = "liquid";
-    custom = "custom";
-  };
+  # (src/html/screens/settings.html). An unset key means the built-in default,
+  # so every name here is written literally.
+  themeIds = [
+    "catppuccin"
+    "tokyo-night"
+    "rose-pine"
+    "gruvbox"
+    "dracula"
+    "kanagawa"
+    "kindle"
+    "liquid"
+    "custom"
+  ];
 
   # Colours are derived from `ui_theme` at startup (applyThemePreset), but the
   # opacity keys stay user-owned across theme switches (USER_CONTROLLED_KEYS in
@@ -46,7 +46,7 @@ let
       { }
     else
       {
-        ui_theme = themeIds.${cfg.theme};
+        ui_theme = cfg.theme;
       }
       // (themeOpacity.${cfg.theme} or { });
 
@@ -248,7 +248,7 @@ in
     };
 
     theme = lib.mkOption {
-      type = lib.types.nullOr (lib.types.enum (lib.attrNames themeIds));
+      type = lib.types.nullOr (lib.types.enum themeIds);
       default = null;
       example = "kindle";
       description = ''
