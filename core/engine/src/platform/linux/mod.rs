@@ -50,16 +50,17 @@ fn detect_settings_app() -> Option<SettingsApp> {
     None
 }
 
+// Not `which`: it isn't installed everywhere (e.g. Arch base).
 fn on_path(program: &str) -> bool {
-    // Scrub the AppImage's LD_LIBRARY_PATH.
-    Command::new("which")
-        .arg(program)
-        .env_remove("LD_LIBRARY_PATH")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    use std::os::unix::fs::PermissionsExt;
+
+    env::var_os("PATH").is_some_and(|path| {
+        env::split_paths(&path).any(|dir| {
+            dir.is_absolute()
+                && std::fs::metadata(dir.join(program))
+                    .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        })
+    })
 }
 
 pub(crate) fn settings_catalog() -> &'static [SettingsCatalogEntry] {
