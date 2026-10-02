@@ -27,7 +27,7 @@ This document tracks what `look` supports today and what is planned next.
 - preview pane: text/image file previews, plus folder previews listing the immediate children (folders first, capped at 30, click to open)
 - hide the selected app from Look with `Cmd+Shift+H` / `Ctrl+Shift+H` so it stops appearing in results
 - run the selected app as administrator with `Ctrl+Shift+Enter` (Windows only, triggers a UAC prompt)
-- process search with `ps"` prefix: `Enter` measures the selected process's CPU on demand, `Cmd+D` / `Ctrl+D` kills it, `Cmd+C` / `Ctrl+C` copies its PID. Typing scores a cached snapshot, so the process table is walked only on entering the mode and after a kill
+- process search with `ps"` prefix: `Enter` measures the selected process's CPU on demand, `Cmd+D` / `Ctrl+D` kills it, `Cmd+C` / `Ctrl+C` copies its PID. Rows show `Port:` for any listening port, and typing a port number matches the process that holds it. Typing scores a cached snapshot, so the process table is walked only on entering the mode and after a kill
 
 ### Clipboard and translation
 

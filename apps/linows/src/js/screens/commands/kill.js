@@ -1,3 +1,5 @@
+import { processPidLabel } from '../../catalog.js';
+
 const SEARCH_DEBOUNCE_MS = 140;
 
 let panel = null;
@@ -169,6 +171,15 @@ function filterProcesses(query) {
     selectedIndex = Math.min(selectedIndex, Math.max(0, filteredProcesses.length - 1));
 }
 
+function renderPidLabel(el, proc, isActive) {
+    el.textContent = processPidLabel(proc.pid, proc.ports);
+    if (!isActive) return;
+    const enter = document.createElement('span');
+    enter.className = 'cmd-proc-enter';
+    enter.textContent = '→ Enter';
+    el.append(' ', enter);
+}
+
 function renderList() {
     listEl.innerHTML = '';
     feedback.textContent = '';
@@ -214,11 +225,7 @@ function renderList() {
 
         const pid = document.createElement('span');
         pid.className = 'cmd-proc-pid';
-        if (i === selectedIndex) {
-            pid.innerHTML = `PID: ${proc.pid} <span class="cmd-proc-enter">\u2192 Enter</span>`;
-        } else {
-            pid.textContent = `PID: ${proc.pid}`;
-        }
+        renderPidLabel(pid, proc, i === selectedIndex);
         row.appendChild(pid);
 
         row.addEventListener('click', () => {
@@ -240,14 +247,7 @@ function updateSelection() {
         row.classList.toggle('cmd-proc-row-active', isActive);
 
         const pidEl = row.querySelector('.cmd-proc-pid');
-        if (pidEl) {
-            const proc = filteredProcesses[i];
-            if (isActive) {
-                pidEl.innerHTML = `PID: ${proc.pid} <span class="cmd-proc-enter">\u2192 Enter</span>`;
-            } else {
-                pidEl.textContent = `PID: ${proc.pid}`;
-            }
-        }
+        if (pidEl) renderPidLabel(pidEl, filteredProcesses[i], isActive);
     }
 
     const activeRow = listEl.querySelector('.cmd-proc-row-active');
@@ -262,7 +262,7 @@ function updateConfirmBar() {
     const proc = filteredProcesses.find((p) => p.pid === confirmPid);
     confirmBar.hidden = false;
     confirmTitle.textContent = `Kill ${proc ? proc.name : ''}?`;
-    confirmPidEl.textContent = `PID: ${confirmPid}`;
+    confirmPidEl.textContent = proc ? processPidLabel(proc.pid, proc.ports) : `PID: ${confirmPid}`;
 
     confirmIcon.style.display = 'none';
     if (getIconFn && proc?.desktop_id) {

@@ -435,7 +435,7 @@ beside `Glass.regular`.
 
 Real frost is available where the compositor grants it, and only there.
 `platform/linux/blur.rs` asks: on Wayland through `ext-background-effect-v1`
-(the cross-desktop staging protocol - KWin 6.7+, Hyprland 0.56+, Niri) falling
+(the cross-desktop staging protocol - KWin 6.7+, Mutter 51+, Hyprland 0.56+, Niri) falling
 back to `org_kde_kwin_blur`, which Plasma spoke until 6.7; on X11 through the
 `_KDE_NET_WM_BLUR_BEHIND_REGION` property, which only KWin reads. The Wayland
 bind (`blur_wayland.rs`) attaches to GTK's own `wl_surface`, taken off the

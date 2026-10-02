@@ -456,6 +456,14 @@ export function init(exitFn) {
         saveConfig({ disable_gpu_compositing: e.target.checked ? 'true' : 'false' });
     });
 
+    document.getElementById('settings-compositor-blur').addEventListener('change', (e) => {
+        platform.setCompositorBlurWanted(e.target.checked);
+        saveConfig({ ui_compositor_blur: e.target.checked ? 'true' : 'false' });
+        updateCompositorBlurRow();
+        applytint();
+        layout.refresh();
+    });
+
     document.getElementById('settings-disable-blur').addEventListener('change', (e) => {
         const on = e.target.checked;
         if (on) {
@@ -719,6 +727,9 @@ export async function reloadFromFile({ announceSuccess = true } = {}) {
         // the source blocks are, so this is where an edited one starts showing.
         const launchpadWarnings = await superactions.reload();
         const map = await loadConfigMap();
+        platform.setCompositorBlurWanted(compositorBlurWanted(map));
+        // Re-sends the blur region, which the switch above may have emptied.
+        layout.refresh();
 
         platform.setAnimationsEnabled(map.animations_enabled !== 'false');
 
@@ -831,6 +842,7 @@ export async function restoreOnStartup() {
         if (disableBlurSet(map)) {
             document.documentElement.setAttribute('data-disable-blur', '');
         }
+        platform.setCompositorBlurWanted(compositorBlurWanted(map));
 
         // Background image - restore BEFORE the tint pass: effectiveBlurOpacity
         // keys off whether a bg image is present.
@@ -1053,12 +1065,21 @@ async function loadConfig() {
             'disable_gpu_compositing',
             'arch_disable_gpu',
         );
+        // The preference, not just the box: a fresh config resets the file under
+        // a running frost, which would otherwise keep the old setting.
+        const blurWanted = compositorBlurWanted(map);
+        platform.setCompositorBlurWanted(blurWanted);
+        document.getElementById('settings-compositor-blur').checked = blurWanted;
+        updateCompositorBlurRow();
         document.getElementById('settings-disable-blur').checked = disableBlurSet(map);
         if (disableBlurSet(map)) {
             document.documentElement.setAttribute('data-disable-blur', '');
         } else if (!platform.blurForcedOff()) {
             document.documentElement.removeAttribute('data-disable-blur');
         }
+        // Tint opacity and the blur region both follow the preference.
+        applytint();
+        layout.refresh();
 
         // After the blur attribute above: both read floatingSupported, which
         // depends on it, so a reset or a reload that changes blur would leave
@@ -1368,6 +1389,35 @@ function isGhostingStack() {
     return platform.compositor() === 'hyprland';
 }
 
+// An unset key takes the per-compositor default (platform.compositorBlurDefault),
+// which is the guard: on only where the effect has been seen to render right.
+function compositorBlurWanted(map) {
+    const set = map.ui_compositor_blur;
+    return set === undefined || set === '' ? platform.compositorBlurDefault() : set !== 'false';
+}
+
+function updateCompositorBlurRow() {
+    document.getElementById('settings-compositor-blur-hint').textContent = compositorBlurHint();
+}
+
+// The hint says what each side costs, since the tint sliders cannot reach a
+// sharp view through while the frost is on. The row stays on every desktop, so
+// the first case is the one most people see: nothing to ask, nothing to switch.
+function compositorBlurHint() {
+    if (!platform.compositorBlur()) {
+        return 'Your compositor does not offer it; Look stays clear glass';
+    }
+    const niri = platform.compositor() === 'niri';
+    if (platform.compositorBlurActive()) {
+        return niri
+            ? 'Frosted by niri: the wallpaper only, unless a niri rule sets xray false'
+            : 'Frosted by the compositor; turn off to see through';
+    }
+    return niri
+        ? 'Clear glass. niri blurs the wallpaper only until a niri rule sets xray false'
+        : 'Clear glass: the desktop shows sharp behind the tint';
+}
+
 function hasDisableBlur() {
     return document.documentElement.hasAttribute('data-disable-blur');
 }
@@ -1380,7 +1430,7 @@ function hasBgImage() {
 // either the in-page bg image or a compositor that grants blur. With neither,
 // thinning is raw see-through-to-desktop, so Tint Opacity alone decides.
 function hasFrost() {
-    return hasBgImage() || platform.compositorBlur();
+    return hasBgImage() || platform.compositorBlurActive();
 }
 
 function effectiveBlurOpacity(blurA) {
@@ -1402,13 +1452,13 @@ function applytint() {
     // color while the window stays readable on a stack that renders it badly.
     // Unless the compositor blurs behind the window - then readability is not
     // ours to defend, and the floor would hide the frost we just asked for.
-    if (!platform.compositorBlur() && (isGhostingStack() || hasDisableBlur())) {
+    if (!platform.compositorBlurActive() && (isGhostingStack() || hasDisableBlur())) {
         document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, 0.97)`);
         return;
     }
     const tintA = getSliderVal('ui_tint_opacity');
     const blurA = effectiveBlurOpacity(getSliderVal('ui_blur_opacity') || 0.95);
-    const settingsBlur = active ? getSliderVal('settings_blur_multiplier') || 0.5 : 1.0;
+    const settingsBlur = active ? getSliderVal('settings_blur_multiplier') || 1.0 : 1.0;
     const a = tintA * blurA * settingsBlur;
     document.documentElement.style.setProperty(
         '--bg-tint',
@@ -1465,7 +1515,7 @@ function applyTintFromMap(map) {
         document.documentElement.style.setProperty('--bg-tint', `rgb(${r}, ${g}, ${b})`);
         return;
     }
-    if (!platform.compositorBlur() && (isGhostingStack() || hasDisableBlur())) {
+    if (!platform.compositorBlurActive() && (isGhostingStack() || hasDisableBlur())) {
         document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, 0.97)`);
         return;
     }

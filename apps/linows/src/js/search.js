@@ -18,6 +18,7 @@ import {
     webUrlResult,
     placeUrlRow,
     calcResult,
+    processPidLabel,
     WEB_URL_OPEN_SUBTITLE,
     WEB_URL_RECENT_SUBTITLE,
 } from './catalog.js';
@@ -544,12 +545,11 @@ async function performProcessSearch(filter, refresh, version) {
         if (isStale(version)) return;
         const results = procs.map((p) => {
             const ports = p.ports || [];
-            const portHint = ports.length ? ` \u2022 ${ports.map((x) => `:${x}`).join(' ')}` : '';
             return {
                 id: `proc:${p.pid}`,
                 kind: 'process',
                 title: p.name,
-                subtitle: `PID ${p.pid}${portHint}`,
+                subtitle: processPidLabel(p.pid, ports),
                 path: `process://${p.pid}`,
                 score: 0,
                 procPid: p.pid,

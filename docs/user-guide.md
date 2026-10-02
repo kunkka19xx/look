@@ -507,14 +507,49 @@ the page itself drew, and the desktop behind the window is drawn by the system,
 not the page.
 
 Blur behind the window is the compositor's to grant, and Look asks for it
-wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and Niri through the
+wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and niri through the
 `ext-background-effect-v1` protocol, older Plasma through KDE's own, and KWin on
-X11 through a window property. There is nothing to switch on - if your
-compositor takes the request the frost is there, and `Blur Opacity` starts
-thinning the tint so more of it shows through. Everywhere else (GNOME today,
-plain sway, X11 without KWin) Look stays clear glass and `Blur Opacity` applies
-only when you have set a background image. Driving blur from your own compositor
-config still works; Look's request is additional, not exclusive.
+X11 through a window property. The switch is `Settings > Advanced > Rendering >
+Blur behind window` (`ui_compositor_blur`), and it is there on every Linux
+desktop. It starts on under KWin, where the frost is what it says on the tin,
+and off everywhere else: taking the request and drawing it well are two
+different things, so the rest is opt-in until you have looked at it on your own
+setup. On a desktop that ignores the request the switch does nothing either way.
+
+With the frost on, `Blur Opacity` starts thinning the tint so more of it shows
+through. The compositor blurs all of that area or none of it, so thinning
+reveals more frost, never a sharp desktop; turning the switch off is what gives
+you a sharp view through. How strong the frost is belongs to the compositor too
+- on Plasma, `System Settings > Desktop Effects > Blur`.
+
+niri answers the request with xray blur, which is its default: one blurred copy
+of the wallpaper, reused behind every window. The frost never picks up the
+windows below, so it looks like a snapshot that froze. To get real frost, point
+a niri rule at Look:
+
+```kdl
+layer-rule {
+    match namespace="^lookapp$"
+    background-effect { xray false; }
+}
+
+window-rule {
+    match app-id="^lookapp$"
+    background-effect { xray false; }
+}
+```
+
+Then turn `Blur behind window` on. The layer rule is the one that applies when
+`gtk-layer-shell` is installed and the window rule when it is not, so keeping
+both covers either. Leave `blur` out of the block: Look already asks over the
+protocol, and niri's own `blur true` follows `geometry-corner-radius` instead of
+Look's shape, which frosts the gaps between the floating panes. Dropping xray
+costs GPU time, since the blur is then sampled every frame rather than once.
+
+Where there is no frost at all (GNOME 50 and earlier, plain sway, X11 without KWin) Look
+stays clear glass and `Blur Opacity` applies only when you have set a background
+image. Driving blur from your own compositor config still works; Look's request
+is additional, not exclusive.
 
 **Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. AI mode (`>`) hides the row regardless of this setting, and its digits open listed conversations instead. The launcher window stays the same size either way.
 

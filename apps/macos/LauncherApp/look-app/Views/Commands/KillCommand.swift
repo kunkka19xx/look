@@ -21,7 +21,9 @@ struct KillCommand {
             .sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
     }
 
-    private static func appCandidates(from apps: [NSRunningApplication]) -> [Candidate] {
+    private static func appCandidates(
+        from apps: [NSRunningApplication], ports: [Int32: [Int]]
+    ) -> [Candidate] {
         apps.enumerated().map { index, app in
             Candidate(
                 id: "app-\(app.processIdentifier)-\(index)",
@@ -29,9 +31,14 @@ struct KillCommand {
                 pid: app.processIdentifier,
                 icon: app.icon,
                 number: index + 1,
-                detail: "PID: \(app.processIdentifier)"
+                detail: detail(pid: app.processIdentifier, ports: ports)
             )
         }
+    }
+
+    /// App rows carry no ports of their own, so both paths read the snapshot.
+    private static func detail(pid: Int32, ports: [Int32: [Int]]) -> String {
+        LauncherProcessFeature.pidLabel(pid: pid, ports: ports[pid] ?? [])
     }
 
     /// Strips the optional `:` / `port ` port-search affordance so `:3000` and
@@ -53,9 +60,15 @@ struct KillCommand {
     static func suggestions(searchTerm: String, processes: [ProcessScoring.Candidate]) -> [Candidate] {
         let term = normalize(searchTerm)
         let apps = getRunningApps()
+        // Built once per call: this runs in a SwiftUI body, so a per-row scan
+        // of the snapshot would repeat for every candidate.
+        let ports = Dictionary(
+            processes.lazy.filter { !$0.ports.isEmpty }.map { ($0.pid, $0.ports) },
+            uniquingKeysWith: { first, _ in first })
+
         // Empty query lists apps only (the panel's default view).
         if term.isEmpty {
-            return appCandidates(from: apps)
+            return appCandidates(from: apps, ports: ports)
         }
 
         // Non-empty query: fuzzy over apps + processes, apps first, deduped by
@@ -76,7 +89,7 @@ struct KillCommand {
                 pid: target.pid,
                 icon: LauncherProcessFeature.icon(forPID: target.pid),
                 number: index + 1,
-                detail: "PID: \(target.pid)"
+                detail: detail(pid: target.pid, ports: ports)
             )
         }
     }
