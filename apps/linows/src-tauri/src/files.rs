@@ -3,6 +3,8 @@ use std::sync::atomic::Ordering;
 use std::time::UNIX_EPOCH;
 use tauri::Manager;
 
+type FileDialog = tauri_plugin_dialog::FileDialogBuilder<tauri::Wry>;
+
 /// RAII guard around a native picker. Sets crate::PICKING_FILE for as long as it
 /// lives, so the focus-loss auto-hide skips while a dialog is on screen, and
 /// hands back `None` when one is already open so a double-click cannot stack two
@@ -25,7 +27,9 @@ impl Drop for PickerGuard {
 /// The launcher is a topmost window, and on Windows a topmost window outranks a
 /// non-topmost dialog even when it owns it. Drop the topmost bit for as long as
 /// the picker is up so it can sit in front, then restore it (see issue #467).
-/// A no-op off Windows, where the field stays `None`.
+/// A no-op off Windows, where the field stays `None`: there the launcher is a
+/// layer-shell surface and Tauri's window a hidden husk, so owning the dialog to
+/// it is a platform-specific follow-up.
 struct TopmostGuard {
     window: Option<tauri::WebviewWindow>,
 }
@@ -38,6 +42,15 @@ impl TopmostGuard {
             let _ = w.set_always_on_top(false);
         }
         Self { window }
+    }
+
+    /// Owner the dialog to the launcher, so the OS keeps a non-topmost dialog
+    /// above it. Reuses the window already resolved by `lower`.
+    fn parent(&self, builder: FileDialog) -> FileDialog {
+        match &self.window {
+            Some(w) => builder.set_parent(w),
+            None => builder,
+        }
     }
 }
 impl Drop for TopmostGuard {
@@ -274,35 +287,32 @@ pub fn scan_music_folder(folder: String) -> Vec<String> {
     files
 }
 
-/// Owner the picker to the launcher on Windows, so the OS keeps a non-topmost
-/// dialog above its owner (issue #467). A no-op off Windows for now: there the
-/// launcher is a layer-shell surface, and Tauri's window is a hidden husk, so
-/// the fix is a platform-specific follow-up.
-fn with_parent<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-    builder: tauri_plugin_dialog::FileDialogBuilder<R>,
-) -> tauri_plugin_dialog::FileDialogBuilder<R> {
-    let mut builder = builder;
-    if cfg!(target_os = "windows")
-        && let Some(window) = app.get_webview_window(crate::consts::MAIN_WINDOW)
-    {
-        builder = builder.set_parent(&window);
-    }
-    builder
+/// Shared picker plumbing: refuse a second dialog, lower the launcher's topmost
+/// bit, own the dialog to it, then block until the callback reports back.
+/// `show` picks the dialog flavour and sends the chosen path down `tx`.
+fn run_picker<F>(app: &tauri::AppHandle, show: F) -> Option<String>
+where
+    F: FnOnce(FileDialog, std::sync::mpsc::Sender<Option<String>>),
+{
+    use tauri_plugin_dialog::DialogExt;
+    let _guard = PickerGuard::acquire()?;
+    // Dropped before `_guard`, so the topmost bit is back before the
+    // focus-loss auto-hide is armed again.
+    let topmost = TopmostGuard::lower(app);
+    let (tx, rx) = std::sync::mpsc::channel();
+    show(topmost.parent(app.dialog().file()), tx);
+    rx.recv().ok().flatten()
 }
 
 #[tauri::command]
 pub async fn pick_folder(app: tauri::AppHandle) -> Option<String> {
-    use tauri_plugin_dialog::DialogExt;
-    let _guard = PickerGuard::acquire()?;
-    let _topmost = TopmostGuard::lower(&app);
-    let (tx, rx) = std::sync::mpsc::channel();
-    let builder = with_parent(&app, app.dialog().file().set_title("Choose Music Folder"));
-    builder.pick_folder(move |folder| {
-        let result = folder.map(|f| f.to_string());
-        let _ = tx.send(result);
-    });
-    rx.recv().ok().flatten()
+    run_picker(&app, |builder, tx| {
+        builder
+            .set_title("Choose Music Folder")
+            .pick_folder(move |folder| {
+                let _ = tx.send(folder.map(|f| f.to_string()));
+            });
+    })
 }
 
 #[tauri::command]
@@ -323,25 +333,17 @@ pub fn list_fonts() -> Vec<String> {
 
 #[tauri::command]
 pub async fn pick_image(app: tauri::AppHandle) -> Option<String> {
-    use tauri_plugin_dialog::DialogExt;
-    let _guard = PickerGuard::acquire()?;
-    let _topmost = TopmostGuard::lower(&app);
-    let (tx, rx) = std::sync::mpsc::channel();
-    let builder = with_parent(
-        &app,
-        app.dialog()
-            .file()
+    run_picker(&app, |builder, tx| {
+        builder
             .set_title("Choose Background Image")
             .add_filter(
                 "Images",
                 &["png", "jpg", "jpeg", "webp", "bmp", "gif", "svg"],
-            ),
-    );
-    builder.pick_file(move |file| {
-        let result = file.map(|f| f.to_string());
-        let _ = tx.send(result);
-    });
-    rx.recv().ok().flatten()
+            )
+            .pick_file(move |file| {
+                let _ = tx.send(file.map(|f| f.to_string()));
+            });
+    })
 }
 
 /// List the contents of a directory for folder preview.
