@@ -57,25 +57,16 @@ struct ThemedBackdrop: View {
     @ViewBuilder
     private var backdrop: some View {
         ZStack {
-            if themeStore.settings.blurMaterial == .liquidGlass, #available(macOS 26.0, *) {
+            if themeStore.settings.blurMaterial.rendersGlass, #available(macOS 26.0, *) {
                 GlassEffectBackdrop(
                     cornerRadius: cornerRadius,
                     tint: tintColor,
                     appearance: themeStore.themeAppearance())
                     .opacity(clamped(blurOpacityMultiplier))
-            } else if #available(macOS 26.0, *) {
-                if showsFrost {
-                    GlassEffectBackdrop(
-                        cornerRadius: cornerRadius,
-                        tint: frostGlassTint,
-                        appearance: themeStore.themeAppearance())
-                } else {
-                    themeTintWash
-                }
             } else {
                 if showsFrost {
                     VisualEffectBlur(
-                        material: .underWindowBackground,
+                        material: themeStore.settings.blurMaterial.material,
                         blendingMode: blendingMode,
                         appearance: themeStore.themeAppearance()
                     )

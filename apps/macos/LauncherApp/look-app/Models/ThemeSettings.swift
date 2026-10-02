@@ -221,7 +221,7 @@ struct ThemeSettings: Codable, Equatable {
     var backgroundImageBlur: Double = 8
 
     // Settings
-    var settingsBlurMultiplier: Double = 0.5
+    var settingsBlurMultiplier: Double = 1.0
 
     var fileScanDepth: Int = 4
     var fileScanLimit: Int = 4000

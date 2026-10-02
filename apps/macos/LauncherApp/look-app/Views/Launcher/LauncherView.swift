@@ -182,9 +182,6 @@ struct LauncherView: View {
 
     static let floatingTileScrimOpacity = 0.30
 
-    /// 0 = pure glass, and the bar goes white over a light page; 1 = opaque,
-    /// and the blur is lost.
-    static let searchBarSubstrateOpacity = 0.55
     /// Legibility floor for surfaces that float on the bare desktop while the
     /// material is Liquid Glass. Tune here: too low and light theme text
     /// disappears over a white window, too high and the refraction is lost.
@@ -2402,7 +2399,7 @@ struct LauncherView: View {
     /// themed backdrop, at the same blur and tint opacities as the window.
     @ViewBuilder
     private func tileBackground(
-        cornerRadius: CGFloat, floats: Bool, substrate: Bool = false
+        cornerRadius: CGFloat, floats: Bool
     ) -> some View {
         if floats, let image = themeStore.backgroundImage {
             ZStack {
@@ -2415,24 +2412,22 @@ struct LauncherView: View {
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         } else {
             ZStack {
-                // Bounds how bright the bar can get over a white page. The
-                // panes are dense enough that the same floor only flattens them.
-                if substrate {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(themeStore.commandModeBackgroundColor())
-                        .opacity(Self.searchBarSubstrateOpacity)
+                if floats {
+                    ThemedBackdrop(
+                        themeStore: themeStore,
+                        blendingMode: .behindWindow,
+                        cornerRadius: cornerRadius
+                    )
+                } else {
+                    ThemedBackdrop(
+                        themeStore: themeStore,
+                        blendingMode: .withinWindow,
+                        cornerRadius: cornerRadius
+                    )
+                    themeStore.controlFillColor().opacity(0.35)
                 }
-
-                // Window-server composited. The bar hosts an
-                // `NSViewRepresentable`, and a `.withinWindow` material beside
-                // one flips brightness whenever the layer is re-composited.
-                frostedTile(
-                    themeStore: themeStore,
-                    cornerRadius: cornerRadius,
-                    // Seated is the only case with a window backdrop behind it.
-                    blendingMode: floats ? .behindWindow : .withinWindow
-                )
             }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         }
     }
 
@@ -2481,9 +2476,7 @@ struct LauncherView: View {
             .background {
                 tileBackground(
                     cornerRadius: floats ? themeStore.tileRadius : themeStore.barRadius,
-                    floats: floats,
-                    // Seated, the panel's backdrop already backs the bar.
-                    substrate: floats
+                    floats: floats
                 )
             }
             .overlay {

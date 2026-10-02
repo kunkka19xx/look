@@ -26,6 +26,7 @@ struct ThemeSettingsView: View {
     @State var fontSuggestions: [String] = []
     @State var showsFontSuggestions = false
     @State var isPickingFontSuggestion = false
+    @State var showsRgbSliders = false
     @State var fileScanDepthInput = ""
     @State var fileScanLimitInput = ""
     @State var fileScanDepthError: String?

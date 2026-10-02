@@ -3,7 +3,7 @@ SHELL := /bin/bash
 
 XCODE_PROJECT := apps/macos/LauncherApp/look-app.xcodeproj
 XCODE_SCHEME := Look
-XCODE_CONFIG := Debug
+XCODE_CONFIG ?= Debug
 XCODE_DERIVED_DATA := .build/xcode
 
 APP_ID := noah-code.Look
@@ -44,7 +44,7 @@ REAL_DB_PATH := $(HOME)/Library/Application Support/look/look.db
 DEV_CONFIG_PATH ?= $(HOME)/.look/config.dev
 DEV_OPEN_ENV = env -u LOOK_DB_PATH LOOK_CONFIG_PATH="$(DEV_CONFIG_PATH)" LOOK_DEV_HINT=1 LOOK_LOG_LEVEL=debug LOOK_UI_DEBUG_EVENTS=1
 
-.PHONY: help core-check ffi-check ffi-build ffi-build-release ffi-unstale app-build app-ensure-bundle app-stop app-run app-install-dev app-run-dev app-uninstall-dev dev-cli app-logs app-logs-all symbols db-path db-status db-shell db-reset db-refresh
+.PHONY: help core-check ffi-check ffi-build ffi-build-release ffi-unstale app-build app-ensure-bundle app-stop app-run app-install app-install-dev app-run-dev app-uninstall-dev dev-cli app-logs app-logs-all symbols db-path db-status db-shell db-reset db-refresh
 
 help:
 	@printf "look developer tasks\n\n"
@@ -59,6 +59,7 @@ help:
 	@printf "run app\n"
 	@printf "  make app-stop     - stop running Look app process\n"
 	@printf "  make app-run      - stop running app, then open local app with dev config\n"
+	@printf "  make app-install  - install Look.app to /Applications (or ~/Applications)\n"
 	@printf "  make app-install-dev - install side-by-side /Applications/$(DEV_APP_NAME).app\n"
 	@printf "  make app-run-dev  - install+open side-by-side dev app with dev config\n"
 	@printf "  make app-uninstall-dev - remove side-by-side dev app from /Applications\n"
@@ -113,6 +114,17 @@ app-stop:
 app-run: app-build app-stop app-ensure-bundle
 	@echo "Opening local app with config: $(DEV_CONFIG_PATH)"
 	@$(DEV_OPEN_ENV) open -n "$(APP_BUNDLE)"
+
+app-install: app-build app-stop app-ensure-bundle
+	@target_dir="/Applications"; \
+	if [ ! -w "$$target_dir" ]; then target_dir="$$HOME/Applications"; mkdir -p "$$target_dir"; fi; \
+	echo "Installing Look to $$target_dir/Look.app"; \
+	osascript -e 'tell application id "$(APP_ID)" to quit' >/dev/null 2>&1 || true; \
+	rm -rf "$$target_dir/Look.app"; \
+	cp -R "$(APP_BUNDLE)" "$$target_dir/Look.app"; \
+	xattr -dr com.apple.quarantine "$$target_dir/Look.app" 2>/dev/null || true; \
+	"$(LSREGISTER)" -f "$$target_dir/Look.app" >/dev/null; \
+	echo "Successfully installed $$target_dir/Look.app"
 
 app-install-dev: app-build app-ensure-bundle
 	@echo "Installing side-by-side dev app: $(DEV_APP_INSTALL_BUNDLE)"

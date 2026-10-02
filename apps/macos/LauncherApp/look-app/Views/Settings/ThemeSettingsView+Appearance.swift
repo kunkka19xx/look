@@ -57,6 +57,8 @@ extension ThemeSettingsView {
                     .overlay(themeStore.dividerColor())
                     .padding(.vertical, 4)
 
+                searchBarLivePreview
+
                 sectionHeader("Layout")
 
                 LabeledSlider(
@@ -87,22 +89,23 @@ extension ThemeSettingsView {
                     range: AppConstants.ThemeUI.surfaceRadiusRange)
                     .help("Corner rounding, shared by every surface: the panel, the top bar, the launchpad tiles and the controls. 0 = square.")
 
-                sectionHeader("Tint Color")
+                sectionHeader("Bar & Background Color")
 
-                LabeledSlider(title: "Red", value: $settings.tintRed, range: 0...1)
-                LabeledSlider(title: "Green", value: $settings.tintGreen, range: 0...1)
-                LabeledSlider(title: "Blue", value: $settings.tintBlue, range: 0...1)
-                LabeledSlider(title: "Tint Opacity", value: $settings.tintOpacity, range: 0...1)
+                colorSelectionRow
+
+                if showsRgbSliders {
+                    LabeledSlider(title: "Red", value: $settings.tintRed, range: 0...1)
+                    LabeledSlider(title: "Green", value: $settings.tintGreen, range: 0...1)
+                    LabeledSlider(title: "Blue", value: $settings.tintBlue, range: 0...1)
+                }
+
+                LabeledSlider(
+                    title: "Tint Opacity",
+                    value: $settings.tintOpacity,
+                    range: 0...1)
+                    .help("How strongly the color covers the frosted backdrop (0 = pure blur, 1 = solid color).")
 
                 sectionHeader("Blur")
-
-                // Disabled rather than hidden, to keep the value visible.
-                LabeledSlider(title: "Blur Opacity", value: $settings.blurOpacity, range: 0...1)
-                    .disabled(settings.blurMaterial.rendersGlass)
-                    .opacity(settings.blurMaterial.rendersGlass ? AppConstants.ThemeUI.disabledControlOpacity : 1)
-
-                LabeledSlider(title: "Settings Blur", value: $settings.settingsBlurMultiplier, range: 0.4...1)
-                    .help("How much the backdrop thins while Settings is open.")
 
                 HStack(spacing: 10) {
                     Text("Blur Style")
@@ -124,6 +127,26 @@ extension ThemeSettingsView {
                         .foregroundStyle(themeStore.mutedTextColor())
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                // Disabled rather than hidden, to keep the value visible.
+                LabeledSlider(title: "Blur Opacity", value: $settings.blurOpacity, range: 0...1)
+                    .disabled(settings.blurMaterial.rendersGlass)
+                    .opacity(settings.blurMaterial.rendersGlass ? AppConstants.ThemeUI.disabledControlOpacity : 1)
+                    .help("Strength of the background frost blur.")
+
+                HStack(spacing: 10) {
+                    LabeledSlider(title: "Settings Blur", value: $settings.settingsBlurMultiplier, range: 0.4...1)
+                        .help("How much the backdrop thins while Settings is open. Set to 1.0 to match the launcher.")
+
+                    if abs(settings.settingsBlurMultiplier - 1.0) > 0.01 {
+                        Button("Match Launcher (1.0)") {
+                            settings.settingsBlurMultiplier = 1.0
+                        }
+                        .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(themeStore.accentColor())
+                    }
                 }
 
                 sectionHeader("Font")
@@ -271,5 +294,180 @@ extension ThemeSettingsView {
         }
         let location = (editor.string as NSString).length
         editor.setSelectedRange(NSRange(location: location, length: 0))
+    }
+
+    // MARK: - Search Bar Live Preview & Color Helpers
+
+    var searchBarLivePreview: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Search Bar Live Preview")
+                    .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .semibold))
+                    .foregroundStyle(themeStore.secondaryTextColor())
+                Spacer()
+                Text("\(Int(settings.searchBarWidth)) pt")
+                    .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+                    .foregroundStyle(themeStore.mutedTextColor())
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(themeStore.secondaryTextColor())
+                    .frame(width: 16, height: 16)
+
+                Text(AppConstants.Launcher.searchPlaceholder)
+                    .font(themeStore.uiFont(size: CGFloat(settings.fontSize)))
+                    .foregroundStyle(themeStore.placeholderTextColor())
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                if settings.runningAppsPlacement != .none {
+                    HStack(spacing: 5) {
+                        Image(systemName: "applelogo")
+                            .font(.system(size: 11))
+                            .foregroundStyle(themeStore.fontColor().opacity(0.7))
+                            .padding(4)
+                            .background(themeStore.liftColor(opacity: 0.12), in: RoundedRectangle(cornerRadius: 4))
+                        Image(systemName: "terminal")
+                            .font(.system(size: 11))
+                            .foregroundStyle(themeStore.accentColor())
+                            .padding(4)
+                            .background(themeStore.liftColor(opacity: 0.12), in: RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: min(CGFloat(settings.searchBarWidth), 520))
+            .background {
+                ThemedBackdrop(
+                    themeStore: themeStore,
+                    blurOpacityMultiplier: 1.0,
+                    blendingMode: .withinWindow,
+                    cornerRadius: themeStore.barRadius
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
+            .overlay {
+                if themeStore.borderLineWidth() > 0 {
+                    RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous)
+                        .strokeBorder(themeStore.borderColor(), lineWidth: themeStore.borderLineWidth())
+                }
+            }
+            .shadow(color: .black.opacity(0.22), radius: 6, x: 0, y: 3)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 4)
+        }
+        .padding(10)
+        .background(
+            themeStore.liftColor(opacity: 0.05),
+            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
+        )
+    }
+
+    var colorSelectionRow: some View {
+        HStack(spacing: 10) {
+            Text("Color")
+                .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
+                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+                .foregroundStyle(themeStore.secondaryTextColor())
+
+            ColorPicker("", selection: backgroundColorBinding, supportsOpacity: false)
+                .labelsHidden()
+                .frame(width: 28, height: 24)
+
+            Text(hexColorString)
+                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .medium))
+                .monospaced()
+                .foregroundStyle(themeStore.fontColor())
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(themeStore.liftColor(opacity: 0.12), in: RoundedRectangle(cornerRadius: 4))
+
+            HStack(spacing: 6) {
+                ForEach(colorPresets) { preset in
+                    Button {
+                        settings.tintRed = preset.red
+                        settings.tintGreen = preset.green
+                        settings.tintBlue = preset.blue
+                    } label: {
+                        Circle()
+                            .fill(preset.color)
+                            .frame(width: 16, height: 16)
+                            .overlay {
+                                Circle()
+                                    .strokeBorder(themeStore.fontColor().opacity(0.25), lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .help(preset.name)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                showsRgbSliders.toggle()
+            } label: {
+                HStack(spacing: 3) {
+                    Text(showsRgbSliders ? "Hide RGB" : "RGB Sliders")
+                    Image(systemName: showsRgbSliders ? "chevron.up" : "chevron.down")
+                }
+                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+                .foregroundStyle(themeStore.mutedTextColor())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    var backgroundColorBinding: Binding<Color> {
+        Binding(
+            get: {
+                Color(
+                    .sRGB,
+                    red: settings.tintRed,
+                    green: settings.tintGreen,
+                    blue: settings.tintBlue,
+                    opacity: 1.0
+                )
+            },
+            set: { newColor in
+                let nsColor = NSColor(newColor).usingColorSpace(.sRGB) ?? NSColor(newColor)
+                settings.tintRed = max(0, min(1, Double(nsColor.redComponent)))
+                settings.tintGreen = max(0, min(1, Double(nsColor.greenComponent)))
+                settings.tintBlue = max(0, min(1, Double(nsColor.blueComponent)))
+            }
+        )
+    }
+
+    var hexColorString: String {
+        let r = Int(round(settings.tintRed * 255))
+        let g = Int(round(settings.tintGreen * 255))
+        let b = Int(round(settings.tintBlue * 255))
+        return String(format: "#%02X%02X%02X", r, g, b)
+    }
+
+    struct ColorPreset: Identifiable {
+        let id: String
+        let name: String
+        let red: Double
+        let green: Double
+        let blue: Double
+
+        var color: Color {
+            Color(.sRGB, red: red, green: green, blue: blue, opacity: 1.0)
+        }
+    }
+
+    var colorPresets: [ColorPreset] {
+        [
+            ColorPreset(id: "obsidian", name: "Obsidian Black", red: 0.0, green: 0.0, blue: 0.0),
+            ColorPreset(id: "slate", name: "Slate Gray", red: 0.08, green: 0.10, blue: 0.14),
+            ColorPreset(id: "navy", name: "Deep Navy", red: 0.06, green: 0.09, blue: 0.18),
+            ColorPreset(id: "forest", name: "Dark Forest", red: 0.06, green: 0.12, blue: 0.10),
+            ColorPreset(id: "plum", name: "Midnight Plum", red: 0.14, green: 0.08, blue: 0.16),
+            ColorPreset(id: "snow", name: "Frosted Snow", red: 0.95, green: 0.95, blue: 0.97),
+        ]
     }
 }
