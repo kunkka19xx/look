@@ -95,11 +95,14 @@ export function defaultFor(key) {
 
 // Absent and empty both mean "never chosen"; "custom" is a real answer.
 export function resolveThemeId(map) {
-    const id = map?.ui_theme;
-    return id === undefined || id === '' ? DEFAULT_THEME_ID : id;
+    return isSet(map?.ui_theme) ? map.ui_theme : DEFAULT_THEME_ID;
+}
+
+// `key=` in the file means unset, not "".
+export function isSet(v) {
+    return v !== undefined && v !== '';
 }
 
 export function valueOr(map, key) {
-    const v = map?.[key];
-    return v === undefined || v === '' ? defaultFor(key) : v;
+    return isSet(map?.[key]) ? map[key] : defaultFor(key);
 }

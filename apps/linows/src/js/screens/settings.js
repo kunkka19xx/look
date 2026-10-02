@@ -28,6 +28,7 @@ import {
     THEME_SURFACES,
     USER_CONTROLLED_KEYS,
     defaultFor,
+    isSet,
     resolveThemeId,
     valueOr,
 } from '../theme-defaults.js';
@@ -149,6 +150,8 @@ const HYDRATED_CSS_KEYS = [
     'ui_bg_blur',
     'ui_border_thickness',
     'ui_surface_radius',
+    'ui_font_size',
+    'inner_gap',
 ];
 
 // The shipped defaults into the DOM and the CSS, before any config is read, so
@@ -169,6 +172,7 @@ function hydrateDefaults() {
 
     setThemeDropdown(DEFAULT_THEME_ID);
     for (const key of HYDRATED_CSS_KEYS) CSS_MAP[key](defaultFor(key));
+    platform.applyBlur(0, THEME_DEFAULTS.ui_blur_style);
 }
 
 function getCurrentBlurStyle() {
@@ -1052,7 +1056,7 @@ async function loadConfig() {
             if (!slider) continue;
 
             const presetVal = preset?.[key];
-            const userVal = map[key];
+            const userVal = isSet(map[key]) ? map[key] : undefined;
             // User keys: the saved value wins. Other keys: the preset does,
             // so colors switch with the theme.
             const val = USER_CONTROLLED_KEYS.has(key)
@@ -1188,7 +1192,7 @@ function restoreSurface(map, themeId) {
 // not from config.
 function hydrateUserSliders(map) {
     for (const key of USER_CONTROLLED_KEYS) {
-        if (map[key] === undefined) continue;
+        if (!isSet(map[key])) continue;
         const slider = screen?.querySelector(`.settings-row[data-key="${key}"] .settings-slider`);
         if (slider) slider.value = map[key];
     }
