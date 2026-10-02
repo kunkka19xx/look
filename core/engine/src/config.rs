@@ -429,20 +429,43 @@ fn append_missing_default_config_entries(path: &Path) {
         .and_then(|mut file| std::io::Write::write_all(&mut file, appended.as_bytes()));
 }
 
+/// The cosmetic `ui_*` block. Never read back into `RuntimeConfig`: it seeds
+/// whichever frontend paints the window, and only macOS wants that here, since
+/// linows owns its defaults in `apps/linows/src/js/theme-defaults.js`. Gated
+/// rather than left out of the linows template because
+/// `append_missing_default_config_entries` adds back any key the file lacks.
+fn theme_config_section() -> String {
+    if !cfg!(target_os = "macos") {
+        return String::new();
+    }
+
+    String::from(
+        "# UI theme\n\
+         ui_tint_red=0.08\n\
+         ui_tint_green=0.10\n\
+         ui_tint_blue=0.12\n\
+         ui_tint_opacity=0.55\n\
+         ui_blur_material=hudWindow\n\
+         ui_blur_opacity=0.95\n\
+         ui_font_name=SF Pro Text\n\
+         ui_font_size=14\n\
+         ui_font_red=0.96\n\
+         ui_font_green=0.96\n\
+         ui_font_blue=0.98\n\
+         ui_font_opacity=0.96\n\
+         ui_border_thickness=1.0\n\
+         ui_border_red=1.0\n\
+         ui_border_green=1.0\n\
+         ui_border_blue=1.0\n\
+         ui_border_opacity=0.12\n\
+         \n",
+    )
+}
+
 fn default_config_contents() -> String {
     let app_roots = default_app_scan_roots().join(",");
     let file_roots = platform::file_scan_root_suffixes().join(",");
-    // Windows reads as too transparent at the macOS/Linux baseline of 0.55
-    // because we cannot use native Mica (the vibrancy DWM call breaks the
-    // CSS-clipped rounded corners) and the CSS blur alone doesn't fully
-    // anchor the launcher against busy desktops. Bump the first-launch
-    // default; existing configs are untouched (defaults only seed the
-    // initial file).
-    let tint_opacity = if cfg!(target_os = "windows") {
-        "0.85"
-    } else {
-        "0.55"
-    };
+    let theme_section = theme_config_section();
     let launcher_hotkey_section = launcher_hotkey_config_section();
     format!(
         "# look configuration\n\
@@ -494,25 +517,7 @@ query_retention_seconds=5\n\
 # terminal=ghostty\n\
 # file_manager=nautilus\n\
 \n\
-# UI theme\n\
-ui_tint_red=0.08\n\
-ui_tint_green=0.10\n\
-ui_tint_blue=0.12\n\
-ui_tint_opacity={tint_opacity}\n\
-ui_blur_material=hudWindow\n\
-ui_blur_opacity=0.95\n\
-ui_font_name=SF Pro Text\n\
-ui_font_size=14\n\
-ui_font_red=0.96\n\
-ui_font_green=0.96\n\
-ui_font_blue=0.98\n\
-ui_font_opacity=0.96\n\
-ui_border_thickness=1.0\n\
-ui_border_red=1.0\n\
-ui_border_green=1.0\n\
-ui_border_blue=1.0\n\
-ui_border_opacity=0.12\n\
-\n\
+{theme_section}\
 # Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3\n\
 # The defaults below cover both macOS and Windows app catalogs; entries that don't\n\
 # exist on the current host simply won't match, so cross-platform lists are harmless.\n\
@@ -1050,6 +1055,17 @@ mod tests {
         assert!(!config.lazy_indexing_enabled);
 
         let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn only_macos_seeds_the_cosmetic_theme_keys() {
+        let seeded = default_config_contents()
+            .lines()
+            .filter(|line| !line.trim_start().starts_with('#'))
+            .any(|line| line.trim_start().starts_with("ui_"));
+        // Seeding one puts it back into every linows config on load, where it
+        // outranks theme-defaults.js.
+        assert_eq!(seeded, cfg!(target_os = "macos"));
     }
 
     #[test]

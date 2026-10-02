@@ -10,7 +10,8 @@
 
     /* Border - surface2 #585b70 */
     --border-color: rgba(88, 91, 112, 0.28);
-    --border-thickness: 1px;
+    /* Pre-script only; theme-defaults.js owns it from there. */
+    --border-thickness: 2px;
 
     /* Surfaces - surface0 #313244, surface1 #45475a, overlay0 #6c7086 */
     --panel-fill: rgba(49, 50, 68, 0.5);
@@ -103,6 +104,7 @@
      * skips it desyncs from the fill behind it. A radius that follows an
      * element's geometry - an icon mask, a pill, a progress bar - is not one of
      * these and stays in px. */
+    /* Pre-script only; theme-defaults.js owns it from there. */
     --surface-radius-scale: 1.5;
     --panel-radius: calc(16px * var(--surface-radius-scale));
     --tile-radius: calc(12px * var(--surface-radius-scale));
@@ -176,7 +178,7 @@
 /* Kanagawa */
 :root[data-theme="kanagawa"] {
     --bg-tint: rgba(22, 22, 29, 0.95);
-    --font-color: rgba(222, 219, 201, 0.98);
+    --font-color: rgba(240, 217, 145, 0.96);
     --font-secondary: rgba(204, 199, 168, 1);
     --font-muted: rgba(168, 161, 128, 0.78);
     --panel-fill: rgba(25, 31, 36, 0.38);

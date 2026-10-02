@@ -89,11 +89,9 @@ pub fn reset_config() -> Result<(), String> {
         .map_err(|e| format!("Failed to reset config: {e}"))
 }
 
-/// The template Reset writes. Only keys the app reads off the file are seeded:
-/// the cosmetic `ui_*` slider values are deliberately left out because the
-/// settings UI falls back to its own defaults for any absent key, so listing
-/// them here would be a second set of defaults to keep in sync. Linux-only
-/// keys are `#[cfg]`-gated so a Windows reset does not carry inert entries.
+/// The template Reset writes. Cosmetic keys are documented but never given a
+/// value: `src/js/theme-defaults.js` owns those defaults. Linux-only keys are
+/// `#[cfg]`-gated so a Windows reset does not carry inert entries.
 fn default_config_contents() -> String {
     let mut out = String::from(
         "# look configuration\n\
@@ -145,8 +143,9 @@ fn default_config_contents() -> String {
          clipboard_image_limit=20\n\
          \n\
          # Home-screen inner gap in px (0-24). 0 keeps the classic framed panel;\n\
-         # above 0 the home screen splits into floating tiles separated by this gap.\n\
-         inner_gap=7\n\
+         # above 0 the home screen splits into floating tiles separated by this\n\
+         # gap. Unset takes the built-in default.\n\
+         # inner_gap=\n\
          \n\
          # Window layout: split (results + preview) or compact (smaller, results only)\n\
          layout=split\n\
@@ -163,8 +162,8 @@ fn default_config_contents() -> String {
          # glide. false shows every change instantly. Same key as macOS.\n\
          animations_enabled=true\n\
          \n\
-         # UI theme (empty = built-in default; pick one in Settings)\n\
-         ui_theme=\n",
+         # UI theme: unset takes the built-in default. Pick one in Settings.\n\
+         # ui_theme=\n",
     );
 
     out

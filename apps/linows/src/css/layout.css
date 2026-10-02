@@ -24,8 +24,8 @@
     background-size: var(--bg-size, cover);
     background-repeat: var(--bg-repeat, no-repeat);
     background-position: center;
-    opacity: var(--bg-image-opacity, 0.62);
-    filter: blur(var(--bg-image-blur, 10px));
+    opacity: var(--bg-image-opacity);
+    filter: blur(var(--bg-image-blur));
     z-index: 0;
     pointer-events: none;
 }
@@ -546,8 +546,8 @@ html[data-os="windows"] .bar-free .pane-tile {
     background-size: var(--bg-draw-w, 100%) var(--bg-draw-h, 100%);
     background-position: calc(-1 * var(--tile-x, 0px)) calc(-1 * var(--tile-y, 0px));
     background-repeat: var(--bg-repeat, no-repeat);
-    opacity: var(--bg-image-opacity, 0.62);
-    filter: blur(var(--bg-image-blur, 10px));
+    opacity: var(--bg-image-opacity);
+    filter: blur(var(--bg-image-blur));
     clip-path: inset(0 round var(--tile-radius));
     pointer-events: none;
 }

@@ -18,6 +18,19 @@ import * as platform from '../platform.js';
 import * as layout from '../layout.js';
 import * as superactions from '../components/superactions.js';
 import * as shortcutrecorder from '../components/shortcutrecorder.js';
+import {
+    BLUR_PRESETS,
+    DEFAULT_THEME_ID,
+    OPACITY_OWNING_THEMES,
+    OPACITY_SWITCH_KEYS,
+    THEME_DEFAULTS,
+    THEME_PRESETS,
+    THEME_SURFACES,
+    USER_CONTROLLED_KEYS,
+    defaultFor,
+    resolveThemeId,
+    valueOr,
+} from '../theme-defaults.js';
 
 let screen = null;
 let active = false;
@@ -27,25 +40,10 @@ let onConfigReloadFn = null;
 
 const TABS = ['appearance', 'advanced', 'shortcuts'];
 
-// Sentinel the Font field falls back to: "let the theme decide", not a family.
-const DEFAULT_FONT_NAME = 'system-ui';
-
-// No config file yet: land on the floating tiles, same as macOS
-// ThemeSettings.innerGap and the template Reset writes.
-const INNER_GAP_DEFAULT = 7;
-
 const SAVE_MSG_MS = 1600;
 const ERROR_BANNER_SECONDS = 1.5;
 const SAVE_ERROR_BANNER_SECONDS = 4;
 let saveMsgTimer = null;
-
-// Maps config keys to CSS custom property update functions.
-// Each slider with data-key drives live CSS + config persistence.
-const BLUR_PRESETS = {
-    high_contrast: { ui_blur_opacity: 0.95 },
-    balanced: { ui_blur_opacity: 0.8 },
-    soft: { ui_blur_opacity: 0.6 },
-};
 
 // UI zoom - mirrors macOS ThemeStore.zoomIn/zoomOut/resetZoom
 // (apps/macos/.../Support/ThemeStore.swift:270). The effective `--font-size`
@@ -91,6 +89,8 @@ export function resetZoom() {
     applyFontSize();
 }
 
+// Maps config keys to CSS custom property update functions.
+// Each slider with data-key drives live CSS + config persistence.
 const CSS_MAP = {
     ui_tint_red: applytint,
     ui_tint_green: applytint,
@@ -129,19 +129,52 @@ const CSS_MAP = {
     },
 };
 
-function markCustomTheme() {
+function setThemeDropdown(themeId) {
     const dd = document.getElementById('settings-theme');
-    const menu = dd.querySelector('.settings-dropdown-menu');
-    dd.querySelector('.settings-dropdown-label').textContent = 'Custom';
-    for (const el of menu.children) el.classList.remove('settings-dropdown-active');
-    const customItem = menu.querySelector('[data-value="custom"]');
-    if (customItem) customItem.classList.add('settings-dropdown-active');
+    const item = dd?.querySelector(`.settings-dropdown-item[data-value="${themeId}"]`);
+    if (!item) return;
+    dd.querySelector('.settings-dropdown-label').textContent = item.textContent.trim();
+    for (const el of dd.querySelector('.settings-dropdown-menu').children)
+        el.classList.remove('settings-dropdown-active');
+    item.classList.add('settings-dropdown-active');
+}
+
+function markCustomTheme() {
+    setThemeDropdown('custom');
+}
+
+// Applied on hydration: the stylesheets carry no fallback copy of these.
+const HYDRATED_CSS_KEYS = [
+    'ui_bg_opacity',
+    'ui_bg_blur',
+    'ui_border_thickness',
+    'ui_surface_radius',
+];
+
+// The shipped defaults into the DOM and the CSS, before any config is read, so
+// settings.html holds no second copy of them.
+function hydrateDefaults() {
+    for (const row of screen.querySelectorAll('.settings-row[data-key]')) {
+        const key = row.dataset.key;
+        const val = defaultFor(key);
+        const slider = row.querySelector('.settings-slider');
+        if (val === undefined || !slider) continue;
+        slider.value = val;
+        const valueEl = row.querySelector('.settings-slider-value');
+        if (valueEl) valueEl.textContent = formatValue(key, parseFloat(val));
+    }
+
+    const fontInput = document.getElementById('settings-font-name');
+    if (fontInput) fontInput.value = THEME_DEFAULTS.ui_font_name;
+
+    setThemeDropdown(DEFAULT_THEME_ID);
+    for (const key of HYDRATED_CSS_KEYS) CSS_MAP[key](defaultFor(key));
 }
 
 function getCurrentBlurStyle() {
     const dd = document.getElementById('settings-blur-style');
     const active = dd?.querySelector('.settings-dropdown-active');
-    return active?.dataset.value || 'high_contrast';
+    return active?.dataset.value || THEME_DEFAULTS.ui_blur_style;
 }
 
 export function setOnConfigReload(fn) {
@@ -152,6 +185,7 @@ export function init(exitFn) {
     onExit = exitFn;
     screen = document.getElementById('settings-screen');
     shortcutrecorder.init(screen);
+    hydrateDefaults();
 
     // Tab clicks
     document.getElementById('settings-tabs').addEventListener('click', (e) => {
@@ -172,9 +206,7 @@ export function init(exitFn) {
         const item = e.target.closest('.settings-dropdown-item');
         if (!item) return;
         const theme = item.dataset.value;
-        themeDropdown.querySelector('.settings-dropdown-label').textContent = item.textContent;
-        for (const el of themeMenu.children) el.classList.remove('settings-dropdown-active');
-        item.classList.add('settings-dropdown-active');
+        setThemeDropdown(theme);
         themeMenu.hidden = true;
         const overrides = switchOverrides(theme);
         applyThemePreset(theme, overrides);
@@ -510,8 +542,9 @@ export function init(exitFn) {
                 new CustomEvent('look:layout-changed', { detail: { value: restoredLayout } }),
             );
             clearBackgroundImage();
-            applyFontFamily(DEFAULT_FONT_NAME);
-            applyThemePreset('');
+            hydrateDefaults();
+            applyFontFamily(THEME_DEFAULTS.ui_font_name);
+            applyThemePreset(DEFAULT_THEME_ID);
             banner.show('Config reset to defaults', 'success', 1.5);
         } catch {
             banner.show('Reset failed', 'error', 1.5);
@@ -644,7 +677,8 @@ export function init(exitFn) {
 
             // Font
             updates.ui_font_name =
-                document.getElementById('settings-font-name').value.trim() || DEFAULT_FONT_NAME;
+                document.getElementById('settings-font-name').value.trim() ||
+                THEME_DEFAULTS.ui_font_name;
 
             // Background
             const bgPath = document.getElementById('settings-bg-path').textContent;
@@ -737,16 +771,16 @@ export async function reloadFromFile({ announceSuccess = true } = {}) {
         // keys off whether a bg image is present.
         if (map.ui_bg_image) {
             applyBackgroundImage(map.ui_bg_image);
-            if (map.ui_bg_layout) applyBgLayout(map.ui_bg_layout);
-            if (map.ui_bg_opacity) CSS_MAP.ui_bg_opacity(map.ui_bg_opacity);
-            if (map.ui_bg_blur) CSS_MAP.ui_bg_blur(map.ui_bg_blur);
+            applyBgLayout(valueOr(map, 'ui_bg_layout'));
+            CSS_MAP.ui_bg_opacity(valueOr(map, 'ui_bg_opacity'));
+            CSS_MAP.ui_bg_blur(valueOr(map, 'ui_bg_blur'));
         } else {
             clearBackgroundImage();
         }
 
         // Theme
         hydrateUserSliders(map);
-        const theme = map.ui_theme || '';
+        const theme = resolveThemeId(map);
         applyThemePreset(theme);
         restoreSurface(map, theme);
         if (theme === 'custom') {
@@ -756,15 +790,15 @@ export async function reloadFromFile({ announceSuccess = true } = {}) {
         }
 
         // Font
-        if (map.ui_font_size) CSS_MAP.ui_font_size(map.ui_font_size);
+        CSS_MAP.ui_font_size(valueOr(map, 'ui_font_size'));
         applyFontFamily(map.ui_font_name);
 
         // Border thickness
-        if (map.ui_border_thickness) CSS_MAP.ui_border_thickness(map.ui_border_thickness);
+        CSS_MAP.ui_border_thickness(valueOr(map, 'ui_border_thickness'));
 
         // Floating layout gap + corner rounding
-        CSS_MAP.inner_gap(map.inner_gap || INNER_GAP_DEFAULT);
-        if (map.ui_surface_radius) CSS_MAP.ui_surface_radius(map.ui_surface_radius);
+        CSS_MAP.inner_gap(valueOr(map, 'inner_gap'));
+        CSS_MAP.ui_surface_radius(valueOr(map, 'ui_surface_radius'));
 
         // If settings screen is open, refresh the UI sliders too
         if (active) await loadConfig();
@@ -848,15 +882,15 @@ export async function restoreOnStartup() {
         // keys off whether a bg image is present.
         if (map.ui_bg_image) {
             applyBackgroundImage(map.ui_bg_image);
-            if (map.ui_bg_layout) applyBgLayout(map.ui_bg_layout);
-            if (map.ui_bg_opacity) CSS_MAP.ui_bg_opacity(map.ui_bg_opacity);
-            if (map.ui_bg_blur) CSS_MAP.ui_bg_blur(map.ui_bg_blur);
+            applyBgLayout(valueOr(map, 'ui_bg_layout'));
+            CSS_MAP.ui_bg_opacity(valueOr(map, 'ui_bg_opacity'));
+            CSS_MAP.ui_bg_blur(valueOr(map, 'ui_bg_blur'));
         }
 
         hydrateUserSliders(map);
 
         // Restore theme preset - preset values drive tint/font/border
-        const theme = map.ui_theme || '';
+        const theme = resolveThemeId(map);
         applyThemePreset(theme);
         restoreSurface(map, theme);
 
@@ -868,21 +902,19 @@ export async function restoreOnStartup() {
         }
 
         // Font
-        if (map.ui_font_size) CSS_MAP.ui_font_size(map.ui_font_size);
+        CSS_MAP.ui_font_size(valueOr(map, 'ui_font_size'));
         applyFontFamily(map.ui_font_name);
 
         // Blur - drive --blur-radius from saved style so the launcher renders
         // with the user's blur on first paint, not only after they open Settings.
-        platform.applyBlur(0, map.ui_blur_style || 'high_contrast');
+        platform.applyBlur(0, valueOr(map, 'ui_blur_style'));
 
         // Border thickness
-        if (map.ui_border_thickness) {
-            CSS_MAP.ui_border_thickness(map.ui_border_thickness);
-        }
+        CSS_MAP.ui_border_thickness(valueOr(map, 'ui_border_thickness'));
 
         // Floating layout gap + corner rounding
-        CSS_MAP.inner_gap(map.inner_gap || INNER_GAP_DEFAULT);
-        if (map.ui_surface_radius) CSS_MAP.ui_surface_radius(map.ui_surface_radius);
+        CSS_MAP.inner_gap(valueOr(map, 'inner_gap'));
+        CSS_MAP.ui_surface_radius(valueOr(map, 'ui_surface_radius'));
     } catch {
         // Config may not exist yet
     }
@@ -984,20 +1016,10 @@ async function loadConfig() {
         for (const entry of cfg.entries) map[entry.key] = entry.value;
 
         // Theme dropdown (custom)
-        const currentTheme = document.documentElement.getAttribute('data-theme') || '';
-        const themeDD = document.getElementById('settings-theme');
-        const activeItem = themeDD.querySelector(
-            `.settings-dropdown-item[data-value="${currentTheme}"]`,
-        );
-        if (activeItem) {
-            themeDD.querySelector('.settings-dropdown-label').textContent = activeItem.textContent;
-            for (const el of themeDD.querySelector('.settings-dropdown-menu').children)
-                el.classList.remove('settings-dropdown-active');
-            activeItem.classList.add('settings-dropdown-active');
-        }
+        setThemeDropdown(resolveThemeId(map));
 
         // Blur style dropdown
-        const blurStyle = map.ui_blur_style || 'high_contrast';
+        const blurStyle = valueOr(map, 'ui_blur_style');
         const blurDD = document.getElementById('settings-blur-style');
         const blurActiveItem = blurDD.querySelector(
             `.settings-dropdown-item[data-value="${blurStyle}"]`,
@@ -1014,14 +1036,14 @@ async function loadConfig() {
         }
 
         // Font name
-        const fontName = map.ui_font_name || DEFAULT_FONT_NAME;
+        const fontName = valueOr(map, 'ui_font_name');
         document.getElementById('settings-font-name').value = fontName;
 
         // Populate all data-key sliders
         // If a built-in theme is active, use preset values for theme keys -
         // but keep the user's value for user-controlled keys (opacities,
         // border thickness) so they survive theme switches.
-        const activeTheme = map.ui_theme || '';
+        const activeTheme = resolveThemeId(map);
         const preset = activeTheme && activeTheme !== 'custom' ? THEME_PRESETS[activeTheme] : null;
         for (const row of screen.querySelectorAll('.settings-row[data-key]')) {
             const key = row.dataset.key;
@@ -1031,16 +1053,11 @@ async function loadConfig() {
 
             const presetVal = preset?.[key];
             const userVal = map[key];
-            // User-controlled keys: prefer the user's saved value, fall back to
-            // preset if they haven't set anything yet. Other keys: theme preset
-            // wins so the colors switch with the theme.
+            // User keys: the saved value wins. Other keys: the preset does,
+            // so colors switch with the theme.
             const val = USER_CONTROLLED_KEYS.has(key)
-                ? userVal !== undefined
-                    ? userVal
-                    : presetVal
-                : presetVal !== undefined
-                  ? presetVal
-                  : userVal;
+                ? (userVal ?? presetVal ?? defaultFor(key))
+                : (presetVal ?? userVal ?? defaultFor(key));
             if (val !== undefined) {
                 slider.value = val;
                 valueEl.textContent = formatValue(key, parseFloat(val));
@@ -1138,140 +1155,10 @@ async function loadConfig() {
     }
 }
 
-// --- Theme presets ---
+// --- Themes ---
 
-// Theme preset definitions matching theme.css custom properties.
-// Each maps to the raw slider values stored in config.
-const THEME_PRESETS = {
-    '': {
-        // Catppuccin Mocha - base #1e1e2e, surface0 #313244
-        ui_tint_red: 0.12,
-        ui_tint_green: 0.12,
-        ui_tint_blue: 0.18,
-        ui_tint_opacity: 0.95,
-        ui_font_red: 0.81,
-        ui_font_green: 0.8,
-        ui_font_blue: 0.9,
-        ui_font_opacity: 1.0,
-        ui_border_red: 0.58,
-        ui_border_green: 0.58,
-        ui_border_blue: 0.65,
-        ui_border_opacity: 0.18,
-        ui_border_thickness: 1.0,
-    },
-    'tokyo-night': {
-        ui_tint_red: 0.1,
-        ui_tint_green: 0.11,
-        ui_tint_blue: 0.15,
-        ui_tint_opacity: 0.95,
-        ui_font_red: 0.84,
-        ui_font_green: 0.87,
-        ui_font_blue: 0.96,
-        ui_font_opacity: 0.98,
-        ui_border_red: 0.66,
-        ui_border_green: 0.69,
-        ui_border_blue: 0.84,
-        ui_border_opacity: 0.1,
-        ui_border_thickness: 1.0,
-    },
-    'rose-pine': {
-        ui_tint_red: 0.1,
-        ui_tint_green: 0.09,
-        ui_tint_blue: 0.14,
-        ui_tint_opacity: 0.95,
-        ui_font_red: 0.95,
-        ui_font_green: 0.93,
-        ui_font_blue: 0.91,
-        ui_font_opacity: 0.98,
-        ui_border_red: 0.88,
-        ui_border_green: 0.87,
-        ui_border_blue: 0.96,
-        ui_border_opacity: 0.1,
-        ui_border_thickness: 1.0,
-    },
-    gruvbox: {
-        ui_tint_red: 0.16,
-        ui_tint_green: 0.16,
-        ui_tint_blue: 0.16,
-        ui_tint_opacity: 0.95,
-        ui_font_red: 0.93,
-        ui_font_green: 0.89,
-        ui_font_blue: 0.79,
-        ui_font_opacity: 0.98,
-        ui_border_red: 0.92,
-        ui_border_green: 0.86,
-        ui_border_blue: 0.7,
-        ui_border_opacity: 0.1,
-        ui_border_thickness: 1.0,
-    },
-    dracula: {
-        ui_tint_red: 0.16,
-        ui_tint_green: 0.16,
-        ui_tint_blue: 0.21,
-        ui_tint_opacity: 0.95,
-        ui_font_red: 0.97,
-        ui_font_green: 0.97,
-        ui_font_blue: 0.98,
-        ui_font_opacity: 0.98,
-        ui_border_red: 0.97,
-        ui_border_green: 0.97,
-        ui_border_blue: 0.95,
-        ui_border_opacity: 0.1,
-        ui_border_thickness: 1.0,
-    },
-    kanagawa: {
-        ui_tint_red: 0.09,
-        ui_tint_green: 0.09,
-        ui_tint_blue: 0.11,
-        ui_tint_opacity: 0.95,
-        ui_font_red: 0.87,
-        ui_font_green: 0.86,
-        ui_font_blue: 0.79,
-        ui_font_opacity: 0.98,
-        ui_border_red: 0.86,
-        ui_border_green: 0.84,
-        ui_border_blue: 0.73,
-        ui_border_opacity: 0.1,
-        ui_border_thickness: 1.0,
-    },
-    kindle: {
-        ui_tint_red: 0.97,
-        ui_tint_green: 0.95,
-        ui_tint_blue: 0.9,
-        ui_tint_opacity: 0.93,
-        ui_font_red: 0.13,
-        ui_font_green: 0.12,
-        ui_font_blue: 0.1,
-        ui_font_opacity: 1.0,
-        ui_border_red: 0.42,
-        ui_border_green: 0.38,
-        ui_border_blue: 0.32,
-        ui_border_opacity: 0.26,
-        ui_border_thickness: 1.0,
-    },
-    // macOS Themes/LiquidTheme.
-    liquid: {
-        ui_tint_red: 0.1,
-        ui_tint_green: 0.13,
-        ui_tint_blue: 0.2,
-        ui_tint_opacity: 0.78,
-        ui_font_red: 0.98,
-        ui_font_green: 0.98,
-        ui_font_blue: 1.0,
-        ui_font_opacity: 1.0,
-        ui_border_red: 1.0,
-        ui_border_green: 1.0,
-        ui_border_blue: 1.0,
-        ui_border_opacity: 0.1,
-        ui_border_thickness: 1.0,
-    },
-};
-
-// How a preset renders its surfaces, not what colour they are (macOS
-// ThemeSurface). Stored under its own key, not derived from the theme name:
-// nudging a slider drops `ui_theme` to "custom", and the glass must not go
-// with it.
-const THEME_SURFACES = { liquid: 'liquid' };
+// Stored under its own key, not derived from the theme name: nudging a slider
+// drops `ui_theme` to "custom", and the glass must not go with it.
 const SURFACE_KEY = 'ui_surface';
 
 function surfaceForTheme(themeId) {
@@ -1295,16 +1182,6 @@ function restoreSurface(map, themeId) {
     applySurface(map[SURFACE_KEY] ?? surfaceForTheme(themeId));
 }
 
-// Keys that belong to the user, not the theme - preserved when switching
-// themes so the user doesn't lose their custom transparency / border tweaks.
-const USER_CONTROLLED_KEYS = new Set([
-    'ui_tint_opacity',
-    'ui_font_opacity',
-    'ui_border_opacity',
-    'ui_border_thickness',
-    'ui_surface_radius',
-]);
-
 // applyThemePreset skips these keys and then reads them back off the sliders,
 // so the saved values have to be in the DOM before it runs. Without this a
 // restore or reload computes the tint from whatever the last theme left there,
@@ -1316,13 +1193,6 @@ function hydrateUserSliders(map) {
         if (slider) slider.value = map[key];
     }
 }
-
-// Presets whose surface *is* their transparency: paper at a dark theme's
-// opacity isn't paper, glass at a near-opaque one is a panel. Switching to one
-// takes those keys back, and persists them so config and sliders agree on the
-// next launch; they are the user's again from the next drag.
-const OPACITY_OWNING_THEMES = new Set(['kindle', 'liquid']);
-const OPACITY_SWITCH_KEYS = ['ui_tint_opacity', 'ui_font_opacity', 'ui_border_opacity'];
 
 function switchOverrides(themeId) {
     const preset = THEME_PRESETS[themeId];
@@ -1457,8 +1327,12 @@ function applytint() {
         return;
     }
     const tintA = getSliderVal('ui_tint_opacity');
-    const blurA = effectiveBlurOpacity(getSliderVal('ui_blur_opacity') || 0.95);
-    const settingsBlur = active ? getSliderVal('settings_blur_multiplier') || 1.0 : 1.0;
+    const blurA = effectiveBlurOpacity(
+        getSliderVal('ui_blur_opacity') || defaultFor('ui_blur_opacity'),
+    );
+    const settingsBlur = active
+        ? getSliderVal('settings_blur_multiplier') || defaultFor('settings_blur_multiplier')
+        : defaultFor('settings_blur_multiplier');
     const a = tintA * blurA * settingsBlur;
     document.documentElement.style.setProperty(
         '--bg-tint',
@@ -1468,11 +1342,11 @@ function applytint() {
 
 // An inline --font-family beats every theme block, so a preset that ships its
 // own stack (Kindle's serif) only survives while the user has picked no font of
-// their own. Save Config stores DEFAULT_FONT_NAME for an empty field, so that
-// value has to read as "no choice" rather than as a literal family.
+// their own. Save Config stores ui_font_name's default for an empty field, so
+// that value has to read as "no choice" rather than as a literal family.
 function applyFontFamily(name) {
     const style = document.documentElement.style;
-    if (!name || name === DEFAULT_FONT_NAME) {
+    if (!name || name === THEME_DEFAULTS.ui_font_name) {
         style.removeProperty('--font-family');
         return;
     }
@@ -1501,6 +1375,10 @@ function applyBorderColor() {
     );
 }
 
+function numOr(map, key) {
+    return parseFloat(valueOr(map, key));
+}
+
 function applyBlurOpacity() {
     // Re-apply tint with blur opacity as a multiplier on the tint alpha
     applytint();
@@ -1508,9 +1386,9 @@ function applyBlurOpacity() {
 
 // Used by restoreOnStartup (no DOM sliders available yet)
 function applyTintFromMap(map) {
-    const r = Math.round(parseFloat(map.ui_tint_red ?? 0.12) * 255);
-    const g = Math.round(parseFloat(map.ui_tint_green ?? 0.12) * 255);
-    const b = Math.round(parseFloat(map.ui_tint_blue ?? 0.18) * 255);
+    const r = Math.round(numOr(map, 'ui_tint_red') * 255);
+    const g = Math.round(numOr(map, 'ui_tint_green') * 255);
+    const b = Math.round(numOr(map, 'ui_tint_blue') * 255);
     if (!platform.hasCompositor()) {
         document.documentElement.style.setProperty('--bg-tint', `rgb(${r}, ${g}, ${b})`);
         return;
@@ -1519,8 +1397,8 @@ function applyTintFromMap(map) {
         document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, 0.97)`);
         return;
     }
-    const tintA = parseFloat(map.ui_tint_opacity ?? 0.95);
-    const blurA = effectiveBlurOpacity(parseFloat(map.ui_blur_opacity ?? 0.95));
+    const tintA = numOr(map, 'ui_tint_opacity');
+    const blurA = effectiveBlurOpacity(numOr(map, 'ui_blur_opacity'));
     const a = tintA * blurA;
     document.documentElement.style.setProperty(
         '--bg-tint',
@@ -1530,10 +1408,10 @@ function applyTintFromMap(map) {
 
 function applyFontColorFromMap(map) {
     if (!map.ui_font_red && !map.ui_font_green && !map.ui_font_blue) return;
-    const r = Math.round((parseFloat(map.ui_font_red) || 0.96) * 255);
-    const g = Math.round((parseFloat(map.ui_font_green) || 0.96) * 255);
-    const b = Math.round((parseFloat(map.ui_font_blue) || 0.98) * 255);
-    const a = parseFloat(map.ui_font_opacity) || 0.96;
+    const r = Math.round(numOr(map, 'ui_font_red') * 255);
+    const g = Math.round(numOr(map, 'ui_font_green') * 255);
+    const b = Math.round(numOr(map, 'ui_font_blue') * 255);
+    const a = numOr(map, 'ui_font_opacity');
     document.documentElement.style.setProperty(
         '--font-color',
         `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})`,
@@ -1541,17 +1419,12 @@ function applyFontColorFromMap(map) {
 }
 
 function applyBorderFromMap(map) {
-    if (map.ui_border_thickness) {
-        document.documentElement.style.setProperty(
-            '--border-thickness',
-            map.ui_border_thickness + 'px',
-        );
-    }
+    CSS_MAP.ui_border_thickness(valueOr(map, 'ui_border_thickness'));
     if (!map.ui_border_red && !map.ui_border_green && !map.ui_border_blue) return;
-    const r = Math.round((parseFloat(map.ui_border_red) || 1.0) * 255);
-    const g = Math.round((parseFloat(map.ui_border_green) || 1.0) * 255);
-    const b = Math.round((parseFloat(map.ui_border_blue) || 1.0) * 255);
-    const a = parseFloat(map.ui_border_opacity) || 0.12;
+    const r = Math.round(numOr(map, 'ui_border_red') * 255);
+    const g = Math.round(numOr(map, 'ui_border_green') * 255);
+    const b = Math.round(numOr(map, 'ui_border_blue') * 255);
+    const a = numOr(map, 'ui_border_opacity');
     document.documentElement.style.setProperty(
         '--border-color',
         `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})`,

@@ -25,14 +25,11 @@
                     <span>Theme</span>
                     <div class="settings-dropdown" id="settings-theme">
                         <button class="settings-dropdown-btn" type="button">
-                            <span class="settings-dropdown-label">Catppuccin</span>
+                            <span class="settings-dropdown-label">Kanagawa</span>
                             <span class="settings-dropdown-arrow">&#9662;</span>
                         </button>
                         <div class="settings-dropdown-menu" hidden>
-                            <div
-                                class="settings-dropdown-item settings-dropdown-active"
-                                data-value=""
-                            >
+                            <div class="settings-dropdown-item" data-value="catppuccin">
                                 Catppuccin
                             </div>
                             <div class="settings-dropdown-item" data-value="tokyo-night">
@@ -124,15 +121,8 @@
                         title="i3-style gap between the top row, results list and preview. 0 = flat layout; higher turns each into its own card."
                     >
                         <label class="settings-label">Inner Gap</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="24"
-                            step="1"
-                            value="7"
-                        />
-                        <span class="settings-slider-value">7</span>
+                        <input type="range" class="settings-slider" min="0" max="24" step="1" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div
                         class="settings-row"
@@ -140,15 +130,8 @@
                         title="Corner rounding, shared by every surface: the window, the top bar, the launchpad tiles and the controls. 0 = square."
                     >
                         <label class="settings-label">Corner Radius</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="2.5"
-                            step="0.1"
-                            value="1.5"
-                        />
-                        <span class="settings-slider-value">1.50</span>
+                        <input type="range" class="settings-slider" min="0" max="2.5" step="0.1" />
+                        <span class="settings-slider-value"></span>
                     </div>
                 </div>
 
@@ -161,51 +144,23 @@
                 <div class="settings-section">
                     <div class="settings-row" data-key="ui_tint_red">
                         <label class="settings-label">Red</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.12"
-                        />
-                        <span class="settings-slider-value">0.12</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row" data-key="ui_tint_green">
                         <label class="settings-label">Green</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.12"
-                        />
-                        <span class="settings-slider-value">0.12</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row" data-key="ui_tint_blue">
                         <label class="settings-label">Blue</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.18"
-                        />
-                        <span class="settings-slider-value">0.18</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row" data-key="ui_tint_opacity">
                         <label class="settings-label">Tint Opacity</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.95"
-                        />
-                        <span class="settings-slider-value">0.95</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                 </div>
 
@@ -216,27 +171,13 @@
                 <div class="settings-section">
                     <div class="settings-row" data-key="ui_blur_opacity">
                         <label class="settings-label">Blur Opacity</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.95"
-                        />
-                        <span class="settings-slider-value">0.95</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row" data-key="settings_blur_multiplier">
                         <label class="settings-label">Settings Blur</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0.4"
-                            max="1"
-                            step="0.01"
-                            value="1"
-                        />
-                        <span class="settings-slider-value">1.00</span>
+                        <input type="range" class="settings-slider" min="0.4" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row">
                         <label class="settings-label">Blur Style</label>
@@ -276,7 +217,6 @@
                                 type="text"
                                 class="settings-text-input"
                                 id="settings-font-name"
-                                value="system-ui"
                                 spellcheck="false"
                                 autocomplete="off"
                             />
@@ -290,15 +230,8 @@
                     </div>
                     <div class="settings-row" data-key="ui_font_size">
                         <label class="settings-label">Font Size</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="10"
-                            max="28"
-                            step="1"
-                            value="14"
-                        />
-                        <span class="settings-slider-value">14.00</span>
+                        <input type="range" class="settings-slider" min="10" max="28" step="1" />
+                        <span class="settings-slider-value"></span>
                     </div>
                 </div>
 
@@ -309,51 +242,23 @@
                 <div class="settings-section">
                     <div class="settings-row" data-key="ui_font_red">
                         <label class="settings-label">Text Red</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.81"
-                        />
-                        <span class="settings-slider-value">0.81</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row" data-key="ui_font_green">
                         <label class="settings-label">Text Green</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.80"
-                        />
-                        <span class="settings-slider-value">0.80</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row" data-key="ui_font_blue">
                         <label class="settings-label">Text Blue</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.90"
-                        />
-                        <span class="settings-slider-value">0.90</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row" data-key="ui_font_opacity">
                         <label class="settings-label">Text Opacity</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="1.00"
-                        />
-                        <span class="settings-slider-value">1.00</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                 </div>
 
@@ -364,63 +269,28 @@
                 <div class="settings-section">
                     <div class="settings-row" data-key="ui_border_thickness">
                         <label class="settings-label">Border Thick</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="6"
-                            step="0.5"
-                            value="1.0"
-                        />
-                        <span class="settings-slider-value">1.00</span>
+                        <input type="range" class="settings-slider" min="0" max="6" step="0.5" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row" data-key="ui_border_red">
                         <label class="settings-label">Border Red</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.58"
-                        />
-                        <span class="settings-slider-value">0.58</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row" data-key="ui_border_green">
                         <label class="settings-label">Border Green</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.58"
-                        />
-                        <span class="settings-slider-value">0.58</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row" data-key="ui_border_blue">
                         <label class="settings-label">Border Blue</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.65"
-                        />
-                        <span class="settings-slider-value">0.65</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row" data-key="ui_border_opacity">
                         <label class="settings-label">Border Opacity</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.18"
-                        />
-                        <span class="settings-slider-value">0.18</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                 </div>
             </div>
@@ -715,27 +585,13 @@
                     </div>
                     <div class="settings-row" data-key="ui_bg_opacity">
                         <label class="settings-label">Image Opacity</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="0.62"
-                        />
-                        <span class="settings-slider-value">0.62</span>
+                        <input type="range" class="settings-slider" min="0" max="1" step="0.01" />
+                        <span class="settings-slider-value"></span>
                     </div>
                     <div class="settings-row" data-key="ui_bg_blur">
                         <label class="settings-label">Image Blur</label>
-                        <input
-                            type="range"
-                            class="settings-slider"
-                            min="0"
-                            max="30"
-                            step="0.1"
-                            value="10.30"
-                        />
-                        <span class="settings-slider-value">10.30</span>
+                        <input type="range" class="settings-slider" min="0" max="30" step="0.1" />
+                        <span class="settings-slider-value"></span>
                     </div>
                 </div>
 
