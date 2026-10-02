@@ -111,7 +111,7 @@
     --chip-radius: calc(6px * var(--surface-radius-scale));
     --micro-radius: calc(4px * var(--surface-radius-scale));
     /* Square until the environment is known to composite; see below. */
-    --corner-radius: 0;
+    --corner-radius: 0px;
 
     /* Floating "inner-gap" layout (0 = classic framed panel) */
     --inner-gap: 0px;
