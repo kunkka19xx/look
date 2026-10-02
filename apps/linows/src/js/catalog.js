@@ -117,11 +117,11 @@ export function isCommandId(id) {
     return COMMAND_ENTRIES.some((entry) => entry.id === id);
 }
 
-// True when `:cmd <ws>` should bypass the discovery menu and live-trigger
-// the command panel (matches macOS extractInlineCommand). Bare `:calc` keeps
+// True when `:cmd <ws>` or `/cmd <ws>` should bypass the discovery menu and live-trigger
+// the command panel (matches macOS extractInlineCommand). Bare `:calc` or `/calc` keeps
 // the menu open; only whitespace after a known id flips the trigger.
 function isInlineCommandWithArgs(query) {
-    if (!query.startsWith(':')) return false;
+    if (!query.startsWith(':') && !query.startsWith('/')) return false;
     const spaceIdx = query.slice(1).search(/\s/);
     if (spaceIdx < 0) return false;
     return isCommandId(query.slice(1, 1 + spaceIdx).toLowerCase());
@@ -131,21 +131,27 @@ export function isPrefixSuggestionQuery(query) {
     return query.trimStart().startsWith(DISCOVERY_CHAR);
 }
 
-// True when the query is in any prefix-driven mode: the `"`/`:` discovery
-// menus, an inline `:cmd <args>`, or one of the PREFIX_ENTRIES (a"/f"/d"/
+// True when the query is in any prefix-driven mode: the `"`/`:`/`/` discovery
+// menus, an inline `:cmd <args>` or `/cmd <args>`, or one of the PREFIX_ENTRIES (a"/f"/d"/
 // rc"/r"/c"/t"). Web suggestions and AI/Wikipedia lookups are gated off
 // for these. The query is a launcher scope, not a knowledge question.
 // Adding a new prefix to PREFIX_ENTRIES picks up everywhere automatically.
 export function isPrefixedQuery(query) {
     const trimmed = (query || '').trimStart();
     if (!trimmed) return false;
-    if (trimmed.startsWith(DISCOVERY_CHAR) || trimmed.startsWith(':')) return true;
+    if (trimmed.startsWith(DISCOVERY_CHAR) || trimmed.startsWith(':') || trimmed.startsWith('/')) return true;
     return PREFIX_ENTRIES.some((e) => trimmed.startsWith(e.prefix));
 }
 
 export function isCommandSuggestionQuery(query) {
     const trimmed = query.trimStart();
-    return trimmed.startsWith(':') && !isInlineCommandWithArgs(trimmed);
+    if (!trimmed.startsWith(':') && !trimmed.startsWith('/')) return false;
+    if (isInlineCommandWithArgs(trimmed)) return false;
+    if (trimmed === ':' || trimmed === '/') return true;
+    const filter = trimmed.slice(1).trim().toLowerCase();
+    return COMMAND_ENTRIES.some(
+        (e) => e.id.toLowerCase().includes(filter) || e.detail.toLowerCase().includes(filter),
+    );
 }
 
 // Synthetic rows backing the `"` menu, narrowed by what the user typed after

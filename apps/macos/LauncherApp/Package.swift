@@ -28,6 +28,7 @@ let package = Package(
                 "Support/Launcher/SyntheticRow.swift",
                 "Support/Launcher/PreviewText.swift",
                 "Support/Launcher/QueryRetentionPolicy.swift",
+                "Support/Launcher/InlineCommand.swift",
                 "Support/AI/OllamaCodec.swift",
                 "Support/AI/AIRequest.swift",
                 "Support/AI/LocalHostCheck.swift",

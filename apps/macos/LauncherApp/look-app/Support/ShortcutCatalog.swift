@@ -82,7 +82,7 @@ enum ShortcutCatalog {
             ShortcutEntry("main.terminal", "Cmd+T", "Open a terminal there (set terminal); switches theme when no row is selected"),
             ShortcutEntry("main.webSearch", "Cmd+Enter", "Search current query on Google"),
             ShortcutEntry("main.commandMode", "Cmd+/", "Enter command mode"),
-            ShortcutEntry("main.commandJump", ":cmd", "Jump to a command from home (e.g. :calc 2+2, :kill chrome)", remappable: false),
+            ShortcutEntry("main.commandJump", "/cmd or :cmd", "Jump to a command from home (e.g. /calc 2+2, :kill chrome)", remappable: false),
             ShortcutEntry("main.hideApp", "Cmd+Shift+H", "Hide the selected app from Look"),
             ShortcutEntry("main.help", "Cmd+H", "Toggle this help screen"),
             ShortcutEntry("main.back", "Esc", "Back / close (context dependent)"),

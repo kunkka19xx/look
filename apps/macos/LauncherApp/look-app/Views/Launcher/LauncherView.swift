@@ -438,24 +438,19 @@ struct LauncherView: View {
         }
     }
 
-    /// A leading `:` opens the command-discovery menu: every command with its
-    /// description. Typing after the `:` (e.g. `:process`) filters by id and
-    /// description; picking one enters that command. A `:<exact-id> <args>`
-    /// live-trigger (e.g. `:calc 2+2`) jumps straight into the command instead
+    /// A leading `:` or `/` opens the command-discovery menu: every command with its
+    /// description. Typing after the prefix (e.g. `:process` or `/calc`) filters by id and
+    /// description; picking one enters that command. A `:<exact-id> <args>` or `/<exact-id> <args>`
+    /// live-trigger (e.g. `:calc 2+2` or `/calc 2+2`) jumps straight into the command instead
     /// (handled in `onChange(of: query)`), so it isn't a discovery query.
     var isCommandSuggestionQuery: Bool {
         guard !isCommandMode else { return false }
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix(":") else { return false }
-        if let cmd = extractInlineCommand(from: query), cmd.hasSpace { return false }
-        return true
+        return InlineCommand.isDiscoveryQuery(input: query, catalog: commandCatalog)
     }
 
-    /// The text typed after the leading `:`, used to filter the command menu.
+    /// The text typed after the leading `:` or `/`, used to filter the command menu.
     var commandSuggestionFilter: String {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix(":") else { return "" }
-        return String(trimmed.dropFirst())
+        InlineCommand.filter(from: query)
     }
 
     /// Synthetic results backing the command-discovery menu. Rendered through the
@@ -759,7 +754,11 @@ struct LauncherView: View {
         guard activeCommandID == nil else { return "" }
         let normalized = commandInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return "" }
-        return normalized.split(maxSplits: 1, whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
+        var name = normalized.split(maxSplits: 1, whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
+        if name.hasPrefix("/") || name.hasPrefix(":") {
+            name.removeFirst()
+        }
+        return name
     }
 
     var commandArgsPart: String {
