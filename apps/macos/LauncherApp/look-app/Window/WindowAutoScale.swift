@@ -18,16 +18,32 @@ import Foundation
 /// every show (see `LauncherView.toggleWindowVisibility`).
 enum WindowAutoScale {
     // 840×560 logical (3:2), landscape - list pane + preview pane side by side.
+    static let standardBaseWidth: CGFloat = 840
+    static let standardBaseHeight: CGFloat = 560
+
     static var baseWidth: CGFloat {
-        CGFloat(max(ThemeStore.shared.settings.windowWidth, ThemeStore.shared.settings.searchBarWidth))
+        if AppUIState.shared.showsThemeSettings {
+            return standardBaseWidth
+        }
+        return CGFloat(max(ThemeStore.shared.settings.windowWidth, ThemeStore.shared.settings.searchBarWidth))
     }
-    static let baseHeight: CGFloat = 560
+    static var baseHeight: CGFloat {
+        standardBaseHeight
+    }
 
     // Compact: tall enough for 6-7 rows. Mirrors COMPACT_W/H in the Linux/Windows build.
     static var compactBaseWidth: CGFloat {
-        CGFloat(max(min(ThemeStore.shared.settings.windowWidth, 680), ThemeStore.shared.settings.searchBarWidth))
+        if AppUIState.shared.showsThemeSettings {
+            return standardBaseWidth
+        }
+        return CGFloat(max(min(ThemeStore.shared.settings.windowWidth, 680), ThemeStore.shared.settings.searchBarWidth))
     }
-    static let compactBaseHeight: CGFloat = 440
+    static var compactBaseHeight: CGFloat {
+        if AppUIState.shared.showsThemeSettings {
+            return standardBaseHeight
+        }
+        return 440
+    }
 
     /// Extra points to lift the launcher above vertical center. The window is
     /// centered on the screen (middle - height/2), then raised by this so the
@@ -44,6 +60,9 @@ enum WindowAutoScale {
     /// Base (unscaled) size of the launcher window. Running apps render inside
     /// the search bar, so the window is always the bordered-panel size.
     static func baseSize(for layout: LauncherLayout) -> CGSize {
+        if AppUIState.shared.showsThemeSettings {
+            return CGSize(width: standardBaseWidth, height: standardBaseHeight)
+        }
         switch layout {
         case .split: return CGSize(width: baseWidth, height: baseHeight)
         case .compact: return CGSize(width: compactBaseWidth, height: compactBaseHeight)

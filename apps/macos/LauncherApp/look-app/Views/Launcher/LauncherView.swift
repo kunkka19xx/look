@@ -939,11 +939,13 @@ struct LauncherView: View {
             }
         }
         .onChange(of: themeStore.settings.windowWidth) { _, _ in
+            guard !appUIState.showsThemeSettings else { return }
             if let window = launcherWindow() {
                 positionOnActiveScreen(window)
             }
         }
         .onChange(of: themeStore.settings.searchBarWidth) { _, _ in
+            guard !appUIState.showsThemeSettings else { return }
             if let window = launcherWindow() {
                 positionOnActiveScreen(window)
             }
@@ -1040,6 +1042,9 @@ struct LauncherView: View {
             } else {
                 startKeyboardNavigationIfNeeded()
                 focusActiveInput()
+            }
+            if let window = launcherWindow() {
+                positionOnActiveScreen(window)
             }
         }
         .onMoveCommand { direction in
@@ -1345,8 +1350,6 @@ struct LauncherView: View {
     private var panelContent: some View {
         if appUIState.showsThemeSettings {
             ThemeSettingsView(settings: $themeStore.settings)
-                .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
-                .frame(maxWidth: .infinity, alignment: .center)
         } else {
             if showsTopRowBar {
                 // The search field and running-apps icons always share one
