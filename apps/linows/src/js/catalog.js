@@ -239,6 +239,11 @@ export function webSuggestionFromResultId(resultId) {
 export const WEB_URL_OPEN_SUBTITLE = 'Open in browser';
 export const WEB_URL_RECENT_SUBTITLE = 'Recently opened';
 
+// `PID: 1234 • Port: 3000 8080`, shared by the `ps"` row and the kill list.
+export function processPidLabel(pid, ports) {
+    return ports?.length ? `PID: ${pid} • Port: ${ports.join(' ')}` : `PID: ${pid}`;
+}
+
 export function webUrlResult(url, subtitle, score) {
     return {
         id: `${WEB_URL_ID}${url}`,

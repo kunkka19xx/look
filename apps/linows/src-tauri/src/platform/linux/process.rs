@@ -21,6 +21,9 @@ const PROC: &str = "/proc";
 /// bytes, so any name at the limit may be cut off mid-word.
 const COMM_NAME_MAX: usize = 15;
 
+/// Appended by the kernel to `/proc/<pid>/exe` once the binary is replaced on disk.
+const DELETED_EXE_SUFFIX: &str = " (deleted)";
+
 /// A running app: a `.desktop` entry matched to one or more live PIDs (all the
 /// processes whose normalized `/proc` name matched the entry's Exec).
 struct AppMatch {
@@ -831,47 +834,13 @@ pub(crate) fn list_all() -> Vec<ProcRow> {
         if name.is_empty() {
             continue;
         }
-        // `Name:` is TASK_COMM_LEN-1 == 15 chars, so `Presentation.Service` → `Presentation.Sy`.
-        // Prefer the untruncated `exe` basename; for interpreter launches the exe
-        // is the interpreter itself, so the real app is the first file-path arg.
         if name.len() >= COMM_NAME_MAX {
-            let exe_base = fs::read_link(format!("{PROC}/{pid}/exe"))
-                .ok()
-                .and_then(|p| {
-                    p.file_name()
-                        .and_then(|s| s.to_str())
-                        .map(|s| s.to_string())
-                });
-            if let Some(base) = exe_base.clone()
-                && !base.is_empty()
-            {
-                name = base;
-            }
-
-            if let Ok(bytes) = fs::read(format!("{PROC}/{pid}/cmdline")) {
-                // Split the raw NUL-separated argv, not the space-joined display
-                // string: a path with spaces (e.g. `/opt/My App/service.py`) must
-                // stay one argument or `file_stem` picks the wrong word.
-                let args = cmdline_args(&bytes);
-                let first = args.first().map(String::as_str).unwrap_or("");
-                let first_base = Path::new(first)
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("");
-                // Interpreter case: exe == argv0 (e.g. dotnet/dotnet, python/python3)
-                let is_interpreter =
-                    exe_base.as_deref() == Some(first_base) && !first_base.is_empty();
-                if is_interpreter || name.len() >= COMM_NAME_MAX {
-                    for arg in args.iter().skip(1) {
-                        if (arg.contains('/') || arg.contains('\\'))
-                            && let Some(stem) = Path::new(arg).file_stem().and_then(|s| s.to_str())
-                            && !stem.is_empty()
-                        {
-                            name = stem.to_string();
-                            break;
-                        }
-                    }
-                }
+            let exe = fs::read_link(format!("{PROC}/{pid}/exe")).ok();
+            let args = fs::read(format!("{PROC}/{pid}/cmdline"))
+                .map(|bytes| cmdline_args(&bytes))
+                .unwrap_or_default();
+            if let Some(full) = untruncated_name(&name, exe.as_deref(), &args) {
+                name = full;
             }
         }
         let ports = if inode_ports.is_empty() {
@@ -887,6 +856,23 @@ pub(crate) fn list_all() -> Vec<ProcRow> {
         });
     }
     rows
+}
+
+/// `comm` is cut at `COMM_NAME_MAX` bytes, so the real name is whichever
+/// candidate it prefixes: the exe basename for a native binary, else an argv
+/// entry for a shebang script, whose exe is the interpreter.
+fn untruncated_name(comm: &str, exe: Option<&Path>, args: &[String]) -> Option<String> {
+    let exe_base = exe
+        .and_then(|p| p.file_name()?.to_str())
+        .map(|base| base.trim_end_matches(DELETED_EXE_SUFFIX));
+    let arg_bases = args
+        .iter()
+        .filter_map(|arg| Path::new(arg).file_name()?.to_str());
+    exe_base
+        .into_iter()
+        .chain(arg_bases)
+        .find(|base| base.len() > comm.len() && base.starts_with(comm))
+        .map(str::to_string)
 }
 
 /// Map every listening (state 0A) TCP socket inode to its port, from
@@ -1238,10 +1224,43 @@ mod tests {
     fn cmdline_args_keep_paths_with_spaces_intact() {
         let args = cmdline_args(b"/usr/bin/python3\0/opt/My App/service.py\0");
         assert_eq!(args, vec!["/usr/bin/python3", "/opt/My App/service.py"]);
-        // The fallback derives the stem from the whole argument, not a word.
+    }
+
+    #[test]
+    fn untruncated_name_matches_the_comm_prefix() {
+        let cases = [
+            (
+                "gnome-text-edit",
+                "/b/gnome-text-editor",
+                "/h/notes.txt",
+                "gnome-text-editor",
+            ),
+            (
+                "gnome-software-",
+                "/b/gnome-software-svc (deleted)",
+                "",
+                "gnome-software-svc",
+            ),
+            (
+                "Presentation.Sv",
+                "/b/python3.12",
+                "/o/My App/Presentation.Svc.py",
+                "Presentation.Svc.py",
+            ),
+            (
+                "chrome_crashpad",
+                "/b/chrome_crashpad_handler",
+                "--db=/h/Crash Rep",
+                "chrome_crashpad_handler",
+            ),
+        ];
+        for (comm, exe, arg, want) in cases {
+            let got = untruncated_name(comm, Some(Path::new(exe)), &[arg.to_string()]);
+            assert_eq!(got.as_deref(), Some(want), "{comm}");
+        }
         assert_eq!(
-            Path::new(&args[1]).file_stem().and_then(|s| s.to_str()),
-            Some("service")
+            untruncated_name("chrome_crashpad", None, &["--x=/a/Crash".into()]),
+            None
         );
     }
 

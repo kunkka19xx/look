@@ -36,11 +36,9 @@ struct KillCommand {
         }
     }
 
-    /// `PID: 1234` plus `· Port: 3000` per listening port, matching the `ps"`
-    /// row. App rows carry no ports of their own, so both paths read the snapshot.
+    /// App rows carry no ports of their own, so both paths read the snapshot.
     private static func detail(pid: Int32, ports: [Int32: [Int]]) -> String {
-        guard let listening = ports[pid], !listening.isEmpty else { return "PID: \(pid)" }
-        return "PID: \(pid) · Port: " + listening.map(String.init).joined(separator: " ")
+        LauncherProcessFeature.pidLabel(pid: pid, ports: ports[pid] ?? [])
     }
 
     /// Strips the optional `:` / `port ` port-search affordance so `:3000` and

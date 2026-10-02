@@ -1,3 +1,5 @@
+import { processPidLabel } from '../../catalog.js';
+
 const SEARCH_DEBOUNCE_MS = 140;
 
 let panel = null;
@@ -169,12 +171,13 @@ function filterProcesses(query) {
     selectedIndex = Math.min(selectedIndex, Math.max(0, filteredProcesses.length - 1));
 }
 
-// `PID: 1234` plus `• Port: 3000 8080` when the process listens, mirroring the
-// `ps"` row so a service can be identified by port before killing it.
-function pidLabel(proc) {
-    const ports = proc.ports || [];
-    const portHint = ports.length ? ` \u2022 Port: ${ports.join(' ')}` : '';
-    return `PID: ${proc.pid}${portHint}`;
+function renderPidLabel(el, proc, isActive) {
+    el.textContent = processPidLabel(proc.pid, proc.ports);
+    if (!isActive) return;
+    const enter = document.createElement('span');
+    enter.className = 'cmd-proc-enter';
+    enter.textContent = '→ Enter';
+    el.append(' ', enter);
 }
 
 function renderList() {
@@ -222,11 +225,7 @@ function renderList() {
 
         const pid = document.createElement('span');
         pid.className = 'cmd-proc-pid';
-        if (i === selectedIndex) {
-            pid.innerHTML = `${pidLabel(proc)} <span class="cmd-proc-enter">\u2192 Enter</span>`;
-        } else {
-            pid.textContent = pidLabel(proc);
-        }
+        renderPidLabel(pid, proc, i === selectedIndex);
         row.appendChild(pid);
 
         row.addEventListener('click', () => {
@@ -248,14 +247,7 @@ function updateSelection() {
         row.classList.toggle('cmd-proc-row-active', isActive);
 
         const pidEl = row.querySelector('.cmd-proc-pid');
-        if (pidEl) {
-            const proc = filteredProcesses[i];
-            if (isActive) {
-                pidEl.innerHTML = `${pidLabel(proc)} <span class="cmd-proc-enter">\u2192 Enter</span>`;
-            } else {
-                pidEl.textContent = pidLabel(proc);
-            }
-        }
+        if (pidEl) renderPidLabel(pidEl, filteredProcesses[i], isActive);
     }
 
     const activeRow = listEl.querySelector('.cmd-proc-row-active');
@@ -270,7 +262,7 @@ function updateConfirmBar() {
     const proc = filteredProcesses.find((p) => p.pid === confirmPid);
     confirmBar.hidden = false;
     confirmTitle.textContent = `Kill ${proc ? proc.name : ''}?`;
-    confirmPidEl.textContent = proc ? pidLabel(proc) : `PID: ${confirmPid}`;
+    confirmPidEl.textContent = proc ? processPidLabel(proc.pid, proc.ports) : `PID: ${confirmPid}`;
 
     confirmIcon.style.display = 'none';
     if (getIconFn && proc?.desktop_id) {
