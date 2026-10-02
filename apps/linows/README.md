@@ -97,7 +97,7 @@ is detected. On i3, sway, or minimal distros without GNOME, these entries are sk
 | `curl`         | Web answers, translation, `/speed` | Answers stay empty; speed test reports "curl is not available on this system" |
 | `xclip`        | Copy files to clipboard (X11)     | Shows "Copy failed" banner |
 | `wl-clipboard` | Copy files to clipboard (Wayland) | Shows "Copy failed" banner |
-| `gtk-layer-shell` | Showing over a fullscreen window on wlroots compositors (sway, niri, Hyprland) | Normal toplevel window: a fullscreen window stays on top |
+| `gtk-layer-shell` | Overlay window on Wayland compositors with `wlr-layer-shell` (KDE Plasma, sway, niri, Hyprland): above fullscreen windows, out of the taskbar and Alt+Tab | Normal toplevel window: listed in the taskbar and Alt+Tab, and a fullscreen window stays on top |
 
 Text clipboard (copy path, clipboard history) works without any external tools.
 File clipboard (copy a file to paste into a file manager) needs one of the above.
@@ -105,22 +105,23 @@ File clipboard (copy a file to paste into a file manager) needs one of the above
 `gtk-layer-shell` is dlopened at runtime, never linked, so a system without it starts
 normally and logs one line. It only changes anything under a compositor that implements
 `wlr-layer-shell`; GNOME/mutter does not, so there it makes no difference either way.
+The AUR package (`look-bin`) depends on it, and the `.deb` recommends it.
 
 ```bash
 # Debian/Ubuntu
 sudo apt install xclip                    # X11
 sudo apt install wl-clipboard             # Wayland
-sudo apt install libgtk-layer-shell0      # wlroots compositors
+sudo apt install libgtk-layer-shell0      # KDE Plasma, wlroots compositors
 
 # Fedora
 sudo dnf install xclip                    # X11
 sudo dnf install wl-clipboard             # Wayland
-sudo dnf install gtk-layer-shell          # wlroots compositors
+sudo dnf install gtk-layer-shell          # KDE Plasma, wlroots compositors
 
 # Arch
 sudo pacman -S xclip                      # X11
 sudo pacman -S wl-clipboard               # Wayland
-sudo pacman -S gtk-layer-shell            # wlroots compositors
+sudo pacman -S gtk-layer-shell            # KDE Plasma, wlroots compositors
 ```
 
 ## Build

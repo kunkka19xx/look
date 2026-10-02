@@ -20,18 +20,18 @@ enum LauncherProcessFeature {
         return String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// A results-list row for a process. Subtitle is `PID <pid>` plus `· :port`
-    /// per listening port (matches the linows row).
+    /// `PID: 1234 · Port: 3000 8080`, shared by the `ps"` row and `/kill` list.
+    static func pidLabel(pid: Int32, ports: [Int]) -> String {
+        guard !ports.isEmpty else { return "PID: \(pid)" }
+        return "PID: \(pid) · Port: " + ports.map(String.init).joined(separator: " ")
+    }
+
     static func makeResult(_ candidate: ProcessScoring.Candidate) -> LauncherResult {
-        var subtitle = "PID \(candidate.pid)"
-        if !candidate.ports.isEmpty {
-            subtitle += " · " + candidate.ports.map { ":\($0)" }.joined(separator: " ")
-        }
         var result = LauncherResult(
             id: "\(AppConstants.Launcher.Process.resultIDPrefix)\(candidate.pid)",
             kind: .process,
             title: candidate.name.isEmpty ? "Process \(candidate.pid)" : candidate.name,
-            subtitle: subtitle,
+            subtitle: pidLabel(pid: candidate.pid, ports: candidate.ports),
             path: AppConstants.Launcher.Process.resultPath,
             score: 0
         )

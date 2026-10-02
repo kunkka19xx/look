@@ -599,8 +599,10 @@ pub fn set_blur_region(
         crate::platform::BlurRect,
     >,
 ) {
+    // No X11 id on native Wayland; that path addresses the bound surface.
     #[cfg(target_os = "linux")]
-    if let Some(wid) = crate::platform::linux::window_focus::self_window() {
+    {
+        let wid = crate::platform::linux::window_focus::self_window();
         let scale = window.scale_factor().unwrap_or(1.0);
         crate::platform::linux::blur::set_region(wid, &rects, scale);
     }

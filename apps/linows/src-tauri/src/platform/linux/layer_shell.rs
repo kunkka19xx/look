@@ -226,6 +226,12 @@ pub fn is_active() -> bool {
     ACTIVE.load(Ordering::Relaxed)
 }
 
+/// The window actually on screen, for code that follows its surface (blur).
+/// Main thread only, like every other touch of it.
+pub fn window() -> Option<gtk::ApplicationWindow> {
+    LAYER.with(|cell| cell.borrow().clone())
+}
+
 /// Whether the launcher is on screen, or `None` when the toplevel is still the
 /// real window and its own `is_visible` is authoritative.
 pub fn visible() -> Option<bool> {

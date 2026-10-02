@@ -10,27 +10,65 @@
 use super::blur_wayland;
 use super::transparency::window_is_x11;
 use crate::platform::BlurRect;
+use gtk::prelude::{Cast, WidgetExt};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, PropMode};
 use x11rb::wrapper::ConnectionExt as _;
 
-/// Bind the Wayland protocols against the window's surface. Call once at
+/// Bind the Wayland protocols and follow the window's surface. Call once at
 /// startup, from the main thread; a no-op on X11.
 pub fn init(window: &tauri::WebviewWindow) {
-    use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
+    use raw_window_handle::{HasDisplayHandle, RawDisplayHandle};
 
     if window_is_x11() {
         return;
     }
-    let (Ok(display), Ok(surface)) = (window.display_handle(), window.window_handle()) else {
+    let Ok(display) = window.display_handle() else {
         return;
     };
-    let (RawDisplayHandle::Wayland(display), RawWindowHandle::Wayland(surface)) =
-        (display.as_raw(), surface.as_raw())
-    else {
+    let RawDisplayHandle::Wayland(display) = display.as_raw() else {
         return;
     };
-    blur_wayland::init(display.display.as_ptr(), surface.surface.as_ptr());
+    blur_wayland::init(display.display.as_ptr());
+    if !blur_wayland::is_supported() {
+        return;
+    }
+    // On layer-shell the webview lives in a window of its own and Tauri's
+    // toplevel never maps again, so follow whichever one is on screen.
+    let shown: gtk::Window = match super::layer_shell::window() {
+        Some(layer) => layer.upcast(),
+        None => match window.gtk_window() {
+            Ok(toplevel) => toplevel.upcast(),
+            Err(_) => return,
+        },
+    };
+
+    // GTK3 makes a new wl_surface on every show and destroys it on hide, so
+    // the blur is re-attached per map. Both signals run their class handler
+    // first: the surface exists by the time `map` reaches us, and is already
+    // gone at `unmap`, which only has to drop our objects.
+    shown.connect_map(|w| blur_wayland::attach(wayland_surface(w)));
+    shown.connect_unmap(|_| blur_wayland::detach());
+    if shown.is_mapped() {
+        blur_wayland::attach(wayland_surface(&shown));
+    }
+}
+
+/// GDK's live surface for `window`: Tauri's handle only ever describes its own
+/// toplevel, which the layer-shell window replaces.
+fn wayland_surface(window: &gtk::Window) -> *mut std::ffi::c_void {
+    use gtk::glib::translate::ToGlibPtr;
+
+    unsafe extern "C" {
+        fn gdk_wayland_window_get_wl_surface(
+            window: *mut gtk::gdk::ffi::GdkWindow,
+        ) -> *mut std::ffi::c_void;
+    }
+    let Some(gdk_window) = window.window() else {
+        return std::ptr::null_mut();
+    };
+    // SAFETY: a realized GdkWindow of a Wayland session (init returns on X11).
+    unsafe { gdk_wayland_window_get_wl_surface(gdk_window.to_glib_none().0) }
 }
 
 /// Whether the compositor takes the request. Drives the frontend's tint math
@@ -52,13 +90,17 @@ fn is_kde() -> bool {
 
 /// Ask for `rects`, in window-local logical pixels, to be blurred; an empty
 /// slice clears the request. Silent on failure: a session without the effect is
-/// the clear-glass path, not an error.
-pub fn set_region(wid: u32, rects: &[BlurRect], scale: f64) {
+/// the clear-glass path, not an error. `wid` is the X11 window, which a native
+/// Wayland window does not have.
+pub fn set_region(wid: Option<u32>, rects: &[BlurRect], scale: f64) {
     if !window_is_x11() {
         // Surface-local coordinates are logical already, so they pass through.
         blur_wayland::set_region(rects);
         return;
     }
+    let Some(wid) = wid else {
+        return;
+    };
     if !is_supported() {
         return;
     }

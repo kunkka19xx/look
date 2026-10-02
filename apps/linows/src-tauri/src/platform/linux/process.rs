@@ -14,6 +14,16 @@ const CLK_TCK: u64 = 100;
 /// instant when triggered from `ps"` Enter.
 const CPU_SAMPLE_MS: u64 = 200;
 
+/// `/proc` mount point. Kept as one literal for the many per-pid lookups.
+const PROC: &str = "/proc";
+
+/// `TASK_COMM_LEN - 1`: `/proc/<pid>/status` truncates `Name:` to this many
+/// bytes, so any name at the limit may be cut off mid-word.
+const COMM_NAME_MAX: usize = 15;
+
+/// Appended by the kernel to `/proc/<pid>/exe` once the binary is replaced on disk.
+const DELETED_EXE_SUFFIX: &str = " (deleted)";
+
 /// A running app: a `.desktop` entry matched to one or more live PIDs (all the
 /// processes whose normalized `/proc` name matched the entry's Exec).
 struct AppMatch {
@@ -32,7 +42,7 @@ fn match_running_apps() -> Vec<AppMatch> {
 
     // 1. Collect running user processes: name → Vec<(pid, rss_kb)>
     let mut procs: HashMap<String, Vec<(u32, u64)>> = HashMap::new();
-    if let Ok(entries) = fs::read_dir("/proc") {
+    if let Ok(entries) = fs::read_dir(PROC) {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
@@ -43,7 +53,7 @@ fn match_running_apps() -> Vec<AppMatch> {
                 Ok(p) => p,
                 Err(_) => continue,
             };
-            let status = match fs::read_to_string(format!("/proc/{pid}/status")) {
+            let status = match fs::read_to_string(format!("{PROC}/{pid}/status")) {
                 Ok(s) => s,
                 Err(_) => continue,
             };
@@ -129,7 +139,7 @@ fn match_running_apps() -> Vec<AppMatch> {
             // more slot so the stripped form is only 14 chars (`gnome-text-edi`).
             // Try both lengths.
             let pids = norm_procs.get(&key).or_else(|| {
-                let trunc15: String = key.chars().take(15).collect();
+                let trunc15: String = key.chars().take(COMM_NAME_MAX).collect();
                 if trunc15.len() < key.len()
                     && let Some(v) = norm_procs.get(&trunc15)
                 {
@@ -340,7 +350,7 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
         windows.iter().filter_map(|w| w.pid).collect();
     let mut expanded_pids = windowed_pids.clone();
     for &pid in &windowed_pids {
-        if let Ok(status) = fs::read_to_string(format!("/proc/{pid}/status"))
+        if let Ok(status) = fs::read_to_string(format!("{PROC}/{pid}/status"))
             && let Some(ppid) =
                 parse_status_field(&status, "PPid:").and_then(|v| v.parse::<u32>().ok())
         {
@@ -483,7 +493,7 @@ fn is_terminal_or_background(path: &str) -> bool {
 /// requires the main process to be running before the URL is issued.
 pub(crate) fn is_running(name: &str) -> bool {
     let my_uid = read_my_uid();
-    let Ok(entries) = fs::read_dir("/proc") else {
+    let Ok(entries) = fs::read_dir(PROC) else {
         return false;
     };
     for entry in entries.flatten() {
@@ -492,7 +502,7 @@ pub(crate) fn is_running(name: &str) -> bool {
         if !fname_str.chars().all(|c| c.is_ascii_digit()) {
             continue;
         }
-        let Ok(status) = fs::read_to_string(format!("/proc/{fname_str}/status")) else {
+        let Ok(status) = fs::read_to_string(format!("{PROC}/{fname_str}/status")) else {
             continue;
         };
         let uid = parse_status_field(&status, "Uid:")
@@ -772,7 +782,7 @@ pub(crate) fn xdg_app_dirs() -> Vec<String> {
 }
 
 fn read_my_uid() -> u32 {
-    fs::read_to_string("/proc/self/status")
+    fs::read_to_string(format!("{PROC}/self/status"))
         .ok()
         .and_then(|s| parse_status_field(&s, "Uid:"))
         .and_then(|v| v.parse().ok())
@@ -799,7 +809,7 @@ pub(crate) fn list_all() -> Vec<ProcRow> {
     // which case the per-pid fd scan below is skipped entirely.
     let inode_ports = listening_inode_ports();
     let mut rows = Vec::new();
-    let Ok(entries) = fs::read_dir("/proc") else {
+    let Ok(entries) = fs::read_dir(PROC) else {
         return rows;
     };
     for entry in entries.flatten() {
@@ -811,7 +821,7 @@ pub(crate) fn list_all() -> Vec<ProcRow> {
         let Ok(pid) = fname_str.parse::<u32>() else {
             continue;
         };
-        let Ok(status) = fs::read_to_string(format!("/proc/{pid}/status")) else {
+        let Ok(status) = fs::read_to_string(format!("{PROC}/{pid}/status")) else {
             continue;
         };
         let uid = parse_status_field(&status, "Uid:")
@@ -820,9 +830,18 @@ pub(crate) fn list_all() -> Vec<ProcRow> {
         if uid != my_uid {
             continue;
         }
-        let name = parse_status_field(&status, "Name:").unwrap_or_default();
+        let mut name = parse_status_field(&status, "Name:").unwrap_or_default();
         if name.is_empty() {
             continue;
+        }
+        if name.len() >= COMM_NAME_MAX {
+            let exe = fs::read_link(format!("{PROC}/{pid}/exe")).ok();
+            let args = fs::read(format!("{PROC}/{pid}/cmdline"))
+                .map(|bytes| cmdline_args(&bytes))
+                .unwrap_or_default();
+            if let Some(full) = untruncated_name(&name, exe.as_deref(), &args) {
+                name = full;
+            }
         }
         let ports = if inode_ports.is_empty() {
             Vec::new()
@@ -839,11 +858,28 @@ pub(crate) fn list_all() -> Vec<ProcRow> {
     rows
 }
 
+/// `comm` is cut at `COMM_NAME_MAX` bytes, so the real name is whichever
+/// candidate it prefixes: the exe basename for a native binary, else an argv
+/// entry for a shebang script, whose exe is the interpreter.
+fn untruncated_name(comm: &str, exe: Option<&Path>, args: &[String]) -> Option<String> {
+    let exe_base = exe
+        .and_then(|p| p.file_name()?.to_str())
+        .map(|base| base.trim_end_matches(DELETED_EXE_SUFFIX));
+    let arg_bases = args
+        .iter()
+        .filter_map(|arg| Path::new(arg).file_name()?.to_str());
+    exe_base
+        .into_iter()
+        .chain(arg_bases)
+        .find(|base| base.len() > comm.len() && base.starts_with(comm))
+        .map(str::to_string)
+}
+
 /// Map every listening (state 0A) TCP socket inode to its port, from
 /// `/proc/net/tcp` + `tcp6`. Feeds `ports_for_pid`, tagging each process row.
 fn listening_inode_ports() -> HashMap<u64, u16> {
     let mut map = HashMap::new();
-    for tcp_path in ["/proc/net/tcp", "/proc/net/tcp6"] {
+    for tcp_path in [format!("{PROC}/net/tcp"), format!("{PROC}/net/tcp6")] {
         let Ok(content) = fs::read_to_string(tcp_path) else {
             continue;
         };
@@ -867,7 +903,7 @@ fn listening_inode_ports() -> HashMap<u64, u16> {
 /// the precomputed inode→port map. Sorted, deduped.
 fn ports_for_pid(pid: u32, inode_ports: &HashMap<u64, u16>) -> Vec<u16> {
     let mut ports: Vec<u16> = Vec::new();
-    let Ok(fds) = fs::read_dir(format!("/proc/{pid}/fd")) else {
+    let Ok(fds) = fs::read_dir(format!("{PROC}/{pid}/fd")) else {
         return ports;
     };
     for fd in fds.flatten() {
@@ -893,7 +929,7 @@ fn ports_for_pid(pid: u32, inode_ports: &HashMap<u64, u16>) -> Vec<u16> {
 /// compatibility fallback whenever smaps_rollup can't be read or parsed
 /// (kernels < 4.14, permission denied, process exited mid-read).
 fn private_mem_kb(pid: u32, status: &str) -> u64 {
-    if let Ok(rollup) = fs::read_to_string(format!("/proc/{pid}/smaps_rollup")) {
+    if let Ok(rollup) = fs::read_to_string(format!("{PROC}/{pid}/smaps_rollup")) {
         let field =
             |key: &str| parse_status_field(&rollup, key).and_then(|v| v.parse::<u64>().ok());
         if let (Some(clean), Some(dirty)) = (field("Private_Clean:"), field("Private_Dirty:")) {
@@ -906,7 +942,7 @@ fn private_mem_kb(pid: u32, status: &str) -> u64 {
 }
 
 pub(crate) fn detail(pid: u32) -> Option<ProcDetail> {
-    let status = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    let status = fs::read_to_string(format!("{PROC}/{pid}/status")).ok()?;
     let rss_kb = private_mem_kb(pid, &status);
     let ppid = parse_status_field(&status, "PPid:")
         .and_then(|v| v.parse().ok())
@@ -918,7 +954,7 @@ pub(crate) fn detail(pid: u32) -> Option<ProcDetail> {
 
     // cmdline is NUL-separated argv; fall back to the bracketed comm name for
     // kernel threads and zombies, which expose an empty cmdline.
-    let cmdline = fs::read(format!("/proc/{pid}/cmdline"))
+    let cmdline = fs::read(format!("{PROC}/{pid}/cmdline"))
         .ok()
         .map(|bytes| bytes_to_cmdline(&bytes))
         .filter(|s| !s.is_empty())
@@ -951,7 +987,7 @@ pub(crate) fn cpu(pid: u32) -> Option<f64> {
 /// comm field (2) is parenthesized and may contain spaces or `)`, so parsing
 /// resumes after the last `)`.
 fn proc_jiffies(pid: u32) -> Option<u64> {
-    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let stat = fs::read_to_string(format!("{PROC}/{pid}/stat")).ok()?;
     let rest = &stat[stat.rfind(')')? + 1..];
     let fields: Vec<&str> = rest.split_whitespace().collect();
     // After ')' the next field is state (index 0), so utime is index 11, stime 12.
@@ -963,7 +999,7 @@ fn proc_jiffies(pid: u32) -> Option<u64> {
 /// Wall-clock start time: system boot epoch (`btime` in `/proc/stat`) plus the
 /// process starttime (stat field 22) converted from ticks.
 fn start_epoch(pid: u32) -> Option<u64> {
-    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let stat = fs::read_to_string(format!("{PROC}/{pid}/stat")).ok()?;
     let rest = &stat[stat.rfind(')')? + 1..];
     let fields: Vec<&str> = rest.split_whitespace().collect();
     let starttime: u64 = fields.get(19)?.parse().ok()?;
@@ -972,20 +1008,26 @@ fn start_epoch(pid: u32) -> Option<u64> {
 }
 
 fn boot_epoch() -> Option<u64> {
-    let stat = fs::read_to_string("/proc/stat").ok()?;
+    let stat = fs::read_to_string(format!("{PROC}/stat")).ok()?;
     stat.lines()
         .find_map(|l| l.strip_prefix("btime "))
         .and_then(|v| v.trim().parse().ok())
 }
 
-fn bytes_to_cmdline(bytes: &[u8]) -> String {
-    let text = String::from_utf8_lossy(bytes);
-    text.split('\0')
+/// NUL-separated argv from `/proc/<pid>/cmdline`, empty entries dropped. Each
+/// argument is preserved intact, so a path containing spaces stays one element.
+fn cmdline_args(bytes: &[u8]) -> Vec<String> {
+    bytes
+        .split(|&b| b == 0)
+        .map(|s| String::from_utf8_lossy(s).into_owned())
         .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ")
-        .trim()
-        .to_string()
+        .collect()
+}
+
+/// argv joined with spaces, for display. Lossy for arguments that contain
+/// spaces, so never use this to identify an argument - use `cmdline_args`.
+fn bytes_to_cmdline(bytes: &[u8]) -> String {
+    cmdline_args(bytes).join(" ")
 }
 
 /// Resolve a UID to a username via `/etc/passwd`. Enough for a launcher; misses
@@ -1176,6 +1218,50 @@ mod tests {
         // Trailing/duplicate NULs don't leave empty args or edge whitespace.
         assert_eq!(bytes_to_cmdline(b"vim\0\0"), "vim");
         assert_eq!(bytes_to_cmdline(b""), "");
+    }
+
+    #[test]
+    fn cmdline_args_keep_paths_with_spaces_intact() {
+        let args = cmdline_args(b"/usr/bin/python3\0/opt/My App/service.py\0");
+        assert_eq!(args, vec!["/usr/bin/python3", "/opt/My App/service.py"]);
+    }
+
+    #[test]
+    fn untruncated_name_matches_the_comm_prefix() {
+        let cases = [
+            (
+                "gnome-text-edit",
+                "/b/gnome-text-editor",
+                "/h/notes.txt",
+                "gnome-text-editor",
+            ),
+            (
+                "gnome-software-",
+                "/b/gnome-software-svc (deleted)",
+                "",
+                "gnome-software-svc",
+            ),
+            (
+                "Presentation.Sv",
+                "/b/python3.12",
+                "/o/My App/Presentation.Svc.py",
+                "Presentation.Svc.py",
+            ),
+            (
+                "chrome_crashpad",
+                "/b/chrome_crashpad_handler",
+                "--db=/h/Crash Rep",
+                "chrome_crashpad_handler",
+            ),
+        ];
+        for (comm, exe, arg, want) in cases {
+            let got = untruncated_name(comm, Some(Path::new(exe)), &[arg.to_string()]);
+            assert_eq!(got.as_deref(), Some(want), "{comm}");
+        }
+        assert_eq!(
+            untruncated_name("chrome_crashpad", None, &["--x=/a/Crash".into()]),
+            None
+        );
     }
 
     #[test]

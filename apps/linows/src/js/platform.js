@@ -35,6 +35,32 @@ export function compositorBlur() {
     return info?.compositor_blur ?? false;
 }
 
+// The user's half of it. The compositor blurs all of the region or none of
+// it - no tint makes the desktop behind sharp - so seeing through takes the
+// frost off entirely (ui_compositor_blur=false). Null until settings load,
+// which is also the window's first frames, so the default answers there.
+let compositorBlurWanted = null;
+
+export function setCompositorBlurWanted(on) {
+    compositorBlurWanted = on;
+}
+
+/** Where an unset `ui_compositor_blur` lands: on only where the frost has been
+ *  seen to render right, which is KWin today. A compositor that takes the
+ *  request still has to draw it, and the ways that go wrong are its own - niri
+ *  answers with xray blur, one blurred copy of the wallpaper reused behind
+ *  every window, which reads as a frozen image under a launcher that moves.
+ *  Since the toggle sits in Advanced > Rendering on every desktop, opting in is
+ *  one switch, and a compositor joins this list once someone has looked at it. */
+export function compositorBlurDefault() {
+    return compositor() === 'kde';
+}
+
+/** Frost actually behind the window: granted and wanted. */
+export function compositorBlurActive() {
+    return compositorBlur() && (compositorBlurWanted ?? compositorBlurDefault());
+}
+
 // True when the blur fallback is forced by the platform (VM GPU) rather than
 // the disable_blur_effect config toggle. Settings must not remove the
 // attribute in this case.
