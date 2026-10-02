@@ -24,8 +24,8 @@
     background-size: var(--bg-size, cover);
     background-repeat: var(--bg-repeat, no-repeat);
     background-position: center;
-    opacity: var(--bg-image-opacity, 0.62);
-    filter: blur(var(--bg-image-blur, 10px));
+    opacity: var(--bg-image-opacity);
+    filter: blur(var(--bg-image-blur));
     z-index: 0;
     pointer-events: none;
 }
@@ -96,16 +96,15 @@ html[data-os="windows"] .bar-free .pane-tile {
 
 /* Top bar: search field + running-apps strip merged into one full-width bar
  * (macOS topRowBar). The 10px search-strip gap is fixed; it never tracks
- * --inner-gap. */
+ * --inner-gap. Flush to the window's top edge in every state, or the backdrop
+ * paints above it on the first keystroke. */
 .top-bar {
     display: flex;
     align-items: center;
     gap: 10px;
     flex-shrink: 0;
-    margin: var(--content-padding) var(--content-padding) 12px;
+    margin: 0 var(--content-padding);
     padding: var(--input-padding-y) var(--input-padding-x);
-    background-color: var(--control-fill);
-    border-radius: var(--bar-radius);
 }
 
 .search-bar {
@@ -198,6 +197,53 @@ html[data-os="windows"] .bar-free .pane-tile {
     display: none;
 }
 
+/* Compact: the results list alone (app.js keeps the AI lookup stacked). */
+.launcher-window.compact .results-row {
+    grid-template-columns: 1fr;
+}
+
+.launcher-window.compact #preview-col {
+    display: none;
+}
+
+/* Settings for features compact does not show. */
+.launcher-window.compact .split-only {
+    display: none;
+}
+
+/* Compact floats the action menu over the results list, centered on its right edge. */
+.launcher-window.compact #results-col {
+    position: relative;
+}
+
+.action-menu.action-menu-compact {
+    top: 50%;
+    left: auto;
+    right: 10px;
+    width: 320px;
+    transform: translateY(-50%);
+}
+
+/* Picked count in the top bar, standing in for split's picked panel. */
+.picked-count {
+    flex-shrink: 0;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--selection-fill);
+    font-size: 11px;
+}
+
+.launcher-window:not(.compact) .picked-count,
+.picked-count[hidden] {
+    display: none;
+}
+
+/* No hint rows; layout.js moves the copyright into the top bar. */
+.launcher-window.compact #hint-bar,
+.launcher-window.compact .pane-footer {
+    display: none;
+}
+
 /* Two-col AI (knowledge lookup): app.js moves the suggestion list into the
  * right pane, so the lookup renders through the same two equal columns as
  * normal results (macOS twoPaneGrid) - same tiles, same footers. The
@@ -234,7 +280,7 @@ html[data-os="windows"] .bar-free .pane-tile {
     display: none;
     align-items: center;
     flex-shrink: 0;
-    padding: 6px var(--row-padding-x) 2px;
+    padding: var(--hint-inset) var(--row-padding-x) var(--hint-inset-bottom);
 }
 
 /* Floating: both hints on the grid, one card takes both otherwise. */
@@ -326,8 +372,15 @@ html[data-os="windows"] .bar-free .pane-tile {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px var(--content-padding);
+    padding: var(--hint-inset) var(--content-padding) var(--hint-inset-bottom);
     flex-shrink: 0;
+}
+
+/* Default leading gives the line box more half-leading than the band's own
+ * inset, which reads as a thicker bar than it is. */
+.hint-bar,
+.pane-footer {
+    line-height: 1.2;
 }
 
 /* Shared hint-text styling for both homes: the classic bottom bar and the
@@ -352,7 +405,8 @@ html[data-os="windows"] .bar-free .pane-tile {
 }
 
 .hint-bar .hint-bar-copy,
-.pane-footer .hint-bar-copy {
+.pane-footer .hint-bar-copy,
+.top-bar .hint-bar-copy {
     font-size: 10px;
     color: var(--font-muted);
     opacity: 0.6;
@@ -492,31 +546,67 @@ html[data-os="windows"] .bar-free .pane-tile {
     background-size: var(--bg-draw-w, 100%) var(--bg-draw-h, 100%);
     background-position: calc(-1 * var(--tile-x, 0px)) calc(-1 * var(--tile-y, 0px));
     background-repeat: var(--bg-repeat, no-repeat);
-    opacity: var(--bg-image-opacity, 0.62);
-    filter: blur(var(--bg-image-blur, 10px));
+    opacity: var(--bg-image-opacity);
+    filter: blur(var(--bg-image-blur));
     clip-path: inset(0 round var(--tile-radius));
     pointer-events: none;
 }
 
 /* Uniform gaps: bar-to-columns equals column-to-column equals --inner-gap.
- * The outer inset keeps tiles off the (invisible) window edge so shadows
- * are not clipped. */
+ * The columns' outer inset keeps them off the (invisible) window edge so their
+ * shadows are not clipped. */
 .floating .top-bar {
     margin-bottom: var(--inner-gap);
 }
 
-/* Classic columns run flush to the window, so the chrome around them takes the
- * rows' inset rather than --content-padding: every left edge in the panel lines
- * up and each keeps equal gutters. Floating and resting inset the bar as a
- * tile, so they keep the wider one. */
-.launcher-window:not(.bar-free) .top-bar {
-    margin-left: var(--row-inset);
-    margin-right: var(--row-inset);
+/* Gap 0: the bar is the window's header. The inset moves from the margin into
+ * the padding, so the text keeps its seated place and the first keystroke can
+ * neither move it nor paint surface beside it. */
+.launcher-window:not(.floating) .top-bar {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: calc(var(--row-inset) + var(--input-padding-x));
+    padding-right: calc(var(--row-inset) + var(--input-padding-x));
 }
 
+/* Seated, the bar shares the window's surface: a fill and a radius of its own
+ * are what made it read as a separate window. The hairline is the rows'. */
+.launcher-window:not(.bar-free) .top-bar {
+    border-bottom: 1px solid var(--divider-color);
+}
+
+/* Resting at gap 0: the bar draws the window's edge, so it spans the border
+ * box the window stops drawing (a negative margin would be clipped). The
+ * window's own curve goes too: it rounds the full-height window, while the
+ * bar's clamps to half the bar's height, so a large radius clipped the bar's
+ * top corners flat. The bar is flush with the edges and draws its own. */
+.launcher-window.resting:not(.floating) {
+    border-width: 0;
+    border-radius: 0;
+}
+
+.launcher-window.resting:not(.floating) .top-bar {
+    border-radius: var(--corner-radius);
+    box-shadow: none;
+}
+
+/* Same edges as the bar above it; seated it keeps its inset, like the rows. */
+.launcher-window.resting:not(.floating) .control-strip {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+/* Only the bar/results seam is flush; the banner keeps the gap the bar's
+ * bottom margin used to give it. */
+.launcher-window:not(.bar-free) #banner {
+    margin-top: 12px;
+}
+
+/* The band is the window's bottom edge, so its ends sit inside the corner arc:
+ * half the radius clears the text's height there, the row inset when square. */
 .launcher-window:not(.bar-free) .hint-bar {
-    padding-left: var(--row-inset);
-    padding-right: var(--row-inset);
+    padding-left: max(var(--row-inset), calc(var(--corner-radius) / 2));
+    padding-right: max(var(--row-inset), calc(var(--corner-radius) / 2));
 }
 
 .launcher-window:not(.bar-free) .ai-card {
@@ -529,13 +619,19 @@ html[data-os="windows"] .bar-free .pane-tile {
  * angle. Nothing escapes anyway - tiles scroll their own content, and the
  * window is the viewport. */
 .floating .results-row {
-    margin: 0 var(--content-padding) var(--content-padding);
+    margin: 0 var(--content-padding) var(--tile-shadow-reach);
     column-gap: var(--inner-gap);
     overflow: visible;
 }
 
+/* The footer is the card's last row and carries its own inset, so the card
+ * stops right under it instead of adding a second gap. */
 .floating .pane-col {
-    padding: var(--row-inset);
+    padding: var(--row-inset) var(--row-inset) var(--hint-inset-bottom);
+}
+
+.floating .pane-footer {
+    padding-bottom: 0;
 }
 
 .floating .preview-panel {

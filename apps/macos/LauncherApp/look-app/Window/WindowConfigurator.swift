@@ -5,9 +5,10 @@ struct WindowConfigurator: NSViewRepresentable {
     /// Observed, not read off the shared store: only a change SwiftUI sees
     /// re-runs updateNSView to restyle the live window.
     @ObservedObject var themeStore: ThemeStore
+    @ObservedObject var appUIState: AppUIState = .shared
 
     private var cornerRadius: CGFloat {
-        themeStore.panelRadius
+        appUIState.squaresWindowCorners ? 0 : themeStore.panelRadius
     }
 
     func makeNSView(context: Context) -> NSView {
@@ -69,7 +70,7 @@ struct WindowConfigurator: NSViewRepresentable {
         // Initial placement; toggleWindowVisibility re-places it on the active
         // screen every show, so this only seeds a sane frame before first show.
         if let screen = window.screen ?? NSScreen.main {
-            window.setFrame(WindowAutoScale.spotlightFrame(on: screen), display: true)
+            window.setFrame(WindowAutoScale.spotlightFrame(on: screen, layout: themeStore.effectiveLayout), display: true)
         }
     }
 }

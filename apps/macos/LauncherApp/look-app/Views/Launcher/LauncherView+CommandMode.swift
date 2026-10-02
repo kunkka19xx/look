@@ -33,10 +33,6 @@ extension LauncherView {
     }
 
     func enterCommandMode() {
-        showsHelpScreen = false
-        isCommandMode = true
-        commandInput = ""
-        commandFeedback = ""
         // Reopen the last-visited command panel; fall back to /calc on
         // first run (or if the persisted id refers to a command no
         // longer in the catalog).
@@ -44,9 +40,7 @@ extension LauncherView {
         let resolved = commandCatalog.contains { $0.id == preferred }
             ? preferred
             : AppConstants.Launcher.Command.calc
-        activeCommandID = resolved
-        selectedCommandID = resolved
-        focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
+        enterCommandMode(commandID: resolved, prefilledInput: "")
     }
 
     func enterCommandMode(commandID: String, prefilledInput: String) {
@@ -332,6 +326,15 @@ extension LauncherView {
         requestCommandInputFocusIfNeeded()
     }
 
+    /// Single gate for the command sidebar; a future split-mode setting plugs in
+    /// here. /pomo standby hides it to keep focus on the clock + music card.
+    var showsCommandSidebar: Bool {
+        if isCompactLayout { return false }
+        let pomoStandby = activeCommandID == AppConstants.Launcher.Command.pomo
+            && PomoSharedState.shared.idle
+        return !pomoStandby
+    }
+
     @ViewBuilder
     var commandModeView: some View {
         // Fixed sidebar width - the launcher window is non-resizable
@@ -344,14 +347,8 @@ extension LauncherView {
         let dividerWidth: CGFloat = 1
         let leftWidth: CGFloat = 170
 
-        // Hide the command sidebar while /pomo is in standby/idle mode
-        // - keeps the user's focus on the clock + music card with no
-        // distractions. Other commands keep the sidebar always visible.
-        let hideSidebar = activeCommandID == AppConstants.Launcher.Command.pomo
-            && PomoSharedState.shared.idle
-
         HStack(spacing: splitSpacing) {
-                if !hideSidebar {
+                if showsCommandSidebar {
                     CommandListView(
                         commands: commandCatalog,
                         selectedID: selectedCommandID,
@@ -361,6 +358,8 @@ extension LauncherView {
                     )
                     .frame(width: leftWidth)
                     .frame(maxHeight: .infinity, alignment: .topLeading)
+                    // Keeps the row tooltip above the panel drawn after it.
+                    .zIndex(1)
 
                     Rectangle()
                         .fill(themeStore.dividerColor())

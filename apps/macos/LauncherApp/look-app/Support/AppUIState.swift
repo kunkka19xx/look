@@ -14,6 +14,11 @@ final class AppUIState: ObservableObject {
     // resumes there instead of jumping back to /calc. Intentionally
     // not persisted - each fresh launch should start at /calc.
     @Published var lastCommandID: String?
+
+    // Set by LauncherView while the empty-query bar rests alone at gap 0. The
+    // bar is then the only surface, and its curve clamps to half its height,
+    // so WindowConfigurator stops rounding the taller window over it.
+    @Published var squaresWindowCorners = false
 }
 
 extension Notification.Name {

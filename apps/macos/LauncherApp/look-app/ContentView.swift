@@ -8,8 +8,13 @@
 import SwiftUI
 
 struct ContentView: View {
+    @EnvironmentObject private var themeStore: ThemeStore
+
     var body: some View {
+        let minSize = WindowAutoScale.baseSize(for: themeStore.effectiveLayout)
         LauncherView()
+            .frame(minWidth: minSize.width, minHeight: minSize.height)
+            .motionPreference(animationsEnabled: themeStore.settings.animationsEnabled)
     }
 }
 

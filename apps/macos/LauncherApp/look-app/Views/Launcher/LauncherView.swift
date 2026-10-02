@@ -162,6 +162,10 @@ struct LauncherView: View {
     @State var recentlyKilledPIDs: Set<Int32> = []
     @State var showsHelpScreen = false
     @State var focusRequestToken: UInt64 = 0
+    /// The query as it stood on show. The first focus pass selects it so the
+    /// first keystroke replaces it, but only if the field still holds exactly
+    /// this: anything typed since means the user has already started.
+    @State var queryToSelectOnFocus: String?
     /// Bumped every time the launcher window is shown, so the empty state tiles and
     /// quick actions replay their spawn cascade on each open (see `Motion.Spawn`).
     @State var appearanceRevealToken: UInt64 = 0
@@ -192,6 +196,17 @@ struct LauncherView: View {
     static let bannerTitleLimit = 32
     static let attachedPanelScrimOpacity = 0.16
 
+    /// The hint band's own insets, shared by the bottom bar and the card footers
+    /// (linows `--hint-inset`); the band owns both, so hiding it leaves no gap
+    /// behind. The surface below it pads more, so the band bleeds back into it
+    /// rather than stacking on top.
+    static let hintBarInset: CGFloat = 4
+    static let hintBarBottomInset: CGFloat = 2
+
+    /// A floating tile's shadow reach (3pt offset + 7pt blur), which is all the
+    /// room the window owes it below.
+    static let tileShadowReach: CGFloat = 10
+
     /// How many shortcuts a hint line may name. Three is what fits the narrowest
     /// card footer in one row, and is the budget linows keeps too.
     static let hintItemBudget = 3
@@ -209,11 +224,16 @@ struct LauncherView: View {
         !isCommandMode && !appUIState.showsThemeSettings && !showsHelpScreen
     }
 
+    var isCompactLayout: Bool {
+        themeStore.effectiveLayout == .compact
+    }
+
     /// AI mode hides the strip: the assistant screen is about the conversation,
     /// not about switching apps, and the freed ⌘1-9 chords tag the listed
-    /// sessions instead (see `sessionJumpKeyLimit`).
+    /// sessions instead (see `sessionJumpKeyLimit`). Compact is too narrow for it.
     var shouldShowRunningAppsStrip: Bool {
         runningAppsPlacement != .none
+            && !isCompactLayout
             && isLauncherIdle
             && !isAIMode
             && !runningAppsService.items.isEmpty
@@ -235,8 +255,8 @@ struct LauncherView: View {
         // The same gate as `shouldShowRunningAppsStrip`: a chord must never
         // activate an icon that is not on screen, which is also what hands
         // ⌘1-9 to the session list in AI mode.
-        if runningAppsPlacement == .none || !isLauncherIdle || isAIMode {
-            log.debug("⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public) help=\(self.showsHelpScreen, privacy: .public) ai=\(self.isAIMode, privacy: .public))")
+        if runningAppsPlacement == .none || isCompactLayout || !isLauncherIdle || isAIMode {
+            log.debug("⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) compact=\(self.isCompactLayout, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public) help=\(self.showsHelpScreen, privacy: .public) ai=\(self.isAIMode, privacy: .public))")
             return false
         }
         guard let position = AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey: key, total: total) else {
@@ -860,12 +880,11 @@ struct LauncherView: View {
 
     var body: some View {
         // Mirrored onto the window's layers in `WindowConfigurator`.
-        let windowCornerRadius = themeStore.panelRadius
-        // When floating, use a single uniform gap between the top row and the
-        // columns so it matches the horizontal gap between the columns (i3 style);
-        // otherwise keep the classic fixed spacing.
-        let contentSpacing: CGFloat = showsFloatingCards ? innerGap : (isCommandMode ? 8 : 12)
-        let contentPadding: CGFloat = isCommandMode ? 10 : 14
+        let windowCornerRadius = squaresWindowCorners ? 0 : themeStore.panelRadius
+        // Floating: one uniform gap everywhere (i3 style). Seated: 0, so the bar
+        // and the results meet at the divider; siblings that need air take
+        // `stackedContentGap`.
+        let contentSpacing: CGFloat = showsFloatingCards ? innerGap : 0
 
         // Running apps render inside the search bar (see panelContent), not as a
         // floating strip that grows the window. The launcher is always a single
@@ -899,6 +918,9 @@ struct LauncherView: View {
                     NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
                 }
             }
+        }
+        .onChange(of: squaresWindowCorners, initial: true) { _, squares in
+            appUIState.squaresWindowCorners = squares
         }
         // A text op reads the picked file rather than the clipboard, so the
         // controller needs the picks as they change.
@@ -937,6 +959,9 @@ struct LauncherView: View {
         }
         .onChange(of: themeStore.settings.superActionsEnabled) { _, enabled in
             launchpadSettingChanged(enabled: enabled)
+        }
+        .onChange(of: themeStore.effectiveLayout) { _, _ in
+            layoutChanged()
         }
         // Bumped on every show, so it stands in for the missing re-onAppear.
         .onChange(of: appearanceRevealToken) { _, _ in
@@ -1265,11 +1290,11 @@ struct LauncherView: View {
             VStack(alignment: .leading, spacing: contentSpacing) {
                 panelContent
             }
-            // Tighter top inset so the search bar sits closer to the window's
-            // top edge; keep the original padding on the other three sides.
-            .padding(.top, max(4, contentPadding - 8))
+            // Flush: the bar is the window's top edge, or the backdrop paints
+            // above it on the first keystroke. Screens without it keep the inset.
+            .padding(.top, showsTopRowBar ? 0 : max(4, contentPadding - 8))
             .padding(.horizontal, contentPadding)
-            .padding(.bottom, contentPadding)
+            .padding(.bottom, showsFloatingCards ? Self.tileShadowReach : contentPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .font(themeStore.uiFont())
             .foregroundStyle(themeStore.fontColor())
@@ -1323,7 +1348,7 @@ struct LauncherView: View {
                 .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
                 .frame(maxWidth: .infinity, alignment: .center)
         } else {
-            if !isCommandMode && !showsHelpScreen {
+            if showsTopRowBar {
                 // The search field and running-apps icons always share one
                 // background so they read as a single unified bar: a frosted
                 // tile when floating, the classic rounded fill otherwise. The
@@ -1348,7 +1373,17 @@ struct LauncherView: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
+                        // Compact has no footer row or picked panel; the strip's end
+                        // of the bar is free.
+                        if isCompactLayout {
+                            if !pickedKeys.isEmpty {
+                                pickedCountPill
+                            }
+                            copyrightLink
+                                .padding(.trailing, Self.barCopyrightTrailingInset)
+                        }
                     }
+                    .frame(minHeight: AppConstants.Launcher.topRowMinHeight)
                 }
                 .frame(maxWidth: CGFloat(themeStore.settings.searchBarWidth))
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -1395,9 +1430,12 @@ struct LauncherView: View {
             } else if (isClipboardQuery || isClipboardImageQuery) && displayedResults.isEmpty {
                 // The empty clipboard screen is naturally two columns (history /
                 // how-to), so float it as the same two-card grid as the results.
+                // Compact has one column, so the two stack in a single card.
                 let copy: ClipboardEmptyStateCopy = isClipboardImageQuery ? .images : .text
                 Group {
-                    if showsFloatingCards {
+                    if isCompactLayout {
+                        floatingPanel { ClipboardEmptyStateView(themeStore: themeStore, copy: copy, stacked: true) }
+                    } else if showsFloatingCards {
                         twoPaneGrid(hasRight: true) {
                             ClipboardEmptyInfoView(themeStore: themeStore, copy: copy)
                         } right: {
@@ -1440,6 +1478,10 @@ struct LauncherView: View {
                         themeStore: themeStore,
                         revealToken: appearanceRevealToken
                     )
+                    // Two floating tiles: they must not touch.
+                    .padding(.top, stackedContentGap)
+                    // Same edges as the bar above it.
+                    .padding(.horizontal, showsFloatingCards ? 0 : -contentPadding)
                     .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
                     .frame(maxWidth: .infinity, alignment: .center)
                 }
@@ -1447,6 +1489,7 @@ struct LauncherView: View {
             } else {
                 if let fileRecallNote {
                     fileRecallNoteLine(fileRecallNote)
+                        .padding(.top, stackedContentGap)
                         .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
@@ -1461,13 +1504,19 @@ struct LauncherView: View {
 
             // While floating, every card carries its own hint footer; only the
             // classic (no-gap) layout keeps the full-width bar below the panel.
+            // Compact shows no hints.
             if !showsFloatingCards
-                && !hidesResultsForEmptyQuery
+                && !isCompactLayout
+                && !restsAsBareBar
                 && !isKillConfirmationVisible
                 && !isDeleteConfirmationVisible
                 && !isHideAppConfirmationVisible
             {
                 HintBar(hint: panelHint, todo: todoQuickView, themeStore: themeStore)
+                    // The panel's own inset already covers part of the clearance.
+                    .padding(.horizontal, max(0, hintCornerClearance - contentPadding))
+                    .padding(.top, Self.hintBarInset)
+                    .padding(.bottom, Self.hintBarBottomInset - contentPadding)
                     .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
                     .frame(maxWidth: .infinity, alignment: .center)
             }
@@ -1502,6 +1551,8 @@ struct LauncherView: View {
         .padding(.vertical, 6)
         .background(bannerStyle.background, in: Capsule())
         .transition(.move(edge: .top).combined(with: .opacity))
+        // Sits between the bar and the results, so it takes a seam on both sides.
+        .padding(.vertical, stackedContentGap)
     }
 
     @ViewBuilder
@@ -2078,7 +2129,7 @@ struct LauncherView: View {
         if aiAnswer.isActive {
             if displayedResults.isEmpty {
                 aiAnswerOnlyRow
-            } else if backendFilteredResults.isEmpty {
+            } else if backendFilteredResults.isEmpty && !isCompactLayout {
                 aiKnowledgeLookupRow
             } else {
                 aiAnswerWithResultsRow
@@ -2094,12 +2145,12 @@ struct LauncherView: View {
     private var aiAnswerOnlyRow: some View {
         if showsFloatingCards {
             twoPaneGrid(hasRight: false) {
-                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore, isCompact: isCompactLayout)
             } right: {
                 EmptyView()
             }
         } else {
-            AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+            AIAnswerCardView(controller: aiAnswer, themeStore: themeStore, isCompact: isCompactLayout)
                 .frame(maxHeight: .infinity)
         }
     }
@@ -2111,7 +2162,7 @@ struct LauncherView: View {
     private var aiKnowledgeLookupRow: some View {
         if showsFloatingCards {
             twoPaneGrid(hasRight: true) {
-                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore, isCompact: isCompactLayout)
             } right: {
                 ResultsListView(
                     results: displayedResults,
@@ -2126,7 +2177,7 @@ struct LauncherView: View {
             // Answer on the left at a comfortable reading measure; suggestion list
             // pinned to a fixed-width column on the right.
             HStack(alignment: .top, spacing: 8) {
-                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore, isCompact: isCompactLayout)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 resultsListAndPreview
                     .frame(width: AppConstants.Launcher.aiAnswerSuggestionColumnWidth)
@@ -2152,11 +2203,11 @@ struct LauncherView: View {
     private var aiAnswerCard: some View {
         if showsFloatingCards {
             paneCard(padding: 6) {
-                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore, isCompact: isCompactLayout)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         } else {
-            AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+            AIAnswerCardView(controller: aiAnswer, themeStore: themeStore, isCompact: isCompactLayout)
         }
     }
 
@@ -2168,9 +2219,11 @@ struct LauncherView: View {
                 selectedID: selectedResultID,
                 pickedKeys: Set(pickedKeys),
                 themeStore: themeStore,
+                selectedRowDetail: compactProcessDetail,
                 onSelect: { selectedResultID = $0 },
                 onOpen: { _ in openSelectedApp() }
             )
+            .overlay(alignment: .trailing) { compactActionMenu }
         } right: {
             if !pickedKeys.isEmpty {
                 PickedItemsPanel(
@@ -2218,6 +2271,24 @@ struct LauncherView: View {
                 // inside this pane still animates on open.
                 .animation(nil, value: selectedResult.id)
             }
+        }
+    }
+
+    /// Compact has no preview pane to hold the Cmd+K menu, so it floats over
+    /// the results list instead.
+    @ViewBuilder
+    private var compactActionMenu: some View {
+        if isCompactLayout && isActionMenuOpen {
+            ActionMenuView(
+                descriptors: actionMenuRows,
+                states: quickActionStates,
+                focusedIndex: actionMenuIndex,
+                themeStore: themeStore,
+                onActivate: { activateActionMenuRow($0) }
+            )
+            .frame(width: AppConstants.Launcher.ActionMenu.compactWidth)
+            .padding(AppConstants.Launcher.ActionMenu.compactInset)
+            .transition(.opacity.combined(with: .move(edge: .trailing)))
         }
     }
 
@@ -2282,9 +2353,9 @@ struct LauncherView: View {
         }
     }
 
-    /// Where a card footer sits, which is what decides its insets: a grid pane
-    /// stops its content right above the footer, while a single panel already
-    /// pads its own edges and the footer only has to match them.
+    /// Where a card footer sits, which decides how far it stays from the card's
+    /// sides and how much card padding it has to eat below. Its height is
+    /// `hintBarInset` / `hintBarBottomInset`, the same on every surface.
     private enum CardFooterPlacement {
         case gridPane
         case singlePanel
@@ -2296,35 +2367,41 @@ struct LauncherView: View {
             }
         }
 
-        var top: CGFloat {
+        /// The card's own padding under the footer, which the band eats so the
+        /// card stops right under the line.
+        var cardPadding: CGFloat {
             switch self {
             case .gridPane: return 6
             case .singlePanel: return 0
             }
         }
-
-        var bottom: CGFloat {
-            switch self {
-            case .gridPane: return 2
-            case .singlePanel: return 8
-            }
-        }
     }
 
     /// A thin footer strip inside a floating card holding a slice of the old
-    /// full-width hint bar.
+    /// full-width hint bar. Compact has none (its copyright is in the search bar).
     @ViewBuilder
     private func cardFooter<Content: View>(
         placement: CardFooterPlacement = .gridPane,
         @ViewBuilder _ content: () -> Content
     ) -> some View {
-        HStack(spacing: 0) {
-            content()
+        if !isCompactLayout {
+            HStack(spacing: 0) {
+                content()
+            }
+            .padding(.horizontal, placement.horizontal)
+            .padding(.top, Self.hintBarInset)
+            .padding(.bottom, Self.hintBarBottomInset - placement.cardPadding)
         }
-        .padding(.horizontal, placement.horizontal)
-        .padding(.top, placement.top)
-        .padding(.bottom, placement.bottom)
     }
+
+    /// The seam the panel stack no longer gives every child, for the ones that
+    /// still need it. Zero while floating: `innerGap` is already the gap there.
+    private var stackedContentGap: CGFloat {
+        showsFloatingCards ? 0 : (isCommandMode ? 8 : 12)
+    }
+
+    /// The panel's inset from the window edge; the top bar bleeds back over it.
+    private var contentPadding: CGFloat { isCommandMode ? 10 : 14 }
 
     /// i3-style inner gap between the three home panes (0 = classic flat layout).
     private var innerGap: CGFloat { CGFloat(themeStore.settings.innerGap) }
@@ -2362,7 +2439,31 @@ struct LauncherView: View {
     /// query. In both cases the top bar becomes a self-contained frosted tile so
     /// it stays legible on the bare desktop.
     private var barFloatsFree: Bool {
-        showsFloatingCards || hidesResultsForEmptyQuery
+        showsFloatingCards || restsAsBareBar
+    }
+
+    /// The search bar is the panel's first row, so it owns the window's top edge.
+    private var showsTopRowBar: Bool {
+        !appUIState.showsThemeSettings && !isCommandMode && !showsHelpScreen
+    }
+
+    /// The empty-query rest state as drawn: just the bar. The AI session starts
+    /// empty too, but its conversation list needs the panel behind it.
+    private var restsAsBareBar: Bool {
+        hidesResultsForEmptyQuery && !isActionSessionUI
+    }
+
+    /// Resting at gap 0 the bar is the window's only surface, and its curve
+    /// clamps to half its height; the full-height window's would clip its top
+    /// corners flat. Nothing else is drawn then, so the window goes square.
+    private var squaresWindowCorners: Bool {
+        restsAsBareBar && !showsFloatingCards
+    }
+
+    /// Side inset that keeps the bottom hint line out of the window's corner
+    /// arc: half the radius clears the line's height there.
+    private var hintCornerClearance: CGFloat {
+        themeStore.panelRadius / 2
     }
 
     /// Wraps a home-screen pane in its own rounded, frosted card so the inner gap
@@ -2468,23 +2569,43 @@ struct LauncherView: View {
         // focus when the bar flips between the classic fill and the frosted tile
         // (e.g. typing the first character out of the empty-rest state at gap 0).
         let floats = barFloatsFree
+        // Gap 0: the bar is the window's header. It bleeds over the panel's
+        // inset and takes it as padding, so nothing shifts; resting like that it
+        // is the window, so it wears the window's radius and nothing lifts it.
+        let spansWindow = !showsFloatingCards
+        let barRadius = spansWindow ? themeStore.panelRadius : themeStore.tileRadius
+        let lifts = floats && !spansWindow
         return content()
             // Wraps the content, not the chrome: the reveal leaves an opacity
             // in the tree, which would rasterize the backdrop below.
             .spawnReveal(index: Self.searchBarRevealIndex, token: appearanceRevealToken, scales: false)
+            .padding(.horizontal, spansWindow ? contentPadding : 0)
             .background {
-                tileBackground(
-                    cornerRadius: floats ? themeStore.tileRadius : themeStore.barRadius,
-                    floats: floats
-                )
+                // Seated, the panel's backdrop already backs the bar; a fill of
+                // its own is what made it read as a separate window.
+                if floats {
+                    tileBackground(
+                        cornerRadius: barRadius,
+                        floats: true
+                    )
+                }
             }
             .overlay {
                 if floats {
-                    tileBorder(cornerRadius: themeStore.tileRadius)
+                    tileBorder(cornerRadius: barRadius)
                 }
             }
-            .shadow(color: floats ? .black.opacity(0.25) : .clear,
-                    radius: floats ? 7 : 0, x: 0, y: floats ? 3 : 0)
+            .overlay(alignment: .bottom) {
+                // The rows' own hairline, once the bar has no edge of its own.
+                if !floats {
+                    Rectangle()
+                        .fill(themeStore.dividerColor())
+                        .frame(height: 1)
+                }
+            }
+            .padding(.horizontal, spansWindow ? -contentPadding : 0)
+            .shadow(color: lifts ? .black.opacity(0.25) : .clear,
+                    radius: lifts ? 7 : 0, x: 0, y: lifts ? 3 : 0)
     }
 
     /// Wraps a single-panel home state (translation, AI session, recent empty) in
@@ -2525,7 +2646,20 @@ struct LauncherView: View {
     }
 
     /// Whether a right-hand pane (picked list or preview) is currently shown.
-    private var hasRightPane: Bool { !pickedKeys.isEmpty || previewResult != nil }
+    private var hasRightPane: Bool {
+        !isCompactLayout && (!pickedKeys.isEmpty || previewResult != nil)
+    }
+
+    private static let barCopyrightTrailingInset: CGFloat = 12
+
+    private var pickedCountPill: some View {
+        Text("\(pickedKeys.count) picked")
+            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
+            .foregroundStyle(themeStore.fontColor())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(themeStore.selectionFillColor(), in: Capsule())
+    }
 
     private var copyrightLink: some View {
         Link("© 2026 by Kunkka", destination: URL(string: "https://github.com/kunkka19xx")!)
@@ -2572,11 +2706,12 @@ struct LauncherView: View {
     private var copyrightOverlay: some View {
         // While floating the copyright moves into a card footer; on the empty-rest
         // screen it's hidden entirely; otherwise it stays in the panel's
-        // bottom-right corner.
-        if !showsFloatingCards && !hidesResultsForEmptyQuery && !isHideAppConfirmationVisible {
+        // bottom-right corner. Compact carries it in the search bar.
+        if !showsFloatingCards && !isCompactLayout && !restsAsBareBar && !isHideAppConfirmationVisible {
             copyrightLink
-                .padding(.trailing, 10)
-                .padding(.bottom, 8)
+                .padding(.trailing, max(10, hintCornerClearance))
+                // Shares the hint line, as it does inside the linows hint bar.
+                .padding(.bottom, Self.hintBarBottomInset)
         }
     }
 

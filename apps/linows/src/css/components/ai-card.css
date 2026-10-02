@@ -170,6 +170,25 @@
     background: rgba(var(--lift), 0.04);
 }
 
+/* Compact has no preview pane, so the card is the only thing competing for
+ * vertical room: put the thumbnail beside the text instead of above it. */
+.launcher-window.compact .ai-card-block-body {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.launcher-window.compact .ai-card-image {
+    width: 72px;
+    height: 72px;
+    flex-shrink: 0;
+}
+
+.launcher-window.compact .ai-card-text {
+    flex: 1;
+    min-width: 0;
+}
+
 .ai-card-text {
     font-size: var(--font-size);
     font-weight: 400;

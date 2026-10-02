@@ -132,6 +132,9 @@ export function init(inputEl) {
     rowactions.setHandlers({
         open: () => openSelected(),
         copyPath: copySelectedPath,
+        openAllPicked,
+        clearPicked: () => results.clearPicks(),
+        deleteClipboard: removeSelectedClip,
     });
 }
 
@@ -209,6 +212,14 @@ function handleKeyDown(e) {
             toggleHelp();
             return;
         }
+    }
+
+    // Ctrl+Shift+C: flip split/compact until Look quits; the config is untouched.
+    // Works in settings too, where the picker rings whichever one it lands on.
+    if (e.ctrlKey && (e.shiftKey || shiftHeld) && !e.altKey && (e.key === 'C' || e.key === 'c')) {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('look:toggle-session-layout'));
+        return;
     }
 
     // Ctrl+Shift+H: hide the selected app from Look

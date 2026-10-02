@@ -11,8 +11,8 @@ import {
 } from '../icons.js';
 import * as sourceblocks from './sourceblocks.js';
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
-import { classifyResultId, CLIPBOARD_EMPTY_COPY } from '../catalog.js';
-import { prefersReducedMotion } from '../platform.js';
+import { classifyResultId, CLIPBOARD_EMPTY_COPY, clipboardTipsHtml } from '../catalog.js';
+import { reducesMotion } from '../platform.js';
 import * as layout from '../layout.js';
 
 // LRU-bounded icon cache (cacheKey -> data URL | null). A plain Map keeps
@@ -48,8 +48,8 @@ let container = null;
 // crossfading its own background. Lives inside the scrolling list so it tracks
 // scroll for free; wiped with the rows on every render, rebuilt lazily.
 let selectionPill = null;
-// Honor prefers-reduced-motion for the scroll too: the pill glide is killed in
-// CSS, but scrollIntoView's smooth behavior bypasses CSS, so gate it here.
+// The scroll honors the motion switch too: the pill glide is killed in CSS, but
+// scrollIntoView's smooth behavior bypasses CSS, so gate it here.
 let onSelectionChange = null;
 let onPickChange = null;
 let emptyState = { mode: 'default' };
@@ -88,15 +88,18 @@ export function setEmptyState(state) {
 function renderEmptyState() {
     // Left half of a clipboard empty state; the preview column shows the
     // "How to use" half (macOS ClipboardEmptyInfoView / ClipboardEmptyHelpView).
+    // Compact has no preview column, so the tips stack under the info.
     const clipboardCopy = CLIPBOARD_EMPTY_COPY[emptyState.mode];
     if (clipboardCopy) {
-        return `
+        const info = `
       <div class="empty-state empty-state-rich">
         <div class="empty-state-icon">${clipboardCopy.icon}</div>
         <div class="empty-state-title">${clipboardCopy.title}</div>
         <div class="empty-state-body">${clipboardCopy.body}</div>
         <div class="empty-state-help">${clipboardCopy.help}</div>
       </div>`;
+        if (!layout.isCompact()) return info;
+        return `<div class="empty-state-stack">${info}${clipboardTipsHtml(clipboardCopy)}</div>`;
     }
     if (emptyState.mode === 'recent') {
         return `
@@ -192,6 +195,17 @@ export function getSelected() {
     return null;
 }
 
+/** Live facts for the selected process row (memory, CPU), appended to its
+ *  context line. Compact shows them there because it hides the preview. */
+export function setSelectedProcessDetail(pid, detail) {
+    const result = getSelected();
+    if (result?.procPid !== pid) return;
+    const context = container.querySelector('.result-row.selected .result-path');
+    if (!context) return;
+    const base = rowMeta(result).context;
+    context.textContent = detail ? `${base} · ${detail}` : base;
+}
+
 export function getSelectedIndex() {
     return selectedIndex;
 }
@@ -225,7 +239,7 @@ export function select(index, glide = false) {
         if (glide) playGain(row);
         row.scrollIntoView({
             block: 'nearest',
-            behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+            behavior: reducesMotion() ? 'auto' : 'smooth',
         });
     }
 

@@ -176,7 +176,7 @@ struct SpeedGaugeView: View {
     let latencyLevel: String?
     let themeStore: ThemeStore
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.reducesMotion) private var reduceMotion
     @State private var motion = GaugeMotion()
 
     var body: some View {
@@ -220,6 +220,8 @@ struct SpeedGaugeView: View {
         // lands under Reduce Motion has to be placed directly.
         .onChange(of: downloadBitsPerSecond) { _, _ in snapIfStill() }
         .onChange(of: uploadBitsPerSecond) { _, _ in snapIfStill() }
+        // Turning motion off mid-ease pauses the timeline short of the reading.
+        .onChange(of: reduceMotion) { _, _ in snapIfStill() }
     }
 
     private func snapIfStill() {

@@ -159,6 +159,8 @@ struct CommandListView: View {
     let themeStore: ThemeStore
     let onSelect: (String) -> Void
 
+    private static let tooltipWidth: CGFloat = 240
+
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 3) {
@@ -185,11 +187,20 @@ struct CommandListView: View {
                             ? themeStore.selectionFillColor() : Color.clear,
                         in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
                     )
+                    .contentShape(Rectangle())
                     .onTapGesture { onSelect(command.id) }
+                    .hoverBubble(width: Self.tooltipWidth, trailing: true) {
+                        Text(command.detail)
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                            .foregroundStyle(themeStore.fontColor())
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             .padding(2)
         }
+        // Lets the row tooltip extend past the sidebar.
+        .scrollClipDisabled()
         .padding(5)
         // No outer panel-fill: matches the bg-less right column. Rows
         // sit directly on the command-mode backdrop. Only the selected /
@@ -216,6 +227,7 @@ struct CommandInputBar: View {
                 placeholder: command.placeholder,
                 isFocused: isQueryFocused,
                 themeStore: themeStore,
+                focusesOnAppear: true,
                 onSubmit: onSubmit
             )
                 .frame(maxWidth: .infinity)
@@ -267,6 +279,8 @@ struct ResultsListView: View {
     let selectedID: String?
     let pickedKeys: Set<String>
     let themeStore: ThemeStore
+    /// See `LauncherRowView.liveDetail`; shown on the selected row only.
+    var selectedRowDetail: String? = nil
     let onSelect: (String) -> Void
     let onOpen: (String) -> Void
 
@@ -284,6 +298,7 @@ struct ResultsListView: View {
                             isPicked: pickedKeys.contains("\(result.kind.rawValue)|\(result.path)"),
                             isLast: result.id == results.last?.id,
                             selectionNamespace: selectionNamespace,
+                            liveDetail: selectedID == result.id ? selectedRowDetail : nil,
                             onOpen: {
                                 onSelect(result.id)
                                 onOpen(result.id)
@@ -504,15 +519,19 @@ struct ClipboardEmptyStateCopy {
 struct ClipboardEmptyStateView: View {
     let themeStore: ThemeStore
     var copy: ClipboardEmptyStateCopy = .text
+    /// Info above help instead of beside it, for the single-column compact layout.
+    var stacked = false
 
     var body: some View {
-        HStack(spacing: 0) {
+        let stack = stacked ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
+        stack {
             ClipboardEmptyInfoView(themeStore: themeStore, copy: copy)
+                .fixedSize(horizontal: false, vertical: stacked)
 
             Rectangle()
                 .fill(themeStore.dividerColor())
-                .frame(width: 1)
-                .padding(.vertical, 4)
+                .frame(width: stacked ? nil : 1, height: stacked ? 1 : nil)
+                .padding(stacked ? .horizontal : .vertical, 4)
 
             ClipboardEmptyHelpView(themeStore: themeStore, copy: copy)
         }

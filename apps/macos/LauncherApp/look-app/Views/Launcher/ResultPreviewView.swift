@@ -61,6 +61,10 @@ struct ResultPreviewView: View {
 
     @State private var folderListing: FolderListing?
     @State private var trashItemCount: Int?
+    /// Summed in the background: a bundle is a directory, so reading it on
+    /// selection would stall the list on a large app.
+    /// Tagged with its path so another app's total never shows for a frame.
+    @State private var bundleSize: (path: String, bytes: Int64)?
     /// Steps of the declared block behind an `.action` row, read on selection,
     /// with the file that declared it.
     @State private var blockSteps: [String] = []
@@ -339,33 +343,37 @@ struct ResultPreviewView: View {
         return NSWorkspace.shared.icon(forFile: result.path)
     }
 
-    private var bundleInfo: (version: String?, size: String, modified: String?) {
+    /// The bundle behind an app or System Settings row, nil for anything else.
+    private var bundlePath: String? {
+        if result.id.hasPrefix("setting:") {
+            return "/System/Applications/System Settings.app"
+        }
+        return result.kind == .app ? result.path : nil
+    }
+
+    private var bundleInfo: (version: String?, size: String?, modified: String?) {
         var version: String? = nil
         var modified: String? = nil
-        var totalSize: Int64 = 0
+        var size: String? = nil
 
-        if result.id.hasPrefix("setting:") || result.kind == .app {
-            let appPath = result.id.hasPrefix("setting:")
-                ? "/System/Applications/System Settings.app"
-                : result.path
-
-            if let bundle = Bundle(path: appPath) {
+        if let bundlePath {
+            if let bundle = Bundle(path: bundlePath) {
                 version = bundle.infoDictionary?["CFBundleShortVersionString"] as? String
                     ?? bundle.infoDictionary?["CFBundleVersion"] as? String
             }
 
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: appPath) {
-                if let modDate = attrs[.modificationDate] as? Date {
-                    modified = Self.modifiedDateFormatter.string(from: modDate)
-                }
-                if let size = attrs[.size] as? Int64 {
-                    totalSize = size
-                }
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: bundlePath),
+                let modDate = attrs[.modificationDate] as? Date
+            {
+                modified = Self.modifiedDateFormatter.string(from: modDate)
+            }
+            if let bundleSize, bundleSize.path == bundlePath {
+                size = formatFileSize(bundleSize.bytes)
             }
         } else {
             if let attrs = try? FileManager.default.attributesOfItem(atPath: result.path) {
-                if let size = attrs[.size] as? Int64 {
-                    totalSize = size
+                if let bytes = attrs[.size] as? Int64 {
+                    size = formatFileSize(bytes)
                 }
                 if let modDate = attrs[.modificationDate] as? Date {
                     modified = Self.modifiedDateFormatter.string(from: modDate)
@@ -373,8 +381,7 @@ struct ResultPreviewView: View {
             }
         }
 
-        let sizeStr = formatFileSize(totalSize)
-        return (version, sizeStr, modified)
+        return (version, size, modified)
     }
 
     private func formatFileSize(_ bytes: Int64) -> String {
@@ -429,8 +436,8 @@ struct ResultPreviewView: View {
                                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
                                         .foregroundStyle(themeStore.secondaryTextColor())
                                 }
-                            } else {
-                                Text(info.size)
+                            } else if let size = info.size {
+                                Text(size)
                                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
                                     .foregroundStyle(themeStore.secondaryTextColor())
                             }
@@ -498,6 +505,13 @@ struct ResultPreviewView: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .task(id: bundlePath) {
+                guard let bundlePath,
+                    let bytes = await BundleSizeService.size(path: bundlePath),
+                    !Task.isCancelled
+                else { return }
+                bundleSize = (bundlePath, bytes)
+            }
             .task(id: result.kind == .folder ? result.path : "") {
                 guard result.kind == .folder else {
                     folderListing = nil

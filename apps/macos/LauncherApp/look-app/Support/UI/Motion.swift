@@ -155,6 +155,37 @@ enum Motion {
     static let houseCurveControlPoints: (Float, Float, Float, Float) = (0.22, 1, 0.36, 1)
 }
 
+private struct ReducesMotionKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True when macOS Reduce Motion is on or the user turned Look's
+    /// animations off. Read this instead of `accessibilityReduceMotion`.
+    var reducesMotion: Bool {
+        get { self[ReducesMotionKey.self] }
+        set { self[ReducesMotionKey.self] = newValue }
+    }
+}
+
+/// Publishes `reducesMotion` and, when animations are off, strips the
+/// animation from every transaction below, `withAnimation` and implicit
+/// `.animation(_:value:)` alike.
+private struct MotionPreference: ViewModifier {
+    let animationsEnabled: Bool
+    @Environment(\.accessibilityReduceMotion) private var systemReducesMotion
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.reducesMotion, systemReducesMotion || !animationsEnabled)
+            .transaction { transaction in
+                guard !animationsEnabled else { return }
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+    }
+}
+
 /// Plays the spawn reveal on appear and whenever `token` changes. The launcher
 /// bumps `token` on every window show, so the cascade replays each open (the
 /// window is only ordered out, so `onAppear` alone fires once per process).
@@ -164,7 +195,7 @@ private struct SpawnReveal: ViewModifier {
     /// Off for surfaces holding an `NSViewRepresentable`: scaling the search
     /// field softens its text for the length of the animation.
     var scales: Bool = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.reducesMotion) private var reduceMotion
     @State private var shown = false
 
     func body(content: Content) -> some View {
@@ -197,7 +228,7 @@ private struct SpawnReveal: ViewModifier {
 /// as `SpawnReveal`, since the window is only ordered out and back in.
 private struct RootReveal: ViewModifier {
     let token: UInt64
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.reducesMotion) private var reduceMotion
     @State private var shown = false
 
     func body(content: Content) -> some View {
@@ -230,7 +261,7 @@ private struct SlideReveal: ViewModifier {
     let index: Int
     let token: UInt64
     let startOffsetX: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.reducesMotion) private var reduceMotion
     @State private var shown = false
 
     func body(content: Content) -> some View {
@@ -258,7 +289,7 @@ private struct SlideReveal: ViewModifier {
 }
 /// Scales a surface down while it is held, so clicks read as physical.
 struct PressableSurfaceStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.reducesMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -268,6 +299,11 @@ struct PressableSurfaceStyle: ButtonStyle {
 }
 
 extension View {
+    /// Applies the user's animation preference to the whole subtree.
+    func motionPreference(animationsEnabled: Bool) -> some View {
+        modifier(MotionPreference(animationsEnabled: animationsEnabled))
+    }
+
     /// Reveals the view with the shared spawn cascade. `index` sets its place in the
     /// stagger; changing `token` replays the reveal (the launcher bumps it on show).
     func spawnReveal(index: Int, token: UInt64, scales: Bool = true) -> some View {

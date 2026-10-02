@@ -9,7 +9,7 @@ extension LauncherView {
     /// what is on screen and cover it - and ⌘K is Keep Awake, so opening one
     /// would shadow the key the user meant.
     var actionMenuDescriptors: [QuickActionDescriptor] {
-        quickActionDescriptors
+        compactPanelDescriptors + quickActionDescriptors
     }
 
     /// Ids of the two rows the menu shows in place of the action list while a

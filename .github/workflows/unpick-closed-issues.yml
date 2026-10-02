@@ -1,0 +1,29 @@
+name: Unpick closed issues
+
+on:
+  issues:
+    types: [closed]
+
+# Only touches labels, nothing else.
+permissions:
+  issues: write
+
+jobs:
+  remove-picked:
+    # Skip the API call entirely when the label was never on the issue.
+    if: contains(github.event.issue.labels.*.name, 'picked')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove the picked label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        # The payload is a snapshot of the close, so re-read state in case the
+        # issue was reopened while this job sat in the queue.
+        run: |
+          state=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json state --jq .state)
+          if [ "$state" != "CLOSED" ]; then
+            echo "Issue #$ISSUE is $state now, leaving picked alone."
+            exit 0
+          fi
+          gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label picked

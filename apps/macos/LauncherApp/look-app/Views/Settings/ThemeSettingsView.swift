@@ -73,10 +73,6 @@ struct ThemeSettingsView: View {
                 .opacity(hasIndexingError ? 0.5 : 1)
                 .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
 
-                Button("Back to Launcher") {
-                    closeSettingsPanel()
-                }
-                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
                 Text("Esc or Cmd+Shift+, to close")
                     .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
                     .foregroundStyle(themeStore.mutedTextColor())
@@ -204,6 +200,16 @@ struct ThemeSettingsView: View {
                 && (event.charactersIgnoringModifiers == "," || event.keyCode == 43)
             {
                 closeSettingsPanel()
+                return nil
+            }
+
+            // ⌘⇧C reaches in here too, so a layout can be tried on from the
+            // picker, which keeps showing the saved one and rings this.
+            if flags == [.command, .shift]
+                && (event.charactersIgnoringModifiers?.lowercased() == "c"
+                    || event.keyCode == AppConstants.Launcher.KeyCode.c)
+            {
+                themeStore.toggleSessionLayout()
                 return nil
             }
 

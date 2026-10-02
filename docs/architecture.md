@@ -29,7 +29,7 @@ flowchart LR
     App --> Clipboard[ClipboardHistoryStore\nSupport/Launcher/ in-memory history]
     App --> Theme[ThemeStore\n.look/config + UserDefaults]
     App --> Bridge[EngineBridge.swift\nSupport/Launcher/]
-    App --> Services[LauncherSearchCoordinator\nLauncherTranslationService\nLauncherWindowCoordinator]
+    App --> Services[LauncherSearchCoordinator\nLauncherTranslationService]
 
     Bridge --> FFI[bridge/ffi\nC ABI]
     FFI --> Engine[core/engine\nQueryEngine]
@@ -54,7 +54,6 @@ flowchart LR
 - `Support/Launcher/`: launcher-specific services and utilities:
   - `LauncherSearchCoordinator`: debounce + async search lifecycle
   - `LauncherTranslationService`: translation lookup
-  - `LauncherWindowCoordinator`: window/focus management
   - `EngineBridge`: search engine communication
   - `ClipboardHistoryStore`, `KeyboardSelectionMonitor`, `GlobalHotKeyManager`
 - `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid) and semantic color tokens
@@ -436,7 +435,7 @@ beside `Glass.regular`.
 
 Real frost is available where the compositor grants it, and only there.
 `platform/linux/blur.rs` asks: on Wayland through `ext-background-effect-v1`
-(the cross-desktop staging protocol - KWin 6.7+, Hyprland 0.56+, Niri) falling
+(the cross-desktop staging protocol - KWin 6.7+, Mutter 51+, Hyprland 0.56+, Niri) falling
 back to `org_kde_kwin_blur`, which Plasma spoke until 6.7; on X11 through the
 `_KDE_NET_WM_BLUR_BEHIND_REGION` property, which only KWin reads. The Wayland
 bind (`blur_wayland.rs`) attaches to GTK's own `wl_surface`, taken off the
@@ -525,9 +524,19 @@ are animated, since they are compositor-handled and animating `filter` /
 zoom uses the `scale` property rather than a `transform` function, because
 `components/results.js` drives the pill's position through `transform` and an
 animation on the same property would take the glide over and land the pill
-without it. `prefers-reduced-motion` is honoured throughout, except on Windows,
-where the flag tracks the "best performance" visual-effects preset rather than
-motion sensitivity.
+without it.
+
+Motion has one off switch, `data-motion="off"` on `<html>`. `js/platform.js`
+sets it, for the `animations_enabled` config key (Settings > Appearance >
+Animations) and for `prefers-reduced-motion` alike, so the two cannot drift
+apart in the stylesheets; Windows is left out of the OS half, where the flag
+tracks the "best performance" visual-effects preset rather than motion
+sensitivity. The attribute drives one rule in `motion.css` that takes every
+duration and delay to near zero, near rather than `none` because the pressed
+and rejected states clear themselves on `animationend`. The blinking caret and
+the answer spinner are exempt: they report state, not movement. Anything that
+cannot be expressed in CSS reads `platform.reducesMotion()` instead, the smooth
+`scrollIntoView` behind the selection and the speed gauge's eased dial.
 
 ### Config File Integration
 

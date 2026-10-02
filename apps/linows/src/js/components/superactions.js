@@ -77,11 +77,12 @@ import { gridPlacement, gridShape } from './launchpad-grid.js';
 let container = null;
 let built = false;
 // What the user asked for, before the platform gets a say (see applyEnabled).
-let configEnabled = true;
+let configEnabled = false;
+let compact = false;
 let visible = false;
 // User setting (Settings -> Appearance -> Super Actions). When off the strip
 // never shows and its accelerators never fire; setVisible collapses to hidden.
-let enabled = true;
+let enabled = false;
 
 // The shared catalog layout: `{ tiles, columns, rows }`. Rendered from, never
 // mutated. Fetched lazily and retried until it lands (see ensureLayout);
@@ -349,6 +350,11 @@ export function setEnabled(on) {
     applyEnabled();
 }
 
+export function setCompact(on) {
+    compact = on;
+    applyEnabled();
+}
+
 // Re-derive after something moved the floating gate at runtime - the blur
 // fallback toggle is the one thing that does.
 export function refreshAvailability() {
@@ -360,7 +366,7 @@ export function refreshAvailability() {
 // shows the results list there instead. The config value is never touched, so
 // the launchpad comes back by itself on a capable setup.
 function applyEnabled() {
-    const next = configEnabled && platform.floatingSupported();
+    const next = configEnabled && !compact && platform.floatingSupported();
     if (enabled === next) return;
     enabled = next;
     if (!next) setVisible(false);

@@ -29,6 +29,7 @@ import {
     onWindowShown,
     onWindowHidden,
     takeLaunchQuery,
+    applyLayout,
     confirmHide,
     onIndexReady,
     onConfigReloadRequested,
@@ -189,6 +190,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         copyright: hintBar.querySelector('.hint-bar-copy'),
         leftFooter: document.getElementById('results-footer'),
         rightFooter: previewFooter,
+        topBar: document.getElementById('top-bar'),
     });
 
     // Todo quick view: when today has tasks, the last main-hint item
@@ -243,6 +245,58 @@ document.addEventListener('DOMContentLoaded', async () => {
         );
     }
 
+    // null until the config is first read: the backend sizes the window at
+    // startup, so only a later switch asks it to resize.
+    let compactApplied = null;
+    let configLayout = null;
+    // Ctrl+Shift+C's layout for this run only, never saved; null follows the config.
+    let sessionLayout = null;
+    // The override the backend last heard, so clearing it reaches the backend
+    // even when the layout on screen stays the same.
+    let backendSessionLayout = null;
+
+    /**
+     * A configured layout arrived. Settings (the picker, a reset) drop the
+     * session override; a reload drops it only if it changed `layout`.
+     */
+    function applyLayoutSetting(value, { fromSettings = false } = {}) {
+        const configured = layout.parseLayout(value);
+        if (fromSettings || configured !== configLayout) sessionLayout = null;
+        configLayout = configured;
+        applyEffectiveLayout();
+    }
+
+    function toggleSessionLayout() {
+        const current = sessionLayout ?? configLayout;
+        const next =
+            current === layout.LAYOUT_COMPACT ? layout.LAYOUT_SPLIT : layout.LAYOUT_COMPACT;
+        sessionLayout = next === configLayout ? null : next;
+        applyEffectiveLayout();
+    }
+
+    function applyEffectiveLayout() {
+        const compact = (sessionLayout ?? configLayout) === layout.LAYOUT_COMPACT;
+        const isSwitch = compactApplied !== null && compact !== compactApplied;
+        if (compact !== compactApplied) {
+            compactApplied = compact;
+            layout.setCompact(compact);
+            runningApps.setCompact(compact);
+            superactions.setCompact(compact);
+            actionmenu.setCompact(compact);
+            syncControlStrip();
+            applyAiLayoutMode();
+        }
+        if (isSwitch || sessionLayout !== backendSessionLayout) {
+            backendSessionLayout = sessionLayout;
+            applyLayout(sessionLayout).catch((err) =>
+                console.error('[layout] resize failed:', err),
+            );
+        }
+        // Settings rings the live layout on its picker, and Ctrl+Shift+C can
+        // move it while that screen is open.
+        document.dispatchEvent(new CustomEvent('look:layout-applied'));
+    }
+
     // The empty-state control strip (super actions) stands in for the results
     // row whenever the query is empty on the bare home screen. Single source of
     // truth: any transition that changes the query or the active screen calls
@@ -290,7 +344,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         smoothcaret.attach(input);
     }
     preview.init(previewPanel);
-    actionmenu.init(previewPanel, queryInput);
+    actionmenu.init(previewPanel, queryInput, document.getElementById('results-col'));
     // What each declared block asked to be drawn as, read once: rows render
     // synchronously and a miss costs them their icon until it lands.
     sourceblocks.prefill();
@@ -366,15 +420,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Running apps strip
     runningApps.init(document.getElementById('running-apps-strip'));
     getConfig().then((cfg) => {
+        applyLayoutSetting(cfg.entries.find((e) => e.key === 'layout')?.value);
+
         const placement = cfg.entries.find((e) => e.key === 'running_apps_placement');
         const on = !placement || placement.value !== 'none';
         runningApps.setEnabled(on);
         if (on) runningApps.refresh();
 
-        // Super actions launchpad: default ON. A disabled strip stays hidden on
+        // Super actions launchpad: default OFF. A disabled strip stays hidden on
         // the empty home screen and its accelerators go inert (see superactions).
         const superCfg = cfg.entries.find((e) => e.key === 'super_actions_enabled');
-        superactions.setEnabled(!superCfg || superCfg.value !== 'false');
+        superactions.setEnabled(superCfg?.value === 'true');
         syncControlStrip();
 
         // AI / web answers: default ON to match the default_config.txt setting
@@ -428,8 +484,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         search.handleQueryInput(queryInput.value);
     });
 
+    // Compact has no picked panel; the top bar says how many are picked.
+    const pickedCount = document.getElementById('picked-count');
+
     // Update right panel when picks change + auto-copy
     results.setOnPickChange((pickedItems) => {
+        pickedCount.hidden = pickedItems.length === 0;
+        pickedCount.textContent = `${pickedItems.length} picked`;
         if (pickedItems.length > 0) {
             preview.clear();
             picked.update(pickedItems);
@@ -516,7 +577,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         let mode = null;
         if (lastAiState !== AiState.idle) {
             const hasLocal = lastResults.some((r) => !isSyntheticSuggestionRow(r));
-            mode = hasLocal ? AI_LAYOUT_STACKED : AI_LAYOUT_TWO_COL;
+            // Compact has no right pane to hold the suggestion list.
+            mode = hasLocal || layout.isCompact() ? AI_LAYOUT_STACKED : AI_LAYOUT_TWO_COL;
             resultsArea.classList.add(mode);
         }
         // Two-col hosts the suggestion list in the right pane; every other mode
@@ -681,6 +743,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let launchQueryAppliedAt = 0;
 
+    // The query as it stood when Look went away. `window-shown` is an async
+    // event, so a keystroke can land between the window taking focus and the
+    // handler running; selecting then would hand the first key the user's own
+    // text to replace. Selection is therefore conditional on the field still
+    // holding exactly what the hide left in it.
+    let queryAtHide = '';
+
     // When the launcher is shown, optionally clear an expired query before the
     // usual focus/refresh/reveal pass runs.
     onWindowShown((event) => {
@@ -691,7 +760,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             resetHomeQuery();
         }
         queryInput.focus();
-        queryInput.select();
+        if (queryInput.value === queryAtHide) {
+            queryInput.select();
+        } else {
+            const end = queryInput.value.length;
+            queryInput.setSelectionRange(end, end);
+        }
         smoothcaret.refresh(queryInput);
         requestIndexRefresh();
         // A block edited while Look was away takes effect on this open.
@@ -756,6 +830,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // be running, and its answer must not open a level on the next summon.
         if (levels.isActive()) resetHomeQuery();
         else levels.clear();
+        queryAtHide = queryInput.value;
         superactions.armEntrance();
         motion.armReveal();
         // The next summon keeps the query and the selection, but an open menu
@@ -773,6 +848,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
+            queryAtHide = queryInput.value;
             superactions.armEntrance();
             motion.armReveal();
         } else {
@@ -999,11 +1075,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Sync running apps strip + AI when config is reloaded from file. Both
     // settings have live downstream consumers, so propagate on every reload.
     settings.setOnConfigReload((map) => {
+        applyLayoutSetting(map.layout);
+
         const on = (map.running_apps_placement || 'right') !== 'none';
         runningApps.setEnabled(on);
         if (on) runningApps.refresh();
 
-        superactions.setEnabled(map.super_actions_enabled !== 'false');
+        superactions.setEnabled(map.super_actions_enabled === 'true');
         syncControlStrip();
 
         const aiOn = map.ai_enabled !== 'false';
@@ -1017,6 +1095,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         runningApps.setEnabled(enabled);
         if (enabled) runningApps.refresh();
     });
+
+    document.addEventListener('look:layout-changed', (e) => {
+        applyLayoutSetting(e.detail.value, { fromSettings: true });
+    });
+
+    document.addEventListener('look:toggle-session-layout', toggleSessionLayout);
 
     // Live-update when the Settings → Appearance → Super Actions toggle changes.
     document.addEventListener('look:super-actions-changed', (e) => {

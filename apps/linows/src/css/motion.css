@@ -5,9 +5,7 @@
  * Transform and opacity only - animating filter or backdrop-filter tanks the
  * frame rate on WebKitGTK, and layout properties reflow.
  *
- * Windows is excluded from every reduce-motion opt-out below: its flag tracks
- * the "best performance" visual-effects preset, not motion sensitivity (see
- * superactions.css). */
+ * Everything switches off together, see "Motion off" at the bottom. */
 
 :root {
     --motion-curve: cubic-bezier(0.22, 1, 0.36, 1);
@@ -209,27 +207,25 @@
     transform: translateX(var(--motion-title-shift));
 }
 
-@media (prefers-reduced-motion: reduce) {
-    html:not([data-os="windows"]) .launcher-window.is-entering,
-    html:not([data-os="windows"]) .launcher-window.is-entering .top-bar,
-    html:not([data-os="windows"]) .launcher-window.is-entering .search-icon,
-    html:not([data-os="windows"]) .launcher-window.is-entering .running-app-item,
-    html:not([data-os="windows"]) .control-strip.is-entering .ctl-icon svg,
-    html:not([data-os="windows"])
-        .launcher-window.is-entering
-        #query:placeholder-shown
-        + .search-placeholder,
-    html:not([data-os="windows"]) .result-row.is-gaining .result-icon,
-    html:not([data-os="windows"]) .results-selection.is-gaining {
-        animation: none;
-    }
+/* --- Motion off ---------------------------------------------------------
+ * platform.js sets data-motion="off" for the Animations switch and for the OS
+ * reduce-motion preference alike, so the two cannot drift apart here.
+ *
+ * Near-zero durations rather than `animation: none`: the pressed and rejected
+ * states clear themselves on animationend, which a killed animation never
+ * fires. Delays go with them, or a backwards-filled stagger would hold its
+ * first frame for the whole delay. The blinking caret and the answer spinner
+ * are state rather than motion, so they keep their own pace. */
+html[data-motion="off"] *:not(.smooth-caret.is-on, .ai-spinner),
+html[data-motion="off"] *::before,
+html[data-motion="off"] *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+}
 
-    /* No fade to align to, so don't pre-hide: the panel just reappears. */
-    html:not([data-os="windows"]) .launcher-window.is-armed {
-        opacity: 1;
-    }
-
-    html:not([data-os="windows"]) .result-row .result-text {
-        transition: none;
-    }
+/* No fade to align to, so don't pre-hide: the panel just reappears. */
+html[data-motion="off"] .launcher-window.is-armed {
+    opacity: 1;
 }

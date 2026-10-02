@@ -155,6 +155,21 @@ enum RunningAppsPlacement: String, CaseIterable, Codable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Launcher window layout, persisted in `~/.look/config` under `layout`:
+/// results beside the preview (`split`), or a smaller results-only window.
+enum LauncherLayout: String, CaseIterable, Codable, Identifiable {
+    case split
+    case compact
+
+    var id: String { rawValue }
+
+    init?(configValue: String) {
+        self.init(rawValue: configValue.lowercased())
+    }
+
+    var title: String { rawValue.capitalized }
+}
+
 /// Which AI backend powers query understanding. On-device Apple Intelligence is
 /// the only option today; cloud providers can be added as new cases without
 /// touching the rest of the app. Persisted in `~/.look/config` as `ai_provider`.
@@ -250,6 +265,8 @@ struct ThemeSettings: Codable, Equatable {
     /// `~/.look/config` under `inner_gap`.
     var innerGap: Double = 7
 
+    var layout: LauncherLayout = .split
+
     /// Multiplier on every surface's resting corner radius - the panel, the top
     /// bar, the launchpad tiles and the controls. One geometry for all of them
     /// rather than a per-surface shape: glass reads as a lens and a tight corner
@@ -299,7 +316,13 @@ struct ThemeSettings: Codable, Equatable {
     /// Whether the empty-state super actions launchpad is shown. Off hides the
     /// strip and makes its ⌘-mnemonics inert. Persisted in `~/.look/config`
     /// under `super_actions_enabled`.
-    var superActionsEnabled: Bool = true
+    var superActionsEnabled: Bool = false
+
+    /// Whether the launcher animates: the open cascade, the selection glide,
+    /// the caret glide. Off shows every change instantly. macOS Reduce Motion
+    /// still applies when this is on. Persisted in `~/.look/config` under
+    /// `animations_enabled`.
+    var animationsEnabled: Bool = true
 
     /// Hotkey specs keyed by config key, see `ConfigurableShortcut`.
     var shortcutBindings: [String: String] = [:]

@@ -10,7 +10,8 @@
 
     /* Border - surface2 #585b70 */
     --border-color: rgba(88, 91, 112, 0.28);
-    --border-thickness: 1px;
+    /* Pre-script only; theme-defaults.js owns it from there. */
+    --border-thickness: 2px;
 
     /* Surfaces - surface0 #313244, surface1 #45475a, overlay0 #6c7086 */
     --panel-fill: rgba(49, 50, 68, 0.5);
@@ -74,9 +75,17 @@
     /* Two text lines, so a row without a context line is no shorter. */
     --row-height: 48px;
     --row-spacing: 4px;
+    /* The hint band's own insets, shared by the bottom bar and the card
+       footers; the band owns both, so hiding it leaves no gap behind. */
+    --hint-inset: 4px;
+    --hint-inset-bottom: 2px;
+    /* A floating tile's shadow reach (3px offset + 7px blur), which is all the
+       room the window owes it below. */
+    --tile-shadow-reach: 10px;
     --icon-size: 22px;
     --input-padding-x: 12px;
-    --input-padding-y: 10px;
+    /* With --top-row-height, the header's height: 26 + 14 * 2. */
+    --input-padding-y: 14px;
     /* Shared by the icon, the flex gap and the placeholder overlay. */
     --search-icon-size: 16px;
     /* Top row content height: field and running-apps icons both measure to it,
@@ -95,6 +104,7 @@
      * skips it desyncs from the fill behind it. A radius that follows an
      * element's geometry - an icon mask, a pill, a progress bar - is not one of
      * these and stays in px. */
+    /* Pre-script only; theme-defaults.js owns it from there. */
     --surface-radius-scale: 1.5;
     --panel-radius: calc(16px * var(--surface-radius-scale));
     --tile-radius: calc(12px * var(--surface-radius-scale));
@@ -103,7 +113,7 @@
     --chip-radius: calc(6px * var(--surface-radius-scale));
     --micro-radius: calc(4px * var(--surface-radius-scale));
     /* Square until the environment is known to composite; see below. */
-    --corner-radius: 0;
+    --corner-radius: 0px;
 
     /* Floating "inner-gap" layout (0 = classic framed panel) */
     --inner-gap: 0px;
@@ -168,7 +178,7 @@
 /* Kanagawa */
 :root[data-theme="kanagawa"] {
     --bg-tint: rgba(22, 22, 29, 0.95);
-    --font-color: rgba(222, 219, 201, 0.98);
+    --font-color: rgba(240, 217, 145, 0.96);
     --font-secondary: rgba(204, 199, 168, 1);
     --font-muted: rgba(168, 161, 128, 0.78);
     --panel-fill: rgba(25, 31, 36, 0.38);

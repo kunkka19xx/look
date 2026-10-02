@@ -17,12 +17,28 @@ final class ThemeStore: ObservableObject {
     @Published var settings: ThemeSettings {
         didSet {
             save()
+            if oldValue.layout != settings.layout {
+                sessionLayout = nil
+            }
             if oldValue.backgroundImagePath != settings.backgroundImagePath
                 || oldValue.backgroundImageBookmark != settings.backgroundImageBookmark
             {
                 refreshBackgroundImageURL()
             }
         }
+    }
+
+    /// Cmd+Shift+C's layout for this run only. Never saved. A change to the
+    /// configured layout (Settings, or a reload that edits it) or a reset drops
+    /// it; a reload that leaves `layout` alone keeps it.
+    @Published private(set) var sessionLayout: LauncherLayout?
+
+    /// The layout on screen: the session override, else the configured one.
+    var effectiveLayout: LauncherLayout { sessionLayout ?? settings.layout }
+
+    func toggleSessionLayout() {
+        let next: LauncherLayout = effectiveLayout == .split ? .compact : .split
+        sessionLayout = next == settings.layout ? nil : next
     }
 
     @Published private(set) var excludedFolderPaths: [String] = []
@@ -67,6 +83,7 @@ final class ThemeStore: ObservableObject {
     }
 
     func reset() {
+        sessionLayout = nil
         settings = .default
         applyThemeOverridesFromConfigFile()
     }
@@ -113,6 +130,11 @@ final class ThemeStore: ObservableObject {
                     appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.searchBarWidthRange)
                 case "ui_surface_radius":
                     appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.surfaceRadiusRange)
+                case "layout":
+                    if LauncherLayout(configValue: value) == nil {
+                        let expected = LauncherLayout.allCases.map(\.rawValue).joined(separator: " or ")
+                        warnings.append("\(key)=\(value) invalid (expected \(expected))")
+                    }
                 case "file_scan_depth":
                     if let parsed = Int(value), parsed < AppConstants.FileScan.minDepth || parsed > AppConstants.FileScan.maxDepth {
                         warnings.append("\(key)=\(value) invalid (must be \(AppConstants.FileScan.minDepth)-\(AppConstants.FileScan.maxDepth))")
@@ -262,6 +284,7 @@ final class ThemeStore: ObservableObject {
         ConfigFileLines.upsert(&lines, key: "search_bar_width", value: String(format: "%.0f", settings.searchBarWidth))
         ConfigFileLines.remove(&lines, key: "bar_width")
         ConfigFileLines.upsert(&lines, key: "inner_gap", value: String(format: "%.0f", settings.innerGap))
+        ConfigFileLines.upsert(&lines, key: "layout", value: settings.layout.rawValue)
         ConfigFileLines.upsert(
             &lines,
             key: "ui_surface_radius",
@@ -279,6 +302,8 @@ final class ThemeStore: ObservableObject {
 
         // Empty-state super actions launchpad
         ConfigFileLines.upsert(&lines, key: "super_actions_enabled", value: settings.superActionsEnabled ? "true" : "false")
+
+        ConfigFileLines.upsert(&lines, key: "animations_enabled", value: settings.animationsEnabled ? "true" : "false")
 
         do {
             try ConfigFileLines.render(lines).write(to: path, atomically: true, encoding: .utf8)
@@ -304,6 +329,7 @@ final class ThemeStore: ObservableObject {
             return false
         }
 
+        sessionLayout = nil
         settings = .default
         applyThemeOverridesFromConfigFile()
         _ = applyLaunchAtLoginSetting()
@@ -571,6 +597,8 @@ final class ThemeStore: ObservableObject {
                    AppConstants.ThemeUI.searchBarWidthRange.contains(parsed) {
                     settings.searchBarWidth = parsed
                 }
+            case "layout":
+                settings.layout = LauncherLayout(configValue: value) ?? .split
             case "ui_surface_radius":
                 // Clamped rather than parsePositiveDouble: 0 squares the corners
                 // and is a value the slider offers, which `> 0` would drop.
@@ -633,6 +661,10 @@ final class ThemeStore: ObservableObject {
             case "super_actions_enabled":
                 if let parsed = parseBool(value) {
                     settings.superActionsEnabled = parsed
+                }
+            case "animations_enabled":
+                if let parsed = parseBool(value) {
+                    settings.animationsEnabled = parsed
                 }
             case "ui_background_image":
                 if !value.isEmpty {
@@ -962,6 +994,9 @@ search_bar_width=860
 inner_gap=7
 ui_surface_radius=1.50
 
+# Window layout: split (results + preview) or compact (smaller, results only)
+layout=split
+
 # Apple Intelligence / AI features. ai_provider: appleIntelligence | ollama
 ai_enabled=true
 ai_provider=appleIntelligence
@@ -977,7 +1012,11 @@ ai_allow_remote_context=false
 
 # Super actions: empty-state launchpad of quick toggles / actions.
 # false hides the strip and disables its keyboard accelerators.
-super_actions_enabled=true
+super_actions_enabled=false
+
+# Launcher animations (open cascade, selection glide, caret glide).
+# false shows every change instantly.
+animations_enabled=true
 
 # Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3
 alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq
@@ -1027,6 +1066,12 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
         }
         if object["superActionsEnabled"] == nil {
             object["superActionsEnabled"] = ThemeSettings.default.superActionsEnabled
+        }
+        if object["animationsEnabled"] == nil {
+            object["animationsEnabled"] = ThemeSettings.default.animationsEnabled
+        }
+        if object["layout"] == nil {
+            object["layout"] = ThemeSettings.default.layout.rawValue
         }
         if object["surfaceRadius"] == nil {
             object["surfaceRadius"] = ThemeSettings.default.surfaceRadius

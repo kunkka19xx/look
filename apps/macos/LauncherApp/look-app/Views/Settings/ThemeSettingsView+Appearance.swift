@@ -19,36 +19,44 @@ extension ThemeSettingsView {
                         themeStore.applyBuiltinTheme(newValue)
                     }
 
-                    Spacer().frame(width: 24)
-
-                    inlinePickerLabel("Super Actions")
-                    Toggle("Show super actions", isOn: $settings.superActionsEnabled)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .help("Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
-
                     Spacer(minLength: 0)
                 }
 
                 HStack(spacing: 14) {
-                    inlinePickerLabel("Running Apps")
-                    Toggle("Show running apps", isOn: Binding(
-                        get: { settings.runningAppsPlacement != .none },
-                        set: { settings.runningAppsPlacement = $0 ? .right : .none }
-                    ))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .help("Show running apps in the right half of the search bar (⌘1-9 to switch)")
+                    // Compact shows neither the strip nor the launchpad, so
+                    // the session override (⌘⇧C) hides these too.
+                    if themeStore.effectiveLayout == .split {
+                        appearanceSwitch(
+                            "Running Apps",
+                            isOn: Binding(
+                                get: { settings.runningAppsPlacement != .none },
+                                set: { settings.runningAppsPlacement = $0 ? .right : .none }
+                            ),
+                            help: "Show running apps in the right half of the search bar (⌘1-9 to switch)")
 
-                    if settings.runningAppsPlacement != .none {
-                        Spacer().frame(width: 24)
+                        if settings.runningAppsPlacement != .none {
+                            Spacer().frame(width: 40)
 
-                        inlinePickerLabel("Theme Tint")
-                        Toggle("Tint running apps with theme", isOn: $settings.runningAppsThemeTint)
-                            .toggleStyle(.switch)
-                            .labelsHidden()
-                            .help("Discreetly tint open app icons to match the active theme palette")
+                            appearanceSwitch(
+                                "Theme Tint",
+                                isOn: $settings.runningAppsThemeTint,
+                                help: "Discreetly tint open app icons to match the active theme palette")
+                        }
+
+                        Spacer().frame(width: 40)
+
+                        appearanceSwitch(
+                            "Super Actions",
+                            isOn: $settings.superActionsEnabled,
+                            help: "Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
+
+                        Spacer().frame(width: 40)
                     }
+
+                    appearanceSwitch(
+                        "Animations",
+                        isOn: $settings.animationsEnabled,
+                        help: "Animate the launcher when it opens and as the selection moves. Off shows every change instantly.")
 
                     Spacer(minLength: 0)
                 }
@@ -60,6 +68,17 @@ extension ThemeSettingsView {
                 searchBarLivePreview
 
                 sectionHeader("Layout")
+
+                HStack(spacing: 10) {
+                    Text("Window")
+                        .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
+                        .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+                        .foregroundStyle(themeStore.secondaryTextColor())
+
+                    layoutSegment
+
+                    Spacer(minLength: 0)
+                }
 
                 LabeledSlider(
                     title: "Content Width",
@@ -233,6 +252,52 @@ extension ThemeSettingsView {
         }
     }
 
+    /// Window layout. The fill is the saved layout; ⌘⇧C can leave the window in
+    /// the other one for the rest of the run, and that one takes the ring.
+    var layoutSegment: some View {
+        let live = themeStore.effectiveLayout
+        let itemRadius = max(0, themeStore.controlRadius - 2)
+        return HStack(spacing: 2) {
+            ForEach(LauncherLayout.allCases) { option in
+                let saved = settings.layout == option
+                Button {
+                    settings.layout = option
+                } label: {
+                    Text(option.title)
+                        .font(themeStore.uiFont(
+                            size: CGFloat(settings.fontSize - 1),
+                            weight: saved ? .semibold : .regular))
+                        .foregroundStyle(saved ? themeStore.onAccentColor() : themeStore.secondaryTextColor())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 3)
+                        .background(
+                            saved ? themeStore.accentColor() : Color.clear,
+                            in: RoundedRectangle(cornerRadius: itemRadius, style: .continuous)
+                        )
+                        .overlay {
+                            if !saved && live == option {
+                                RoundedRectangle(cornerRadius: itemRadius, style: .continuous)
+                                    .stroke(themeStore.accentColor(), lineWidth: 1)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .frame(width: AppConstants.ThemeUI.pickerWidth)
+        .background(
+            themeStore.liftColor(opacity: 0.06),
+            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
+                .stroke(themeStore.dividerColor(), lineWidth: 1)
+        )
+        .help("Split shows results beside a preview; Compact is a smaller window with results only. ⌘⇧C switches for this session only, and rings the one in use.")
+    }
+
     private var suggestionCornerRadius: CGFloat {
         themeStore.controlRadius
     }
@@ -285,6 +350,18 @@ extension ThemeSettingsView {
             Text(title)
                 .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
                 .foregroundStyle(themeStore.secondaryTextColor())
+        }
+    }
+
+    /// A labelled switch; the label keeps one line so a narrow row cannot wrap it.
+    func appearanceSwitch(_ title: String, isOn: Binding<Bool>, help: String) -> some View {
+        HStack(spacing: 14) {
+            inlinePickerLabel(title)
+                .fixedSize()
+            Toggle(title, isOn: isOn)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .help(help)
         }
     }
 

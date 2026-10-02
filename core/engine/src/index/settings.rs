@@ -9,12 +9,11 @@ pub fn discover_system_settings_entries(
     localized_app_names: bool,
     tx: mpsc::SyncSender<Candidate>,
 ) {
-    // With a settings app (gnome-control-center family), emit the whole catalog.
-    // e.g. gnome-control-center on GNOME, skipped on i3/sway/minimal distros.
+    // Skipped on i3/sway/minimal distros without a settings app.
     if platform::has_settings_app() {
         let localized = localized_titles(localized_app_names);
 
-        for entry in platform::settings_catalog() {
+        for entry in available_entries() {
             emit_entry(&tx, entry, &display_title(entry, &localized));
         }
 
@@ -29,8 +28,14 @@ pub fn discover_system_settings_entries(
     }
 }
 
-/// No settings app (KDE, sway, i3, minimal): the panel targets are
-/// gnome-control-center URLs that won't open here, so we skip them - except
+fn available_entries() -> impl Iterator<Item = &'static SettingsCatalogEntry> {
+    platform::settings_catalog()
+        .iter()
+        .filter(|entry| platform::settings_entry_available(entry))
+}
+
+/// No settings app (sway, i3, minimal): the panel targets are
+/// settings-app URLs that won't open here, so we skip them - except
 /// Bluetooth, whose quick action toggles and lists devices over BlueZ, which
 /// is desktop-agnostic. Surface just that one when a controller is present.
 #[cfg(target_os = "linux")]
@@ -149,13 +154,19 @@ mod tests {
 
     #[test]
     fn curated_settings_catalog_has_valid_fields() {
+        for catalog in platform::all_settings_catalogs() {
+            assert_catalog_has_valid_fields(catalog);
+        }
+    }
+
+    fn assert_catalog_has_valid_fields(catalog: &[SettingsCatalogEntry]) {
         let mut seen_targets = HashSet::new();
         let mut seen_candidate_id_suffixes = HashSet::new();
         let mut seen_titles = HashSet::new();
         let scheme = platform::settings_url_scheme_prefix();
         let subtitle_prefix = platform::settings_subtitle_prefix();
 
-        for entry in platform::settings_catalog() {
+        for entry in catalog {
             assert!(!entry.title.trim().is_empty(), "title must be non-empty");
             assert!(
                 seen_titles.insert(entry.title.to_ascii_lowercase()),
@@ -291,7 +302,7 @@ mod tests {
     fn assert_valid_settings_candidates(discovered: Vec<Candidate>) {
         let expected_len = if platform::has_settings_app() {
             #[allow(unused_mut)]
-            let mut total = platform::settings_catalog().len();
+            let mut total = available_entries().count();
             #[cfg(target_os = "windows")]
             {
                 total += platform::windows_control_panel_catalog().len();

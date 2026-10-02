@@ -29,4 +29,3 @@ EOF
 
 echo
 echo "Release manifest written: $MANIFEST_PATH"
-echo "Next: ./scripts/generate-homebrew-cask.sh ${VERSION} ${SHA256} kunkka19xx/look"

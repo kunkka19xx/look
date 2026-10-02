@@ -33,11 +33,14 @@ import {
     classifyResultId,
     WEB_URL_OPEN_SUBTITLE,
     CLIPBOARD_EMPTY_COPY,
+    clipboardTipsHtml,
     CLIPBOARD_DELETED_BANNER,
 } from '../catalog.js';
 import * as qactions from './qactions.js';
 import * as actionmenu from './actionmenu.js';
 import { canRunElevated } from '../platform.js';
+import * as results from './results.js';
+import * as layout from '../layout.js';
 
 // Matches the macOS info banner for the same action.
 const CLIP_BANNER_DURATION = 1.1;
@@ -50,6 +53,8 @@ let highlightTimer = null;
 // Enter) targets the right process and ignores a stale request after the
 // selection moved on.
 let currentProcPid = null;
+// Memory and CPU of the previewed process, mirrored into its row in compact.
+let procFacts = {};
 
 export function init(panelEl) {
     panel = panelEl;
@@ -382,6 +387,7 @@ function clipboardBadgeRow(kind, facts) {
 
 function renderProcessPreview(result) {
     currentProcPid = result.procPid;
+    procFacts = {};
     const cacheKey = result.path;
 
     // Header: cpu glyph + process name + Process badge and PID
@@ -474,7 +480,9 @@ function renderProcessPreview(result) {
                 return;
             }
             cmdText.textContent = d.cmdline || result.procName;
-            setVal(memRow, d.rss_kb > 0 ? formatSize(d.rss_kb * 1024) : 'n/a');
+            const memory = d.rss_kb > 0 ? formatSize(d.rss_kb * 1024) : null;
+            setVal(memRow, memory ?? 'n/a');
+            if (memory) showProcFact(result.procPid, 'memory', memory);
             setVal(userRow, d.user || 'n/a');
             setVal(ppidRow, String(d.ppid));
             setVal(startRow, formatStart(d.start_epoch));
@@ -494,10 +502,18 @@ export async function measureCpu() {
         const pct = await processCpu(pid);
         if (currentProcPid !== pid) return;
         valEl.textContent = pct == null ? 'n/a' : `${pct.toFixed(1)}%`;
+        if (pct != null) showProcFact(pid, 'cpu', `${pct.toFixed(1)}% CPU`);
     } catch (err) {
         console.error('CPU measure failed:', err);
         if (currentProcPid === pid) valEl.textContent = 'n/a';
     }
+}
+
+function showProcFact(pid, key, text) {
+    procFacts[key] = text;
+    if (!layout.isCompact()) return;
+    const detail = [procFacts.memory, procFacts.cpu].filter(Boolean).join(' · ');
+    results.setSelectedProcessDetail(pid, detail);
 }
 
 function formatStart(epoch) {
@@ -709,14 +725,7 @@ export function showClipboardHelp(mode = 'clipboard') {
     qactions.clear();
     actionmenu.close();
     panel.hidden = false;
-    const tips = copy.tips
-        .map((tip) => `<div class="preview-clip-help-line">• ${tip}</div>`)
-        .join('');
-    panel.innerHTML = `
-    <div class="preview-clip-help">
-      <div class="preview-clip-help-title">How to use</div>
-      ${tips}
-    </div>`;
+    panel.innerHTML = clipboardTipsHtml(copy);
 }
 
 /**

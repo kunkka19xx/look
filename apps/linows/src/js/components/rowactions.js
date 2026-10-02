@@ -57,6 +57,32 @@ const CATALOG = [
     { id: `${PREFIX}copypath`, plain: 'Copy path', chord: 'Ctrl+C', own: 'copyPath' },
 ];
 
+// What split's side panels (picked items, clipboard preview) offer; compact has
+// no room for those panels, so the menu carries them there.
+const PANEL_ENTRIES = [
+    {
+        id: `${PREFIX}openallpicked`,
+        plain: 'Open picked',
+        chord: 'Shift+Enter',
+        own: 'openAllPicked',
+        offered: () => results.hasPickedItems(),
+    },
+    {
+        id: `${PREFIX}clearpicked`,
+        plain: 'Clear picked',
+        chord: 'Ctrl+Shift+P',
+        own: 'clearPicked',
+        offered: () => results.hasPickedItems(),
+    },
+    {
+        id: `${PREFIX}deleteclipboard`,
+        plain: 'Delete from history',
+        chord: 'Ctrl+D',
+        own: 'deleteClipboard',
+        offered: () => results.getSelected()?.kind === 'clipboard',
+    },
+];
+
 // Open and Copy path are the launcher's own verbs, not core's; keyboard.js owns
 // them and registers them here so the menu and the chords run one thing.
 let handlers = {};
@@ -135,6 +161,14 @@ export async function descriptorsFor() {
     ];
 }
 
+export function panelDescriptors() {
+    return PANEL_ENTRIES.filter((entry) => entry.offered()).map((entry) => ({
+        id: entry.id,
+        title: entry.plain,
+        chord: entry.chord,
+    }));
+}
+
 function describe(targets) {
     return (targets || []).map((target) => ({
         id: sourceblocks.actionIdFor(target.id),
@@ -161,7 +195,7 @@ export function activate(id) {
         return;
     }
 
-    const entry = CATALOG.find((candidate) => candidate.id === id);
+    const entry = [...CATALOG, ...PANEL_ENTRIES].find((candidate) => candidate.id === id);
     if (!entry) return;
     if (entry.tool) {
         run(entry.tool);

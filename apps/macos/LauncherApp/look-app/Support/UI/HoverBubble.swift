@@ -15,15 +15,18 @@ import SwiftUI
 struct HoverBubbleModifier<BubbleContent: View>: ViewModifier {
     let isEnabled: Bool
     let width: CGFloat?
+    let trailing: Bool
     @ViewBuilder let bubble: () -> BubbleContent
 
     @EnvironmentObject private var themeStore: ThemeStore
     @State private var hovering = false
 
+    private static var gap: CGFloat { 8 }
+
     func body(content: Content) -> some View {
         content
             .onHover { hovering = $0 }
-            .overlay(alignment: .topLeading) {
+            .overlay(alignment: trailing ? .trailing : .topLeading) {
                 if hovering, isEnabled {
                     bubble()
                         .padding(.horizontal, 12)
@@ -39,8 +42,8 @@ struct HoverBubbleModifier<BubbleContent: View>: ViewModifier {
                         )
                         .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
                         .fixedSize()
-                        .frame(width: 0, height: 0, alignment: .bottomLeading)
-                        .offset(y: -8)
+                        .frame(width: 0, height: 0, alignment: trailing ? .leading : .bottomLeading)
+                        .offset(x: trailing ? Self.gap : 0, y: trailing ? 0 : -Self.gap)
                         .allowsHitTesting(false)
                 }
             }
@@ -55,11 +58,14 @@ extension View {
     ///     (e.g. when there is nothing to show).
     ///   - width: Fixed bubble width; text wraps to fit. Nil sizes the
     ///     bubble to its content.
+    ///   - trailing: Show the bubble to the right, centred vertically,
+    ///     instead of above.
     func hoverBubble<Content: View>(
         isEnabled: Bool = true,
         width: CGFloat? = nil,
+        trailing: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        modifier(HoverBubbleModifier(isEnabled: isEnabled, width: width, bubble: content))
+        modifier(HoverBubbleModifier(isEnabled: isEnabled, width: width, trailing: trailing, bubble: content))
     }
 }

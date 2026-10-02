@@ -171,6 +171,9 @@ pub struct KillTarget {
     pub is_app: bool,
     pub desktop_id: Option<String>,
     pub exec: Option<String>,
+    /// Listening TCP ports, shown in the kill row so a user can confirm the
+    /// service before killing it. Apps carry none of their own.
+    pub ports: Vec<u16>,
 }
 
 const KILL_RESULT_LIMIT: usize = 60;
@@ -249,6 +252,7 @@ fn app_target(a: RunningApp) -> KillTarget {
         is_app: true,
         desktop_id: a.desktop_id,
         exec: a.exec,
+        ports: Vec::new(),
     }
 }
 
@@ -257,6 +261,7 @@ fn proc_target(r: ProcRow) -> KillTarget {
         name: r.name,
         pid: r.pid,
         is_app: false,
+        ports: r.ports,
         // App-backed processes still carry the app icon via their icon source
         // (a `.desktop` path on Linux, the exe path on Windows). It goes in
         // both fields: `desktop_id` is what Linux resolves from, `exec` is the

@@ -405,6 +405,9 @@ extension LauncherView {
             },
             onHideSelectedApp: { [self] in
                 hideSelectedApp()
+            },
+            onToggleSessionLayout: { [self] in
+                themeStore.toggleSessionLayout()
             }
         )
     }

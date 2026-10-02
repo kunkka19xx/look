@@ -22,6 +22,9 @@ struct SmoothCaretTextField: NSViewRepresentable {
     /// AI mode asks for it: the search bar is a single line by design, and a
     /// query with a newline in it means nothing to the matcher.
     var allowsMultiline: Bool = false
+    /// Takes focus as soon as the field is in a window, for inputs that replace
+    /// the search bar (command mode) and so must not wait on focus retries.
+    var focusesOnAppear: Bool = false
     var onSubmit: () -> Void
 
     private var font: NSFont { themeStore.uiNSFont(size: fontSize) }
@@ -31,6 +34,7 @@ struct SmoothCaretTextField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> CaretTextField {
         let field = CaretTextField()
+        field.focusesOnAppear = focusesOnAppear
         field.delegate = context.coordinator
         field.isBordered = false
         field.drawsBackground = false
@@ -105,6 +109,7 @@ struct SmoothCaretTextField: NSViewRepresentable {
         field.font = font
         field.textColor = textColor
         field.caretColor = caretColor
+        field.caretGlides = !context.environment.reducesMotion
         applyPlaceholder(to: field)
 
         // Bridge focus INTO first responder only. `currentEditor() != nil` is a
@@ -194,6 +199,17 @@ struct SmoothCaretTextField: NSViewRepresentable {
 final class CaretTextField: NSTextField {
     var caretColor: NSColor = .labelColor {
         didSet { caretLayer.backgroundColor = caretColor.cgColor }
+    }
+    var caretGlides = true
+    var focusesOnAppear = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard focusesOnAppear, let window else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window === window, self.currentEditor() == nil else { return }
+            window.makeFirstResponder(self)
+        }
     }
 
     private static let blinkKey = "blink"
@@ -298,7 +314,7 @@ final class CaretTextField: NSTextField {
     func refreshCaret(animated: Bool) {
         guard window?.firstResponder === currentEditor(), let rect = caretRect() else { return }
         CATransaction.begin()
-        if animated {
+        if animated && caretGlides {
             CATransaction.setAnimationDuration(Motion.Caret.glideSeconds)
             CATransaction.setAnimationTimingFunction(Self.glideTiming)
         } else {
@@ -315,7 +331,9 @@ final class CaretTextField: NSTextField {
             let container = editor.textContainer
         else { return nil }
 
-        let caretLocation = editor.selectedRange().location
+        // The selection's end, so a selected query shows the caret after its
+        // last character rather than before its first.
+        let caretLocation = NSMaxRange(editor.selectedRange())
         layoutManager.ensureLayout(for: container)
 
         let fontLineHeight = font.map { $0.ascender - $0.descender + $0.leading }

@@ -17,12 +17,17 @@ import Foundation
 /// position on whichever screen holds the mouse cursor, recomputed on
 /// every show (see `LauncherView.toggleWindowVisibility`).
 enum WindowAutoScale {
-    // Base size matches the Linux/Windows build (apps/linows/src-tauri):
-    // 860×580 logical, landscape - list pane + preview pane side by side.
+    // 840×560 logical (3:2), landscape - list pane + preview pane side by side.
     static var baseWidth: CGFloat {
         CGFloat(max(ThemeStore.shared.settings.windowWidth, ThemeStore.shared.settings.searchBarWidth))
     }
-    static let baseHeight: CGFloat = 600
+    static let baseHeight: CGFloat = 560
+
+    // Compact: tall enough for 6-7 rows. Mirrors COMPACT_W/H in the Linux/Windows build.
+    static var compactBaseWidth: CGFloat {
+        CGFloat(max(min(ThemeStore.shared.settings.windowWidth, 680), ThemeStore.shared.settings.searchBarWidth))
+    }
+    static let compactBaseHeight: CGFloat = 440
 
     /// Extra points to lift the launcher above vertical center. The window is
     /// centered on the screen (middle - height/2), then raised by this so the
@@ -38,17 +43,21 @@ enum WindowAutoScale {
 
     /// Base (unscaled) size of the launcher window. Running apps render inside
     /// the search bar, so the window is always the bordered-panel size.
-    static func baseSize() -> CGSize {
-        CGSize(width: baseWidth, height: baseHeight)
+    static func baseSize(for layout: LauncherLayout) -> CGSize {
+        switch layout {
+        case .split: return CGSize(width: baseWidth, height: baseHeight)
+        case .compact: return CGSize(width: compactBaseWidth, height: compactBaseHeight)
+        }
     }
 
     /// Window size for the given screen: the base panel multiplied by the
     /// screen ratio.
-    static func size(for screen: NSScreen) -> CGSize {
+    static func size(for screen: NSScreen, layout: LauncherLayout) -> CGSize {
+        let base = baseSize(for: layout)
         let r = ratio(forScreenHeightPoints: screen.frame.height)
         return CGSize(
-            width: (baseWidth * r).rounded(),
-            height: (baseHeight * r).rounded()
+            width: (base.width * r).rounded(),
+            height: (base.height * r).rounded()
         )
     }
 
@@ -57,16 +66,28 @@ enum WindowAutoScale {
     /// center, so results grow downward from just above center - Spotlight-style,
     /// consistent on any display size or orientation. Clamped to stay fully
     /// within the visible area so it never runs off a short display.
-    static func spotlightFrame(on screen: NSScreen) -> NSRect {
-        var size = size(for: screen)
+    static func spotlightFrame(on screen: NSScreen, layout: LauncherLayout) -> NSRect {
+        var size = size(for: screen, layout: layout)
         let visible = screen.visibleFrame
         if size.width > visible.width {
             size.width = visible.width
         }
-        let x = min(max(visible.minX, visible.midX - size.width / 2), visible.maxX - size.width)
         // middle + height/2 + lift = window top; center the panel, then lift it.
-        let windowTop = visible.midY + size.height / 2 + spotlightLift
-        let y = min(max(windowTop - size.height, visible.minY), visible.maxY - size.height)
+        // Every layout takes the split panel's top edge so the search bar never moves.
+        let anchorHeight = self.size(for: screen, layout: .split).height
+        let top = visible.midY + anchorHeight / 2 + spotlightLift
+        return frame(size: size, midX: visible.midX, top: top, within: visible)
+    }
+
+    /// Frame for a live layout switch: same top edge and center, so the search
+    /// bar stays put and the window grows or shrinks downward.
+    static func resizedFrame(from current: NSRect, on screen: NSScreen, layout: LauncherLayout) -> NSRect {
+        frame(size: size(for: screen, layout: layout), midX: current.midX, top: current.maxY, within: screen.visibleFrame)
+    }
+
+    private static func frame(size: CGSize, midX: CGFloat, top: CGFloat, within visible: NSRect) -> NSRect {
+        let x = min(max(midX - size.width / 2, visible.minX), visible.maxX - size.width)
+        let y = min(max(top - size.height, visible.minY), visible.maxY - size.height)
         return NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
     }
 }

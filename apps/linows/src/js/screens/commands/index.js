@@ -6,6 +6,7 @@ import * as kill from './kill.js';
 import * as shell from './shell.js';
 import * as sys from './sys.js';
 import { COMMAND_ENTRIES } from '../../catalog.js';
+import * as tooltip from '../../components/tooltip.js';
 
 // catalog.js owns the order, the details and the Ctrl+N each command answers
 // to; this side only binds an id to the panel module that renders it.
@@ -53,6 +54,9 @@ export function init(contentAreaEl, inputEl, { onExitMode, onExecuteCommand, onG
     }
 
     buildSidebar();
+    // The row truncates its detail, so the bubble carries the full line, right
+    // of the row like macOS CommandListView.
+    tooltip.attach(sidebar, { trailing: true, wide: true });
 }
 
 export function setOnCommandChange(fn) {
@@ -89,6 +93,7 @@ export function enter() {
 export function exit() {
     active = false;
     currentModule().exit();
+    tooltip.hide();
 
     screen.style.display = 'none';
     contentArea.style.display = '';
@@ -189,10 +194,11 @@ function buildSidebar() {
     COMMANDS.forEach((cmd, i) => {
         const row = document.createElement('div');
         row.className = 'cmd-row';
+        row.dataset.tip = cmd.detail;
         row.innerHTML = `
       <span class="cmd-row-icon">${cmd.icon}</span>
       <div class="cmd-row-text">
-        <div class="cmd-row-label">${cmd.label} <span class="cmd-row-shortcut">(Ctrl+${cmd.shortcut})</span></div>
+        <div class="cmd-row-label">${cmd.label} <span class="cmd-row-shortcut"></span></div>
         <div class="cmd-row-detail">${cmd.detail}</div>
       </div>`;
         row.addEventListener('click', () => {

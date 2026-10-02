@@ -140,7 +140,7 @@ Restart and Shut Down arm on the first press and only run on the second, so a st
 
 The rest of the strip is read-only: **Battery**, **Weather**, and the large slot on the left, which shows a running Pomodoro session, otherwise today's remaining todos, otherwise the clock.
 
-Turn the strip off in `Settings > Appearance > Super Actions`. Off hides it and disables the letter shortcuts. Saved as `super_actions_enabled=true|false` in `~/.look/config`.
+Turn the strip off in `Settings > Appearance > Super Actions`. Off hides it and disables the letter shortcuts. Saved as `super_actions_enabled=true|false` in `~/.look/config`. It is off by default; turn it on here or set `super_actions_enabled=true`.
 
 ### Rearranging the strip
 
@@ -462,6 +462,7 @@ The Appearance tab controls:
 - **Font** - name and size for launcher text
 - **Font Color** - text color (RGB + opacity)
 - **Border** - border thickness and color
+- **Window** - `Split` (results beside a preview) or `Compact` (a smaller, Spotlight-width window with the results list alone). Compact has no preview, running-apps strip, super actions, hint bar or command sidebar: Cmd/Ctrl+K opens the row's actions over the list, including open or clear picked items and delete from clipboard history, and a process row shows its memory and CPU in its subtitle. Switching resizes the window at once, no restart. Cmd/Ctrl+Shift+C flips between the two until Look quits, without touching the saved setting, and works with Settings open. While the two differ, the picker fills the saved layout and rings the one on screen. Saved as `layout=split|compact`
 - **Inner Gap** - gap between the top row, results list and preview, `0` to `24` in the platform's own unit (points on macOS, pixels on Linux and Windows). `0` is the classic framed panel; above 0 each becomes its own floating card. Both a fresh config and an absent key mean `7`. Saved as `inner_gap`
 - **Corner Radius** - one multiplier on the resting corner rounding of every surface at once: the window, the top bar, the super-action tiles, the controls. Range `0` to `2.5`, default `1.5`; `0` is square. Saved as `ui_surface_radius`. One setting rather than one per surface, so they cannot disagree with each other
 
@@ -511,14 +512,49 @@ the page itself drew, and the desktop behind the window is drawn by the system,
 not the page.
 
 Blur behind the window is the compositor's to grant, and Look asks for it
-wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and Niri through the
+wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and niri through the
 `ext-background-effect-v1` protocol, older Plasma through KDE's own, and KWin on
-X11 through a window property. There is nothing to switch on - if your
-compositor takes the request the frost is there, and `Blur Opacity` starts
-thinning the tint so more of it shows through. Everywhere else (GNOME today,
-plain sway, X11 without KWin) Look stays clear glass and `Blur Opacity` applies
-only when you have set a background image. Driving blur from your own compositor
-config still works; Look's request is additional, not exclusive.
+X11 through a window property. The switch is `Settings > Advanced > Rendering >
+Blur behind window` (`ui_compositor_blur`), and it is there on every Linux
+desktop. It starts on under KWin, where the frost is what it says on the tin,
+and off everywhere else: taking the request and drawing it well are two
+different things, so the rest is opt-in until you have looked at it on your own
+setup. On a desktop that ignores the request the switch does nothing either way.
+
+With the frost on, `Blur Opacity` starts thinning the tint so more of it shows
+through. The compositor blurs all of that area or none of it, so thinning
+reveals more frost, never a sharp desktop; turning the switch off is what gives
+you a sharp view through. How strong the frost is belongs to the compositor too
+- on Plasma, `System Settings > Desktop Effects > Blur`.
+
+niri answers the request with xray blur, which is its default: one blurred copy
+of the wallpaper, reused behind every window. The frost never picks up the
+windows below, so it looks like a snapshot that froze. To get real frost, point
+a niri rule at Look:
+
+```kdl
+layer-rule {
+    match namespace="^lookapp$"
+    background-effect { xray false; }
+}
+
+window-rule {
+    match app-id="^lookapp$"
+    background-effect { xray false; }
+}
+```
+
+Then turn `Blur behind window` on. The layer rule is the one that applies when
+`gtk-layer-shell` is installed and the window rule when it is not, so keeping
+both covers either. Leave `blur` out of the block: Look already asks over the
+protocol, and niri's own `blur true` follows `geometry-corner-radius` instead of
+Look's shape, which frosts the gaps between the floating panes. Dropping xray
+costs GPU time, since the blur is then sampled every frame rather than once.
+
+Where there is no frost at all (GNOME 50 and earlier, plain sway, X11 without KWin) Look
+stays clear glass and `Blur Opacity` applies only when you have set a background
+image. Driving blur from your own compositor config still works; Look's request
+is additional, not exclusive.
 
 **Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. AI mode (`>`) hides the row regardless of this setting, and its digits open listed conversations instead. The launcher window stays the same size either way.
 
@@ -531,7 +567,9 @@ Behavior:
 
 Saved as `running_apps_placement=<value>` in `~/.look/config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
 
-**Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/super-actions.toml`; see [Rearranging the strip](#rearranging-the-strip).
+**Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`; off by default. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/super-actions.toml`; see [Rearranging the strip](#rearranging-the-strip).
+
+**Animations**: a switch for the launcher's motion, the arrival cascade, the entrance staggers, the selection glide and the caret glide. Off shows every change instantly; the caret still blinks and the answer spinner still turns, since those read as state rather than motion. With it on, the OS preference is still respected (macOS Reduce Motion, the desktop's reduce-motion setting on Linux), except on Windows, where the flag tracks the "best performance" visual-effects preset rather than motion sensitivity. Saved as `animations_enabled=true|false`.
 
 ### Indexing Settings
 
