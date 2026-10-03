@@ -54,7 +54,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve release version
         id: version
@@ -318,7 +318,7 @@ jobs:
           echo "result=accepted" >> "$GITHUB_OUTPUT"
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: look-macos-${{ steps.version.outputs.version }}
           path: |
@@ -328,7 +328,7 @@ jobs:
 
       - name: Attach assets to GitHub release (tag pushes only)
         if: inputs.attach_release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/Look-${{ steps.version.outputs.version }}-macOS.zip
