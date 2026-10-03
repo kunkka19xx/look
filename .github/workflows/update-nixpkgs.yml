@@ -35,12 +35,16 @@ jobs:
         working-directory: apps/linows
         run: nix flake update nixpkgs
 
-      # PRs opened with GITHUB_TOKEN do not trigger CI, so required checks would
-      # never run. FLAKE_UPDATE_TOKEN (a PAT with repo scope) avoids that.
+      # A PAT, not GITHUB_TOKEN: PRs opened with GITHUB_TOKEN never trigger CI,
+      # so the required checks would never run.
       - name: Open or refresh the PR
         env:
-          GH_TOKEN: ${{ secrets.FLAKE_UPDATE_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.FLAKE_UPDATE_TOKEN }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::FLAKE_UPDATE_TOKEN is not set (PAT with repo scope)."
+            exit 1
+          fi
           if git diff --quiet -- apps/linows/flake.lock; then
             echo "nixpkgs already current."
             exit 0
