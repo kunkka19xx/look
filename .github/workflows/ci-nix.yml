@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
       # Pushes populate the cache so later runs reuse the dependency closure
       # instead of recompiling it. Fork PRs cannot read secrets, so the token

@@ -8,8 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: update-nixpkgs
@@ -21,19 +20,23 @@ env:
 jobs:
   update:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-      # PRs opened with GITHUB_TOKEN do not trigger CI, so required checks would
-      # never run. FLAKE_UPDATE_TOKEN (a PAT with repo scope) avoids that.
+      # Don't leave a token in .git/config for the third-party steps below.
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.FLAKE_UPDATE_TOKEN || github.token }}
+          persist-credentials: false
 
-      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
       - name: Update the lock
         working-directory: apps/linows
         run: nix flake update nixpkgs
 
+      # PRs opened with GITHUB_TOKEN do not trigger CI, so required checks would
+      # never run. FLAKE_UPDATE_TOKEN (a PAT with repo scope) avoids that.
       - name: Open or refresh the PR
         env:
           GH_TOKEN: ${{ secrets.FLAKE_UPDATE_TOKEN || github.token }}
@@ -47,6 +50,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -C "$BRANCH"
           git commit -am "chore(nix): update nixpkgs to ${rev:0:12}"
+          gh auth setup-git
           git push --force origin "$BRANCH"
           if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
             gh pr create --head "$BRANCH" --base main \
