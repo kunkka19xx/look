@@ -33,13 +33,13 @@ jobs:
       linows_linux: ${{ steps.filter.outputs.linows_linux }}
       linows_windows: ${{ steps.filter.outputs.linows_windows }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Detect changed paths
         id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             swift:
@@ -75,7 +75,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -105,7 +105,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.linows == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -145,13 +145,13 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -161,7 +161,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -187,7 +187,7 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -219,7 +219,7 @@ jobs:
         (github.event_name == 'pull_request' && github.base_ref == 'main')
       )
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -236,7 +236,7 @@ jobs:
         run: cargo build --release --manifest-path bridge/ffi/Cargo.toml
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: look-rust-artifacts
           path: |
@@ -255,7 +255,7 @@ jobs:
       # spurious failures. Match the toolchain we actually develop on.
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -268,11 +268,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.linows == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -285,7 +285,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.linows_linux == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -329,7 +329,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.linows_windows == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 

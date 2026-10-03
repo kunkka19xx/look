@@ -27,14 +27,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
       # Pushes populate the cache so later runs reuse the dependency closure
       # instead of recompiling it. Fork PRs cannot read secrets, so the token
       # is empty there and the action falls back to read-only automatically.
-      - uses: cachix/cachix-action@v15
+      - uses: cachix/cachix-action@v17
         with:
           name: look
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
