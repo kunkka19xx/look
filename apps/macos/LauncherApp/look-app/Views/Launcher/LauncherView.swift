@@ -205,6 +205,7 @@ struct LauncherView: View {
     /// rather than stacking on top.
     static let hintBarInset: CGFloat = 4
     static let hintBarBottomInset: CGFloat = 2
+    static let hintCornerGap: CGFloat = 6
 
     /// A floating tile's shadow reach (3pt offset + 7pt blur), which is all the
     /// room the window owes it below.
@@ -1484,7 +1485,7 @@ struct LauncherView: View {
                     // The panel's own inset already covers part of the clearance.
                     .padding(.horizontal, max(0, hintCornerClearance - contentPadding))
                     .padding(.top, Self.hintBarInset)
-                    .padding(.bottom, Self.hintBarBottomInset - contentPadding)
+                    .padding(.bottom, windowEdgeHintBottomInset - contentPadding)
             }
         }
     }
@@ -2427,9 +2428,13 @@ struct LauncherView: View {
     }
 
     /// Side inset that keeps the bottom hint line out of the window's corner
-    /// arc: half the radius clears the line's height there.
+    /// arc: how far the arc reaches in at the line's bottom edge, plus the
+    /// breathing room a floating card footer gets from its own corner.
     private var hintCornerClearance: CGFloat {
-        themeStore.panelRadius / 2
+        let radius = themeStore.panelRadius
+        let rise = min(radius, windowEdgeHintBottomInset)
+        let arcReach = radius - (radius * radius - (radius - rise) * (radius - rise)).squareRoot()
+        return arcReach + Self.hintCornerGap
     }
 
     /// Wraps a home-screen pane in its own rounded, frosted card so the inner gap
@@ -2633,7 +2638,7 @@ struct LauncherView: View {
     private var copyrightLink: some View {
         Link("© 2026 by Kunkka", destination: URL(string: "https://github.com/kunkka19xx")!)
             .font(themeStore.uiFont(size: CGFloat(max(9, themeStore.settings.fontSize - 4)), weight: .regular))
-            .foregroundStyle(themeStore.fontColor(opacityMultiplier: 0.50))
+            .foregroundStyle(themeStore.hintTextColor())
     }
 
     private var resultsDivider: some View {
@@ -2680,8 +2685,14 @@ struct LauncherView: View {
             copyrightLink
                 .padding(.trailing, max(10, hintCornerClearance))
                 // Shares the hint line, as it does inside the linows hint bar.
-                .padding(.bottom, Self.hintBarBottomInset)
+                .padding(.bottom, windowEdgeHintBottomInset)
         }
+    }
+
+    /// The window border is stroked inside the frame, so a hint line resting on
+    /// the window edge clears the border first, then keeps its usual inset.
+    private var windowEdgeHintBottomInset: CGFloat {
+        Self.hintBarBottomInset + themeStore.borderLineWidth()
     }
 
     @ViewBuilder

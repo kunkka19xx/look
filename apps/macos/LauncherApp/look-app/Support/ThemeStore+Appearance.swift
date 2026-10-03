@@ -28,6 +28,11 @@ extension ThemeStore {
         return dimmableColor(baseColor: fontColor(), factor: 0.82)
     }
 
+    /// The bottom hint line and the copyright beside it read as one quiet strip.
+    func hintTextColor() -> Color {
+        fontColor(opacityMultiplier: 0.5)
+    }
+
     func mutedTextColor() -> Color {
         if let token = activeAppearanceStyle()?.textMuted {
             return color(from: token, opacity: settings.fontOpacity * 0.78)

@@ -438,7 +438,7 @@ struct HintBar: View {
         HStack(spacing: 0) {
             Text(hint)
                 .font(hintFont)
-                .foregroundStyle(themeStore.secondaryTextColor())
+                .foregroundStyle(themeStore.hintTextColor())
                 .lineLimit(1)
                 .minimumScaleFactor(Layout.minimumScale)
                 .truncationMode(.tail)
@@ -447,7 +447,7 @@ struct HintBar: View {
             if let todo {
                 Text("  •  ")
                     .font(hintFont)
-                    .foregroundStyle(themeStore.secondaryTextColor())
+                    .foregroundStyle(themeStore.hintTextColor())
                     .lineLimit(1)
                     .fixedSize()
                 Button(action: todo.onTap) {
