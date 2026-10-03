@@ -333,6 +333,24 @@ environment.systemPackages = [ pkgs.lookapp ];
 
 For non-NixOS Nix users: `cachix use look` then `nix profile install`.
 
+Update to the latest release:
+
+```bash
+nix flake update look --flake /path/to/your/flake
+sudo nixos-rebuild switch --flake /path/to/your/flake#hostname
+```
+
+**Window never shows after a system update?** If Look runs but logs `EGL_BAD_PARAMETER`, your graphics driver is newer than Look's pinned nixpkgs. Make the input follow yours:
+
+```nix
+look = {
+  url = "github:kunkka19xx/look?dir=apps/linows";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+```
+
+Look then builds locally instead of coming from Cachix.
+
 > **Note:** For user-level declarative installation and configuration, use the Home Manager module described above. The NixOS module is intended for system-level configuration. Contributions to add Look to [nixpkgs](https://github.com/NixOS/nixpkgs) are welcome.
 
 ### AppImage (universal)

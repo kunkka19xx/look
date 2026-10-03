@@ -97,44 +97,20 @@ rm Look_*.AppImage
 **NixOS (flake):**
 
 ```bash
-# Run directly
-nix run 'github:kunkka19xx/look?dir=apps/linows'
-
-# Install to profile
 nix profile install 'github:kunkka19xx/look?dir=apps/linows'
 ```
 
-Declarative (NixOS):
+Declarative:
 
 ```nix
-# flake.nix - add input and cachix config
-{
-  nixConfig = {
-    extra-substituters = [ "https://look.cachix.org" ];
-    extra-trusted-public-keys = [ "look.cachix.org-1:8elPCeSVBzlDZXqIRKBK9GyLIK/Hoe1xiWZF0ir7uX4=" ];
-  };
+inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
 
-  inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
-  # ... your other inputs
-}
-
-# configuration.nix - add package
-{ pkgs, inputs, ... }:
-{
-  environment.systemPackages = [
-    inputs.look.packages.${pkgs.system}.default
-  ];
-}
+# in your nixosSystem modules
+look.nixosModules.default
+{ programs.lookapp.enable = true; }   # binary cache included
 ```
 
-Pre-built binaries are served via [Cachix](https://look.cachix.org). On first rebuild, nix will ask to trust the cache - say yes. No source compilation needed.
-
-Update to latest release:
-
-```bash
-nix flake update look --flake /path/to/your/flake
-sudo nixos-rebuild switch --flake /path/to/your/flake#hostname
-```
+Home Manager, updating, and troubleshooting: see [BUILDING.md](apps/linows/BUILDING.md#nixos-flake).
 
 > **Note:** On GNOME desktops, log out and log back in after the first install so the GNOME Shell extension (used for window focusing and hotkey on Wayland) can load.
 

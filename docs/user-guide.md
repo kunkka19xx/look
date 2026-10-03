@@ -644,6 +644,9 @@ Nix config and rebuild rather than using Look's in-app Save Config button. The
 first activation copies the pre-Nix file to `~/.look.config.hm-backup`. See
 `apps/linows/BUILDING.md` for the full option list.
 
+If the window never shows after a system update and Look logs `EGL_BAD_PARAMETER`, add
+`inputs.nixpkgs.follows = "nixpkgs";` to the `look` input (builds locally, no Cachix).
+
 Backend-related keys:
 
 - `app_scan_roots`, `app_scan_depth`, `app_exclude_paths`, `app_exclude_names`

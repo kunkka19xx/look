@@ -1,0 +1,55 @@
+name: Update nixpkgs
+
+# A stale pin builds Look against an older glibc than the user's NixOS graphics
+# driver, and WebKit then fails with EGL_BAD_PARAMETER (blank window).
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-nixpkgs
+  cancel-in-progress: true
+
+env:
+  BRANCH: chore/update-nixpkgs
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      # PRs opened with GITHUB_TOKEN do not trigger CI, so required checks would
+      # never run. FLAKE_UPDATE_TOKEN (a PAT with repo scope) avoids that.
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.FLAKE_UPDATE_TOKEN || github.token }}
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Update the lock
+        working-directory: apps/linows
+        run: nix flake update nixpkgs
+
+      - name: Open or refresh the PR
+        env:
+          GH_TOKEN: ${{ secrets.FLAKE_UPDATE_TOKEN || github.token }}
+        run: |
+          if git diff --quiet -- apps/linows/flake.lock; then
+            echo "nixpkgs already current."
+            exit 0
+          fi
+          rev=$(jq -r .nodes.nixpkgs.locked.rev apps/linows/flake.lock)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git commit -am "chore(nix): update nixpkgs to ${rev:0:12}"
+          git push --force origin "$BRANCH"
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --head "$BRANCH" --base main \
+              --title "chore(nix): update nixpkgs" \
+              --body "Weekly bump of \`apps/linows/flake.lock\` nixpkgs so Cachix builds match current NixOS."
+          fi
