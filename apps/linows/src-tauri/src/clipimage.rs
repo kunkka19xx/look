@@ -115,7 +115,7 @@ pub fn read_rgba(path: &std::path::Path) -> Option<(u32, u32, Vec<u8>)> {
     if info.color_type != png::ColorType::Rgba || info.bit_depth != png::BitDepth::Eight {
         return None;
     }
-    let mut buffer = vec![0; reader.output_buffer_size()];
+    let mut buffer = vec![0; reader.output_buffer_size()?];
     let frame = reader.next_frame(&mut buffer).ok()?;
     buffer.truncate(frame.buffer_size());
     Some((frame.width, frame.height, buffer))

@@ -37,7 +37,8 @@ tokio = { version = "1.52.3", features = ["rt", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # xtest: typing the paste chord into another window, the X11 half of Ctrl+I.
-x11rb = { version = "0.14", features = ["allow-unsafe-code", "xtest"] }
+# Pinned to the version arboard and global-hotkey use, so it builds once.
+x11rb = { version = "0.13", features = ["allow-unsafe-code", "xtest"] }
 # Window/display pointers for the Wayland blur bind, without GDK FFI.
 raw-window-handle = "0.6"
 zbus = "5"

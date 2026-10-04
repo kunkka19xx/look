@@ -250,7 +250,7 @@ mod imp {
     fn active_session() -> Option<Session> {
         ensure_mta();
         let manager = SessionManager::RequestAsync()
-            .and_then(|op| op.get())
+            .and_then(|op| op.join())
             .ok()?;
         manager.GetCurrentSession().ok()
     }
@@ -266,7 +266,7 @@ mod imp {
 
         let props = session
             .TryGetMediaPropertiesAsync()
-            .and_then(|op| op.get())
+            .and_then(|op| op.join())
             .ok()?;
 
         let title = props.Title().ok()?.to_string();
@@ -304,7 +304,7 @@ mod imp {
             "previous" => session.TrySkipPreviousAsync(),
             _ => return false,
         };
-        op.and_then(|op| op.get()).unwrap_or(false)
+        op.and_then(|op| op.join()).unwrap_or(false)
     }
 
     /// Turn a SourceAppUserModelId into something readable. Win32 owners report
