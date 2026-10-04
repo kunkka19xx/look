@@ -3,10 +3,10 @@ use std::io::BufReader;
 use std::sync::Mutex;
 use std::thread;
 
-use rodio::{Decoder, OutputStream, Sink};
+use rodio::{Decoder, DeviceSinkBuilder, Player};
 
-static SINK: Mutex<Option<Sink>> = Mutex::new(None);
-/// Kept alive so the audio thread (and OutputStream) persists.
+static SINK: Mutex<Option<Player>> = Mutex::new(None);
+/// Kept alive so the audio thread (and its device sink) persists.
 static _KEEPALIVE: Mutex<Option<std::sync::mpsc::Sender<()>>> = Mutex::new(None);
 
 fn ensure_init() {
@@ -16,11 +16,12 @@ fn ensure_init() {
     }
 
     let (keep_tx, keep_rx) = std::sync::mpsc::channel::<()>();
-    let (sink_tx, sink_rx) = std::sync::mpsc::channel::<Sink>();
+    let (sink_tx, sink_rx) = std::sync::mpsc::channel::<Player>();
 
     thread::spawn(move || {
-        let (_stream, handle) = OutputStream::try_default().expect("audio output");
-        let sink = Sink::try_new(&handle).expect("audio sink");
+        let mut device = DeviceSinkBuilder::open_default_sink().expect("audio output");
+        device.log_on_drop(false);
+        let sink = Player::connect_new(device.mixer());
         sink.pause();
         let _ = sink_tx.send(sink);
         let _ = keep_rx.recv();
@@ -32,7 +33,7 @@ fn ensure_init() {
 
 fn with_sink<F, R>(f: F) -> R
 where
-    F: FnOnce(&Sink) -> R,
+    F: FnOnce(&Player) -> R,
     R: Default,
 {
     ensure_init();
