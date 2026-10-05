@@ -1,0 +1,63 @@
+From 4af7b773e279f8908b804e342c74ffe11139c1f1 Mon Sep 17 00:00:00 2001
+From: Fujii Hironori <fujii@igalia.com>
+Date: Fri, 4 Sep 2026 01:07:13 -0700
+Subject: [PATCH] SkiaCompositingLayer: Take the last animation value after
+ animation ended https://bugs.webkit.org/show_bug.cgi?id=321993
+
+Reviewed by Carlos Garcia Campos.
+
+Take the last animation value after animation ended as well as
+TextureMapperLayer does. This has no effect for web, but only for "flush
+repaint" feature of WebInspector.
+
+* Source/WebCore/platform/graphics/skia/SkiaCompositingLayer.cpp:
+(WebCore::SkiaCompositingLayer::localTransform const):
+(WebCore::SkiaCompositingLayer::futureLocalTransform const):
+(WebCore::SkiaCompositingLayer::opacityForAnimationsState const):
+(WebCore::SkiaCompositingLayer::filter const):
+
+Canonical link: https://commits.webkit.org/320494@main
+---
+ .../platform/graphics/skia/SkiaCompositingLayer.cpp       | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaCompositingLayer.cpp b/Source/WebCore/platform/graphics/skia/SkiaCompositingLayer.cpp
+index 45e5666ade709..cb663399f56d2 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaCompositingLayer.cpp
++++ b/Source/WebCore/platform/graphics/skia/SkiaCompositingLayer.cpp
+@@ -383,7 +383,7 @@ void SkiaCompositingLayer::setDebugIndicators(Color&& debugBorderColor, std::opt
+
+ const TransformationMatrix& SkiaCompositingLayer::localTransform() const
+ {
+-    if (!m_animationsState || !m_animationsState->isRunning)
++    if (!m_animationsState)
+         return m_transform;
+
+     return m_animationsState->transform ? m_animationsState->transform.value() : m_transform;
+@@ -391,7 +391,7 @@ const TransformationMatrix& SkiaCompositingLayer::localTransform() const
+
+ const TransformationMatrix& SkiaCompositingLayer::futureLocalTransform() const
+ {
+-    if (!m_animationsState || !m_animationsState->isRunning)
++    if (!m_animationsState)
+         return m_transform;
+
+     return m_animationsState->futureTransform ? m_animationsState->futureTransform.value() : localTransform();
+@@ -399,7 +399,7 @@ const TransformationMatrix& SkiaCompositingLayer::futureLocalTransform() const
+
+ float SkiaCompositingLayer::opacityForAnimationsState(const AnimationsState* animationsState) const
+ {
+-    if (!animationsState || !animationsState->isRunning)
++    if (!animationsState)
+         return m_opacity;
+
+     return animationsState->opacity.value_or(m_opacity);
+@@ -412,7 +412,7 @@ float SkiaCompositingLayer::opacity() const
+
+ const std::optional<SkiaCompositingLayer::Filter> SkiaCompositingLayer::filter() const
+ {
+-    if (!m_animationsState || !m_animationsState->isRunning)
++    if (!m_animationsState)
+         return m_filter;
+
+     return m_animationsState->filter ? m_animationsState->filter : m_filter;

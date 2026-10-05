@@ -1,0 +1,14 @@
+[package]
+name = "repro"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "repro"
+path = "src/main.rs"
+
+[dependencies]
+gtk = "=0.18.2"
+webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+
+[workspace]
