@@ -6,38 +6,69 @@ mod fonts;
 #[cfg_attr(target_os = "linux", path = "host/linux.rs")]
 #[cfg_attr(windows, path = "host/windows.rs")]
 mod host;
+mod icons;
 mod launcher;
 mod motion;
+mod query;
+mod rows;
 mod search;
 mod theme;
 
 use std::borrow::Cow;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use gpui::{
     App, AppContext, AssetSource, QuitMode, SharedString, WindowBounds, WindowOptions, px, size,
 };
 use linows_backend::health::HealthIssue;
-use linows_backend::host::{Host, LauncherWindow};
+use linows_backend::host::{ClipForm, Host, LauncherWindow};
 use linows_backend::look_engine::modes;
 use linows_backend::platform::IconCache;
+use linows_backend::query_retention;
 use linows_backend::state::AppState;
 use linows_backend::{crash, launch_query};
 
 use launcher::Launcher;
 
-const SEARCH_ICON_SVG: &[u8] = br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>"##;
+/// The glyphs the shell draws itself, Lucide outlines as the webview uses.
+const GLYPHS: &[(&str, &[u8])] = &[
+    (
+        "icons/search.svg",
+        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>"##,
+    ),
+    (
+        rows::GLYPH_FILE,
+        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>"##,
+    ),
+    (
+        rows::GLYPH_FOLDER,
+        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>"##,
+    ),
+    (
+        rows::GLYPH_APP,
+        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 4v4"/><path d="M2 8h20"/><path d="M6 4v4"/></svg>"##,
+    ),
+    (
+        rows::GLYPH_GLOBE,
+        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>"##,
+    ),
+    (
+        rows::GLYPH_CALC,
+        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="8" y1="18" x2="8" y2="18.01"/><line x1="12" y1="18" x2="12" y2="18.01"/></svg>"##,
+    ),
+];
 
 struct Assets;
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
-        Ok(match path {
-            "icons/search.svg" => Some(Cow::Borrowed(SEARCH_ICON_SVG)),
-            _ => None,
-        })
+        Ok(GLYPHS
+            .iter()
+            .find(|(name, _)| *name == path)
+            .map(|(_, bytes)| Cow::Borrowed(*bytes)))
     }
 
     fn list(&self, _path: &str) -> anyhow::Result<Vec<SharedString>> {
@@ -54,7 +85,22 @@ pub enum Command {
     Query(String),
     /// The index finished a refresh; the open query re-runs.
     Refresh,
+    /// The backend wants the clipboard owned for these forms; the reply says
+    /// whether the shell took it.
+    OwnClipboard(Vec<ClipForm>, std::sync::mpsc::SyncSender<bool>),
     Quit,
+}
+
+/// How long the backend waits for the main loop's clipboard answer before it
+/// shells out instead.
+const CLIPBOARD_REPLY_TIMEOUT: Duration = Duration::from_secs(2);
+/// The spelling a text form carries first, see the backend's TEXT_TARGETS.
+const TEXT_TARGET: &str = "text/plain;charset=utf-8";
+
+/// `LOOK_PACE_PROBE=1`: a measurement instance. Logs a timestamp per frame
+/// and the search timings for tools/pace.sh, and keeps off the hotkey.
+pub fn probe_wanted() -> bool {
+    std::env::var_os("LOOK_PACE_PROBE").is_some()
 }
 
 static STATE: OnceLock<AppState> = OnceLock::new();
@@ -65,16 +111,19 @@ pub fn state() -> &'static AppState {
     STATE.get_or_init(AppState::new)
 }
 
-pub fn icons() -> &'static IconCache {
+pub fn icon_cache() -> &'static IconCache {
     ICONS.get_or_init(IconCache::new)
 }
 
 /// Both backend hooks: a sender into the main loop and the visibility flag the
 /// open and hide paths keep.
 #[derive(Clone)]
-struct Shell {
+pub struct Shell {
     tx: async_channel::Sender<Command>,
     visible: Arc<AtomicBool>,
+    /// The query the last hide left behind, for the retention rule to
+    /// restore or clear on the next summon.
+    last_query: Arc<Mutex<String>>,
 }
 
 impl Shell {
@@ -94,11 +143,17 @@ impl Host for Shell {
         }
     }
 
-    /// Owning the clipboard is M1's job (gpui's clipboard for text, wl-copy
-    /// for files); until then the backend shells out.
+    /// Text goes through gpui's clipboard on the main loop. A file or image
+    /// copy needs its MIME types offered side by side, which gpui cannot do,
+    /// so those answer `false` and the backend shells out to wl-copy.
     #[cfg(target_os = "linux")]
-    fn own_clipboard(&self, _forms: Vec<linows_backend::host::ClipForm>) -> bool {
-        false
+    fn own_clipboard(&self, forms: Vec<ClipForm>) -> bool {
+        if !forms.iter().all(|form| form.targets.contains(&TEXT_TARGET)) {
+            return false;
+        }
+        let (reply, wait) = std::sync::mpsc::sync_channel(1);
+        self.send(Command::OwnClipboard(forms, reply));
+        wait.recv_timeout(CLIPBOARD_REPLY_TIMEOUT).unwrap_or(false)
     }
 }
 
@@ -165,7 +220,7 @@ fn open(shell: &Shell, cx: &mut App) {
     theme::load();
     fonts::ensure_family(cx, &theme::get().font_family);
     state().request_index_refresh();
-    let shell = shell.clone();
+    let for_launcher = shell.clone();
     let bounds = host::bounds(size(px(theme::WINDOW_W), px(theme::WINDOW_H)), cx);
     let result = cx.open_window(
         WindowOptions {
@@ -182,19 +237,40 @@ fn open(shell: &Shell, cx: &mut App) {
         },
         move |window, cx| {
             host::decorate(window);
-            cx.new(|cx| Launcher::new(shell, window, cx))
+            cx.new(|cx| Launcher::new(for_launcher, window, cx))
         },
     );
     match result {
-        Ok(_) => shell_visible(cx, true),
+        Ok(_) => {
+            shell_visible(cx, true);
+            // The query survives a short dismissal, as the config says.
+            if query_retention::query_clear_decision_after_show(true) == Some(false) {
+                let kept = shell
+                    .last_query
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .clone();
+                if !kept.is_empty() {
+                    with_launcher(cx, |launcher, cx| launcher.set_query(&kept, cx));
+                }
+            }
+        }
         Err(err) => eprintln!("open window: {err:#}"),
     }
 }
 
 fn hide(cx: &mut App) {
+    let shell = cx.global::<Shell>().clone();
     for handle in cx.windows() {
-        let _ = handle.update(cx, |_, window, _| window.remove_window());
+        let _ = handle.update(cx, |view, window, cx| {
+            if let Ok(launcher) = view.downcast::<Launcher>() {
+                *shell.last_query.lock().unwrap_or_else(|p| p.into_inner()) =
+                    launcher.read(cx).query(cx);
+            }
+            window.remove_window();
+        });
     }
+    query_retention::mark_hidden_now();
     shell_visible(cx, false);
 }
 
@@ -220,6 +296,20 @@ fn apply(command: Command, cx: &mut App) {
     match command {
         Command::Query(text) => with_launcher(cx, |launcher, cx| launcher.set_query(&text, cx)),
         Command::Refresh => with_launcher(cx, |launcher, cx| launcher.refresh(cx)),
+        Command::OwnClipboard(forms, reply) => {
+            let text = forms
+                .into_iter()
+                .find(|form| form.targets.contains(&TEXT_TARGET))
+                .and_then(|form| String::from_utf8(form.payload).ok());
+            let taken = match text {
+                Some(text) => {
+                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                    true
+                }
+                None => false,
+            };
+            let _ = reply.send(taken);
+        }
         Command::Toggle if cx.windows().is_empty() => {
             let shell = cx.global::<Shell>().clone();
             open(&shell, cx);
@@ -233,7 +323,9 @@ fn apply(command: Command, cx: &mut App) {
             // The compositor keybinding this process registered goes with it,
             // as the Tauri shell does on exit.
             #[cfg(target_os = "linux")]
-            linows_backend::platform::linux::wayland_shortcut::cleanup_keybinding();
+            if !probe_wanted() {
+                linows_backend::platform::linux::wayland_shortcut::cleanup_keybinding();
+            }
             cx.quit()
         }
     }
@@ -286,6 +378,7 @@ fn main() {
     let shell = Shell {
         tx,
         visible: Arc::new(AtomicBool::new(false)),
+        last_query: Arc::new(Mutex::new(String::new())),
     };
     linows_backend::host::install(Box::new(shell.clone()));
     state().start_bootstrap();
@@ -296,11 +389,15 @@ fn main() {
     #[cfg(target_os = "linux")]
     {
         linows_backend::platform::linux::prime_user_session();
-        let hotkey = shell.clone();
-        let bind_key = linows_backend::hotkey::configured().enabled;
-        linows_backend::platform::linux::wayland_shortcut::start(bind_key, move || {
-            hotkey.send(Command::Toggle);
-        });
+        // A measurement instance (tools/pace.sh) runs beside the real one and
+        // must not take its key or D-Bus name.
+        if !probe_wanted() {
+            let hotkey = shell.clone();
+            let bind_key = linows_backend::hotkey::configured().enabled;
+            linows_backend::platform::linux::wayland_shortcut::start(bind_key, move || {
+                hotkey.send(Command::Toggle);
+            });
+        }
     }
 
     gpui_platform::application()

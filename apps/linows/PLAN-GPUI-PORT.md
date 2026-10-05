@@ -258,6 +258,15 @@ quick folders, web URL rows, calc inline. No preview yet.
 Done when: the user can replace the Tauri build for app and file launching
 for a day. This is the first dogfood point and the moment `src/` freezes.
 
+Status 2026-10-05: built. Rows come from one query function (engine with the
+scopes, pinned folders, calc, live and remembered URLs, merged as the
+webview merges them), icons resolve off the UI thread through the backend's
+cache, the list is a `uniform_list` with the selection kept in view, the
+field has selection, word moves and paste, text copies own the clipboard
+through gpui, and the query survives a short dismissal. Verified on sway
+with screenshots of a plain query, the three scopes, arithmetic, a URL and
+a pinned folder. Awaiting the day of dogfooding.
+
 ### M2 Preview column
 
 All preview kinds from screen 2, the highlight runs output, folder listing,

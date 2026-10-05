@@ -22,6 +22,8 @@ anyhow = "1"
 palette = "0.7"
 chrono = "0.4"
 raw-window-handle = "0.6"
+# Icons travel from the backend as data URLs, the form the webview takes.
+base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 # Same version gpui_ce_windows pins, so features unify into one build.

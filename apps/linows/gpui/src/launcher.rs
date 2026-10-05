@@ -2,30 +2,40 @@
 //! one results card once it is not. Floating layout: no window box, the bar
 //! and the cards float on the desktop with the inner gap as every seam.
 
+use std::cell::RefCell;
+use std::sync::Arc;
 use std::time::Duration;
 
-use std::cell::RefCell;
-
 use gpui::{
-    Animation, AnimationExt, Bounds, Context, Div, Entity, FontWeight, KeyDownEvent, Pixels,
-    Render, SharedString, Task, Window, div, prelude::*, px, svg,
+    Animation, AnimationExt, Bounds, ClipboardItem, Context, Div, Entity, FontWeight, KeyDownEvent,
+    Pixels, Render, ScrollStrategy, SharedString, Task, UniformListScrollHandle, Window, div, img,
+    prelude::*, px, svg, uniform_list,
 };
-
 use linows_backend::host::LauncherWindow;
-use linows_backend::launch;
-use linows_backend::search::{self as engine, SearchResult};
+use linows_backend::search as engine;
+use linows_backend::{clipboard, launch, weburl};
 
 use crate::blur::{self, BlurRect};
+use crate::icons::{IconRequest, IconStore};
 use crate::motion;
+use crate::query;
+use crate::rows::{Icon, Open, Row};
 use crate::search::{Changed, SearchInput, search_field};
 use crate::theme::{self, Theme};
 use crate::{Shell, state as app_state};
 
-const RESULT_LIMIT: usize = 8;
 const GRID_COLS: usize = 6;
 const GRID_ROWS: usize = 3;
 const GRID_ROW_H: f32 = 74.0;
 const PLACEHOLDER: &str = "Search apps, files, actions";
+const HINT_MAIN: &str = "Enter: Open \u{2022} Ctrl+F: Reveal \u{2022} Ctrl+C: Copy path";
+const HINT_EMPTY: &str = "No match \u{2022} Ctrl+Enter: Search the web";
+const WEB_SEARCH_URL: &str = "https://www.google.com/search?q=";
+/// How long a keystroke waits for the next before the query runs; the
+/// webview uses the same.
+const DEBOUNCE: Duration = Duration::from_millis(70);
+/// A row's picture, or the glyph that stands in for it.
+const ROW_ICON: f32 = 22.0;
 
 /// A launchpad cell: caption, placeholder value, column, row, spans.
 /// The clock's value is computed; every other value is a stand-in.
@@ -49,19 +59,23 @@ const TILES: &[Tile] = &[
 pub struct Launcher {
     shell: Shell,
     input: Entity<SearchInput>,
-    results: Vec<SearchResult>,
+    icons: Entity<IconStore>,
+    rows: Arc<Vec<Row>>,
     selected: usize,
+    scroll: UniformListScrollHandle,
+    /// Bumped per keystroke; a search that comes back for an older one is dropped.
+    version: u64,
+    _search: Option<Task<()>>,
     _clock: Task<()>,
 }
 
 impl Launcher {
     pub fn new(shell: Shell, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input = cx.new(SearchInput::new);
-        cx.subscribe(&input, |this, _, _: &Changed, cx| {
-            this.selected = 0;
-            this.refresh(cx);
-        })
-        .detach();
+        cx.subscribe(&input, |this, _, _: &Changed, cx| this.search(cx))
+            .detach();
+        let icons = cx.new(|_| IconStore::new());
+        cx.observe(&icons, |_, _, cx| cx.notify()).detach();
         let focus_handle = input.read(cx).focus_handle.clone();
         window.focus(&focus_handle, cx);
         blur::attach_window(window);
@@ -78,10 +92,18 @@ impl Launcher {
         Self {
             shell,
             input,
-            results: Vec::new(),
+            icons,
+            rows: Arc::new(Vec::new()),
             selected: 0,
+            scroll: UniformListScrollHandle::new(),
+            version: 0,
+            _search: None,
             _clock: clock,
         }
+    }
+
+    pub fn query(&self, cx: &gpui::App) -> String {
+        self.input.read(cx).text().to_string()
     }
 
     pub fn set_query(&mut self, text: &str, cx: &mut Context<Self>) {
@@ -89,39 +111,81 @@ impl Launcher {
     }
 
     /// Run the query again: a keystroke, or the index finishing a refresh.
+    /// The rows come back off the UI thread; a stale answer is dropped.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        self.search(cx);
+    }
+
+    fn search(&mut self, cx: &mut Context<Self>) {
+        self.version += 1;
+        let version = self.version;
         let query = self.input.read(cx).committed();
-        self.results = if query.trim().is_empty() {
-            Vec::new()
-        } else {
-            engine::search(app_state(), &query, RESULT_LIMIT as u32).results
-        };
-        self.selected = self.selected.min(self.results.len().saturating_sub(1));
-        cx.notify();
+        if query.trim().is_empty() {
+            self.rows = Arc::new(Vec::new());
+            self.selected = 0;
+            cx.notify();
+            return;
+        }
+        self._search = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(DEBOUNCE).await;
+            let rows = cx
+                .background_executor()
+                .spawn(async move {
+                    let started = std::time::Instant::now();
+                    let rows = query::run(&query);
+                    if crate::probe_wanted() {
+                        eprintln!(
+                            "search {:.1} ms rows={} query={query:?}",
+                            started.elapsed().as_secs_f64() * 1000.0,
+                            rows.len()
+                        );
+                    }
+                    rows
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.version != version {
+                    return;
+                }
+                this.rows = Arc::new(rows);
+                this.selected = 0;
+                this.scroll.scroll_to_item(0, ScrollStrategy::Top);
+                cx.notify();
+            });
+        }));
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let ks = &event.keystroke;
+        let ctrl = ks.modifiers.control;
+        let shift = ks.modifiers.shift;
         let handled = match ks.key.as_str() {
             "escape" => {
                 self.shell.hide();
                 true
             }
-            "enter" => {
-                self.open_selected();
-                true
-            }
+            "enter" if ctrl => self.search_web(cx),
+            "enter" => self.open_selected(cx),
             "down" => self.move_selection(1, cx),
             "up" => self.move_selection(-1, cx),
-            "n" if ks.modifiers.control => self.move_selection(1, cx),
-            "p" if ks.modifiers.control => self.move_selection(-1, cx),
+            "tab" => self.move_selection(if shift { -1 } else { 1 }, cx),
+            "n" if ctrl => self.move_selection(1, cx),
+            "p" if ctrl => self.move_selection(-1, cx),
+            "backspace" if ctrl => self.edit(cx, SearchInput::delete_word_back),
+            "w" if ctrl => self.edit(cx, SearchInput::delete_word_back),
             "backspace" => self.edit(cx, SearchInput::backspace),
             "delete" => self.edit(cx, SearchInput::delete),
-            "left" => self.edit(cx, SearchInput::left),
-            "right" => self.edit(cx, SearchInput::right),
-            "home" => self.edit(cx, SearchInput::home),
-            "end" => self.edit(cx, SearchInput::end),
-            "u" if ks.modifiers.control => self.edit(cx, SearchInput::clear),
+            "left" if ctrl => self.edit(cx, move |i, cx| i.word_left(shift, cx)),
+            "right" if ctrl => self.edit(cx, move |i, cx| i.word_right(shift, cx)),
+            "left" => self.edit(cx, move |i, cx| i.left(shift, cx)),
+            "right" => self.edit(cx, move |i, cx| i.right(shift, cx)),
+            "home" => self.edit(cx, move |i, cx| i.home(shift, cx)),
+            "end" => self.edit(cx, move |i, cx| i.end(shift, cx)),
+            "a" if ctrl => self.edit(cx, SearchInput::select_all),
+            "u" if ctrl => self.edit(cx, SearchInput::clear),
+            "v" if ctrl => self.paste(cx),
+            "c" if ctrl => self.copy(cx),
+            "f" if ctrl => self.reveal_selected(),
             _ => false,
         };
         if handled {
@@ -132,43 +196,116 @@ impl Launcher {
     fn edit(
         &mut self,
         cx: &mut Context<Self>,
-        op: fn(&mut SearchInput, &mut Context<SearchInput>),
+        op: impl FnOnce(&mut SearchInput, &mut Context<SearchInput>),
     ) -> bool {
         self.input.update(cx, op);
         true
     }
 
     fn move_selection(&mut self, delta: isize, cx: &mut Context<Self>) -> bool {
-        if !self.results.is_empty() {
-            let len = self.results.len() as isize;
+        if !self.rows.is_empty() {
+            let len = self.rows.len() as isize;
             self.selected = (self.selected as isize + delta).rem_euclid(len) as usize;
+            self.scroll
+                .scroll_to_item(self.selected, ScrollStrategy::Nearest);
             cx.notify();
         }
         true
     }
 
-    /// Enter: the backend opens the row and hides the launcher through the
-    /// shell; the usage event follows the same spelling the webview uses.
-    fn open_selected(&mut self) {
-        let Some(row) = self.results.get(self.selected) else {
-            return;
+    fn selected_row(&self) -> Option<&Row> {
+        self.rows.get(self.selected)
+    }
+
+    /// Enter: what the row says. The backend opens paths and hides the
+    /// launcher through the shell; a URL goes to the browser and the history;
+    /// an answer goes to the clipboard.
+    fn open_selected(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(row) = self.selected_row().cloned() else {
+            return true;
         };
-        let action = match row.kind.as_str() {
-            "app" => "open_app",
-            "folder" => "open_folder",
-            _ => "open_file",
-        };
-        match launch::open_path(
-            &self.shell,
-            row.path.clone(),
-            Some(&row.kind),
-            Some(&row.id),
-        ) {
-            Ok(()) => {
-                engine::record_usage(app_state(), &row.id, action);
+        match row.open {
+            Open::Path { usage } => {
+                match launch::open_path(&self.shell, row.path, Some(&row.kind), Some(&row.id)) {
+                    Ok(()) => {
+                        engine::record_usage(app_state(), &row.id, usage);
+                    }
+                    Err(err) => eprintln!("open {}: {err}", row.title),
+                }
             }
-            Err(err) => eprintln!("open {}: {err}", row.title),
+            Open::Url(url) => {
+                self.open_url(&url);
+                cx.background_executor()
+                    .spawn(async move {
+                        weburl::record_url_hit(&url);
+                    })
+                    .detach();
+            }
+            Open::Calc { raw, expr } => {
+                // History keeps the working; the paste is the number.
+                if let Err(err) =
+                    clipboard::copy_to_clipboard_labeled(raw, format!("{expr} = {}", row.title))
+                {
+                    eprintln!("copy: {err}");
+                }
+                self.shell.hide();
+            }
         }
+        true
+    }
+
+    fn open_url(&self, url: &str) {
+        if let Err(err) = launch::open_path(&self.shell, url.to_string(), Some("browser"), None) {
+            eprintln!("open {url}: {err}");
+        }
+    }
+
+    /// Ctrl+Enter: the query as a web search.
+    fn search_web(&mut self, cx: &mut Context<Self>) -> bool {
+        let query = self.input.read(cx).committed();
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return true;
+        }
+        self.open_url(&format!("{WEB_SEARCH_URL}{}", url_encode(trimmed)));
+        true
+    }
+
+    fn reveal_selected(&self) -> bool {
+        if let Some(row) = self.selected_row()
+            && matches!(row.open, Open::Path { .. })
+        {
+            match launch::reveal_path(&row.path) {
+                Ok(()) => self.shell.hide(),
+                Err(err) => eprintln!("reveal: {err}"),
+            }
+        }
+        true
+    }
+
+    /// Ctrl+C: the field's selection when there is one, else the row's path.
+    fn copy(&mut self, cx: &mut Context<Self>) -> bool {
+        if let Some(text) = self.input.read(cx).selected_text() {
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+            return true;
+        }
+        if let Some(row) = self.selected_row()
+            && !row.path.is_empty()
+            && let Err(err) = clipboard::copy_to_clipboard(&row.path)
+        {
+            eprintln!("copy: {err}");
+        }
+        true
+    }
+
+    fn paste(&mut self, cx: &mut Context<Self>) -> bool {
+        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+            // One line: the field is single-line, and a pasted path or query
+            // never wants its newlines.
+            let text = text.replace(['\r', '\n'], " ");
+            self.input.update(cx, |input, cx| input.insert(&text, cx));
+        }
+        true
     }
 
     fn top_bar(&self, th: &Theme) -> impl IntoElement {
@@ -279,60 +416,93 @@ impl Launcher {
     }
 
     fn results(&self, composing: bool, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
-        let rows = self.results.iter().enumerate().map(|(i, row)| {
-            let selected = i == self.selected;
-            let initial: String = row.title.chars().take(1).collect();
-            let detail = row.subtitle.clone().unwrap_or_else(|| row.path.clone());
-            div()
-                .id(("row", i))
-                .h(px(theme::ROW_HEIGHT))
-                .px(px(theme::ROW_PADDING_X))
-                .flex()
-                .items_center()
-                .gap(px(theme::SEARCH_GAP))
-                .rounded(px(th.control_radius()))
-                .when(selected, |el| el.bg(th.selection_fill))
-                .on_click(cx.listener(move |this, _, _, _| {
-                    this.selected = i;
-                    this.open_selected();
-                }))
-                .child(
+        let rows = self.rows.clone();
+        let selected = self.selected;
+        let icons = self.icons.clone();
+        let row_theme = th.clone();
+        let launcher = cx.entity();
+        let list = uniform_list("results", rows.len(), move |range, _window, cx| {
+            range
+                .map(|i| {
+                    let row = &rows[i];
+                    let th = &row_theme;
+                    let picture = match &row.icon {
+                        Icon::Resolve { glyph } => {
+                            let image = icons.update(cx, |store, cx| {
+                                store.get(
+                                    IconRequest {
+                                        kind: row.kind.clone(),
+                                        path: row.path.clone(),
+                                        id: Some(row.id.clone()),
+                                    },
+                                    cx,
+                                )
+                            });
+                            match image {
+                                Some(image) => img(image).size(px(ROW_ICON)).into_any_element(),
+                                None => glyph_icon(glyph, th).into_any_element(),
+                            }
+                        }
+                        Icon::Glyph(glyph) => glyph_icon(glyph, th).into_any_element(),
+                    };
+                    let launcher = launcher.clone();
                     div()
-                        .size(px(theme::ICON_CHIP))
+                        .id(("row", i))
+                        .w_full()
+                        .h(px(theme::ROW_HEIGHT))
+                        .px(px(theme::ROW_PADDING_X))
                         .flex()
                         .items_center()
-                        .justify_center()
-                        .rounded(px(th.chip_radius()))
-                        .bg(th.accent_wash())
-                        .text_color(th.accent)
-                        .font_weight(FontWeight::BOLD)
-                        .child(initial),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .flex()
-                        .flex_col()
-                        .min_w_0()
+                        .gap(px(theme::SEARCH_GAP))
+                        .rounded(px(th.control_radius()))
+                        .when(i == selected, |el| el.bg(th.selection_fill))
+                        .on_click(move |_, _, cx| {
+                            launcher.update(cx, |this, cx| {
+                                this.selected = i;
+                                this.open_selected(cx);
+                            });
+                        })
                         .child(
                             div()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .truncate()
-                                .child(row.title.clone()),
+                                .size(px(theme::ICON_CHIP))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(picture),
                         )
-                        .when(!detail.is_empty(), |col| {
-                            col.child(muted_text(detail, th).truncate())
-                        }),
-                )
-                .when(selected, |el| el.child(hint_chip("Enter", th)))
-        });
+                        .child(
+                            div()
+                                .flex_1()
+                                .flex()
+                                .flex_col()
+                                .min_w_0()
+                                .child(
+                                    div()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .truncate()
+                                        .child(row.title.clone()),
+                                )
+                                .when(!row.context.is_empty(), |col| {
+                                    col.child(muted_text(row.context.clone(), th).truncate())
+                                }),
+                        )
+                        .when(!row.kind_label.is_empty(), |el| {
+                            el.child(muted_text(row.kind_label.clone(), th))
+                        })
+                        .when(i == selected, |el| el.child(hint_chip("Enter", th)))
+                })
+                .collect()
+        })
+        .track_scroll(&self.scroll)
+        .flex_1()
+        .min_h_0();
 
         let hint = if composing {
             "Composing with fcitx5"
-        } else if self.results.is_empty() {
-            "No match, Esc closes"
+        } else if self.rows.is_empty() {
+            HINT_EMPTY
         } else {
-            "Up/Down to pick, Enter to open"
+            HINT_MAIN
         };
 
         // One floating card: rows, then the hint as the card's own footer.
@@ -340,14 +510,17 @@ impl Launcher {
         let card = card(div(), th)
             .mx(px(theme::CONTENT_PADDING))
             .mt(px(th.inner_gap))
+            .mb(px(theme::CONTENT_PADDING))
             .px(px(theme::ROW_INSET))
             .pt(px(theme::ROW_INSET))
             .pb(px(theme::HINT_INSET_BOTTOM))
+            .flex_1()
+            .min_h_0()
             .flex()
             .flex_col()
             .gap(px(theme::ROW_SPACING))
             .rounded(px(radius))
-            .children(rows)
+            .child(list)
             .child(
                 muted_text(hint, th)
                     .px(px(theme::ROW_PADDING_X))
@@ -355,6 +528,8 @@ impl Launcher {
                     .pb(px(theme::HINT_INSET_BOTTOM)),
             );
         div()
+            .flex_1()
+            .min_h_0()
             .flex()
             .flex_col()
             .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
@@ -393,7 +568,7 @@ impl Render for Launcher {
         let inset_y = theme::WINDOW_H * (1.0 - motion::ARRIVE_SCALE) / 2.0;
 
         div()
-            .when(pace_probe_wanted(), |root| root.child(pace_probe()))
+            .when(crate::probe_wanted(), |root| root.child(pace_probe()))
             .size_full()
             .font_family(th.font_family.clone())
             .text_size(px(th.font_size))
@@ -473,9 +648,29 @@ fn hint_chip(label: &'static str, th: &Theme) -> Div {
         .child(label)
 }
 
-/// `LOOK_PACE_PROBE=1`: one timestamp per frame for tools/pace.sh.
-fn pace_probe_wanted() -> bool {
-    std::env::var_os("LOOK_PACE_PROBE").is_some()
+/// The glyph a row wears until its picture lands, in the accent like the
+/// webview's kind glyphs.
+fn glyph_icon(path: &'static str, th: &Theme) -> impl IntoElement {
+    svg()
+        .path(path)
+        .size(px(theme::SEARCH_ICON + 2.0))
+        .text_color(th.accent)
+}
+
+/// Percent-encoding for a query in a URL: letters, digits and the unreserved
+/// marks pass, everything else is bytes.
+fn url_encode(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for byte in text.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
 }
 
 fn clock_text() -> String {

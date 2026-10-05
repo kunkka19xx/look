@@ -315,13 +315,6 @@ impl Theme {
         CHIP_RADIUS_BASE * self.radius_scale
     }
 
-    pub fn accent_wash(&self) -> Rgba {
-        Rgba {
-            alpha: 0.16,
-            ..self.accent
-        }
-    }
-
     /// The top bar and results card: control fill over the tint (`.pane-tile`).
     pub fn card_face(&self) -> Rgba {
         over(self.control_fill, self.tint)

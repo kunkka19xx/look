@@ -11,7 +11,9 @@ LABEL=$1
 SHOWS=${2:-8}
 OUT=captures
 BIN=${LOOK_GPUI_BIN:-../target/release/lookapp-gpui}
-SOCK=${XDG_RUNTIME_DIR:-/tmp}/look-gpui.sock
+# Its own socket and no hotkey: the launcher in use keeps both.
+SOCK=${XDG_RUNTIME_DIR:-/tmp}/look-gpui-probe.sock
+export LOOK_PACE_PROBE=1 LOOK_CONTROL_SOCKET=$SOCK
 # 1008x672 centred on a 2560x1440 output; override for another monitor.
 GEOMETRY=${GEOMETRY:-"776,384 1008x672"}
 # The recording is the window region, so crops are window relative. This is

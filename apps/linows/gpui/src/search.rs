@@ -19,6 +19,9 @@ pub struct SearchInput {
     pub focus_handle: FocusHandle,
     text: String,
     cursor: usize,
+    /// The other end of the selection, when there is one; the cursor is the
+    /// moving end.
+    anchor: Option<usize>,
     marked: Option<Range<usize>>,
     caret: Bounds<Pixels>,
 }
@@ -31,6 +34,7 @@ impl SearchInput {
             focus_handle: cx.focus_handle(),
             text: String::new(),
             cursor: 0,
+            anchor: None,
             marked: None,
             caret: Bounds::default(),
         }
@@ -56,49 +60,132 @@ impl SearchInput {
         self.marked.is_some()
     }
 
-    pub fn backspace(&mut self, cx: &mut Context<Self>) {
-        if self.cursor == 0 {
-            return;
+    /// The selected byte range, normalised, when it is not empty.
+    pub fn selection(&self) -> Option<Range<usize>> {
+        let anchor = self.anchor?;
+        if anchor == self.cursor {
+            return None;
         }
-        let prev = prev_char(&self.text, self.cursor);
-        self.text.replace_range(prev..self.cursor, "");
-        self.cursor = prev;
+        Some(anchor.min(self.cursor)..anchor.max(self.cursor))
+    }
+
+    pub fn selected_text(&self) -> Option<String> {
+        self.selection().map(|r| self.text[r].to_string())
+    }
+
+    /// Removes the selection, so a keystroke replaces it. `true` when there
+    /// was one.
+    fn delete_selection(&mut self) -> bool {
+        let Some(range) = self.selection() else {
+            self.anchor = None;
+            return false;
+        };
+        self.text.replace_range(range.clone(), "");
+        self.cursor = range.start;
+        self.anchor = None;
+        true
+    }
+
+    pub fn backspace(&mut self, cx: &mut Context<Self>) {
+        if !self.delete_selection() {
+            if self.cursor == 0 {
+                return;
+            }
+            let prev = prev_char(&self.text, self.cursor);
+            self.text.replace_range(prev..self.cursor, "");
+            self.cursor = prev;
+        }
         self.changed(cx);
     }
 
     pub fn delete(&mut self, cx: &mut Context<Self>) {
-        if self.cursor >= self.text.len() {
-            return;
+        if !self.delete_selection() {
+            if self.cursor >= self.text.len() {
+                return;
+            }
+            let next = next_char(&self.text, self.cursor);
+            self.text.replace_range(self.cursor..next, "");
         }
-        let next = next_char(&self.text, self.cursor);
-        self.text.replace_range(self.cursor..next, "");
         self.changed(cx);
     }
 
-    pub fn left(&mut self, cx: &mut Context<Self>) {
-        self.cursor = prev_char(&self.text, self.cursor);
+    /// Ctrl+Backspace, Ctrl+W: the word before the cursor.
+    pub fn delete_word_back(&mut self, cx: &mut Context<Self>) {
+        if !self.delete_selection() {
+            let start = prev_word(&self.text, self.cursor);
+            if start == self.cursor {
+                return;
+            }
+            self.text.replace_range(start..self.cursor, "");
+            self.cursor = start;
+        }
+        self.changed(cx);
+    }
+
+    /// Moves the cursor to `to`, extending the selection when `select`, or
+    /// dropping it otherwise.
+    fn move_to(&mut self, to: usize, select: bool, cx: &mut Context<Self>) {
+        if select {
+            self.anchor.get_or_insert(self.cursor);
+        } else {
+            self.anchor = None;
+        }
+        self.cursor = to.min(self.text.len());
         cx.notify();
     }
 
-    pub fn right(&mut self, cx: &mut Context<Self>) {
-        self.cursor = next_char(&self.text, self.cursor);
-        cx.notify();
+    pub fn left(&mut self, select: bool, cx: &mut Context<Self>) {
+        // A plain arrow out of a selection lands on its edge, as every field does.
+        let to = match (select, self.selection()) {
+            (false, Some(range)) => range.start,
+            _ => prev_char(&self.text, self.cursor),
+        };
+        self.move_to(to, select, cx);
     }
 
-    pub fn home(&mut self, cx: &mut Context<Self>) {
-        self.cursor = 0;
-        cx.notify();
+    pub fn right(&mut self, select: bool, cx: &mut Context<Self>) {
+        let to = match (select, self.selection()) {
+            (false, Some(range)) => range.end,
+            _ => next_char(&self.text, self.cursor),
+        };
+        self.move_to(to, select, cx);
     }
 
-    pub fn end(&mut self, cx: &mut Context<Self>) {
+    pub fn word_left(&mut self, select: bool, cx: &mut Context<Self>) {
+        self.move_to(prev_word(&self.text, self.cursor), select, cx);
+    }
+
+    pub fn word_right(&mut self, select: bool, cx: &mut Context<Self>) {
+        self.move_to(next_word(&self.text, self.cursor), select, cx);
+    }
+
+    pub fn home(&mut self, select: bool, cx: &mut Context<Self>) {
+        self.move_to(0, select, cx);
+    }
+
+    pub fn end(&mut self, select: bool, cx: &mut Context<Self>) {
+        self.move_to(self.text.len(), select, cx);
+    }
+
+    pub fn select_all(&mut self, cx: &mut Context<Self>) {
+        self.anchor = Some(0);
         self.cursor = self.text.len();
         cx.notify();
+    }
+
+    /// Typed or pasted text at the cursor, replacing any selection.
+    pub fn insert(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.delete_selection();
+        self.text.insert_str(self.cursor, text);
+        self.cursor += text.len();
+        self.changed(cx);
     }
 
     /// Harness entry: replaces the text as one commit, no keyboard involved.
     pub fn set_text(&mut self, text: &str, cx: &mut Context<Self>) {
         self.text = text.to_owned();
         self.cursor = self.text.len();
+        self.anchor = None;
         self.marked = None;
         self.changed(cx);
     }
@@ -106,6 +193,7 @@ impl SearchInput {
     pub fn clear(&mut self, cx: &mut Context<Self>) {
         self.text.clear();
         self.cursor = 0;
+        self.anchor = None;
         self.marked = None;
         self.changed(cx);
     }
@@ -123,6 +211,12 @@ impl SearchInput {
 
     /// The range an edit replaces, by the platform's order of preference.
     fn target(&self, range_utf16: Option<Range<usize>>) -> Range<usize> {
+        if range_utf16.is_none()
+            && self.marked.is_none()
+            && let Some(selection) = self.selection()
+        {
+            return selection;
+        }
         range_utf16
             .map(|r| from_utf16(&self.text, &r))
             .or_else(|| self.marked.clone())
@@ -149,10 +243,16 @@ impl EntityInputHandler for SearchInput {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<UTF16Selection> {
-        let cursor = offset_to_utf16(&self.text, self.cursor);
+        let range = self
+            .selection()
+            .map(|r| to_utf16(&self.text, &r))
+            .unwrap_or_else(|| {
+                let cursor = offset_to_utf16(&self.text, self.cursor);
+                cursor..cursor
+            });
         Some(UTF16Selection {
-            range: cursor..cursor,
-            reversed: false,
+            range,
+            reversed: self.anchor.is_some_and(|a| a > self.cursor),
         })
     }
 
@@ -178,6 +278,7 @@ impl EntityInputHandler for SearchInput {
     ) {
         let start = self.splice(self.target(range_utf16), new_text);
         self.cursor = start + new_text.len();
+        self.anchor = None;
         self.marked = None;
         self.changed(cx);
     }
@@ -192,6 +293,7 @@ impl EntityInputHandler for SearchInput {
     ) {
         let start = self.splice(self.target(range_utf16), new_text);
         let end = start + new_text.len();
+        self.anchor = None;
         self.marked = (!new_text.is_empty()).then_some(start..end);
         self.cursor = end;
         self.changed(cx);
@@ -233,6 +335,25 @@ impl EntityInputHandler for SearchInput {
     ) -> Option<usize> {
         Some(self.text.encode_utf16().count())
     }
+}
+
+/// The start of the word before `offset`: back over spaces, then over the word.
+fn prev_word(s: &str, offset: usize) -> usize {
+    let before = &s[..offset];
+    let trimmed = before.trim_end();
+    let start = trimmed
+        .rfind(char::is_whitespace)
+        .map_or(0, |i| i + s[i..].chars().next().map_or(1, char::len_utf8));
+    start.min(offset)
+}
+
+/// The end of the word after `offset`: over the word, then over the spaces.
+fn next_word(s: &str, offset: usize) -> usize {
+    let after = &s[offset..];
+    let word_end = after.find(char::is_whitespace).unwrap_or(after.len());
+    let rest = &after[word_end..];
+    let spaces = rest.len() - rest.trim_start().len();
+    offset + word_end + spaces
 }
 
 fn prev_char(s: &str, offset: usize) -> usize {
@@ -287,6 +408,7 @@ pub fn search_field(
 
 pub struct FieldPrepaint {
     line: ShapedLine,
+    selection: Option<PaintQuad>,
     caret: Option<PaintQuad>,
 }
 
@@ -341,6 +463,7 @@ impl Element for SearchField {
         let text = input.text.clone();
         let cursor = input.cursor;
         let marked = input.marked.clone();
+        let selection = input.selection();
 
         let run = |len: usize, color, underline: Option<UnderlineStyle>| TextRun {
             len,
@@ -383,6 +506,18 @@ impl Element for SearchField {
                 .shape_line(text.clone().into(), font_size, &runs, None)
         };
 
+        let selection = selection.filter(|_| !text.is_empty()).map(|range| {
+            let left = line.x_for_index(range.start);
+            let right = line.x_for_index(range.end);
+            fill(
+                Bounds::new(
+                    point(bounds.left() + left, bounds.top()),
+                    size(right - left, line_height),
+                ),
+                theme::hsla_of(th.selection_fill),
+            )
+        });
+
         let caret = if input.focus_handle.is_focused(window) {
             let x = if text.is_empty() {
                 px(0.0)
@@ -403,7 +538,11 @@ impl Element for SearchField {
             None
         };
 
-        FieldPrepaint { line, caret }
+        FieldPrepaint {
+            line,
+            selection,
+            caret,
+        }
     }
 
     fn paint(
@@ -423,6 +562,9 @@ impl Element for SearchField {
             cx,
         );
         let line_height = window.line_height();
+        if let Some(selection) = prepaint.selection.take() {
+            window.paint_quad(selection);
+        }
         prepaint
             .line
             .paint(

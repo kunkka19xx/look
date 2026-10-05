@@ -8,9 +8,11 @@ LABEL=$1
 SECS=${2:-4}
 OUT=captures
 BIN=${LOOK_GPUI_BIN:-../target/release/lookapp-gpui}
-SOCK=${XDG_RUNTIME_DIR:-/tmp}/look-gpui.sock
+# Its own socket and no hotkey: the launcher in use keeps both.
+SOCK=${XDG_RUNTIME_DIR:-/tmp}/look-gpui-probe.sock
+export LOOK_PACE_PROBE=1 LOOK_CONTROL_SOCKET=$SOCK
 mkdir -p "$OUT"
-LOOK_PACE_PROBE=1 "$BIN" --hidden >"$OUT/pace-$LABEL.log" 2>&1 &
+"$BIN" --hidden >"$OUT/pace-$LABEL.log" 2>&1 &
 APP=$!
 sleep 1.5
 printf show | socat - "UNIX-CONNECT:$SOCK"

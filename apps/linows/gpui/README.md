@@ -46,11 +46,19 @@ shell, so only one of the two owns Alt+Space at a time: quit the installed
 Look to hand the key to this one.
 
 Commands on the socket: `toggle`, `show`, `hide`, `query <text>`, `quit`.
-`query` fills the field directly so a results screenshot needs no typing. Esc
-closes the window, Enter opens the selected row, Up/Down or Ctrl+N/P move,
-Ctrl+U clears.
+`query` fills the field directly so a results screenshot needs no typing.
 
-Capture eight summon cycles and score them, or measure steady-state pacing:
+Keys: Esc hides, Enter opens the selected row, Ctrl+Enter searches the web
+for the query, Up/Down, Tab/Shift+Tab or Ctrl+N/P move, Ctrl+F reveals the
+row, Ctrl+C copies its path (or the field's selection), Ctrl+V pastes,
+Ctrl+A selects all, Shift with the arrows extends a selection, Ctrl with
+Left/Right jumps words, Ctrl+Backspace or Ctrl+W deletes one, Ctrl+U clears.
+
+Capture eight summon cycles and score them, or measure steady-state pacing.
+Both start a measurement instance beside the launcher in use: with
+`LOOK_PACE_PROBE=1` it logs a timestamp per frame and each search's time,
+takes no hotkey or D-Bus name, and answers on the socket
+`LOOK_CONTROL_SOCKET` names instead of the default one.
 
 ```sh
 tools/capture.sh gpui 8
@@ -59,16 +67,21 @@ tools/pace.sh exclusive
 
 ## What is wired, and what is not
 
-Wired through the backend: the engine (search, usage, index refresh on
-show), opening rows (apps, files, URLs, with the focus dance each desktop
-needs), the theme and layout keys of the config, the global hotkey and D-Bus
-service on Wayland, the crash hook.
+Wired through the backend: the engine (search with the `a" f" d" r" rc"`
+scopes, usage, index refresh on show), the pinned home folders, the inline
+calculator, URL rows (live and remembered), row icons resolved off the UI
+thread, opening rows (apps, files, URLs, with the focus dance each desktop
+needs), Ctrl+F reveal, Ctrl+C copy path, Ctrl+Enter web search, the query
+field's selection, word moves and paste, query retention across a short
+dismissal, text copies through gpui's clipboard, the theme and layout keys
+of the config, the global hotkey and D-Bus service on Wayland, the crash
+hook.
 
-Not yet: icons, the preview column, the launchpad tiles (the bento is still
-placeholder tiles), clipboard ownership (the backend shells out to wl-copy
-or xclip for now), the clipboard monitor, autostart registration, query
-retention across summons, hide on focus loss on Windows, a Windows hotkey.
-Each is a milestone in the plan.
+Not yet: the preview column, the launchpad tiles (the bento is still
+placeholder tiles), the `c" ci" t" ps"` modes and the `"` and `:` menus,
+file and image copies (the backend shells out to wl-copy or xclip for
+those), the clipboard monitor, autostart registration, hide on focus loss
+on Windows, a Windows hotkey. Each is a milestone in the plan.
 
 ## Findings, 2026-10-05, swayfx 0.6 on NixOS, RADV
 

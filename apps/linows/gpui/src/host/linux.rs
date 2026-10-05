@@ -15,13 +15,20 @@ use linows_backend::platform::linux::wm;
 pub const BACKGROUND: WindowBackgroundAppearance = WindowBackgroundAppearance::Transparent;
 
 const SOCKET_NAME: &str = "look-gpui.sock";
+/// A second instance beside the real one (tools/pace.sh) answers on its own
+/// socket so the two do not trade commands.
+const SOCKET_ENV: &str = "LOOK_CONTROL_SOCKET";
 
 /// `printf toggle | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/look-gpui.sock`.
 pub fn bind() -> std::io::Result<UnixListener> {
-    let path = std::env::var_os("XDG_RUNTIME_DIR")
+    let path = std::env::var_os(SOCKET_ENV)
         .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join(SOCKET_NAME);
+        .unwrap_or_else(|| {
+            std::env::var_os("XDG_RUNTIME_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(std::env::temp_dir)
+                .join(SOCKET_NAME)
+        });
     let _ = std::fs::remove_file(&path);
     UnixListener::bind(&path)
 }
