@@ -93,6 +93,11 @@ struct LauncherView: View {
     @State var recentURLTask: Task<Void, Never>?
     // Quick Actions for the selected result (see docs/writing-controls.md).
     @State var quickActionDescriptors: [QuickActionDescriptor] = []
+    /// Just the compiled system controls (Bluetooth's switch), which is what the
+    /// preview panel renders. `quickActionDescriptors` also carries the row's
+    /// menu verbs (Reveal, Copy path, ...), and those belong to Cmd+K alone -
+    /// drawn in the panel they would be a stack of buttons under every file.
+    @State var systemControlDescriptors: [QuickActionDescriptor] = []
     // The Cmd+K action menu. Closed by default, so a row's verbs cost the
     // preview no space until asked for.
     @State var isActionMenuOpen = false
@@ -2206,7 +2211,7 @@ struct LauncherView: View {
                 ResultPreviewView(
                     result: selectedResult,
                     rowAncestorsJSON: selectedRowAncestorsJSON,
-                    quickActions: quickActionDescriptors,
+                    quickActions: systemControlDescriptors,
                     quickActionStates: quickActionStates,
                     quickActionInfo: quickActionInfo,
                     pendingQuickActionItems: pendingQuickActions,

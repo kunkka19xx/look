@@ -73,13 +73,16 @@ extension LauncherView {
         guard let result = selectedResultForActions else {
             closeActionMenu()
             if !quickActionDescriptors.isEmpty { quickActionDescriptors = [] }
+            if !systemControlDescriptors.isEmpty { systemControlDescriptors = [] }
             if !quickActionStates.isEmpty { quickActionStates = [:] }
             if !quickActionInfo.isEmpty { quickActionInfo = [:] }
             quickActionsLoadedResultID = nil
             return
         }
 
-        var descriptors = bridge.quickActions(forResultID: result.id, kind: result.kind.rawValue)
+        let systemControls = bridge.quickActions(forResultID: result.id, kind: result.kind.rawValue)
+        systemControlDescriptors = systemControls
+        var descriptors = systemControls
         // A block's `then` targets are actions on this row, so they join the
         // same Cmd+K menu as the compiled controls. They are declared at parse
         // time rather than build time; that is the only difference.

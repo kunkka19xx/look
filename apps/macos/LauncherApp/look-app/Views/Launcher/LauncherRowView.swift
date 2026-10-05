@@ -128,7 +128,7 @@ struct LauncherRowView: View {
             return LauncherProcessFeature.icon(forPID: pid)
         }
 
-        if result.id.hasPrefix("setting:") {
+        if result.isSettingsRow {
             let settingsPath = "/System/Applications/System Settings.app"
             if FileManager.default.fileExists(atPath: settingsPath) {
                 return RowIconCache.icon(forFile: settingsPath)
@@ -160,6 +160,9 @@ struct LauncherRowView: View {
     }
 
     private var kindLabel: String {
+        if result.isSettingsRow {
+            return "Setting"
+        }
         switch result.kind {
         case .app:
             return "App"

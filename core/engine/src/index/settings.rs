@@ -288,6 +288,51 @@ mod tests {
         assert_eq!(display_title(entry, &localized), entry.title);
     }
 
+    /// macOS 26 removed the Screen Saver pane and moved its options into
+    /// Wallpaper, so "screen saver" survives only in that entry's aliases.
+    /// Settings subtitles are scored only for settings-shaped queries, which
+    /// makes the hint list the thing keeping this query alive.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn screen_saver_query_still_reaches_the_wallpaper_pane() {
+        let entry = platform::settings_catalog()
+            .iter()
+            .find(|entry| entry.title == "Wallpaper")
+            .expect("catalog has a Wallpaper pane");
+
+        let (tx, rx) = mpsc::sync_channel(1);
+        emit_entry(&tx, entry, entry.title);
+        drop(tx);
+        let engine = crate::QueryEngine::new(rx.into_iter().collect());
+
+        for query in ["screen saver", "screensaver"] {
+            assert_eq!(engine.search(query, 5).len(), 1, "lost `{query}`");
+        }
+    }
+
+    /// `wifi` is the query that exposed this: the pane's title normalizes to
+    /// `wi-fi`, so only its aliases spell the joined form, and aliases live in
+    /// the subtitle. While settings subtitles were scored for settings-shaped
+    /// queries alone, the pane lost to whatever else fuzzy-matched - a browser
+    /// history row titled "Owl City - Fireflies" outranked it.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_joined_alias_query_outranks_unrelated_fuzzy_noise() {
+        let mut candidates = discover_settings(false);
+        let noise = Candidate::new(
+            "src:history;row:1",
+            CandidateKind::Action,
+            "Owl City - Fireflies (Official Music Video) - YouTube",
+            "https://www.youtube.com/watch?v=psuRGfAaju4",
+        );
+        candidates.push(noise);
+
+        let engine = crate::QueryEngine::new(candidates);
+
+        let top = engine.search("wifi", 5);
+        assert_eq!(top.first().map(|hit| hit.title.as_ref()), Some("Wi-Fi"));
+    }
+
     fn discover_settings(localized_app_names: bool) -> Vec<Candidate> {
         let (tx, rx) = mpsc::sync_channel(64);
         let producer = std::thread::spawn(move || {
