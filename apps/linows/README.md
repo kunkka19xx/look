@@ -9,7 +9,8 @@ its look, feel, and feature set using web technologies.
 
 ```
 apps/linows/
-  src-tauri/             Rust backend (Tauri commands, state, platform logic)
+  backend/               Rust: search, launching, clipboard, controls, config (shared with the gpui port)
+  src-tauri/             Tauri shell: window, hotkey plugin, one command per backend call
     src/
       main.rs            Entry point, plugin registration, global hotkey
       commands.rs        Search, open, reveal, window, quit
@@ -148,7 +149,7 @@ cargo tauri build --bundles deb    # build .deb package
 
 ```bash
 nix develop --command cargo tauri build --bundles deb
-# Output: src-tauri/target/release/bundle/deb/Look_*.deb
+# Output: target/release/bundle/deb/Look_*.deb
 ```
 
 **Get VM IP** (on the VM):
@@ -167,7 +168,7 @@ sudo apt install openssh-server patchelf
 **Deploy** (from host, run as one script):
 
 ```bash
-scp -O apps/linows/src-tauri/target/release/bundle/deb/Look_*.deb kunkka@192.168.122.x:/tmp/
+scp -O apps/linows/target/release/bundle/deb/Look_*.deb kunkka@192.168.122.x:/tmp/
 ```
 
 **Install on VM:**

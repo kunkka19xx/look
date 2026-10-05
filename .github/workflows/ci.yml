@@ -135,7 +135,7 @@ jobs:
         # in the lockfile.
         # Drop these ignores once wayland-rs moves to quick-xml >=0.41.
         run: >
-          cargo audit --file apps/linows/src-tauri/Cargo.lock
+          cargo audit --file apps/linows/Cargo.lock
           --ignore RUSTSEC-2026-0194 --ignore RUSTSEC-2026-0195
 
   secrets-scan:
@@ -309,19 +309,19 @@ jobs:
         with:
           workspaces: |
             core
-            apps/linows/src-tauri
+            apps/linows
 
       - name: Check formatting
-        run: cargo fmt --all --manifest-path apps/linows/src-tauri/Cargo.toml -- --check
+        run: cargo fmt --all --manifest-path apps/linows/Cargo.toml -- --check
 
       - name: Run clippy
-        run: cargo clippy --locked --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --manifest-path apps/linows/Cargo.toml -- -D warnings
 
       - name: Build (debug)
-        run: cargo build --locked --manifest-path apps/linows/src-tauri/Cargo.toml
+        run: cargo build --locked --workspace --manifest-path apps/linows/Cargo.toml
 
       - name: Run tests
-        run: cargo test --locked --manifest-path apps/linows/src-tauri/Cargo.toml
+        run: cargo test --locked --workspace --manifest-path apps/linows/Cargo.toml
 
   linows-build-windows:
     name: Build linows (Tauri, Windows)
@@ -347,17 +347,17 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/linows/src-tauri
+          workspaces: apps/linows
           cache-targets: false
 
       - name: Check formatting
-        run: cargo fmt --all --manifest-path apps/linows/src-tauri/Cargo.toml -- --check
+        run: cargo fmt --all --manifest-path apps/linows/Cargo.toml -- --check
 
       - name: Run clippy
-        run: cargo clippy --locked --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --manifest-path apps/linows/Cargo.toml -- -D warnings
 
       - name: Build (debug)
-        run: cargo build --locked --manifest-path apps/linows/src-tauri/Cargo.toml
+        run: cargo build --locked --workspace --manifest-path apps/linows/Cargo.toml
 
       - name: Run tests
-        run: cargo test --locked --manifest-path apps/linows/src-tauri/Cargo.toml
+        run: cargo test --locked --workspace --manifest-path apps/linows/Cargo.toml

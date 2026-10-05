@@ -62,15 +62,15 @@ repos:
         types: [rust]
 
       - id: cargo-fmt-linows
-        name: cargo fmt (linows/tauri, auto-fix)
-        entry: cargo fmt --manifest-path apps/linows/src-tauri/Cargo.toml --all
+        name: cargo fmt (linows, auto-fix)
+        entry: cargo fmt --manifest-path apps/linows/Cargo.toml --all
         language: system
         pass_filenames: false
         types: [rust]
 
       - id: cargo-clippy-linows
-        name: cargo clippy (linows/tauri)
-        entry: bash -c 'command -v pkg-config >/dev/null && pkg-config --exists glib-2.0 2>/dev/null && cargo clippy --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings || echo "Skipping linows clippy (run inside nix develop)"'
+        name: cargo clippy (linows)
+        entry: bash -c 'command -v pkg-config >/dev/null && pkg-config --exists glib-2.0 2>/dev/null && cargo clippy --workspace --all-targets --manifest-path apps/linows/Cargo.toml -- -D warnings || echo "Skipping linows clippy (run inside nix develop)"'
         language: system
         pass_filenames: false
         types: [rust]

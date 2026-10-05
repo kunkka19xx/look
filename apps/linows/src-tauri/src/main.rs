@@ -1,44 +1,23 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod answers;
-mod autostart;
-mod calc;
-mod cli_path;
-mod clipboard;
-mod clipimage;
 mod commands;
-mod config;
 mod consts;
-mod crash;
-mod files;
-mod health;
-mod highlight;
+mod host;
 mod launcher_hotkey;
-mod lunar;
-mod music;
-mod netspeed;
-mod nowplaying;
-mod paste;
-mod platform;
-mod process;
-mod qactions;
-mod shell;
-mod sources;
-mod state;
-mod sysinfo;
-mod todo;
-mod tools;
-mod translate;
-mod trash;
-mod weather;
-mod weburl;
+mod pickers;
+mod window;
 
-use look_engine::modes;
+use linows_backend::crash;
+use linows_backend::geometry;
+use linows_backend::health;
+use linows_backend::launch_query;
+use linows_backend::look_engine::modes;
+use linows_backend::platform::IconCache;
 #[cfg(target_os = "linux")]
-use platform::linux::gpu;
-use state::AppState;
-use std::sync::Mutex;
+use linows_backend::platform::linux;
+use linows_backend::startup;
+use linows_backend::state::AppState;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
@@ -69,7 +48,7 @@ fn now_ms() -> u64 {
 fn supports_transparency() -> bool {
     #[cfg(target_os = "linux")]
     {
-        platform::linux::transparency::has_compositor()
+        linux::transparency::has_compositor()
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -78,72 +57,20 @@ fn supports_transparency() -> bool {
     }
 }
 
-/// tauri.conf's window size (3:2), and the 1.0x rung of `scaled_window_size`.
-pub(crate) const BASE_W: f64 = 840.0;
-pub(crate) const BASE_H: f64 = 560.0;
-/// Compact layout base size, tall enough for 6-7 rows. Mirrors macOS
-/// `WindowAutoScale.compactBaseWidth/Height`.
-const COMPACT_W: f64 = 680.0;
-const COMPACT_H: f64 = 440.0;
-/// Ctrl+Shift+C's layout for this run only; `None` follows the config file.
-static SESSION_LAYOUT: Mutex<Option<config::LauncherLayout>> = Mutex::new(None);
-
-fn effective_layout() -> config::LauncherLayout {
-    SESSION_LAYOUT
-        .lock()
-        .ok()
-        .and_then(|session| *session)
-        .unwrap_or_else(config::launcher_layout)
-}
-
 /// Grace period (ms) after show - ignore focus-loss within this window.
 const AUTO_HIDE_GRACE_MS: u64 = 300;
 /// Guard (ms) to prevent re-showing after auto-hide (GNOME X11 race).
 const AUTO_HIDE_RESHOW_GUARD_MS: u64 = 200;
 /// Arm the launchpad, then hide the window once the webview has painted that
-/// frame - see `commands::hide_armed`.
+/// frame - see `window::hide_armed`.
 fn hide_launcher(window: &tauri::WebviewWindow) {
-    commands::hide_armed(window);
-}
-
-/// Scale window size (logical pixels) to fit the current monitor.
-/// Base size targets 1080p (1.0×). Scales up for larger logical screens
-/// (1440p → 1.2×, 4K → 1.3× cap). The base follows the effective layout.
-fn scaled_window_size(screen_w: u32, screen_h: u32, scale: f64) -> (u32, u32) {
-    let ratio = screen_ratio(screen_h, scale);
-    let _ = screen_w; // used only for centering
-    let (base_w, base_h) = match effective_layout() {
-        config::LauncherLayout::Split => (BASE_W, BASE_H),
-        config::LauncherLayout::Compact => (COMPACT_W, COMPACT_H),
-    };
-    let w = (base_w * ratio).round() as u32;
-    let h = (base_h * ratio).round() as u32;
-    (w, h)
-}
-
-fn screen_ratio(screen_h: u32, scale: f64) -> f64 {
-    let logical_h = screen_h as f64 / scale;
-    if logical_h <= 1080.0 {
-        1.0
-    } else {
-        // Linear from 1.0 at 1080 to 1.2 at 1440, capped at 1.3
-        let r = 1.0 + (logical_h - 1080.0) / (1440.0 - 1080.0) * 0.2;
-        r.min(1.3)
-    }
-}
-
-/// Logical distance from the monitor's top to where a centred split panel's top
-/// sits. Every layout uses it, so the search bar never moves between layouts.
-fn top_offset(monitor: &tauri::Monitor) -> f64 {
-    let scale = monitor.scale_factor();
-    let screen_h = monitor.size().height;
-    let split_h = (BASE_H * screen_ratio(screen_h, scale)).round();
-    (screen_h as f64 / scale - split_h) / 2.0
+    window::hide_armed(window);
 }
 
 /// Logical top edge for a shown window.
 fn window_top(monitor: &tauri::Monitor) -> f64 {
-    monitor.position().y as f64 / monitor.scale_factor() + top_offset(monitor)
+    let scale = monitor.scale_factor();
+    monitor.position().y as f64 / scale + geometry::top_offset(monitor.size().height, scale)
 }
 
 /// Toggle the main window: hide if visible, show (centered) if hidden.
@@ -151,9 +78,9 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
     let Some(window) = app_handle.get_webview_window(consts::MAIN_WINDOW) else {
         return;
     };
-    if commands::launcher_visible(&window) {
+    if window::launcher_visible(&window) {
         #[cfg(target_os = "linux")]
-        platform::linux::window_focus::notify_hidden();
+        linux::window_focus::notify_hidden();
         hide_launcher(&window);
     } else if now_ms() - LAST_AUTO_HIDDEN_AT.load(Ordering::Relaxed) > AUTO_HIDE_RESHOW_GUARD_MS {
         // Only show if auto-hide didn't JUST fire.
@@ -174,7 +101,7 @@ fn show_window(window: &tauri::WebviewWindow) {
     // A layer surface is placed and stacked by the compositor; neither is
     // ours to ask for.
     #[cfg(target_os = "linux")]
-    let placed_by_compositor = platform::linux::layer_shell::is_active();
+    let placed_by_compositor = host::layer_shell::is_active();
     #[cfg(not(target_os = "linux"))]
     let placed_by_compositor = false;
 
@@ -183,7 +110,7 @@ fn show_window(window: &tauri::WebviewWindow) {
     // recenter AFTER show. Desktop environments (GNOME, KDE, …) work
     // best with recenter BEFORE show to avoid a visible jump.
     #[cfg(target_os = "linux")]
-    let tiling = platform::linux::wm::is_tiling_wm();
+    let tiling = linux::wm::is_tiling_wm();
     #[cfg(not(target_os = "linux"))]
     let tiling = false;
 
@@ -193,7 +120,7 @@ fn show_window(window: &tauri::WebviewWindow) {
         }
         let _ = window.set_always_on_top(true);
     }
-    commands::show_launcher_before_event(window, || {
+    window::show_launcher_before_event(window, || {
         if !placed_by_compositor && tiling {
             recenter_window(window);
         }
@@ -202,12 +129,12 @@ fn show_window(window: &tauri::WebviewWindow) {
     // GDK_BACKEND=x11), bypass the compositor's focus-stealing
     // prevention by bumping _NET_WM_USER_TIME before activation.
     #[cfg(target_os = "linux")]
-    if platform::linux::transparency::window_is_x11() {
-        platform::linux::window_focus::activate_self();
-        platform::linux::window_focus::notify_shown();
+    if linux::transparency::window_is_x11() {
+        linux::window_focus::activate_self();
+        linux::window_focus::notify_shown();
     }
 
-    commands::focus_launcher(window);
+    window::focus_launcher(window);
 }
 
 /// Center and scale a window to fit the current monitor.
@@ -222,7 +149,7 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) -> Option<((i32, i32),
     let pos = monitor.position();
     let screen = monitor.size();
     let scale = monitor.scale_factor();
-    let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
+    let (win_w, win_h) = geometry::scaled_window_size(screen.height, scale);
     let logical_screen_w = screen.width as f64 / scale;
     let logical_screen_h = screen.height as f64 / scale;
     eprintln!(
@@ -238,13 +165,13 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) -> Option<((i32, i32),
     let _ = window.set_position(tauri::LogicalPosition::new(lx, ly));
     Some((
         (win_w as i32, win_h as i32),
-        top_offset(&monitor).round() as i32,
+        geometry::top_offset(screen.height, scale).round() as i32,
     ))
 }
 
 /// Find the monitor that contains the cursor. Falls back to the window's
 /// current monitor, then the first available monitor.
-fn monitor_at_cursor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
+pub(crate) fn monitor_at_cursor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
     // Try Tauri's cursor_position first (works on X11).
     // On Wayland, cursor_position() fails - fall back to GNOME Shell D-Bus.
     // GNOME Shell's global.get_pointer() returns *logical* coordinates,
@@ -256,7 +183,7 @@ fn monitor_at_cursor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
     // Keyed off the window backend: an XWayland window (AppImage) has a
     // working X11 cursor_position.
     #[cfg(target_os = "linux")]
-    let wayland = !platform::linux::transparency::window_is_x11();
+    let wayland = !linux::transparency::window_is_x11();
     #[cfg(not(target_os = "linux"))]
     let wayland = false;
 
@@ -268,7 +195,7 @@ fn monitor_at_cursor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
     } else {
         #[cfg(target_os = "linux")]
         {
-            let pos = platform::linux::gnome_ext::get_pointer()
+            let pos = linux::gnome_ext::get_pointer()
                 .map(|(x, y)| tauri::PhysicalPosition::new(x as f64, y as f64));
             (pos, true) // GNOME Shell returns logical coords
         }
@@ -327,7 +254,7 @@ fn recenter_window(window: &tauri::WebviewWindow) {
     let pos = monitor.position();
     let screen = monitor.size();
     let scale = monitor.scale_factor();
-    let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
+    let (win_w, win_h) = geometry::scaled_window_size(screen.height, scale);
     let logical_screen_w = screen.width as f64 / scale;
     resize_locked(window, tauri::LogicalSize::new(win_w as f64, win_h as f64));
     let lx = pos.x as f64 / scale + (logical_screen_w - win_w as f64) / 2.0;
@@ -337,7 +264,7 @@ fn recenter_window(window: &tauri::WebviewWindow) {
 
 /// Relaxes min/max first so the old lock can't clamp the new size, then locks
 /// them to it again.
-fn resize_locked(window: &tauri::WebviewWindow, size: tauri::LogicalSize<f64>) {
+pub(crate) fn resize_locked(window: &tauri::WebviewWindow, size: tauri::LogicalSize<f64>) {
     let _ = window.set_min_size(None::<tauri::Size>);
     let _ = window.set_max_size(None::<tauri::Size>);
     let _ = window.set_size(size);
@@ -345,156 +272,11 @@ fn resize_locked(window: &tauri::WebviewWindow, size: tauri::LogicalSize<f64>) {
     let _ = window.set_max_size(Some(tauri::Size::Logical(size)));
 }
 
-/// Resizes for a layout change, keeping a visible window's top edge and centre.
-/// `session_layout` is the Ctrl+Shift+C override, `None` to follow the config.
-/// A hidden window is resized by `recenter_window` on its next show; the layer
-/// surface is not, so it is resized here either way.
-#[tauri::command]
-fn apply_layout(window: tauri::WebviewWindow, session_layout: Option<String>) {
-    if let Ok(mut session) = SESSION_LAYOUT.lock() {
-        *session = session_layout
-            .as_deref()
-            .and_then(config::LauncherLayout::parse);
-    }
-    let Some(monitor) = window
-        .current_monitor()
-        .ok()
-        .flatten()
-        .or_else(|| monitor_at_cursor(&window))
-    else {
-        return;
-    };
-    let screen = monitor.size();
-    let scale = monitor.scale_factor();
-    let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
-
-    #[cfg(target_os = "linux")]
-    if platform::linux::layer_shell::is_active() {
-        platform::linux::layer_shell::resize(win_w as i32, win_h as i32);
-        return;
-    }
-
-    if !commands::launcher_visible(&window) {
-        return;
-    }
-    let (Ok(position), Ok(old_size)) = (window.outer_position(), window.outer_size()) else {
-        return;
-    };
-    let top = position.y as f64 / scale;
-    let center_x = (position.x as f64 + old_size.width as f64 / 2.0) / scale;
-    resize_locked(&window, tauri::LogicalSize::new(win_w as f64, win_h as f64));
-    let left = center_x - win_w as f64 / 2.0;
-    let _ = window.set_position(tauri::LogicalPosition::new(left, top));
-}
-
 #[cfg(target_os = "linux")]
 fn is_wayland() -> bool {
     use std::sync::OnceLock;
     static CACHED: OnceLock<bool> = OnceLock::new();
-    *CACHED.get_or_init(platform::linux::transparency::is_wayland)
-}
-
-/// Set dev-mode config and database paths so dev doesn't pollute production.
-/// SAFETY: Must be called at startup before any threads are spawned.
-#[cfg(debug_assertions)]
-fn setup_dev_env() {
-    // The engine's answer, not a second one: Windows can have $HOME and
-    // $USERPROFILE pointing at different directories.
-    let home = look_engine::config_path::home().unwrap_or_else(|| ".".to_string());
-
-    if std::env::var(config::ENV_CONFIG_PATH)
-        .unwrap_or_default()
-        .trim()
-        .is_empty()
-    {
-        // `~/.look/config.dev`, never migrated: a dev file is written by hand.
-        let dev =
-            look_engine::config_path::resolve_home_variant(std::path::Path::new(&home), true).path;
-        unsafe {
-            std::env::set_var(config::ENV_CONFIG_PATH, dev);
-        }
-    }
-    if std::env::var(state::ENV_DB_PATH)
-        .unwrap_or_default()
-        .trim()
-        .is_empty()
-    {
-        #[cfg(target_os = "windows")]
-        let db_dir = std::env::var("LOCALAPPDATA")
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| {
-                std::path::PathBuf::from(&home)
-                    .join("AppData")
-                    .join("Local")
-            })
-            .join("look");
-
-        #[cfg(not(target_os = "windows"))]
-        let db_dir = std::env::var("XDG_DATA_HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::path::PathBuf::from(&home).join(".local").join("share"))
-            .join("look");
-
-        let _ = std::fs::create_dir_all(&db_dir);
-        unsafe {
-            std::env::set_var(state::ENV_DB_PATH, db_dir.join("look.dev.db"));
-        }
-    }
-    eprintln!(
-        "[dev] config={} db={}",
-        std::env::var(config::ENV_CONFIG_PATH).unwrap_or_default(),
-        std::env::var(state::ENV_DB_PATH).unwrap_or_default(),
-    );
-}
-
-/// Sync OS integrations (autostart, PATH) with config on every launch, so the
-/// registered exe path stays valid after updates or reinstalls.
-///
-/// Debug builds live under target/debug and (when produced by `tauri dev`)
-/// load the frontend from devUrl. Registering them would launch or shadow the
-/// installed binary with one that fails without the dev server, so skip.
-fn sync_integrations() {
-    if cfg!(debug_assertions) {
-        return;
-    }
-
-    let content = std::fs::read_to_string(config::config_file_path()).unwrap_or_default();
-
-    const KEY: &str = "launch_at_login";
-    let enabled = config_flag(&content, KEY).unwrap_or_else(|| {
-        // First launch: enable by default and persist.
-        let _ = config::set_config(vec![config::ConfigUpdate {
-            key: KEY.into(),
-            value: "true".into(),
-        }]);
-        true
-    });
-    let _ = autostart::set_autostart(enabled);
-
-    // No default for PATH: an absent key leaves it alone, since the install
-    // script may have added the entry already. Off the main thread because the
-    // environment broadcast can block for up to a second.
-    if let Some(enabled) = config_flag(&content, "add_to_path") {
-        std::thread::spawn(move || {
-            let _ = cli_path::set_cli_path(enabled);
-        });
-    }
-}
-
-/// Reads a `key=true|false` line straight off the config text. Cheaper than a
-/// full parse, and runs before the window opens.
-fn config_flag(content: &str, key: &str) -> Option<bool> {
-    content.lines().find_map(|line| {
-        let line = line.trim();
-        if line.starts_with('#') {
-            return None;
-        }
-        line.split_once('=')
-            .filter(|(k, _)| k.trim() == key)
-            .map(|(_, v)| v.trim() == "true")
-    })
+    *CACHED.get_or_init(linux::transparency::is_wayland)
 }
 
 /// Register global shortcuts (the launcher toggle, Alt+Shift+Q to quit).
@@ -516,12 +298,12 @@ fn register_shortcuts(app: &tauri::App, use_wayland: bool) {
                 .split(':')
                 .any(|s| s.trim().eq_ignore_ascii_case("GNOME"))
             {
-                platform::linux::gnome_ext::ensure_installed();
+                linux::gnome_ext::ensure_installed();
             }
 
             let handle = app_handle.clone();
-            let bind_key = launcher_hotkey::configured().enabled;
-            platform::linux::wayland_shortcut::start(bind_key, move || {
+            let bind_key = linows_backend::hotkey::configured().enabled;
+            linux::wayland_shortcut::start(bind_key, move || {
                 toggle_window(&handle);
             });
         }
@@ -547,11 +329,11 @@ fn register_shortcuts(app: &tauri::App, use_wayland: bool) {
 /// Cache Look's X11 window ID and start monitoring _NET_ACTIVE_WINDOW for auto-hide.
 #[cfg(target_os = "linux")]
 fn setup_x11_focus_monitor(app: &tauri::App) {
-    platform::linux::window_focus::cache_self_window();
+    linux::window_focus::cache_self_window();
     let window = app
         .get_webview_window(consts::MAIN_WINDOW)
         .expect("main window missing");
-    platform::linux::window_focus::start_active_window_monitor(move || {
+    linux::window_focus::start_active_window_monitor(move || {
         if PICKING_FILE.load(Ordering::Relaxed) {
             return;
         }
@@ -579,9 +361,9 @@ fn setup_window_events(window: &tauri::WebviewWindow) {
     // Tauri reports focus for the husk toplevel, so on the layer-shell path
     // GTK's own signals are the only focus events left.
     #[cfg(target_os = "linux")]
-    if platform::linux::layer_shell::is_active() {
+    if host::layer_shell::is_active() {
         let w = window.clone();
-        platform::linux::layer_shell::on_focus(move |focused| on_focus_change(&w, focused));
+        host::layer_shell::on_focus(move |focused| on_focus_change(&w, focused));
         return;
     }
 
@@ -627,38 +409,11 @@ fn focus_loss_means_dismiss() -> bool {
     !cfg!(target_os = "linux")
 }
 
-/// A launch query, parked for the frontend to pull.
-///
-/// Parked on every path rather than pushed: cold start cannot push at all (at
-/// `setup()` the webview is still booting, so an emitted event has no listener
-/// and Tauri does not buffer it), and on a warm launch a pushed event races
-/// `window-shown`, whose reset clears the query and whose `select()` leaves it
-/// selected for the next keystroke to replace. The frontend pulls after that
-/// reset, so the show always runs first.
-static PENDING_LAUNCH: Mutex<Option<String>> = Mutex::new(None);
-
-#[tauri::command]
-fn take_launch_query() -> Option<String> {
-    PENDING_LAUNCH
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .take()
-}
-
-/// Park before showing: the pull hangs off `window-shown`.
-fn park_launch(launch: &modes::Launch) {
-    if let modes::Launch::Query { text } = launch {
-        *PENDING_LAUNCH
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(text.clone());
-    }
-}
-
 fn main() {
     crash::install_panic_hook();
 
     if std::env::args().any(|a| a == "--version" || a == "-V") {
-        println!("lookapp {}", env!("APP_VERSION"));
+        println!("lookapp {}", linows_backend::APP_VERSION);
         return;
     }
 
@@ -682,12 +437,13 @@ fn main() {
     }
 
     #[cfg(debug_assertions)]
-    setup_dev_env();
+    startup::setup_dev_env();
 
     #[cfg(target_os = "linux")]
-    let disable_gpu = gpu::detect_and_disable_virtual_gpu() || gpu::disable_gpu_from_config();
+    let disable_gpu =
+        host::gpu::detect_and_disable_virtual_gpu() || host::gpu::disable_gpu_from_config();
 
-    sync_integrations();
+    startup::sync_integrations();
 
     let single_instance =
         tauri_plugin_single_instance::Builder::<tauri::Wry>::new().callback(|app, args, _cwd| {
@@ -703,7 +459,7 @@ fn main() {
                 }
                 // The second launch's argv, discarded here until now. Parked
                 // before the show, which is what the frontend pulls on.
-                park_launch(&launch);
+                launch_query::park_launch(&launch);
                 // The hotkey's summon, not a bare show: an explicit
                 // `lookapp <mode>` races no auto-hide, so it never toggles.
                 show_window(&window);
@@ -722,7 +478,7 @@ fn main() {
         .plugin(single_instance.build())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
-        .manage(platform::IconCache::new());
+        .manage(IconCache::new());
 
     // On X11 (or non-Linux), register the global shortcut plugin.
     // On Wayland, we use the XDG Desktop Portal instead (set up in .setup()).
@@ -745,19 +501,19 @@ fn main() {
             }
             #[cfg(target_os = "linux")]
             if disable_gpu {
-                gpu::disable_gpu_acceleration(app);
+                host::gpu::disable_gpu_acceleration(app);
             }
             #[cfg(target_os = "linux")]
-            gpu::trim_memory_features(app);
+            host::gpu::trim_memory_features(app);
 
-            AppState::init_app_handle(app);
+            linows_backend::host::install(Box::new(window::TauriHost(app.handle().clone())));
             app.state::<AppState>().start_bootstrap();
-            clipboard::start_monitor();
+            linows_backend::clipboard::start_monitor();
 
             // Probes the user's systemd manager, so the first launch of a
             // session does not wait on it.
             #[cfg(target_os = "linux")]
-            platform::linux::prime_user_session();
+            linux::prime_user_session();
 
             register_shortcuts(app, use_wayland);
 
@@ -768,9 +524,9 @@ fn main() {
             // window backend: they also apply to the AppImage's XWayland
             // window on a Wayland session.
             #[cfg(target_os = "linux")]
-            if platform::linux::transparency::window_is_x11() {
+            if linux::transparency::window_is_x11() {
                 setup_x11_focus_monitor(app);
-                gpu::disable_smooth_scrolling_x11(app);
+                host::gpu::disable_smooth_scrolling_x11(app);
             }
 
             let window = app
@@ -796,7 +552,7 @@ fn main() {
             }
             let placement = center_and_scale_window(&window);
             #[cfg(target_os = "linux")]
-            platform::linux::layer_shell::attach(
+            host::layer_shell::attach(
                 &window,
                 placement.map(|(size, _)| size),
                 placement.map(|(_, top)| top),
@@ -807,14 +563,14 @@ fn main() {
             // Needs the main thread and a live window: the surface pointer
             // comes off the window handle.
             #[cfg(target_os = "linux")]
-            platform::linux::blur::init(&window);
+            host::blur::init(&window);
             // Before the first show: on the layer-shell path focus arrives as
             // a GTK signal, and a handler connected afterwards misses the one
             // that would focus the query input.
             setup_window_events(&window);
             #[cfg(target_os = "linux")]
             if supports_transparency() {
-                commands::show_launcher(&window);
+                window::show_launcher(&window);
             }
             #[cfg(target_os = "windows")]
             {
@@ -833,14 +589,13 @@ fn main() {
             // Only when asked for: a normal launch keeps whatever startup
             // visibility it has today. A cold `--toggle` has nothing to hide.
             if matches!(launch, modes::Launch::Query { .. } | modes::Launch::Toggle) {
-                park_launch(&launch);
+                launch_query::park_launch(&launch);
                 show_window(&window);
             }
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // Core: search, usage, open, reveal, window
             commands::search,
             commands::record_usage,
             commands::open_path,
@@ -851,131 +606,106 @@ fn main() {
             commands::force_index_refresh,
             commands::toggle_window,
             commands::hide_window,
-            take_launch_query,
-            apply_layout,
+            commands::take_launch_query,
+            commands::apply_layout,
             commands::confirm_hide,
             commands::set_blur_region,
             commands::quit_app,
-            // Config
-            config::get_config,
-            config::set_config,
-            launcher_hotkey::launcher_hotkey_state,
-            launcher_hotkey::hotkey_check,
-            launcher_hotkey::launcher_hotkey_set_active,
-            config::reset_config,
-            // Files: meta, version, clipboard, music, folder
-            files::get_file_meta,
-            files::get_app_version,
-            files::list_folder,
-            files::is_dev_build,
-            files::copy_files_to_clipboard,
-            files::get_home_dir,
-            files::get_quick_folders,
-            files::list_fonts,
-            files::scan_music_folder,
-            files::pick_folder,
-            files::pick_image,
-            // Shell
-            shell::run_shell_command,
-            // Preferred tools (shared look-tools composition; the native half
-            // lives in platform::{linux,windows}::tools)
-            tools::tool_actions,
-            tools::perform_tool_action,
-            // User-declared sources (shared look-engine orchestration over
-            // look-sources; see specs/user-sources.md)
-            sources::source_block,
-            sources::source_blocks,
-            sources::perform_block,
-            sources::source_rows,
-            sources::source_preview,
-            sources::refresh_run_blocks,
-            // Platform: icons, detection, window effects
-            platform::get_icon,
-            platform::get_platform,
-            platform::list_candidate_drives,
-            platform::set_window_effect,
-            // Commands
-            calc::eval_calc,
-            calc::calc_inline,
-            sysinfo::get_system_info,
-            sysinfo::system_uptime,
-            process::list_processes,
-            process::kill_process,
-            process::search_processes,
-            process::search_kill_targets,
-            process::process_detail,
-            process::process_cpu,
-            process::list_running_apps,
-            process::activate_running_app,
-            // Todo (shared look-todo store, same table macOS uses)
-            todo::todo_list,
-            todo::todo_save,
-            // Translation
-            translate::translate,
-            // AI / web answers (look-answers crate, shared with macOS)
-            answers::instant_has_match,
-            answers::definitional_entity,
-            answers::instant_answer,
-            answers::duckduckgo_answer,
-            answers::wikipedia_answer,
-            answers::web_suggestions,
-            // URL-like queries + opened-URL history (shared core, same
-            // url_history table macOS uses)
-            weburl::classify_url,
-            weburl::record_url_hit,
-            weburl::recent_urls,
-            // Quick Actions (shared look-qactions catalog; adapters live in
-            // qactions/controls, see docs/writing-controls.md)
-            qactions::quick_actions,
-            qactions::launchpad_layout,
-            qactions::launchpad_tile_values,
-            qactions::refresh_launchpad_tiles,
-            qactions::press_launchpad_tile,
-            qactions::launchpad_warnings,
-            qactions::quick_action_state,
-            qactions::quick_action_apply,
-            qactions::quick_action_apply_item,
-            // Launchpad external feeds (Phase 3)
-            weather::weather_current,
-            nowplaying::now_playing_current,
-            nowplaying::now_playing_command,
-            lunar::lunar_date,
-            netspeed::speed_test,
-            netspeed::local_ipv4,
-            // Clipboard
-            clipboard::get_clipboard_history,
-            clipboard::delete_clipboard_entry,
-            clipboard::get_clipboard_images,
-            clipboard::delete_clipboard_image,
-            clipboard::clipboard_image_data_url,
-            clipboard::copy_clipboard_image,
-            clipboard::copy_to_clipboard,
-            clipboard::copy_to_clipboard_labeled,
-            paste::clipboard_paste_blocker,
-            paste::paste_into_focused_app,
-            // Music
-            music::music_play,
-            music::music_pause,
-            music::music_resume,
-            music::music_stop,
-            music::music_is_finished,
-            // Trash
-            trash::trash_paths,
-            trash::count_trash_items,
-            trash::empty_trash,
-            // Autostart
-            autostart::set_autostart,
-            autostart::get_autostart,
-            cli_path::set_cli_path,
-            cli_path::get_cli_path,
-            // Setup health (hotkey/extension problems shown in the UI)
-            health::get_health_issues,
-            // Highlight
-            highlight::highlight_file_cmd,
-            highlight::highlight_shell_cmd,
-            // About widget: version only. The update check itself runs in
-            // the webview via fetch() - no Rust HTTP/TLS dep needed.
-            files::get_lookapp_version,
+            commands::get_config,
+            commands::set_config,
+            commands::launcher_hotkey_state,
+            commands::hotkey_check,
+            commands::launcher_hotkey_set_active,
+            commands::reset_config,
+            commands::get_file_meta,
+            commands::get_app_version,
+            commands::list_folder,
+            commands::is_dev_build,
+            commands::copy_files_to_clipboard,
+            commands::get_home_dir,
+            commands::get_quick_folders,
+            commands::list_fonts,
+            commands::scan_music_folder,
+            commands::pick_folder,
+            commands::pick_image,
+            commands::run_shell_command,
+            commands::tool_actions,
+            commands::perform_tool_action,
+            commands::source_block,
+            commands::source_blocks,
+            commands::perform_block,
+            commands::source_rows,
+            commands::source_preview,
+            commands::refresh_run_blocks,
+            commands::get_icon,
+            commands::get_platform,
+            commands::list_candidate_drives,
+            commands::set_window_effect,
+            commands::eval_calc,
+            commands::calc_inline,
+            commands::get_system_info,
+            commands::system_uptime,
+            commands::list_processes,
+            commands::kill_process,
+            commands::search_processes,
+            commands::search_kill_targets,
+            commands::process_detail,
+            commands::process_cpu,
+            commands::list_running_apps,
+            commands::activate_running_app,
+            commands::todo_list,
+            commands::todo_save,
+            commands::translate,
+            commands::instant_has_match,
+            commands::definitional_entity,
+            commands::instant_answer,
+            commands::duckduckgo_answer,
+            commands::wikipedia_answer,
+            commands::web_suggestions,
+            commands::classify_url,
+            commands::record_url_hit,
+            commands::recent_urls,
+            commands::quick_actions,
+            commands::launchpad_layout,
+            commands::launchpad_tile_values,
+            commands::refresh_launchpad_tiles,
+            commands::press_launchpad_tile,
+            commands::launchpad_warnings,
+            commands::quick_action_state,
+            commands::quick_action_apply,
+            commands::quick_action_apply_item,
+            commands::weather_current,
+            commands::now_playing_current,
+            commands::now_playing_command,
+            commands::lunar_date,
+            commands::speed_test,
+            commands::local_ipv4,
+            commands::get_clipboard_history,
+            commands::delete_clipboard_entry,
+            commands::get_clipboard_images,
+            commands::delete_clipboard_image,
+            commands::clipboard_image_data_url,
+            commands::copy_clipboard_image,
+            commands::copy_to_clipboard,
+            commands::copy_to_clipboard_labeled,
+            commands::clipboard_paste_blocker,
+            commands::paste_into_focused_app,
+            commands::music_play,
+            commands::music_pause,
+            commands::music_resume,
+            commands::music_stop,
+            commands::music_is_finished,
+            commands::trash_paths,
+            commands::count_trash_items,
+            commands::empty_trash,
+            commands::set_autostart,
+            commands::get_autostart,
+            commands::set_cli_path,
+            commands::get_cli_path,
+            commands::get_health_issues,
+            commands::highlight_file_cmd,
+            commands::highlight_shell_cmd,
+            commands::get_lookapp_version,
             commands::get_install_method,
             commands::start_windows_update,
         ])
@@ -986,7 +716,7 @@ fn main() {
             if let tauri::RunEvent::Exit = _event
                 && is_wayland()
             {
-                platform::linux::wayland_shortcut::cleanup_keybinding();
+                linux::wayland_shortcut::cleanup_keybinding();
             }
         });
 }

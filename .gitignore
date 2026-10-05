@@ -96,3 +96,6 @@ CLAUDE.md
 
 ## linows local review notes
 apps/linows/LINUX-REVIEW.md
+
+## gpui spike recordings from tools/capture.sh and tools/pace.sh
+apps/linows/gpui-spike/captures/

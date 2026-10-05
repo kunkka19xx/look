@@ -39,7 +39,7 @@ core/qactions/src/lib.rs                                  declare the descriptor
 apps/macos/…/Support/QuickActions/
   Controls/<Name>Control.swift                            macOS adapter (copy Bluetooth)
   ActionAdapterRegistry.swift                             one line: "id": Control()
-apps/linows/src-tauri/src/qactions/
+apps/linows/backend/src/qactions/
   controls/<name>.rs                                      linows Linux adapter (copy bluetooth.rs)
   controls/<name>_windows.rs                              linows Windows adapter (copy bluetooth_windows.rs)
   controls/mod.rs                                         cfg-gate each per-OS module
@@ -55,7 +55,7 @@ apps/macos/…/Support/UI/ToggleSwitch.swift                reusable switch comp
 apps/macos/…/Views/Launcher/QuickActionsSection.swift     renders the controls
 apps/macos/…/Views/Launcher/LauncherView+QuickActions.swift  loads state, runs actions
 bridge/ffi/src/qactions_api.rs                            exposes the catalog to Swift
-apps/linows/src-tauri/src/qactions/mod.rs                 contract + Tauri commands (edit only adapter())
+apps/linows/backend/src/qactions/mod.rs                 contract + entry points (edit only adapter())
 apps/linows/src/js/components/qactions.js                 renders controls, loads state, runs actions
 ```
 
@@ -116,7 +116,7 @@ struct <Name>Control: SystemControl {
 ```
 
 The linows contract is the Rust mirror of the same shape (see
-`apps/linows/src-tauri/src/qactions/mod.rs`): `state()`, `apply(intent)`, and an
+`apps/linows/backend/src/qactions/mod.rs`): `state()`, `apply(intent)`, and an
 optional `info(keys)` that resolves the descriptor's info `value_key`s to
 display values. Adapters may block (D-Bus, CLIs); the commands run them on the
 blocking pool.
@@ -125,13 +125,13 @@ blocking pool.
 
 Read [`BluetoothControl.swift`](../apps/macos/LauncherApp/look-app/Support/QuickActions/Controls/BluetoothControl.swift)
 (macOS, quarantines a private API) or
-[`bluetooth.rs`](../apps/linows/src-tauri/src/qactions/controls/bluetooth.rs)
+[`bluetooth.rs`](../apps/linows/backend/src/qactions/controls/bluetooth.rs)
 (linows Linux, talks to BlueZ over D-Bus) first: each is a complete, commented
 adapter and the template every other control follows.
 
 ### Windows Bluetooth
 
-[`bluetooth_windows.rs`](../apps/linows/src-tauri/src/qactions/controls/bluetooth_windows.rs)
+[`bluetooth_windows.rs`](../apps/linows/backend/src/qactions/controls/bluetooth_windows.rs)
 is the Windows peer. Power on/off goes through the WinRT
 `Windows.Devices.Radios` API (the same surface as the OS Quick Settings toggle,
 no elevation needed); WinRT calls block on `IAsyncOperation::get()`, which is

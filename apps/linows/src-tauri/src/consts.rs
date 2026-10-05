@@ -1,7 +1,8 @@
-// Shared constants used across multiple modules.
+// What the Tauri shell and its webview agree on.
 
 pub const MAIN_WINDOW: &str = "main";
 pub const EVENT_INDEX_READY: &str = "index-ready";
+pub const EVENT_HEALTH_CHANGED: &str = "health-changed";
 /// Emitted every time the launcher is shown. Carries show-time decisions the
 /// frontend should apply before replaying focus/animations.
 pub const EVENT_WINDOW_SHOWN: &str = "window-shown";
@@ -13,15 +14,6 @@ pub const EVENT_WINDOW_HIDDEN: &str = "window-hidden";
 /// `lookapp reload-config` reaching the running instance. The frontend runs the
 /// same reload as Ctrl+Shift+; so theme and fonts apply too, not just the engine.
 pub const EVENT_CONFIG_RELOAD_REQUESTED: &str = "config-reload-requested";
-
-/// Windows process creation flag to suppress console windows.
-#[cfg(target_os = "windows")]
-pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-/// Delay between starting something and trying to focus the window it opened -
-/// long enough for the app to have received the input and drawn. Used by the
-/// file/URL open path and by the preferred-tools launcher on both platforms.
-pub const HANDLER_FOCUS_DELAY_MS: u64 = 150;
 
 /// Rendering workarounds (Linux only). Both shipped as `arch_*` before the
 /// ghosting turned out to be a WebKitGTK trait rather than an Arch one; the
