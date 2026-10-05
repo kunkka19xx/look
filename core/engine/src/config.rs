@@ -46,13 +46,16 @@ pub const BIAS_SETTINGS_MATCH: i64 = 420;
 pub const BIAS_APP_ON_SETTINGS_QUERY: i64 = 120;
 pub const BIAS_NON_APP_ON_SETTINGS_QUERY: i64 = -260;
 
-pub const QUERY_SETTINGS_HINTS: [&str; 6] = [
+pub const QUERY_SETTINGS_HINTS: [&str; 7] = [
     "setting",
     "display",
     "network",
     "bluetooth",
     "privacy",
     "sound",
+    // macOS 26 folded the Screen Saver pane into Wallpaper, so "screen saver"
+    // no longer matches any pane title and only the aliases can carry it.
+    "screensaver",
 ];
 
 pub const SKIP_DIR_NAMES: [&str; 18] = [

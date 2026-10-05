@@ -368,6 +368,12 @@ enum AppConstants {
             static let activationPollAttempts = 8
         }
 
+        /// A System Settings pane. Its "path" is a URL scheme, not a file, so
+        /// the id prefix is the only thing that identifies one.
+        enum SettingsPane {
+            static let idPrefix = "setting:"
+        }
+
         /// Rows from a user-declared block in `~/.look/sources`.
         enum SourceBlock {
             static let idPrefix = "src:"

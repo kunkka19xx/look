@@ -2,9 +2,9 @@ use crate::QueryEngine;
 use crate::config::*;
 use crate::query::ParsedQuery;
 use crate::scoring::{
-    ScoredMatch, contains_match_score, default_browse_score, finalize_top_k,
-    is_system_settings_candidate, kind_bias, looks_like_settings_query, path_depth_penalty,
-    path_match_score, push_top_k, query_kind_penalty_with_settings_flag,
+    ScoredMatch, contains_match_score, default_browse_score, finalize_top_k, kind_bias,
+    looks_like_settings_query, path_depth_penalty, path_match_score, push_top_k,
+    query_kind_penalty_with_settings_flag,
 };
 use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
 use look_matching::{fuzzy_quality_bonus_prepared, fuzzy_score_prepared, prepare_query};
@@ -341,12 +341,14 @@ impl QueryEngine {
             // Use precomputed normalized strings from IndexedCandidate.
             // This avoids normalize_for_search allocations in the hot loop.
             let title_score = fuzzy_score_prepared(&prepared_query, &candidate.title_search);
-            let subtitle_search =
-                if !settings_query && is_system_settings_candidate(&candidate.candidate) {
-                    None
-                } else {
-                    candidate.subtitle_search.as_deref()
-                };
+            // Settings subtitles carry the pane's aliases, and they used to be
+            // scored only for settings-shaped queries. That left every alias
+            // unreachable otherwise: `wifi` could not find Wi-Fi, because the
+            // title normalizes to `wi-fi` and only the alias spells it joined.
+            // The penalty in `query_kind_penalty_with_settings_flag` is what
+            // keeps panes off unrelated queries, so the suppression only ever
+            // cost reachability. The regex path never had it either.
+            let subtitle_search = candidate.subtitle_search.as_deref();
             let subtitle_score = subtitle_search
                 .as_ref()
                 .and_then(|subtitle| fuzzy_score_prepared(&prepared_query, subtitle))
@@ -365,11 +367,6 @@ impl QueryEngine {
             } else {
                 None
             };
-            let alias_subtitle_search = if is_system_settings_candidate(&candidate.candidate) {
-                candidate.subtitle_search.as_deref()
-            } else {
-                subtitle_search
-            };
             let alias_score = alias_terms.and_then(|terms| {
                 if candidate.candidate.kind == CandidateKind::App {
                     // Alias boosts are app-only to avoid distorting file/folder
@@ -377,7 +374,7 @@ impl QueryEngine {
                     return Self::alias_match_score(
                         terms,
                         &candidate.title_search,
-                        alias_subtitle_search,
+                        subtitle_search,
                     );
                 }
                 // Except for a block's own rows, which is what a declared

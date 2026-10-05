@@ -30,8 +30,9 @@ struct ResultPreviewView: View {
     /// The levels this row was reached through, for a `preview` that names
     /// `{parent.*}`. Empty for every row that is not inside a drill-down.
     var rowAncestorsJSON: String = "[]"
-    /// Quick Actions for this result, rendered beneath the header (info + actions
-    /// panel). Empty for results with no actions.
+    /// The result's compiled system controls, rendered beneath the header (info
+    /// + actions panel). Empty for results with none. The row's menu verbs are
+    /// deliberately not here; they belong to Cmd+K.
     var quickActions: [QuickActionDescriptor] = []
     var quickActionStates: [String: ActionState] = [:]
     var quickActionInfo: [String: [String: InfoValue]] = [:]
@@ -100,15 +101,9 @@ struct ResultPreviewView: View {
         .zIndex(1)
     }
 
-    /// Actions with live details worth reading (Bluetooth's paired devices).
-    /// Their verbs live in the Cmd+K menu; only what they know stays here.
-    private var infoOnlyQuickActions: [QuickActionDescriptor] {
-        quickActions.filter { !$0.info.isEmpty }
-    }
-
     /// A System Settings pane result (its "path" is a URL scheme, not a file).
     private var isSetting: Bool {
-        result.id.hasPrefix("setting:")
+        result.isSettingsRow
     }
 
     /// The pinned Trash quick folder is TCC-protected, so it can't be listed
@@ -332,7 +327,7 @@ struct ResultPreviewView: View {
     }
 
     private var largeIcon: NSImage {
-        if result.id.hasPrefix("setting:") {
+        if result.isSettingsRow {
             let settingsPath = "/System/Applications/System Settings.app"
             if FileManager.default.fileExists(atPath: settingsPath) {
                 return NSWorkspace.shared.icon(forFile: settingsPath)
@@ -345,7 +340,7 @@ struct ResultPreviewView: View {
 
     /// The bundle behind an app or System Settings row, nil for anything else.
     private var bundlePath: String? {
-        if result.id.hasPrefix("setting:") {
+        if result.isSettingsRow {
             return "/System/Applications/System Settings.app"
         }
         return result.kind == .app ? result.path : nil
@@ -422,7 +417,7 @@ struct ResultPreviewView: View {
                             .lineLimit(2)
 
                         HStack(spacing: 6) {
-                            KindBadge(kind: result.kind.rawValue)
+                            KindBadge(kind: isSetting ? KindBadge.setting : result.kind.rawValue)
                             if result.kind == .folder {
                                 if isTrash {
                                     if let trashItemCount {
@@ -448,20 +443,22 @@ struct ResultPreviewView: View {
 
                 ZStack(alignment: .topLeading) {
                     VStack(alignment: .leading, spacing: 12) {
-                // Info only: an action's live details (Bluetooth's paired
-                // devices) are what the panel is for. Its verbs are in Cmd+K.
-                if !infoOnlyQuickActions.isEmpty {
+                // A system control rides with its live details: the switch
+                // carries the only printed `⌘O` hint, so hiding it left the
+                // chord unlearnable and the toggle reachable through Cmd+K
+                // alone. Only compiled controls reach here - the row's menu
+                // verbs stay in Cmd+K (see `systemControlDescriptors`).
+                if !quickActions.isEmpty {
                     QuickActionsSection(
-                        descriptors: infoOnlyQuickActions,
+                        descriptors: quickActions,
                         states: quickActionStates,
                         info: quickActionInfo,
                         pendingItems: pendingQuickActionItems,
                         busyActionIds: busyQuickActionIds,
                         themeStore: themeStore,
                         revealToken: quickActionsRevealToken,
-                        onRun: { _, _ in },
-                        onActivateItem: onActivateQuickActionItem,
-                        controlHidden: true
+                        onRun: onRunQuickAction,
+                        onActivateItem: onActivateQuickActionItem
                     )
                 }
 
@@ -905,12 +902,16 @@ struct ResultPreviewView: View {
 }
 
 struct KindBadge: View {
+    /// Panes ride in as `.app`, so they have no `LauncherResultKind` of their
+    /// own to name them. Matches the row badge in `LauncherRowView`.
+    static let setting = "setting"
+
     @EnvironmentObject private var themeStore: ThemeStore
     let kind: String
 
     private var color: Color {
         switch kind {
-        case "app": return themeStore.accentColor()
+        case "app", Self.setting: return themeStore.accentColor()
         case "file": return themeStore.successColor()
         case "folder": return themeStore.warningColor()
         case "clipboard", "image": return themeStore.accentColor()

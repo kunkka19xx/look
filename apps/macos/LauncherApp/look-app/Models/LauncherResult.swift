@@ -68,6 +68,12 @@ extension LauncherResult {
         id.hasPrefix(AppConstants.Launcher.SourceBlock.idPrefix)
     }
 
+    /// A System Settings pane. Indexed as an app because that is how it opens,
+    /// so the id prefix is what tells the two apart in the UI.
+    var isSettingsRow: Bool {
+        id.hasPrefix(AppConstants.Launcher.SettingsPane.idPrefix)
+    }
+
     /// One definition for the row icon, the preview and the open handler, so
     /// the three cannot disagree about what they are looking at.
     var isClipboardImage: Bool {

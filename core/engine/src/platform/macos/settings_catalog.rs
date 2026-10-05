@@ -5,19 +5,91 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         title: "General",
         target: "com.apple.systempreferences.GeneralSettings",
         candidate_id_suffix: "com.apple.systempreferences.generalsettings",
-        aliases: "settings general about software update storage",
+        aliases: "settings general system preferences",
     },
     SettingsCatalogEntry {
-        title: "Apple ID",
+        title: "About",
+        target: "com.apple.SystemProfiler.AboutExtension",
+        candidate_id_suffix: "com.apple.systemprofiler.aboutextension",
+        aliases: "settings about this mac serial number model specs",
+    },
+    SettingsCatalogEntry {
+        title: "Software Update",
+        target: "com.apple.Software-Update-Settings.extension",
+        candidate_id_suffix: "com.apple.software-update-settings.extension",
+        aliases: "settings software update upgrade os version automatic updates",
+    },
+    SettingsCatalogEntry {
+        title: "Storage",
+        target: "com.apple.settings.Storage",
+        candidate_id_suffix: "com.apple.settings.storage",
+        aliases: "settings storage disk space free up capacity",
+    },
+    SettingsCatalogEntry {
+        title: "Date & Time",
+        target: "com.apple.Date-Time-Settings.extension",
+        candidate_id_suffix: "com.apple.date-time-settings.extension",
+        aliases: "settings date time clock timezone time zone 24 hour",
+    },
+    SettingsCatalogEntry {
+        title: "Language & Region",
+        target: "com.apple.Localization-Settings.extension",
+        candidate_id_suffix: "com.apple.localization-settings.extension",
+        aliases: "settings language region locale format translation",
+    },
+    SettingsCatalogEntry {
+        title: "Sharing",
+        target: "com.apple.Sharing-Settings.extension",
+        candidate_id_suffix: "com.apple.sharing-settings.extension",
+        aliases: "settings sharing screen sharing remote login ssh file sharing airplay",
+    },
+    SettingsCatalogEntry {
+        title: "Time Machine",
+        target: "com.apple.Time-Machine-Settings.extension",
+        candidate_id_suffix: "com.apple.time-machine-settings.extension",
+        aliases: "settings time machine backup restore snapshots",
+    },
+    SettingsCatalogEntry {
+        title: "Startup Disk",
+        target: "com.apple.Startup-Disk-Settings.extension",
+        candidate_id_suffix: "com.apple.startup-disk-settings.extension",
+        aliases: "settings startup disk boot volume",
+    },
+    SettingsCatalogEntry {
+        title: "Login Items & Extensions",
+        target: "com.apple.LoginItems-Settings.extension",
+        candidate_id_suffix: "com.apple.loginitems-settings.extension",
+        aliases: "settings login items startup launch at login extensions",
+    },
+    SettingsCatalogEntry {
+        title: "AirDrop & Handoff",
+        target: "com.apple.AirDrop-Handoff-Settings.extension",
+        candidate_id_suffix: "com.apple.airdrop-handoff-settings.extension",
+        aliases: "settings airdrop handoff continuity universal clipboard airplay receiver",
+    },
+    SettingsCatalogEntry {
+        title: "Transfer or Reset",
+        target: "com.apple.Transfer-Reset-Settings.extension",
+        candidate_id_suffix: "com.apple.transfer-reset-settings.extension",
+        aliases: "settings transfer reset erase migration assistant factory",
+    },
+    SettingsCatalogEntry {
+        title: "Apple Account",
         target: "com.apple.systempreferences.AppleIDSettings",
         candidate_id_suffix: "com.apple.systempreferences.appleidsettings",
-        aliases: "settings apple id icloud media purchases",
+        aliases: "settings apple account apple id icloud media purchases",
     },
     SettingsCatalogEntry {
         title: "iCloud",
         target: "com.apple.systempreferences.AppleIDSettings:icloud",
         candidate_id_suffix: "com.apple.systempreferences.appleidsettings.icloud",
         aliases: "settings icloud cloud drive photos backup hide my email private relay",
+    },
+    SettingsCatalogEntry {
+        title: "Family",
+        target: "com.apple.Family-Settings.extension",
+        candidate_id_suffix: "com.apple.family-settings.extension",
+        aliases: "settings family sharing members children purchase sharing",
     },
     SettingsCatalogEntry {
         title: "Wi-Fi",
@@ -36,6 +108,12 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         target: "com.apple.Network-Settings.extension",
         candidate_id_suffix: "com.apple.network-settings.extension",
         aliases: "settings network ethernet dns proxy vpn",
+    },
+    SettingsCatalogEntry {
+        title: "VPN",
+        target: "com.apple.NetworkExtensionSettingsUI.NESettingsUIExtension",
+        candidate_id_suffix: "com.apple.networkextensionsettingsui.nesettingsuiextension",
+        aliases: "settings vpn tunnel ikev2 wireguard configuration",
     },
     SettingsCatalogEntry {
         title: "Internet Accounts",
@@ -71,13 +149,7 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         title: "Wallpaper",
         target: "com.apple.Wallpaper-Settings.extension",
         candidate_id_suffix: "com.apple.wallpaper-settings.extension",
-        aliases: "settings wallpaper background screen saver",
-    },
-    SettingsCatalogEntry {
-        title: "Screen Saver",
-        target: "com.apple.ScreenSaver-Settings.extension",
-        candidate_id_suffix: "com.apple.screensaver-settings.extension",
-        aliases: "settings screen saver idle lock background",
+        aliases: "settings wallpaper background screen saver screensaver idle",
     },
     SettingsCatalogEntry {
         title: "Desktop & Dock",
@@ -122,6 +194,12 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         aliases: "settings touch id password touchid pass fingerprint",
     },
     SettingsCatalogEntry {
+        title: "Passwords",
+        target: "com.apple.Passwords-Settings.extension",
+        candidate_id_suffix: "com.apple.passwords-settings.extension",
+        aliases: "settings passwords keychain autofill verification codes passkeys",
+    },
+    SettingsCatalogEntry {
         title: "Users & Groups",
         target: "com.apple.Users-Groups-Settings.extension",
         candidate_id_suffix: "com.apple.users-groups-settings.extension",
@@ -134,6 +212,12 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         aliases: "settings privacy security permissions firewall",
     },
     SettingsCatalogEntry {
+        title: "Device Management",
+        target: "com.apple.Profiles-Settings.extension",
+        candidate_id_suffix: "com.apple.profiles-settings.extension",
+        aliases: "settings device management profiles mdm configuration enrollment",
+    },
+    SettingsCatalogEntry {
         title: "Control Center",
         target: "com.apple.ControlCenter-Settings.extension",
         candidate_id_suffix: "com.apple.controlcenter-settings.extension",
@@ -144,6 +228,12 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         target: "com.apple.Siri-Settings.extension",
         candidate_id_suffix: "com.apple.siri-settings.extension",
         aliases: "settings siri apple intelligence apple intelligent ai assistant",
+    },
+    SettingsCatalogEntry {
+        title: "Spotlight",
+        target: "com.apple.Spotlight-Settings.extension",
+        candidate_id_suffix: "com.apple.spotlight-settings.extension",
+        aliases: "settings spotlight search indexing privacy search results",
     },
     SettingsCatalogEntry {
         title: "Keyboard",
@@ -180,5 +270,11 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         target: "com.apple.Game-Center-Settings.extension",
         candidate_id_suffix: "com.apple.game-center-settings.extension",
         aliases: "settings game center gaming friends",
+    },
+    SettingsCatalogEntry {
+        title: "Game Controllers",
+        target: "com.apple.Game-Controller-Settings.extension",
+        candidate_id_suffix: "com.apple.game-controller-settings.extension",
+        aliases: "settings game controllers gamepad joystick xbox playstation",
     },
 ];
