@@ -102,7 +102,7 @@ let
   stateFile = "${config.xdg.stateHome}/lookapp/home-manager-keys";
 
   # Look merges its own writes into its config file line by line and keeps keys
-  # it does not know about (set_config in src-tauri/src/config.rs), so replacing
+  # it does not know about (set_config in backend/src/config.rs), so replacing
   # the whole file on activation would throw away everything the user changed
   # in-app. Merge the same way instead: managed keys win, everything else is
   # left alone, and keys dropped from the Nix config since the last generation

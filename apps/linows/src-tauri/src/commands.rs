@@ -1,76 +1,65 @@
-#[cfg(target_os = "linux")]
-use crate::platform::linux::{host_command, user_session_command, user_session_command_for_status};
-use crate::state::AppState;
-use look_engine::config::RuntimeConfig;
-use serde::Serialize;
+//! Every command the webview can invoke, one hop each into `linows_backend`.
+//!
+//! Nothing is decided here. A command names its arguments the way the frontend
+//! spells them, hands them to the backend, and runs the blocking ones on
+//! Tauri's pool. The window-bound commands at the end are the exception: the
+//! armed hide and the layout resize belong to this shell.
+
+use std::collections::HashMap;
 use std::num::NonZeroU64;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{Emitter, State};
+use std::sync::Arc;
 
-/// camelCase for the frontend. Every field predating it is one lowercase word,
-/// so the rename only reaches the ones added since.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchResult {
-    pub id: String,
-    pub kind: String,
-    pub title: String,
-    pub subtitle: Option<String>,
-    pub path: String,
-    pub score: i64,
-    /// What the row declared, which beats its block's icon.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>,
-    /// When the row was last opened through Look, for the preview's "Last used".
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_used_at_unix_s: Option<i64>,
+use linows_backend as backend;
+use linows_backend::look_answers::{Answer, UrlMatch};
+use linows_backend::look_calc::Calculation;
+use linows_backend::look_engine::hotkey::HotkeyCheck;
+use linows_backend::look_engine::launchpad::{LayoutPayload, TileValue};
+use linows_backend::look_engine::sources::{
+    BlockDetail, BlockSummary, Level, PerformOutcome, PreviewOutcome, RefreshOutcome,
+};
+use linows_backend::look_engine::url_history::ScoredUrlEntry;
+use linows_backend::look_lunar::LunarDate;
+use linows_backend::look_netspeed::SpeedReading;
+use linows_backend::look_qactions::ActionDescriptor;
+use linows_backend::look_todo::TodoTask;
+use linows_backend::look_tools::Resolved;
+use serde::Serialize;
+use tauri::State;
+
+use backend::clipboard::{ClipboardEntry, ClipboardImageRow};
+use backend::config::{ConfigPayload, ConfigUpdate};
+use backend::files::{FileMeta, FolderListing, QuickFolder};
+use backend::health::HealthIssue;
+use backend::highlight::HighlightResult;
+use backend::hotkey::LauncherHotkeyState;
+use backend::nowplaying::NowPlayingSnapshot;
+use backend::platform::{BlurRect, CandidateDrive, IconCache, IconResult};
+use backend::process::{KillTarget, ProcDetail, ProcRow, RunningApp};
+use backend::qactions::{ActionIntent, ActionOutcome, QuickActionStatus};
+use backend::search::{SearchPayload, UsageResult};
+use backend::sources::RowArgs;
+use backend::state::AppState;
+use backend::sysinfo::SysInfoEntry;
+use backend::translate::TranslateResult;
+use backend::trash::TrashOutcome;
+use backend::weather::WeatherSnapshot;
+
+use crate::window::{self, TauriWindow};
+
+/// Blocking backend work, off the request thread. `None` only when the pool
+/// task itself died, which each caller maps to its own empty answer.
+async fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    tauri::async_runtime::spawn_blocking(work).await.ok()
 }
 
-#[derive(Serialize)]
-pub struct SearchPayload {
-    pub count: usize,
-    pub results: Vec<SearchResult>,
-}
+/// The pool lost the task before it answered.
+const TASK_LOST: &str = "the task did not finish";
 
-#[derive(Serialize)]
-pub struct UsageResult {
-    pub ok: bool,
-    pub error: Option<String>,
-}
-
-const DEFAULT_SEARCH_LIMIT: u32 = 40;
-const MAX_SEARCH_LIMIT: u32 = 100;
+// --- Core: search, usage, open, reveal ---
 
 #[tauri::command]
 pub fn search(state: State<'_, AppState>, query: String, limit: u32) -> SearchPayload {
-    let max = if limit == 0 {
-        DEFAULT_SEARCH_LIMIT
-    } else {
-        limit.min(MAX_SEARCH_LIMIT)
-    } as usize;
-
-    let scored = state.with_engine(|engine| engine.search_scored(&query, max));
-
-    let results: Vec<SearchResult> = scored
-        .into_iter()
-        .map(|(candidate, score)| SearchResult {
-            id: candidate.id.to_string(),
-            kind: candidate.kind.as_str().to_string(),
-            title: candidate.title.to_string(),
-            subtitle: candidate.subtitle.as_deref().map(str::to_string),
-            path: candidate.path.to_string(),
-            score,
-            icon: candidate.icon.as_deref().map(str::to_string),
-            last_used_at_unix_s: candidate.last_used_at_unix_s,
-        })
-        .collect();
-
-    SearchPayload {
-        count: results.len(),
-        results,
-    }
+    backend::search::search(&state, &query, limit)
 }
 
 #[tauri::command]
@@ -79,45 +68,7 @@ pub fn record_usage(
     candidate_id: String,
     action: String,
 ) -> UsageResult {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-
-    if action.parse::<look_engine::UsageAction>().is_err() {
-        return UsageResult {
-            ok: false,
-            error: Some(format!("Invalid action: {action}")),
-        };
-    }
-
-    // A drilled row is never written to `candidates`, which the `usage_events`
-    // foreign key requires, so there is nothing to record. Reporting a failure
-    // would show a storage error for behaving as designed.
-    if look_engine::sources::is_drilled_row(&candidate_id) {
-        return UsageResult {
-            ok: true,
-            error: None,
-        };
-    }
-
-    let found = state.with_engine_mut(|engine| engine.record_usage_in_memory(&candidate_id, now));
-
-    if found {
-        let db_path = crate::state::default_db_path();
-        if let Ok(store) = look_storage::SqliteStore::open(&db_path) {
-            let _ = store.record_usage_event(&candidate_id, &action);
-        }
-    }
-
-    UsageResult {
-        ok: found,
-        error: if found {
-            None
-        } else {
-            Some(format!("Candidate not found: {candidate_id}"))
-        },
-    }
+    backend::search::record_usage(&state, &candidate_id, &action)
 }
 
 #[tauri::command]
@@ -125,275 +76,30 @@ pub fn open_path(
     window: tauri::WebviewWindow,
     path: String,
     kind: Option<String>,
-    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))] id: Option<String>,
+    id: Option<String>,
 ) -> Result<(), String> {
-    // Windows classic applets: look-cmd://program[?args].
-    // - `program` alone (e.g. "devmgmt.msc", "appwiz.cpl", "regedit.exe") →
-    //   open::that → ShellExecuteW, which does file-association lookup. This is
-    //   required for .msc / .cpl because CreateProcessW (what Command::new
-    //   uses) won't launch non-executable data files directly.
-    // - `program?args` (e.g. rundll32.exe with a DLL+entry) → Command::new,
-    //   because ShellExecute can't argv-parse a rundll32 command line.
-    #[cfg(target_os = "windows")]
-    if let Some(rest) = path.strip_prefix("look-cmd://") {
-        hide_armed(&window);
-        match rest.split_once('?') {
-            Some((program, args)) => {
-                let program = program.to_string();
-                let args = args.to_string();
-                std::thread::spawn(move || {
-                    if let Err(e) = std::process::Command::new(&program)
-                        .arg(&args)
-                        .stdin(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .spawn()
-                    {
-                        eprintln!("[open_path] look-cmd spawn {program:?} failed: {e}");
-                    }
-                });
-            }
-            None => {
-                let program = rest.to_string();
-                std::thread::spawn(move || {
-                    if let Err(e) = open::that(&program) {
-                        eprintln!("[open_path] look-cmd open {program:?} failed: {e}");
-                    }
-                });
-            }
-        }
-        return Ok(());
-    }
-
-    // Linux system settings: settings://panel → gnome-control-center, settings://kcm_* → KDE
-    #[cfg(target_os = "linux")]
-    if let Some(panel) = path.strip_prefix("settings://") {
-        hide_armed(&window);
-        let panel = panel.to_string();
-        std::thread::spawn(move || {
-            if panel.starts_with("kcm") {
-                if let Err(e) = host_command("systemsettings")
-                    .arg(&panel)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-                {
-                    eprintln!("[open_path] systemsettings {panel:?} failed: {e}");
-                }
-                return;
-            }
-
-            // D-Bus activation: works on GNOME, properly focuses the window.
-            let dbus_ok = host_command("gdbus")
-                .args([
-                    "call",
-                    "--session",
-                    "--dest",
-                    "org.gnome.Settings",
-                    "--object-path",
-                    "/org/gnome/Settings",
-                    "--method",
-                    "org.freedesktop.Application.ActivateAction",
-                    "launch-panel",
-                    &format!("[<'{panel}'>, <@av []>]"),
-                    "{}",
-                ])
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-
-            // Fallback: direct command
-            if !dbus_ok {
-                let _ = host_command("gnome-control-center")
-                    .arg(&panel)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
-            }
-        });
-        return Ok(());
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // An "app" path is a URL only when its FIRST token carries the scheme
-        // (e.g. `https://example.com`). Desktop Exec strings like
-        // `steam steam://run/570` have the `://` embedded in an argument and
-        // must still go through launch_app, otherwise we hand the whole
-        // command line to xdg-open and nothing happens.
-        let path_is_url = path
-            .split_whitespace()
-            .next()
-            .is_some_and(|tok| tok.contains("://"));
-        eprintln!("[open_path] path={path:?} kind={kind:?} id={id:?} path_is_url={path_is_url}");
-        if kind.as_deref() == Some("app") && !path_is_url {
-            let result = launch_app(&path, id.as_deref());
-            if result.is_ok() {
-                hide_armed(&window);
-            }
-            return result;
-        }
-    }
-
-    if kind.as_deref() == Some("browser") {
-        hide_armed(&window);
-        std::thread::spawn(move || {
-            // Not open::that on Linux: it spawns xdg-open with the inherited
-            // env that host_command exists to scrub.
-            #[cfg(target_os = "linux")]
-            {
-                let _ = host_command("xdg-open")
-                    .arg(&path)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
-                // Give the browser a beat to receive the URL and surface its
-                // new tab; the focus attempt below races the spawn otherwise.
-                std::thread::sleep(std::time::Duration::from_millis(
-                    crate::consts::HANDLER_FOCUS_DELAY_MS,
-                ));
-                focus_default_browser();
-            }
-            #[cfg(not(target_os = "linux"))]
-            let _ = open::that(&path);
-        });
-        Ok(())
-    } else {
-        // Windows: before launching a fresh instance, try to raise an existing
-        // window for the same .exe / .lnk / UWP AUMID. Must run while Look
-        // still holds foreground - SetForegroundWindow fails after hide().
-        #[cfg(target_os = "windows")]
-        if kind.as_deref() == Some("app")
-            && crate::platform::windows::window_focus::try_focus_existing(&path)
-        {
-            hide_armed(&window);
-            return Ok(());
-        }
-
-        // Shell namespace locations (e.g. `shell:RecycleBinFolder`) aren't
-        // filesystem paths - ShellExecute can't always resolve them, but
-        // Explorer opens them directly.
-        #[cfg(target_os = "windows")]
-        if path.starts_with("shell:") {
-            hide_armed(&window);
-            let _ = std::process::Command::new("explorer.exe")
-                .arg(&path)
-                .spawn();
-            return Ok(());
-        }
-
-        hide_armed(&window);
-        std::thread::spawn(move || {
-            #[cfg(target_os = "linux")]
-            {
-                let _ = host_command("xdg-open")
-                    .arg(&path)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
-                // Same focus dance as the browser branch - Sway/i3 don't raise
-                // the handler on xdg-open activation. Resolves the handler via
-                // the file's MIME type so a PNG opened in Brave focuses Brave,
-                // a PDF opened in Zathura focuses Zathura, etc.
-                std::thread::sleep(std::time::Duration::from_millis(
-                    crate::consts::HANDLER_FOCUS_DELAY_MS,
-                ));
-                focus_file_handler(&path);
-            }
-            #[cfg(not(target_os = "linux"))]
-            {
-                let _ = open::that(&path);
-            }
-        });
-        Ok(())
-    }
+    backend::launch::open_path(&TauriWindow(window), path, kind.as_deref(), id.as_deref())
 }
 
-/// Windows: `runas` launch. Async because the UAC prompt is modal and a sync
-/// command would block the main thread; resolves only once the launch is
-/// confirmed, so usage is never recorded for a declined prompt.
 #[tauri::command]
-pub async fn open_elevated(
-    window: tauri::WebviewWindow,
-    #[cfg_attr(not(target_os = "windows"), allow(unused_variables))] path: String,
-) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        hide_armed(&window);
-        let result = tauri::async_runtime::spawn_blocking(move || {
-            let (program, args) = crate::platform::windows::launch::split_target(&path);
-            crate::platform::windows::launch::run_as_admin(program, args)
-        })
+pub async fn open_elevated(window: tauri::WebviewWindow, path: String) -> Result<(), String> {
+    let window = TauriWindow(window);
+    blocking(move || backend::launch::open_elevated(&window, &path))
         .await
-        .unwrap_or_else(|e| Err(e.to_string()));
-        if let Err(e) = &result {
-            // Declined, refused, or the task died: don't leave Look hidden.
-            eprintln!("[open_elevated] {e}");
-            show_launcher(&window);
-            focus_launcher(&window);
-        }
-        result
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = window;
-        Err("elevated launch is Windows only".into())
-    }
+        .unwrap_or_else(|| Err(TASK_LOST.into()))
 }
 
-/// Ctrl+F. The same reveal the `reveal` tool action falls back to when no
-/// `file_manager` is declared, so both spellings select the file rather than
-/// one of them merely opening its folder.
 #[tauri::command]
 pub fn reveal_path(path: String) -> Result<(), String> {
-    #[cfg(target_os = "linux")]
-    let outcome = crate::platform::linux::tools::reveal(&path);
-    #[cfg(target_os = "windows")]
-    let outcome = crate::platform::windows::tools::reveal(&path);
-
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-    let outcome: Result<(), String> = {
-        let _ = path;
-        Err("reveal is not supported on this platform".to_string())
-    };
-
-    outcome.map_err(|e| format!("Failed to reveal: {e}"))
+    backend::launch::reveal_path(&path)
 }
 
-/// Reload is the one refresh gesture: config, then the `run` blocks, then the
-/// index.
-///
-/// Async because a user's `run` block is a process, and that must not sit on
-/// the request thread. Returns what the blocks did, so a script that broke
-/// says so rather than quietly producing no rows.
+/// The backend's reload, then the hotkey re-bound in case the config moved it.
 #[tauri::command(async)]
-pub fn reload_config(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> look_engine::sources::RefreshOutcome {
-    // The engine caches the parsed `~/.look/config` across calls (skips a disk
-    // read on every refresh). When the user explicitly reloads, drop the cache
-    // so the next bootstrap picks up their edits.
-    RuntimeConfig::invalidate_cache();
-    crate::clipboard::reload_from_config();
-    crate::launcher_hotkey::launcher_hotkey_set_active(app, true);
-    // Before the index pass, never after: the pass reads the rows these blocks
-    // write, and the other order indexes the previous run's.
-    let sources = look_engine::sources::refresh_run_blocks();
-    // Run rows land where no watcher covers, so nothing else marks them dirty.
-    if sources.changed {
-        state.force_index_refresh();
-    } else {
-        state.request_index_refresh();
-    }
-    sources
+pub fn reload_config(app: tauri::AppHandle, state: State<'_, AppState>) -> RefreshOutcome {
+    let outcome = backend::search::reload_config(&state);
+    crate::launcher_hotkey::set_active(&app, true);
+    outcome
 }
 
 #[tauri::command]
@@ -414,793 +120,743 @@ pub fn quit_app(app: tauri::AppHandle) {
 
 #[tauri::command]
 pub fn get_install_method() -> String {
-    #[cfg(target_os = "windows")]
-    {
-        crate::platform::windows::update::detect_install_method()
-            .as_str()
-            .to_string()
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        "unknown".to_string()
-    }
+    backend::launch::get_install_method()
 }
 
 #[tauri::command]
 pub async fn start_windows_update(app: tauri::AppHandle, version: String) -> Result<(), String> {
+    let started = blocking(move || backend::launch::start_windows_update(&version))
+        .await
+        .unwrap_or_else(|| Err(TASK_LOST.into()));
+    // The install helper reopens Look once setup ends, whether or not it succeeds.
+    if started.is_ok() {
+        app.exit(0);
+    }
+    started
+}
+
+// --- Config ---
+
+#[tauri::command]
+pub fn get_config() -> ConfigPayload {
+    backend::config::get_config()
+}
+
+#[tauri::command]
+pub fn set_config(updates: Vec<ConfigUpdate>) -> Result<(), String> {
+    backend::config::set_config(updates)
+}
+
+#[tauri::command]
+pub fn reset_config() -> Result<(), String> {
+    backend::config::reset_config()
+}
+
+#[tauri::command]
+pub fn launcher_hotkey_state() -> LauncherHotkeyState {
+    backend::hotkey::launcher_hotkey_state()
+}
+
+#[tauri::command]
+pub fn hotkey_check(spec: String) -> HotkeyCheck {
+    backend::hotkey::hotkey_check(&spec)
+}
+
+#[tauri::command]
+pub fn launcher_hotkey_set_active(app: tauri::AppHandle, active: bool) {
+    crate::launcher_hotkey::set_active(&app, active);
+}
+
+// --- Files ---
+
+#[tauri::command]
+pub fn get_file_meta(path: String) -> FileMeta {
+    backend::files::get_file_meta(&path)
+}
+
+#[tauri::command]
+pub fn get_app_version(path: String) -> Option<String> {
+    backend::files::get_app_version(&path)
+}
+
+#[tauri::command]
+pub fn list_folder(path: String) -> Option<FolderListing> {
+    backend::files::list_folder(&path)
+}
+
+#[tauri::command]
+pub fn is_dev_build() -> bool {
+    backend::files::is_dev_build()
+}
+
+#[tauri::command]
+pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), String> {
+    backend::files::copy_files_to_clipboard(&paths)
+}
+
+#[tauri::command]
+pub fn get_home_dir() -> Option<String> {
+    backend::files::get_home_dir()
+}
+
+#[tauri::command]
+pub fn get_quick_folders() -> Vec<QuickFolder> {
+    backend::files::get_quick_folders()
+}
+
+#[tauri::command]
+pub fn list_fonts() -> Vec<String> {
+    backend::files::list_fonts()
+}
+
+#[tauri::command]
+pub fn scan_music_folder(folder: String) -> Vec<String> {
+    backend::files::scan_music_folder(&folder)
+}
+
+#[tauri::command]
+pub async fn pick_folder(app: tauri::AppHandle) -> Option<String> {
+    crate::pickers::pick_folder(&app)
+}
+
+#[tauri::command]
+pub async fn pick_image(app: tauri::AppHandle) -> Option<String> {
+    crate::pickers::pick_image(&app)
+}
+
+/// Source of truth is `tauri.conf.json`. Debug builds report a fixed `0.1.0`
+/// so the update check can be exercised end-to-end against the latest release.
+#[tauri::command]
+pub fn get_lookapp_version(app: tauri::AppHandle) -> String {
+    if cfg!(debug_assertions) {
+        return "0.1.0".to_string();
+    }
+    app.package_info().version.to_string()
+}
+
+// --- Shell ---
+
+#[tauri::command]
+pub fn run_shell_command(cmd: String) -> Result<String, String> {
+    backend::shell::run_shell_command(&cmd)
+}
+
+// --- Preferred tools ---
+
+#[tauri::command(async)]
+pub fn tool_actions(
+    actions: Vec<String>,
+    row: RowArgs,
+    is_dir: Option<bool>,
+) -> Vec<Option<Resolved>> {
+    backend::tools::tool_actions(&actions, row, is_dir)
+}
+
+#[tauri::command]
+pub async fn perform_tool_action(
+    window: tauri::WebviewWindow,
+    action: String,
+    row: RowArgs,
+    is_dir: Option<bool>,
+) -> Option<Resolved> {
+    let window = TauriWindow(window);
+    blocking(move || backend::tools::perform_tool_action(&window, &action, row, is_dir))
+        .await
+        .flatten()
+}
+
+// --- User-declared sources ---
+
+#[tauri::command(async)]
+pub fn source_block(row: RowArgs) -> Option<BlockDetail> {
+    backend::sources::source_block(row)
+}
+
+#[tauri::command(async)]
+pub fn source_blocks() -> Vec<BlockSummary> {
+    backend::sources::source_blocks()
+}
+
+#[tauri::command(async)]
+pub fn perform_block(block_id: String, row: RowArgs, as_target: bool) -> PerformOutcome {
+    backend::sources::perform_block(block_id, row, as_target)
+}
+
+#[tauri::command(async)]
+pub fn source_rows(block_id: String, parent: RowArgs) -> Level {
+    backend::sources::source_rows(block_id, parent)
+}
+
+#[tauri::command(async)]
+pub fn source_preview(row: RowArgs) -> Option<PreviewOutcome> {
+    backend::sources::source_preview(row)
+}
+
+#[tauri::command(async)]
+pub fn refresh_run_blocks() -> RefreshOutcome {
+    backend::sources::refresh_run_blocks()
+}
+
+// --- Platform: icons, detection, drives, window effects ---
+
+#[tauri::command]
+pub fn get_icon(
+    cache: State<'_, IconCache>,
+    kind: String,
+    path: String,
+    id: Option<String>,
+) -> IconResult {
+    backend::platform::get_icon(&cache, &kind, &path, id.as_deref())
+}
+
+#[derive(Serialize)]
+pub struct PlatformInfo {
+    pub os: String,
+    pub has_compositor: bool,
+    /// Compositor name when known ("hyprland", "sway", "gnome", "kde", ...).
+    /// Exposed to the frontend so CSS can branch on compositor-specific bugs
+    /// (e.g. WebKitGTK backdrop-filter glitches on Hyprland).
+    pub compositor: Option<String>,
+    /// True when a virtual GPU was detected at startup (VM). Hardware
+    /// acceleration is already off; the frontend must also drop backdrop
+    /// blur or software compositing ghost-renders stale layers.
+    pub virtual_gpu: bool,
+    /// True when the compositor grants behind-window blur on request. A
+    /// capability, not a setting: it only tells the frontend whether Blur
+    /// Opacity has real frost to thin.
+    pub compositor_blur: bool,
+}
+
+#[tauri::command]
+pub fn get_platform() -> PlatformInfo {
+    let os = std::env::consts::OS.to_string();
+
+    #[cfg(target_os = "linux")]
+    let has_compositor = backend::platform::linux::transparency::has_compositor();
+
+    #[cfg(not(target_os = "linux"))]
+    let has_compositor = true;
+
+    #[cfg(target_os = "linux")]
+    let compositor = backend::platform::linux::wm::detect_compositor();
+
+    #[cfg(not(target_os = "linux"))]
+    let compositor: Option<String> = None;
+
+    #[cfg(target_os = "linux")]
+    let virtual_gpu = crate::host::gpu::virtual_gpu_detected();
+
+    #[cfg(not(target_os = "linux"))]
+    let virtual_gpu = false;
+
+    #[cfg(target_os = "linux")]
+    let compositor_blur = crate::host::blur::is_supported();
+
+    // Windows could via DWM acrylic, but it cannot round a per-pixel-alpha
+    // window - that trades the rounded silhouette for frost.
+    #[cfg(not(target_os = "linux"))]
+    let compositor_blur = false;
+
+    PlatformInfo {
+        os,
+        has_compositor,
+        compositor,
+        virtual_gpu,
+        compositor_blur,
+    }
+}
+
+#[tauri::command]
+pub fn list_candidate_drives() -> Vec<CandidateDrive> {
+    backend::platform::list_candidate_drives()
+}
+
+#[tauri::command]
+pub fn set_window_effect(window: tauri::Window, effect: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        crate::platform::windows::update::start(app, version).await
+        crate::host::effects::apply(window, &effect)
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = app;
-        let _ = version;
-        Err("Windows self-update is unsupported on this platform".into())
+        let _ = (window, effect);
+        Ok(())
     }
 }
 
-/// Longest the window stays up waiting for the frontend to paint the armed
-/// frame. `confirm_hide` ends the wait as soon as that frame lands, so this
-/// only runs out for a webview that never answers.
-const HIDE_ARM_GRACE: std::time::Duration = std::time::Duration::from_millis(60);
+// --- Slash commands ---
 
-/// Id of the dismissal still in flight, 0 when none is; a show clears it so a
-/// fallback the user already undid can't pull the window back down.
-static PENDING_HIDE: AtomicU64 = AtomicU64::new(0);
-static HIDE_COUNTER: AtomicU64 = AtomicU64::new(0);
-/// Wall clock: `Instant` stops during suspend, so a launcher hidden overnight
-/// would report only the minutes the machine was awake.
-static LAST_HIDDEN_AT: Mutex<Option<SystemTime>> = Mutex::new(None);
-
-fn mark_hidden_now() {
-    let mut hidden_at = LAST_HIDDEN_AT.lock().unwrap_or_else(|p| p.into_inner());
-    // A repeat dismissal must not restart the clock. A show consumes the stamp,
-    // so `None` means on screen - `is_visible` would not, under layer shell.
-    hidden_at.get_or_insert_with(SystemTime::now);
-}
-
-fn query_clear_decision_after_show(show_succeeded: bool) -> Option<bool> {
-    if !show_succeeded {
-        return None;
-    }
-    let hidden_at = LAST_HIDDEN_AT
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .take();
-    let Some(hidden_at) = hidden_at else {
-        return Some(false);
-    };
-    let timeout_secs = crate::config::query_retention_seconds();
-    // A backwards clock reads as no time passed, and so keeps the query.
-    Some(query_retention_expired(
-        hidden_at.elapsed().unwrap_or_default(),
-        timeout_secs,
-    ))
-}
-
-fn query_retention_expired(hidden_for: Duration, timeout_secs: i64) -> bool {
-    timeout_secs >= 0 && hidden_for >= Duration::from_secs(timeout_secs as u64)
-}
-
-/// Arm the entrance, then hide once the frontend has painted that frame.
-///
-/// The compositor keeps the last buffer the webview painted and presents it
-/// when the window maps again, so hiding in the same frame leaves the fully
-/// revealed panel to flash on the next summon before the entrance rewinds and
-/// replays. Every dismiss goes through here.
-pub fn hide_armed(window: &tauri::WebviewWindow) {
-    let arm = HIDE_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
-    PENDING_HIDE.store(arm, Ordering::Relaxed);
-    let _ = window.emit(crate::consts::EVENT_WINDOW_HIDDEN, arm);
-    let window = window.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(HIDE_ARM_GRACE).await;
-        if PENDING_HIDE
-            .compare_exchange(arm, 0, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok()
-        {
-            hide_now(&window);
-        }
-    });
-}
-
-/// The frontend has painted the armed frame; the window can go now. Keyed on
-/// `arm` so a late confirmation can't hide a window a later dismiss just armed.
-/// `NonZeroU64` keeps the idle sentinel out of the compare: a payload of 0 is
-/// rejected while deserializing, never as a match against an idle `PENDING_HIDE`.
 #[tauri::command]
-pub fn confirm_hide(window: tauri::WebviewWindow, arm: NonZeroU64) {
-    if PENDING_HIDE
-        .compare_exchange(arm.get(), 0, Ordering::Relaxed, Ordering::Relaxed)
-        .is_ok()
-    {
-        hide_now(&window);
+pub fn eval_calc(expr: String) -> Result<String, String> {
+    backend::calc::eval_calc(&expr)
+}
+
+#[tauri::command]
+pub fn calc_inline(query: String) -> Option<Calculation> {
+    backend::calc::calc_inline(&query)
+}
+
+#[tauri::command]
+pub fn get_system_info() -> Vec<Vec<SysInfoEntry>> {
+    backend::sysinfo::get_system_info()
+}
+
+#[tauri::command]
+pub fn system_uptime() -> Option<String> {
+    backend::sysinfo::system_uptime()
+}
+
+#[tauri::command]
+pub fn list_processes() -> Vec<RunningApp> {
+    backend::process::list_processes()
+}
+
+#[tauri::command]
+pub fn kill_process(pid: u32) -> Result<String, String> {
+    backend::process::kill_process(pid)
+}
+
+#[tauri::command]
+pub async fn search_processes(query: String, refresh: bool) -> Vec<ProcRow> {
+    blocking(move || backend::process::search_processes(&query, refresh))
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub async fn search_kill_targets(query: String) -> Vec<KillTarget> {
+    blocking(move || backend::process::search_kill_targets(&query))
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn process_detail(pid: u32) -> Option<ProcDetail> {
+    backend::process::process_detail(pid)
+}
+
+#[tauri::command]
+pub async fn process_cpu(pid: u32) -> Option<f64> {
+    blocking(move || backend::process::process_cpu(pid))
+        .await
+        .flatten()
+}
+
+#[tauri::command]
+pub fn list_running_apps() -> Vec<RunningApp> {
+    backend::process::list_running_apps()
+}
+
+#[tauri::command]
+pub fn activate_running_app(
+    window: tauri::WebviewWindow,
+    pid: u32,
+    desktop_id: Option<String>,
+    exec: Option<String>,
+) -> Result<bool, String> {
+    backend::process::activate_running_app(&TauriWindow(window), pid, desktop_id, exec)
+}
+
+// --- Todo ---
+
+#[tauri::command]
+pub fn todo_list() -> Result<Vec<TodoTask>, String> {
+    backend::todo::todo_list()
+}
+
+#[tauri::command]
+pub fn todo_save(tasks: Vec<TodoTask>) -> Result<(), String> {
+    backend::todo::todo_save(&tasks)
+}
+
+// --- Translation ---
+
+#[tauri::command]
+pub fn translate(text: String, target_lang: String) -> TranslateResult {
+    backend::translate::translate(&text, &target_lang)
+}
+
+// --- AI / web answers ---
+
+#[tauri::command]
+pub fn instant_has_match(query: String) -> bool {
+    backend::answers::instant_has_match(&query)
+}
+
+#[tauri::command]
+pub fn definitional_entity(query: String) -> Option<String> {
+    backend::answers::definitional_entity(&query)
+}
+
+#[tauri::command]
+pub async fn instant_answer(query: String) -> Option<Answer> {
+    blocking(move || backend::answers::instant_answer(&query))
+        .await
+        .flatten()
+}
+
+#[tauri::command]
+pub async fn duckduckgo_answer(query: String) -> Option<Answer> {
+    blocking(move || backend::answers::duckduckgo_answer(&query))
+        .await
+        .flatten()
+}
+
+#[tauri::command]
+pub async fn wikipedia_answer(term: String) -> Option<Answer> {
+    blocking(move || backend::answers::wikipedia_answer(&term))
+        .await
+        .flatten()
+}
+
+#[tauri::command]
+pub async fn web_suggestions(query: String, limit: usize) -> Vec<String> {
+    blocking(move || backend::answers::web_suggestions(&query, limit))
+        .await
+        .unwrap_or_default()
+}
+
+// --- URL-like queries and opened-URL history ---
+
+#[tauri::command]
+pub fn classify_url(query: String) -> Option<UrlMatch> {
+    backend::weburl::classify_url(&query)
+}
+
+#[tauri::command]
+pub async fn record_url_hit(url: String) -> bool {
+    blocking(move || backend::weburl::record_url_hit(&url))
+        .await
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+pub async fn recent_urls(query: String, limit: u32) -> Vec<ScoredUrlEntry> {
+    blocking(move || backend::weburl::recent_urls(&query, limit))
+        .await
+        .unwrap_or_default()
+}
+
+// --- Quick actions and the launchpad ---
+
+#[tauri::command]
+pub fn quick_actions(result_id: String, kind: String) -> Vec<ActionDescriptor> {
+    backend::qactions::quick_actions(&result_id, &kind)
+}
+
+#[tauri::command]
+pub fn launchpad_layout() -> LayoutPayload {
+    backend::qactions::launchpad_layout()
+}
+
+#[tauri::command]
+pub fn launchpad_tile_values() -> HashMap<String, TileValue> {
+    backend::qactions::launchpad_tile_values()
+}
+
+#[tauri::command(async)]
+pub fn refresh_launchpad_tiles() -> (usize, Vec<String>) {
+    backend::qactions::refresh_launchpad_tiles()
+}
+
+#[tauri::command(async)]
+pub fn press_launchpad_tile(name: String) -> Option<String> {
+    backend::qactions::press_launchpad_tile(&name)
+}
+
+#[tauri::command]
+pub fn launchpad_warnings() -> Vec<String> {
+    backend::qactions::launchpad_warnings()
+}
+
+#[tauri::command]
+pub async fn quick_action_state(action_id: String, info_keys: Vec<String>) -> QuickActionStatus {
+    blocking(move || backend::qactions::quick_action_state(&action_id, &info_keys))
+        .await
+        .unwrap_or_else(backend::qactions::unavailable_status)
+}
+
+fn action_lost() -> ActionOutcome {
+    ActionOutcome::Failed {
+        message: "Action failed".to_string(),
     }
 }
 
-/// Take the launcher off screen. With layer shell attached, the surface on
-/// screen is not the one Tauri hands out.
-pub fn hide_now(window: &tauri::WebviewWindow) {
-    // The one point every route off screen passes through, armed or not.
-    mark_hidden_now();
-    #[cfg(target_os = "linux")]
-    if crate::platform::linux::layer_shell::is_active() {
-        crate::platform::linux::layer_shell::hide();
-        return;
-    }
-    let _ = window.hide();
+#[tauri::command]
+pub async fn quick_action_apply(action_id: String, intent: ActionIntent) -> ActionOutcome {
+    blocking(move || backend::qactions::quick_action_apply(&action_id, intent))
+        .await
+        .unwrap_or_else(action_lost)
 }
 
-/// Give the launcher keyboard focus. A layer surface takes it on its own
-/// through `keyboard-interactivity`, and `set_focus` would be harmful there:
-/// it reaches `gtk_window_present` and maps the husk toplevel.
-pub fn focus_launcher(window: &tauri::WebviewWindow) {
-    #[cfg(target_os = "linux")]
-    if crate::platform::linux::layer_shell::is_active() {
-        return;
-    }
-    let _ = window.set_focus();
+#[tauri::command]
+pub async fn quick_action_apply_item(
+    action_id: String,
+    item_id: String,
+    intent: ActionIntent,
+) -> ActionOutcome {
+    blocking(move || backend::qactions::quick_action_apply_item(&action_id, &item_id, intent))
+        .await
+        .unwrap_or_else(action_lost)
 }
 
-/// Whether the launcher is on screen. The husk toplevel never maps, so its own
-/// `is_visible` reports false for a launcher that is plainly up.
-pub fn launcher_visible(window: &tauri::WebviewWindow) -> bool {
-    #[cfg(target_os = "linux")]
-    if let Some(visible) = crate::platform::linux::layer_shell::visible() {
-        return visible;
-    }
-    window.is_visible().unwrap_or(false)
+// --- Launchpad feeds ---
+
+#[tauri::command]
+pub async fn weather_current() -> Option<WeatherSnapshot> {
+    blocking(backend::weather::weather_current).await.flatten()
 }
 
-/// Default show path when no native geometry adjustment is needed before the
-/// frontend event.
-pub fn show_launcher(window: &tauri::WebviewWindow) {
-    show_launcher_before_event(window, || {});
+#[tauri::command]
+pub async fn now_playing_current() -> Option<NowPlayingSnapshot> {
+    blocking(backend::nowplaying::now_playing_current)
+        .await
+        .flatten()
 }
 
-/// Show the launcher, apply any final native geometry, then notify the frontend.
-/// Tiling WMs can only reposition a mapped window, so their toggle path uses
-/// this hook to recenter after `show` but before focus and reveal animations.
-/// Every show ultimately goes through here.
-pub fn show_launcher_before_event(window: &tauri::WebviewWindow, before_event: impl FnOnce()) {
-    PENDING_HIDE.store(0, Ordering::Relaxed);
-    #[cfg(target_os = "linux")]
-    if crate::platform::linux::layer_shell::is_active() {
-        crate::platform::linux::layer_shell::show();
-        before_event();
-        let Some(clear_query) = query_clear_decision_after_show(true) else {
-            return;
-        };
-        let _ = window.emit(crate::consts::EVENT_WINDOW_SHOWN, clear_query);
-        return;
-    }
-    let Some(clear_query) = query_clear_decision_after_show(window.show().is_ok()) else {
-        return;
-    };
-    #[cfg(target_os = "linux")]
-    if crate::platform::linux::wm::is_niri() {
-        crate::platform::linux::niri::ensure_self_floating();
-    }
-    before_event();
-    let _ = window.emit(crate::consts::EVENT_WINDOW_SHOWN, clear_query);
+#[tauri::command]
+pub async fn now_playing_command(command: String, player: Option<String>) -> bool {
+    blocking(move || backend::nowplaying::now_playing_command(&command, player.as_deref()))
+        .await
+        .unwrap_or(false)
 }
+
+#[tauri::command]
+pub fn lunar_date(year: i64, month: i64, day: i64, tz: f64) -> LunarDate {
+    backend::lunar::lunar_date(year, month, day, tz)
+}
+
+#[tauri::command(async)]
+pub fn speed_test() -> Result<SpeedReading, String> {
+    backend::netspeed::speed_test()
+}
+
+#[tauri::command]
+pub fn local_ipv4() -> Option<String> {
+    backend::netspeed::local_ipv4()
+}
+
+// --- Clipboard ---
+
+#[tauri::command]
+pub fn get_clipboard_history(query: String) -> Vec<ClipboardEntry> {
+    backend::clipboard::get_clipboard_history(&query)
+}
+
+#[tauri::command]
+pub fn delete_clipboard_entry(timestamp: u64, text: String) -> bool {
+    backend::clipboard::delete_clipboard_entry(timestamp, &text)
+}
+
+#[tauri::command]
+pub fn get_clipboard_images() -> Vec<ClipboardImageRow> {
+    backend::clipboard::get_clipboard_images()
+}
+
+#[tauri::command]
+pub fn delete_clipboard_image(hash: String) -> bool {
+    backend::clipboard::delete_clipboard_image(&hash)
+}
+
+#[tauri::command]
+pub fn clipboard_image_data_url(hash: String) -> Option<String> {
+    backend::clipboard::clipboard_image_data_url(&hash)
+}
+
+#[tauri::command]
+pub fn copy_clipboard_image(hash: String) -> Result<(), String> {
+    backend::clipboard::copy_clipboard_image(hash)
+}
+
+#[tauri::command]
+pub fn copy_to_clipboard(text: String) -> Result<(), String> {
+    backend::clipboard::copy_to_clipboard(&text)
+}
+
+#[tauri::command]
+pub fn copy_to_clipboard_labeled(text: String, label: String) -> Result<(), String> {
+    backend::clipboard::copy_to_clipboard_labeled(text, label)
+}
+
+#[tauri::command]
+pub fn clipboard_paste_blocker() -> Option<String> {
+    backend::paste::clipboard_paste_blocker()
+}
+
+#[tauri::command]
+pub fn paste_into_focused_app(window: tauri::WebviewWindow) {
+    backend::paste::paste_into_focused_app(Arc::new(TauriWindow(window)));
+}
+
+// --- Music ---
+
+#[tauri::command]
+pub fn music_play(path: String) -> Result<(), String> {
+    backend::music::music_play(&path)
+}
+
+#[tauri::command]
+pub fn music_pause() {
+    backend::music::music_pause();
+}
+
+#[tauri::command]
+pub fn music_resume() {
+    backend::music::music_resume();
+}
+
+#[tauri::command]
+pub fn music_stop() {
+    backend::music::music_stop();
+}
+
+#[tauri::command]
+pub fn music_is_finished() -> bool {
+    backend::music::music_is_finished()
+}
+
+// --- Trash ---
+
+#[tauri::command]
+pub fn trash_paths(paths: Vec<String>) -> TrashOutcome {
+    backend::trash::trash_paths(paths)
+}
+
+#[tauri::command]
+pub fn count_trash_items() -> Result<usize, String> {
+    backend::trash::count_trash_items()
+}
+
+#[tauri::command]
+pub fn empty_trash() -> Result<usize, String> {
+    backend::trash::empty_trash()
+}
+
+// --- Autostart and PATH ---
+
+#[tauri::command]
+pub fn set_autostart(enabled: bool) -> Result<(), String> {
+    backend::autostart::set_autostart(enabled)
+}
+
+#[tauri::command]
+pub fn get_autostart() -> bool {
+    backend::autostart::get_autostart()
+}
+
+#[tauri::command]
+pub fn set_cli_path(enabled: bool) -> Result<(), String> {
+    backend::cli_path::set_cli_path(enabled)
+}
+
+#[tauri::command]
+pub fn get_cli_path() -> bool {
+    backend::cli_path::get_cli_path()
+}
+
+// --- Setup health ---
+
+#[tauri::command]
+pub fn get_health_issues() -> Vec<HealthIssue> {
+    backend::health::get_health_issues()
+}
+
+// --- Highlight ---
+
+#[tauri::command]
+pub fn highlight_file_cmd(path: String) -> Option<HighlightResult> {
+    backend::highlight::highlight_file_cmd(&path)
+}
+
+#[tauri::command]
+pub fn highlight_shell_cmd(source: String) -> HighlightResult {
+    backend::highlight::highlight_shell_cmd(&source)
+}
+
+// --- The window itself ---
 
 #[tauri::command]
 pub fn toggle_window(window: tauri::WebviewWindow) {
-    if launcher_visible(&window) {
-        hide_armed(&window);
+    if window::launcher_visible(&window) {
+        window::hide_armed(&window);
     } else {
-        show_launcher(&window);
-        focus_launcher(&window);
+        window::show_launcher(&window);
+        window::focus_launcher(&window);
     }
 }
 
 #[tauri::command]
 pub fn hide_window(window: tauri::WebviewWindow) {
-    hide_armed(&window);
+    window::hide_armed(&window);
+}
+
+/// `NonZeroU64` keeps the idle sentinel out of the compare: a payload of 0 is
+/// rejected while deserializing, never as a match against an idle arm.
+#[tauri::command]
+pub fn confirm_hide(window: tauri::WebviewWindow, arm: NonZeroU64) {
+    window::confirm_hide(&window, arm.get());
+}
+
+#[tauri::command]
+pub fn take_launch_query() -> Option<String> {
+    backend::launch_query::take_launch_query()
 }
 
 /// Blur behind the surfaces the frontend paints, in logical pixels. A no-op
-/// wherever the compositor has no such request (see platform::blur).
+/// wherever the compositor has no such request (see host::blur).
 #[tauri::command]
 pub fn set_blur_region(
     #[cfg_attr(not(target_os = "linux"), allow(unused_variables))] window: tauri::WebviewWindow,
-    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))] rects: Vec<
-        crate::platform::BlurRect,
-    >,
+    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))] rects: Vec<BlurRect>,
 ) {
     // No X11 id on native Wayland; that path addresses the bound surface.
     #[cfg(target_os = "linux")]
     {
-        let wid = crate::platform::linux::window_focus::self_window();
+        let wid = backend::platform::linux::window_focus::self_window();
         let scale = window.scale_factor().unwrap_or(1.0);
-        crate::platform::linux::blur::set_region(wid, &rects, scale);
+        crate::host::blur::set_region(wid, &rects, scale);
     }
 }
 
-// --- App launching helpers ---
-
-/// Run one rung of the launch chain and say whether it started the app.
-///
-/// Under the session wrapper the tool's own stderr goes to the journal, so the
-/// exit status is the part that always carries; a message is printed only when
-/// there is one.
-#[cfg(target_os = "linux")]
-fn launch_step(step: &str, command: &mut std::process::Command) -> bool {
-    let result = command
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .output();
-
-    match result {
-        Ok(output) if output.status.success() => {
-            eprintln!("[launch] {step} succeeded");
-            true
-        }
-        Ok(output) => {
-            let err = String::from_utf8_lossy(&output.stderr);
-            match err.trim() {
-                "" => eprintln!("[launch] {step} failed (exit {})", output.status),
-                detail => eprintln!("[launch] {step} failed (exit {}): {detail}", output.status),
-            }
-            false
-        }
-        Err(e) => {
-            eprintln!("[launch] {step} not available: {e}");
-            false
-        }
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
-    let desktop_file = id
-        .and_then(|id| id.strip_prefix("app:"))
-        .and_then(find_desktop_file);
-
-    // Try to focus an existing window before launching a new instance.
-    if let Some(ref real_path) = desktop_file
-        && try_focus_existing(real_path)
-    {
-        return Ok(());
-    }
-
-    // Build the launch chain: gtk-launch → gio launch → direct exec.
-    // gtk-launch is preferred because gio launch uses D-Bus activation
-    // which can silently fail to show a window on first invocation.
-    // Use the resolved desktop_file path (case-preserving) rather than the
-    // raw frontend ID - IDs may be lowercased upstream while gtk-launch is
-    // case-sensitive ("org.gnome.Nautilus" works, "org.gnome.nautilus" does not).
-    let desktop_path = desktop_file.clone();
-    let desktop_name = desktop_file
-        .as_deref()
-        .and_then(|p| std::path::Path::new(p).file_name())
-        .and_then(|f| f.to_str())
-        .and_then(|f| f.strip_suffix(".desktop"))
-        .map(String::from);
-    let exec_cmd = exec.to_string();
-    // Steam game shortcuts (Exec like `steam steam://run/<id>` or
-    // `/usr/bin/steam steam://run/<id>`) need the Steam client up before the
-    // URL is issued; on cold start Steam's bootstrap drops the URL silently
-    // and nothing visible happens. Detect any Exec carrying a `steam://`
-    // URL and, when Steam isn't running, pre-start the client and wait for
-    // /proc + a short settle window so the launch chain below hands off to
-    // a Steam that's ready to receive the URL.
-    let exec_has_steam_url = exec_cmd.contains("steam://");
-    let steam_already_running = crate::platform::linux::process::is_running("steam");
-    let needs_steam_warmup = exec_has_steam_url && !steam_already_running;
-    eprintln!(
-        "[launch] exec={exec_cmd:?} desktop_name={desktop_name:?} \
-         steam_url={exec_has_steam_url} steam_running={steam_already_running} \
-         warmup={needs_steam_warmup}"
+/// Resizes for a layout change, keeping a visible window's top edge and centre.
+/// `session_layout` is the Ctrl+Shift+C override, `None` to follow the config.
+/// A hidden window is resized by `recenter_window` on its next show; the layer
+/// surface is not, so it is resized here either way.
+#[tauri::command]
+pub fn apply_layout(window: tauri::WebviewWindow, session_layout: Option<String>) {
+    backend::geometry::set_session_layout(
+        session_layout
+            .as_deref()
+            .and_then(backend::config::LauncherLayout::parse),
     );
-
-    std::thread::spawn(move || {
-        if needs_steam_warmup {
-            eprintln!("[launch] Steam URL exec on cold start; pre-starting steam");
-            let _ = user_session_command("steam")
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn();
-            // Poll for the steam process (up to ~5s), then give the client a
-            // moment for its IPC to come up before issuing the URL.
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-            while std::time::Instant::now() < deadline {
-                if crate::platform::linux::process::is_running("steam") {
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(150));
-            }
-            std::thread::sleep(std::time::Duration::from_millis(1500));
-        }
-
-        if let Some(ref name) = desktop_name {
-            eprintln!("[launch] trying gtk-launch {name}");
-            if launch_step(
-                "gtk-launch",
-                user_session_command_for_status("gtk-launch").arg(name),
-            ) {
-                return;
-            }
-        }
-
-        if let Some(ref real_path) = desktop_path {
-            eprintln!("[launch] trying gio launch {real_path}");
-            if launch_step(
-                "gio launch",
-                user_session_command_for_status("gio").args(["launch", real_path]),
-            ) {
-                return;
-            }
-        }
-
-        let mut parts = exec_cmd.split_whitespace();
-        if let Some(cmd) = parts.next() {
-            let args: Vec<&str> = parts.filter(|s| !s.starts_with('%')).collect();
-            eprintln!("[launch] trying direct exec: {cmd} {}", args.join(" "));
-            match user_session_command(cmd)
-                .args(&args)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-            {
-                Ok(_) => eprintln!("[launch] direct exec spawned"),
-                Err(e) => eprintln!("[launch] direct exec failed: {e}"),
-            }
-        }
-    });
-
-    Ok(())
-}
-
-/// Focus the window of a handler identified by its .desktop id. Tries the
-/// GNOME Shell extension first (works on GNOME Wayland), then falls back to
-/// WM_CLASS / app_id matching via try_focus_window which knows about Sway,
-/// i3, and X11. Used by both the browser-URL path and the file-open path so
-/// e.g. a PNG that routes to Brave focuses Brave on Sway, where xdg-open
-/// itself doesn't raise the window.
-#[cfg(target_os = "linux")]
-fn focus_handler_by_desktop_id(desktop_id: &str) -> bool {
-    if desktop_id.is_empty() {
-        return false;
-    }
-
-    if crate::platform::linux::gnome_ext::try_focus_app(desktop_id) {
-        return true;
-    }
-
-    // Strip ".desktop" suffix to get the base id (e.g. "brave-browser").
-    // That's typically the WM_CLASS / app_id the app advertises - Sway and i3
-    // match it case-insensitively via the (?i) flag inside try_focus_window,
-    // so "brave-browser" matches "Brave-browser" too.
-    let base = desktop_id.strip_suffix(".desktop").unwrap_or(desktop_id);
-    if try_focus_window(base) {
-        return true;
-    }
-    // Some apps use the last path segment of a reverse-DNS id as their class
-    // (e.g. "org.mozilla.firefox" → "firefox").
-    if let Some(tail) = base.rsplit('.').next()
-        && tail != base
-        && try_focus_window(tail)
-    {
-        return true;
-    }
-    false
-}
-
-/// Look up the default handler for a MIME type via xdg-mime. Returns the
-/// raw .desktop id (e.g. "brave-browser.desktop") or None if unset.
-#[cfg(target_os = "linux")]
-fn default_handler_for_mime(mime: &str) -> Option<String> {
-    let output = host_command("xdg-mime")
-        .args(["query", "default", mime])
-        .output()
-        .ok()?;
-    let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    (!id.is_empty()).then_some(id)
-}
-
-/// Bring the user's default browser to the foreground. Resolves the browser
-/// via `xdg-mime query default x-scheme-handler/https` so we focus the exact
-/// browser xdg-open just sent the URL to - not whichever browser happened to
-/// come first in a hard-coded candidate list (which would route the focus to
-/// the wrong window when the user has multiple browsers open, e.g. Brave
-/// default but Firefox also running).
-#[cfg(target_os = "linux")]
-fn focus_default_browser() -> bool {
-    default_handler_for_mime("x-scheme-handler/https")
-        .map(|id| focus_handler_by_desktop_id(&id))
-        .unwrap_or(false)
-}
-
-/// Bring the default handler for `path`'s MIME type to the foreground. Used
-/// after xdg-open <file> on Sway/i3, where activation alone doesn't raise
-/// the handler window.
-#[cfg(target_os = "linux")]
-fn focus_file_handler(path: &str) -> bool {
-    let Ok(output) = host_command("xdg-mime")
-        .args(["query", "filetype", path])
-        .output()
-    else {
-        return false;
-    };
-    let mime = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if mime.is_empty() {
-        return false;
-    }
-    let Some(desktop_id) = default_handler_for_mime(&mime) else {
-        return false;
-    };
-    focus_handler_by_desktop_id(&desktop_id)
-}
-
-#[cfg(target_os = "linux")]
-fn try_focus_window(wm_class: &str) -> bool {
-    // Sway (Wayland): SWAYSOCK is set, swaymsg shares i3's IPC and CLI but
-    // Wayland-native clients identify by `app_id`, not WM_CLASS. XWayland
-    // clients still fall back to class/instance. The x11rb path below can't
-    // see Wayland windows at all, so this branch is the only thing that
-    // brings non-XWayland browsers (firefox-wayland, brave Wayland) forward.
-    if std::env::var("SWAYSOCK").is_ok() {
-        for criterion in [
-            format!("[app_id=\"(?i){wm_class}\"] focus"),
-            format!("[class=\"(?i){wm_class}\"] focus"),
-            format!("[instance=\"(?i){wm_class}\"] focus"),
-        ] {
-            if let Ok(output) = host_command("swaymsg")
-                .arg(&criterion)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .output()
-            {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                if stdout.contains("\"success\":true") {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    // i3 window manager - use i3-msg exclusively (i3 ignores raw X11
-    // _NET_ACTIVE_WINDOW messages, so the x11rb fallback would report
-    // success without actually focusing).  Try both class and instance
-    // criteria: GTK apps often set instance to the reverse-DNS app ID
-    // (e.g. "org.pwmt.zathura") while class is the short name ("Zathura").
-    if std::env::var("I3SOCK").is_ok() {
-        for criterion in [
-            format!("[class=\"(?i){wm_class}\"] focus"),
-            format!("[instance=\"(?i){wm_class}\"] focus"),
-        ] {
-            if let Ok(output) = host_command("i3-msg")
-                .arg(&criterion)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .output()
-            {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                if stdout.contains("\"success\":true") {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    // niri: no swaymsg/i3-msg compatible IPC and no X11 windows to activate.
-    if crate::platform::linux::wm::is_niri() {
-        return try_focus_niri(&[wm_class]);
-    }
-
-    // KDE Wayland: the x11rb path below only sees XWayland clients (under
-    // the AppImage the Look window itself is XWayland), so native Wayland
-    // windows are invisible to it. Go through KWin's scripting D-Bus.
-    if crate::platform::linux::transparency::is_wayland() && crate::platform::linux::wm::is_kde() {
-        return crate::platform::linux::kde_focus::try_focus(&[wm_class]);
-    }
-
-    // Non-i3: try i3-msg anyway (might be running), then x11rb fallback.
-    if let Ok(output) = host_command("i3-msg")
-        .arg(format!("[class=\"(?i){wm_class}\"] focus"))
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-    {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if stdout.contains("\"success\":true") {
-            return true;
-        }
-    }
-
-    // Linux: x11rb _NET_ACTIVE_WINDOW (covers GNOME, KDE, etc.)
-    #[cfg(target_os = "linux")]
-    if crate::platform::linux::window_focus::try_focus(wm_class) {
-        return true;
-    }
-
-    false
-}
-
-/// Public wrapper for process::activate_running_app.
-#[cfg(target_os = "linux")]
-pub fn try_focus_existing_pub(desktop_path: &str) -> bool {
-    try_focus_existing(desktop_path)
-}
-
-/// Public wrapper for process::activate_running_app.
-#[cfg(target_os = "linux")]
-pub fn try_focus_window_pub(wm_class: &str) -> bool {
-    try_focus_window(wm_class)
-}
-
-/// Try to focus an existing window for a desktop file.
-/// Dispatches to the appropriate method based on display server / compositor.
-#[cfg(target_os = "linux")]
-fn try_focus_existing(desktop_path: &str) -> bool {
-    let wm_class = parse_desktop_field(desktop_path, "StartupWMClass");
-    let stem = std::path::Path::new(desktop_path)
-        .file_stem()
-        .and_then(|f| f.to_str())
-        .map(String::from);
-
-    // For reverse-DNS stems like "org.pwmt.zathura", also try the last
-    // segment ("zathura") - many apps use the short name as WM_CLASS even
-    // when the desktop file uses the full reverse-DNS ID.
-    let short_name = stem.as_deref().and_then(|s| {
-        if s.contains('.') {
-            s.rsplit('.').next().map(String::from)
-        } else {
-            None
-        }
-    });
-
-    let mut candidates: Vec<&str> = [wm_class.as_deref(), stem.as_deref(), short_name.as_deref()]
-        .into_iter()
+    let Some(monitor) = window
+        .current_monitor()
+        .ok()
         .flatten()
-        .collect();
-    candidates.dedup();
-    eprintln!("[focus] try_focus_existing desktop={desktop_path} candidates={candidates:?}");
+        .or_else(|| crate::monitor_at_cursor(&window))
+    else {
+        return;
+    };
+    let screen = monitor.size();
+    let scale = monitor.scale_factor();
+    let (win_w, win_h) = backend::geometry::scaled_window_size(screen.height, scale);
 
     #[cfg(target_os = "linux")]
-    if crate::platform::linux::transparency::is_wayland() {
-        return try_focus_wayland(desktop_path, &candidates);
+    if crate::host::layer_shell::is_active() {
+        crate::host::layer_shell::resize(win_w as i32, win_h as i32);
+        return;
     }
 
-    for id in &candidates {
-        if try_focus_window(id) {
-            return true;
-        }
+    if !window::launcher_visible(&window) {
+        return;
     }
-    false
-}
-
-/// Wayland focus: dispatch to the active compositor's IPC.
-#[cfg(target_os = "linux")]
-fn try_focus_wayland(desktop_path: &str, candidates: &[&str]) -> bool {
-    if crate::platform::linux::wm::is_sway() {
-        return candidates.iter().any(|id| try_focus_sway(id));
-    }
-    if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
-        return candidates.iter().any(|id| try_focus_hyprland(id));
-    }
-    if crate::platform::linux::wm::is_niri() {
-        return try_focus_niri(candidates);
-    }
-    // KDE Wayland: KWin scripting D-Bus (no GNOME Shell, no wlr protocol)
-    if crate::platform::linux::wm::is_kde() {
-        return crate::platform::linux::kde_focus::try_focus(candidates);
-    }
-    // GNOME Wayland: use GNOME Shell extension
-    let desktop_id = std::path::Path::new(desktop_path)
-        .file_name()
-        .and_then(|f| f.to_str())
-        .unwrap_or("");
-    !desktop_id.is_empty() && crate::platform::linux::gnome_ext::try_focus_app(desktop_id)
-}
-
-#[cfg(target_os = "linux")]
-fn try_focus_sway(app_id: &str) -> bool {
-    // Try the native wlr-foreign-toplevel protocol first (works for any
-    // wlroots compositor); fall back to sway IPC if the protocol isn't
-    // available.
-    if crate::platform::linux::wlr_focus::try_focus(app_id) {
-        return true;
-    }
-    for criteria in [
-        format!("[app_id=\"(?i){app_id}\"] focus"),
-        format!("[class=\"(?i){app_id}\"] focus"),
-    ] {
-        if let Ok(output) = host_command("swaymsg")
-            .arg(&criteria)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .output()
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.contains("\"success\": true") {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// niri: its own IPC is the only path that scrolls to the window's workspace.
-/// `wlr-foreign-toplevel` activation (which niri also advertises) raises the
-/// window without moving the view, leaving the user on an empty workspace, so
-/// it is only a fallback for the socket being unavailable.
-#[cfg(target_os = "linux")]
-fn try_focus_niri(candidates: &[&str]) -> bool {
-    if crate::platform::linux::niri::try_focus(candidates) {
-        return true;
-    }
-    candidates
-        .iter()
-        .any(|id| crate::platform::linux::wlr_focus::try_focus(id))
-}
-
-#[cfg(target_os = "linux")]
-fn try_focus_hyprland(class: &str) -> bool {
-    eprintln!("[focus] hyprland try class={class}");
-    // Primary path: native wlr-foreign-toplevel-management. Works regardless
-    // of the broken hyprctl dispatcher on v0.55+.
-    if crate::platform::linux::wlr_focus::try_focus(class) {
-        eprintln!("[focus] hyprland focus via wlr-foreign-toplevel succeeded");
-        return true;
-    }
-    // Fallback for Hyprland < v0.55 where the legacy dispatcher still works
-    // (and the wlr protocol may not be advertised).
-    if !hyprland_has_client(class) {
-        return false;
-    }
-    let _ = host_command("hyprctl")
-        .args(["dispatch", "focuswindow", &format!("class:{class}")])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
-    if hyprland_active_class_matches(class) {
-        eprintln!("[focus] hyprland legacy dispatcher worked");
-        return true;
-    }
-    eprintln!("[focus] hyprland focus failed for class={class}, falling through to launch chain");
-    false
-}
-
-#[cfg(target_os = "linux")]
-fn hyprland_has_client(class: &str) -> bool {
-    let Ok(output) = host_command("hyprctl")
-        .args(["clients", "-j"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-    else {
-        return false;
+    let (Ok(position), Ok(old_size)) = (window.outer_position(), window.outer_size()) else {
+        return;
     };
-    if !output.status.success() {
-        return false;
-    }
-    json_has_class(&String::from_utf8_lossy(&output.stdout), class)
-}
-
-#[cfg(target_os = "linux")]
-fn hyprland_active_class_matches(class: &str) -> bool {
-    let Ok(output) = host_command("hyprctl")
-        .args(["activewindow", "-j"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-    else {
-        return false;
-    };
-    if !output.status.success() {
-        return false;
-    }
-    json_has_class(&String::from_utf8_lossy(&output.stdout), class)
-}
-
-#[cfg(target_os = "linux")]
-fn json_has_class(json: &str, class: &str) -> bool {
-    let json = json.to_lowercase();
-    let needle = class.to_lowercase();
-    for key in ["\"class\":", "\"initialclass\":"] {
-        let mut rest = json.as_str();
-        while let Some(idx) = rest.find(key) {
-            rest = &rest[idx + key.len()..];
-            let trimmed = rest.trim_start();
-            if let Some(after_quote) = trimmed.strip_prefix('"')
-                && let Some(end) = after_quote.find('"')
-                && after_quote[..end] == needle
-            {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-#[cfg(target_os = "linux")]
-fn parse_desktop_field(path: &str, field: &str) -> Option<String> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let prefix = format!("{field}=");
-    let mut in_desktop_entry = false;
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with('[') {
-            in_desktop_entry = line == "[Desktop Entry]";
-            continue;
-        }
-        if !in_desktop_entry {
-            continue;
-        }
-        if let Some(val) = line.strip_prefix(&prefix) {
-            let val = val.trim();
-            if !val.is_empty() {
-                return Some(val.to_string());
-            }
-        }
-    }
-    None
-}
-
-#[cfg(target_os = "linux")]
-fn find_desktop_file(id_path: &str) -> Option<String> {
-    if std::path::Path::new(id_path).exists() {
-        return Some(id_path.to_string());
-    }
-    let path = std::path::Path::new(id_path);
-    let dir = path.parent()?;
-    let filename_lower = path.file_name()?.to_str()?.to_lowercase();
-    for entry in std::fs::read_dir(dir).ok()?.flatten() {
-        if entry.file_name().to_str()?.to_lowercase() == filename_lower {
-            return Some(entry.path().to_string_lossy().to_string());
-        }
-    }
-    None
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{query_clear_decision_after_show, query_retention_expired};
-    use std::time::{Duration, SystemTime};
-
-    #[test]
-    fn failed_show_reaches_no_decision() {
-        assert_eq!(query_clear_decision_after_show(false), None);
-    }
-
-    #[test]
-    fn show_with_no_recorded_hide_keeps_the_query() {
-        assert_eq!(query_clear_decision_after_show(true), Some(false));
-    }
-
-    #[test]
-    fn a_repeat_hide_keeps_the_first_timestamp() {
-        let mut hidden_at = Some(SystemTime::UNIX_EPOCH);
-        hidden_at.get_or_insert_with(SystemTime::now);
-        assert_eq!(hidden_at, Some(SystemTime::UNIX_EPOCH));
-    }
-
-    #[test]
-    fn query_retention_preserves_query_before_boundary() {
-        assert!(!query_retention_expired(Duration::from_secs(3), 5));
-        assert!(!query_retention_expired(Duration::from_millis(4_999), 5));
-    }
-
-    #[test]
-    fn query_retention_clears_at_and_after_boundary() {
-        assert!(query_retention_expired(Duration::from_secs(5), 5));
-        assert!(query_retention_expired(Duration::from_secs(8), 5));
-    }
-
-    #[test]
-    fn query_retention_negative_one_never_clears() {
-        assert!(!query_retention_expired(Duration::from_secs(5), -1));
-        assert!(!query_retention_expired(Duration::from_secs(60), -1));
-    }
+    let top = position.y as f64 / scale;
+    let center_x = (position.x as f64 + old_size.width as f64 / 2.0) / scale;
+    crate::resize_locked(&window, tauri::LogicalSize::new(win_w as f64, win_h as f64));
+    let left = center_x - win_w as f64 / 2.0;
+    let _ = window.set_position(tauri::LogicalPosition::new(left, top));
 }

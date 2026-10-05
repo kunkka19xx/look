@@ -1,26 +1,14 @@
 //! The launcher toggle on the global-shortcut plugin path (Windows and X11).
-//! Only Windows rebinds it; Linux honours `launcher_hotkey=none` alone.
+//! What the key is comes from the backend; binding it is this file.
 
-use crate::health;
-use look_engine::config::RuntimeConfig;
-use look_engine::hotkey::{HotkeyCheck, LauncherHotkey};
-use serde::Serialize;
+use linows_backend::health;
+use linows_backend::hotkey::{CONFIGURABLE, CONFLICT_REMEDY, configured};
+use linows_backend::look_engine::config::RuntimeConfig;
 use std::sync::Mutex;
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-const CONFIGURABLE: bool = cfg!(target_os = "windows");
-const CONFLICT_REMEDY: &str = if CONFIGURABLE {
-    "free it or set another launcher_hotkey, then reload the config"
-} else {
-    "free it and restart Look"
-};
-
 static REGISTERED: Mutex<Option<Shortcut>> = Mutex::new(None);
-
-pub fn configured() -> LauncherHotkey {
-    RuntimeConfig::load_cached().launcher_hotkey
-}
 
 /// Failures become health issues: a launcher with a dead hotkey is still
 /// reachable by relaunching it.
@@ -79,41 +67,16 @@ fn unregister(app: &AppHandle) {
     }
 }
 
-#[derive(Serialize)]
-pub struct LauncherHotkeyState {
-    display: String,
-    default_spec: String,
-    default_display: Option<String>,
-    configurable: bool,
-}
-
-#[tauri::command]
-pub fn launcher_hotkey_state() -> LauncherHotkeyState {
-    let launcher = configured();
-    LauncherHotkeyState {
-        display: launcher.display,
-        default_display: HotkeyCheck::new(&launcher.default_spec).display,
-        default_spec: launcher.default_spec,
-        configurable: CONFIGURABLE,
-    }
-}
-
-#[tauri::command]
-pub fn hotkey_check(spec: String) -> HotkeyCheck {
-    HotkeyCheck::new(&spec)
-}
-
 /// Inactive frees the key for the settings recorder. Active re-reads the
 /// config, which `set_config` leaves stale in the engine's cache.
-#[tauri::command]
-pub fn launcher_hotkey_set_active(app: AppHandle, active: bool) {
+pub fn set_active(app: &AppHandle, active: bool) {
     if !CONFIGURABLE {
         return;
     }
     if active {
         RuntimeConfig::invalidate_cache();
-        register(&app);
+        register(app);
     } else {
-        unregister(&app);
+        unregister(app);
     }
 }

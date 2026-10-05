@@ -1,0 +1,10 @@
+[workspace]
+resolver = "3"
+members = ["backend", "src-tauri"]
+# The gpui spike keeps its own workspace: a different windowing stack with a
+# dependency tree this one should not carry.
+exclude = ["gpui-spike"]
+
+[profile.release]
+strip = true
+lto = true

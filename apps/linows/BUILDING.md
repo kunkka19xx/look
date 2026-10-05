@@ -193,18 +193,18 @@ make app-build-release  # cargo build (release)
 Format and lint are not Make targets; run them directly under vcvars:
 
 ```bash
-scripts\windows\with-vcvars.bat cargo fmt --manifest-path apps\linows\src-tauri\Cargo.toml -- --check
-scripts\windows\with-vcvars.bat cargo clippy --manifest-path apps\linows\src-tauri\Cargo.toml -- -D warnings
+scripts\windows\with-vcvars.bat cargo fmt --manifest-path apps\linows\Cargo.toml -- --check
+scripts\windows\with-vcvars.bat cargo clippy --workspace --manifest-path apps\linows\Cargo.toml -- -D warnings
 ```
 
 **Dev paths:** in dev mode, Look writes to `%LOCALAPPDATA%\look\look.dev.db` and `%USERPROFILE%\.look\config.dev`. Production builds use `%LOCALAPPDATA%\look\` for both.
 
 **Hot reload caveats:**
 
-- Tauri dev watches `apps/linows/src-tauri/` only. Changes under `core/engine/` need a touch of any `src-tauri/` file to trigger rebuild.
+- Tauri dev watches the linows workspace (`src-tauri/` and `backend/`). Changes under `core/engine/` need a touch of any file there to trigger a rebuild.
 - Frontend HTML/CSS/JS changes need a manual `Ctrl+R` in the webview; no HMR (`beforeDevCommand` is intentionally empty since `frontendDist` is static).
 
-**Installer output:** `apps\linows\src-tauri\target\release\bundle\nsis\Look_<version>_x64-setup.exe`. The MSVC C runtime is static-linked via the workspace-root `.cargo/config.toml`, so the installer runs on a clean Windows 10/11 install without the VC++ redistributable.
+**Installer output:** `apps\linows\target\release\bundle\nsis\Look_<version>_x64-setup.exe`. The MSVC C runtime is static-linked via the workspace-root `.cargo/config.toml`, so the installer runs on a clean Windows 10/11 install without the VC++ redistributable.
 
 ---
 
