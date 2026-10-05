@@ -1,9 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["backend", "src-tauri"]
-# The gpui spike keeps its own workspace: a different windowing stack with a
-# dependency tree this one should not carry.
-exclude = ["gpui-spike"]
+members = ["backend", "gpui", "src-tauri"]
+# What a bare `cargo build` builds: the shipping shell and its backend. The
+# gpui port links wgpu and xkbcommon, which the Tauri dev shell and CI do not
+# carry yet, so it is built by name: `cargo build -p look-gpui`.
+default-members = ["backend", "src-tauri"]
 
 [profile.release]
 strip = true

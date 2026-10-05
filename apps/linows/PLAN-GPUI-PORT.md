@@ -230,12 +230,20 @@ without ever losing one.
 
 ### M0 Foundation
 
-Backend extraction above. Move `gpui-spike/` to `gpui/`, drop the
-`LOOK_SPIKE_*` knobs in favour of config, pin gpui-ce (decision 1 below),
-load `.look.config`, resolve theme and layout from it, D-Bus `Toggle`,
-`--toggle` and `--hidden` CLI, single instance, global hotkey through the
-existing `wayland_shortcut.rs` and `launcher_hotkey.rs`, hide on focus loss,
-crash hook. Keep `tools/capture.sh` and `tools/pace.sh`.
+Backend extraction above (landed as #546). Move `gpui-spike/` to `gpui/`,
+drop the `LOOK_SPIKE_*` knobs in favour of config, pin gpui-ce (decision 1
+below), load `.look.config`, resolve theme and layout from it, D-Bus
+`Toggle`, `--toggle` and `--hidden` CLI, single instance, global hotkey
+through the existing `wayland_shortcut.rs` and `launcher_hotkey.rs`, hide on
+focus loss, crash hook. Keep `tools/capture.sh` and `tools/pace.sh`.
+
+Status 2026-10-05: `gpui/` is a workspace member (not a default one, built
+with `-p look-gpui`), wired to the backend through `Host` and
+`LauncherWindow`. Engine search, open, usage, index refresh on show, theme
+and layout from config, the Wayland hotkey and D-Bus service, `--toggle`
+over that service, the crash hook: done and seen running on sway. Still on
+gpui-ce 0.2.2. Left for later milestones: hide on focus loss and the hotkey
+on Windows (M7), query retention (M1), autostart registration (M7).
 
 Done when: `lookapp-gpui` starts hidden on login, Alt+Space summons it with
 the configured theme, Esc hides it, pacing stays at 16.7 ms, on niri and in

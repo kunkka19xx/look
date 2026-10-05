@@ -194,7 +194,7 @@ Format and lint are not Make targets; run them directly under vcvars:
 
 ```bash
 scripts\windows\with-vcvars.bat cargo fmt --manifest-path apps\linows\Cargo.toml -- --check
-scripts\windows\with-vcvars.bat cargo clippy --workspace --manifest-path apps\linows\Cargo.toml -- -D warnings
+scripts\windows\with-vcvars.bat cargo clippy --manifest-path apps\linows\Cargo.toml -- -D warnings
 ```
 
 **Dev paths:** in dev mode, Look writes to `%LOCALAPPDATA%\look\look.dev.db` and `%USERPROFILE%\.look\config.dev`. Production builds use `%LOCALAPPDATA%\look\` for both.

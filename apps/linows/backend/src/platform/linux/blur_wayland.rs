@@ -60,10 +60,11 @@ struct Globals {
     blur_capable: bool,
 }
 
-/// Bind the managers. Call once, from the main thread. A compositor with
-/// neither protocol records "unsupported" and no-ops after.
+/// Bind the managers. The first call binds, from the main thread; later ones
+/// are free, so a shell may call it on every open. A compositor with neither
+/// protocol records "unsupported" and no-ops after.
 pub fn init(display: *mut std::ffi::c_void) {
-    let _ = BLUR.set(bind(display));
+    BLUR.get_or_init(|| bind(display));
 }
 
 pub fn is_supported() -> bool {

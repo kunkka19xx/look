@@ -74,6 +74,23 @@ fn caller_invocation(name: &str, path: &std::path::Path) -> String {
     }
 }
 
+/// Ask the running launcher to toggle, through the same D-Bus call the
+/// compositor keybinding makes. `false` when no caller tool is installed or
+/// nothing answered.
+pub fn request_toggle() -> bool {
+    if dbus_caller().is_none() {
+        return false;
+    }
+    host_command("sh")
+        .args(["-c", toggle_cmd()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// The command a compositor keybinding runs to toggle Look. Resolved once:
 /// it gets written into compositor config that outlives this call.
 fn toggle_cmd() -> &'static str {
