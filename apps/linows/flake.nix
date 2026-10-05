@@ -95,6 +95,14 @@
             librsvg
             alsa-lib
             libappindicator-gtk3
+            # The gpui port: wgpu, xkbcommon and font-kit link against these,
+            # and the Wayland and Vulkan loaders are dlopened at runtime.
+            wayland
+            vulkan-loader
+            libxkbcommon
+            libxcb
+            fontconfig
+            freetype
           ];
         in
         {
@@ -108,6 +116,10 @@
               prettier
               # The CLI a `run` source block shells out to; the app links rusqlite.
               sqlite
+              # gpui/tools: frame capture and the control socket.
+              wf-recorder
+              ffmpeg
+              socat
             ];
 
             buildInputs = runtimeLibs;

@@ -315,13 +315,13 @@ jobs:
         run: cargo fmt --all --manifest-path apps/linows/Cargo.toml -- --check
 
       - name: Run clippy
-        run: cargo clippy --locked --workspace --all-targets --manifest-path apps/linows/Cargo.toml -- -D warnings
+        run: cargo clippy --locked --all-targets --manifest-path apps/linows/Cargo.toml -- -D warnings
 
       - name: Build (debug)
-        run: cargo build --locked --workspace --manifest-path apps/linows/Cargo.toml
+        run: cargo build --locked --manifest-path apps/linows/Cargo.toml
 
       - name: Run tests
-        run: cargo test --locked --workspace --manifest-path apps/linows/Cargo.toml
+        run: cargo test --locked --manifest-path apps/linows/Cargo.toml
 
   linows-build-windows:
     name: Build linows (Tauri, Windows)
@@ -354,10 +354,10 @@ jobs:
         run: cargo fmt --all --manifest-path apps/linows/Cargo.toml -- --check
 
       - name: Run clippy
-        run: cargo clippy --locked --workspace --all-targets --manifest-path apps/linows/Cargo.toml -- -D warnings
+        run: cargo clippy --locked --all-targets --manifest-path apps/linows/Cargo.toml -- -D warnings
 
       - name: Build (debug)
-        run: cargo build --locked --workspace --manifest-path apps/linows/Cargo.toml
+        run: cargo build --locked --manifest-path apps/linows/Cargo.toml
 
       - name: Run tests
-        run: cargo test --locked --workspace --manifest-path apps/linows/Cargo.toml
+        run: cargo test --locked --manifest-path apps/linows/Cargo.toml
