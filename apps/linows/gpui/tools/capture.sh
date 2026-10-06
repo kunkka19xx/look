@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 LABEL=$1
 SHOWS=${2:-8}
 OUT=captures
-BIN=${LOOK_GPUI_BIN:-../target/release/lookapp-gpui}
+BIN=${LOOK_GPUI_BIN:-../target/release-gpui/lookapp-gpui}
 # Its own socket and no hotkey: the launcher in use keeps both.
 SOCK=${XDG_RUNTIME_DIR:-/tmp}/look-gpui-probe.sock
 export LOOK_PACE_PROBE=1 LOOK_CONTROL_SOCKET=$SOCK

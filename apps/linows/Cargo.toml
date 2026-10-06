@@ -9,3 +9,10 @@ default-members = ["backend", "src-tauri"]
 [profile.release]
 strip = true
 lto = true
+
+# The gpui shell: a third smaller for size over speed in the code that is
+# not the renderer. Its own profile, so the Tauri build keeps the default.
+[profile.release-gpui]
+inherits = "release"
+opt-level = "s"
+codegen-units = 1

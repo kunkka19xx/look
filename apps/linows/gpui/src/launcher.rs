@@ -97,6 +97,14 @@ struct Translation {
     sections: Vec<Option<Result<String, String>>>,
 }
 
+/// What the last hide left behind, see `Launcher::retained`. The screen
+/// outlives the retention window, the query does not.
+#[derive(Default)]
+pub struct Retained {
+    pub query: String,
+    pub screen: Option<(usize, String)>,
+}
+
 pub struct Launcher {
     pub(crate) shell: Shell,
     input: Entity<SearchInput>,
@@ -216,13 +224,36 @@ impl Launcher {
         self.input.update(cx, |input, cx| input.set_text(text, cx));
     }
 
-    /// The query a short dismissal left behind, selected whole so the next
-    /// keystroke replaces it and Right edits it.
-    pub fn restore_query(&mut self, text: &str, cx: &mut Context<Self>) {
-        self.input.update(cx, |input, cx| {
-            input.set_text(text, cx);
-            input.select_all(cx);
-        });
+    /// What a hide leaves behind for the retention rule: the command screen
+    /// that was up, with the text in its box, else the query.
+    pub fn retained(&self, cx: &gpui::App) -> Retained {
+        if self.command_mode {
+            Retained {
+                query: String::new(),
+                screen: Some((
+                    self.commands.active_index(),
+                    self.commands.input().read(cx).text().to_string(),
+                )),
+            }
+        } else {
+            Retained {
+                query: self.query(cx),
+                screen: None,
+            }
+        }
+    }
+
+    /// A short dismissal undone: the screen comes back as left, or the query
+    /// selected whole so the next keystroke replaces it and Right edits it.
+    pub fn restore(&mut self, retained: &Retained, cx: &mut Context<Self>) {
+        if let Some((index, text)) = &retained.screen {
+            self.enter_command_mode(*index, text, cx);
+        } else if !retained.query.is_empty() {
+            self.input.update(cx, |input, cx| {
+                input.set_text(&retained.query, cx);
+                input.select_all(cx);
+            });
+        }
     }
 
     /// The control socket's keystroke, through the same handler a real one
@@ -274,7 +305,6 @@ impl Launcher {
         if let Some((index, prefill)) = commands::inline_command(&query) {
             let prefill = prefill.to_string();
             self.enter_command_mode(index, &prefill, cx);
-            self.set_query("", cx);
             return;
         }
         let home = query.trim().is_empty();
@@ -597,7 +627,9 @@ impl Launcher {
     /// The field the keys edit right now.
     fn field(&self) -> Entity<SearchInput> {
         if self.command_mode {
-            self.commands.input().clone()
+            self.commands
+                .editing_field()
+                .unwrap_or_else(|| self.commands.input().clone())
         } else {
             self.input.clone()
         }
@@ -621,11 +653,15 @@ impl Launcher {
         self.translation = None;
         self.command_mode = true;
         self.commands.enter(index, prefill, cx);
+        // The screen has its own field; the query that opened it is spent, so
+        // the next summon lands on home, as both references do.
+        self.set_query("", cx);
         cx.notify();
     }
 
     /// Back to the empty home screen.
     fn exit_command_mode(&mut self, cx: &mut Context<Self>) {
+        self.commands.exit();
         self.command_mode = false;
         self.set_query("", cx);
         cx.notify();
@@ -1506,9 +1542,9 @@ impl Launcher {
         });
         let body = self.commands.render(&self.icons, th, cx);
         let hint = self.commands.hint();
-        // The panel's box holds the focus, so the keys dispatch through this
-        // root only when it tracks that handle.
-        let focus_handle = self.commands.input().read(cx).focus_handle.clone();
+        // The focused field (the panel's box, or a row's open field) is where
+        // the keys dispatch from, so this root must track that handle.
+        let focus_handle = self.field().read(cx).focus_handle.clone();
         div()
             .size_full()
             .font_family(th.font_family.clone())

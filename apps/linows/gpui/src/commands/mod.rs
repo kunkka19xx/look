@@ -6,6 +6,7 @@
 
 mod calc;
 mod kill;
+mod pomo;
 mod shell;
 mod sys;
 
@@ -85,6 +86,7 @@ pub struct Commands {
     pub(super) kill: kill::Kill,
     pub(super) calc: calc::Calc,
     pub(super) sys: sys::Sys,
+    pub(super) pomo: pomo::Panel,
 }
 
 impl Commands {
@@ -97,6 +99,7 @@ impl Commands {
             kill: kill::Kill::default(),
             calc: calc::Calc::default(),
             sys: sys::Sys::default(),
+            pomo: pomo::Panel::default(),
         }
     }
 
@@ -130,11 +133,27 @@ impl Commands {
         self.enter_panel(cx);
     }
 
+    /// The screen closed, or the panel changed: what runs only while a
+    /// panel is up stops.
+    pub fn exit(&mut self) {
+        self.pomo.leave();
+    }
+
+    /// A row's field open for typing, which the launcher's keys edit.
+    pub fn editing_field(&self) -> Option<Entity<SearchInput>> {
+        if self.entry().id == pomo::ID {
+            self.pomo.editing_field()
+        } else {
+            None
+        }
+    }
+
     /// Tab, Shift+Tab, Ctrl+digit, a sidebar click.
     fn switch_to(&mut self, index: usize, cx: &mut Context<Launcher>) {
         if index == self.active || index >= COMMAND_ENTRIES.len() {
             return;
         }
+        self.exit();
         self.active = index;
         self.input.update(cx, |input, cx| input.clear(cx));
         self.enter_panel(cx);
@@ -146,6 +165,7 @@ impl Commands {
             kill::ID => self.kill.enter(cx),
             calc::ID => self.calc.enter(),
             sys::ID => self.sys.enter(cx),
+            pomo::ID => self.pomo.enter(cx),
             _ => {}
         }
         cx.notify();
@@ -176,10 +196,20 @@ impl Commands {
         let shift = ks.modifiers.shift;
         let key = ks.key.as_str();
         if key == "escape" {
-            if self.entry().id == kill::ID && self.kill.dismiss(cx) {
-                return KeyOutcome::Consumed;
-            }
-            return KeyOutcome::Exit;
+            let dismissed = match self.entry().id {
+                kill::ID => self.kill.dismiss(cx),
+                pomo::ID => self.pomo.dismiss(cx),
+                _ => false,
+            };
+            return if dismissed {
+                KeyOutcome::Consumed
+            } else {
+                KeyOutcome::Exit
+            };
+        }
+        // A row's field being typed into owns Tab.
+        if self.editing_field().is_some() {
+            return self.pomo.key(key, cx);
         }
         if key == "tab" {
             let count = COMMAND_ENTRIES.len() as isize;
@@ -203,6 +233,7 @@ impl Commands {
                 KeyOutcome::Consumed
             }
             kill::ID => self.kill.key(key, cx),
+            pomo::ID => self.pomo.key(key, cx),
             calc::ID if key == "enter" => {
                 let expr = self.typed(cx);
                 self.calc.run(&expr, cx);
@@ -296,12 +327,15 @@ impl Commands {
             kill::ID => kill::panel(self, icons, th, cx).into_any_element(),
             calc::ID => calc::panel(self, th).into_any_element(),
             sys::ID => sys::panel(self, th).into_any_element(),
+            pomo::ID => pomo::panel(self, th, cx).into_any_element(),
             _ => self.pending_panel(th).into_any_element(),
         };
+        // The pomo at rest keeps only its ring.
+        let faded = self.entry().id == pomo::ID && self.pomo.is_idle();
         div()
             .size_full()
             .flex()
-            .when(th.split(), |el| el.child(sidebar).child(divider))
+            .when(th.split() && !faded, |el| el.child(sidebar).child(divider))
             .child(div().flex_1().min_w_0().flex().flex_col().child(panel))
     }
 
@@ -456,7 +490,7 @@ mod tests {
 
     #[test]
     fn the_panel_ids_are_in_the_catalog() {
-        for id in [shell::ID, kill::ID, calc::ID, sys::ID] {
+        for id in [shell::ID, kill::ID, calc::ID, sys::ID, pomo::ID] {
             assert!(Commands::index_of(id).is_some(), "{id}");
         }
     }
