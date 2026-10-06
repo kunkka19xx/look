@@ -7,6 +7,7 @@ mod banner;
 mod bg;
 mod blocks;
 mod blur;
+mod commands;
 mod confirm;
 mod fonts;
 mod glyphs;

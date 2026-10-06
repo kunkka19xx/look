@@ -397,7 +397,30 @@ Ctrl+Shift+; reload (M6).
 
 ### M5 Command screens
 
-Screen 4. Order: index, calc, shell, sys, kill, then todo, pomo, speed.
+Screen 4, in the slices issue #552 draws, one PR each: shell and kill
+(with the frame), calc and sys, pomo, todo, speed.
+
+Status 2026-10-06, slice 1 (`port/m5-shell-kill`): the frame and the first
+two panels. `commands/mod.rs` holds the frame and each command is a file beside it (`shell.rs`, `kill.rs`): the catalog sidebar with
+Ctrl+1 to 7, Tab and Shift+Tab, the active panel beside it in one framed
+card with the hint as its footer, and the panel's own field, which the
+keys edit while the screen is up (`field()` picks the box, focus follows in
+render). Entry points: Ctrl+/, the `:` menu's Enter, the `:cmd <args>`
+inline trigger with the args prefilled, so `lookapp shell ls` lands the
+same way. Shell runs on the background executor and prints the output or
+the error in the feedback line. Kill lists the apps on entry, filters the
+loaded names at once and replaces them with the backend's fuzzy result
+after 140 ms (ports and pids included), confirms with Y and N in the bar
+pinned under the list, and reloads after the banner. The five panels still
+to come show their name and "arrives in a later PR" in place of a body.
+Verified with screenshots on sway.
+
+Slice 2 (calc and sys, same working tree, 2026-10-06): `commands/calc.rs`
+evaluates as it is typed through core's calculator, an error leaving the
+last result standing, and Enter copies the result with a banner;
+`commands/sys.rs` loads the backend's sections on entry under the read-only
+header bar and lays them out as label and mono value rows with a gap
+between sections. Three panels left: pomo, todo, speed.
 
 ### M6 Settings, help, update
 

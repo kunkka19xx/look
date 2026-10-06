@@ -27,6 +27,7 @@ use crate::banner::{self, Banner, Message};
 use crate::bg;
 use crate::blocks;
 use crate::blur::{self, BlurRect};
+use crate::commands::{self, Commands, KeyOutcome};
 use crate::confirm::{Confirm, OnYes};
 use crate::glyphs;
 use crate::icons::{IconRequest, IconStore};
@@ -72,8 +73,12 @@ const OPEN_IN_BROWSER: &str = "Open in Browser";
 const LANGUAGES: [(&str, &str); 3] = [("vi", "TIẾNG VIỆT"), ("en", "ENGLISH"), ("ja", "日本語")];
 const CLIP_DELETED: &str = "Clipboard item deleted";
 const CLIP_IMAGE_DELETED: &str = "Image removed from history";
-const COMMANDS_PENDING: &str = "Command screens arrive with the next milestone";
 const HINT_LEVEL: &str = "Enter: Open \u{2022} Ctrl+K: Actions \u{2022} Esc: Back";
+/// The classic frame's footer carries this at its right, as the webview's
+/// hint bar does.
+const COPYRIGHT: &str = "\u{a9} 2026 by Kunkka";
+const COPYRIGHT_SIZE: f32 = 10.0;
+const COPYRIGHT_OPACITY: f32 = 0.6;
 const BREADCRUMB_SEPARATOR: &str = "  \u{203a}  ";
 const WEB_SUGGESTIONS_LIMIT: usize = 6;
 const MIN_WEB_SUGGESTION_QUERY: usize = 2;
@@ -113,6 +118,9 @@ pub struct Launcher {
     menu: Option<Menu>,
     pub(crate) running: RunningApps,
     pub(crate) ai: AiAnswer,
+    pub(crate) commands: Commands,
+    /// The command screen is up: it owns the window and the keys.
+    command_mode: bool,
     levels: Levels,
     /// A selection to put back once the rows it names are on screen, and
     /// the query it was captured under: a level was just left.
@@ -136,6 +144,11 @@ impl Launcher {
         cx.observe(&preview, |_, _, cx| cx.notify()).detach();
         cx.subscribe(&preview, |this, _, _: &ClipDeleted, cx| {
             this.clip_removed(cx);
+        })
+        .detach();
+        let command_input = cx.new(SearchInput::new);
+        cx.subscribe(&command_input, |this, _, _: &Changed, cx| {
+            this.commands.input_changed(cx)
         })
         .detach();
         let launchpad = cx.new(Launchpad::new);
@@ -168,6 +181,8 @@ impl Launcher {
             menu: None,
             running: RunningApps::default(),
             ai: AiAnswer::default(),
+            commands: Commands::new(command_input),
+            command_mode: false,
             levels: Levels::default(),
             pending_restore: None,
             menu_token: 0,
@@ -255,6 +270,13 @@ impl Launcher {
             cx.notify();
             return;
         }
+        // `:cmd <args>` jumps into that command's panel with the args.
+        if let Some((index, prefill)) = commands::inline_command(&query) {
+            let prefill = prefill.to_string();
+            self.enter_command_mode(index, &prefill, cx);
+            self.set_query("", cx);
+            return;
+        }
         let home = query.trim().is_empty();
         let (mode, _) = Mode::of(&query);
         if mode != Mode::Search || home {
@@ -267,8 +289,9 @@ impl Launcher {
         }
         self.mode = mode;
         self.close_menu();
+        let bento = home && !self.command_mode;
         self.launchpad
-            .update(cx, |launchpad, cx| launchpad.set_shown(home, cx));
+            .update(cx, |launchpad, cx| launchpad.set_shown(bento, cx));
         if home {
             self.rows = Arc::new(Vec::new());
             self.selected = 0;
@@ -454,6 +477,23 @@ impl Launcher {
                 return;
             }
         }
+        // The command screen owns its keys; what it passes on is editing
+        // in its own box.
+        if self.command_mode {
+            match self.commands.handle_key(ks, cx) {
+                KeyOutcome::Consumed => cx.stop_propagation(),
+                KeyOutcome::Exit => {
+                    self.exit_command_mode(cx);
+                    cx.stop_propagation();
+                }
+                KeyOutcome::Pass => {
+                    if self.field_key(ks, cx) {
+                        cx.stop_propagation();
+                    }
+                }
+            }
+            return;
+        }
         // The confirm bar owns every key while it asks.
         if self.confirm.is_some() {
             match ks.key.as_str() {
@@ -498,6 +538,10 @@ impl Launcher {
                 true
             }
             "enter" => self.enter(cx),
+            "/" | "?" if ctrl => {
+                self.enter_command_mode(self.commands.active_index(), "", cx);
+                true
+            }
             "j" | "k" if ctrl && !shift && !menu => {
                 self.open_menu(cx);
                 true
@@ -514,6 +558,24 @@ impl Launcher {
             "up" => self.move_selection(-1, cx),
             "tab" => self.move_selection(if shift { -1 } else { 1 }, cx),
             "n" if ctrl => self.move_selection(1, cx),
+            "c" if ctrl => self.copy(cx),
+            // Side actions have nothing to act on in a menu.
+            "f" if ctrl && !menu => self.reveal_selected(cx),
+            "d" if ctrl && !menu => self.delete(cx),
+            "i" if ctrl && !menu => self.paste_selected_clip(cx),
+            _ => false,
+        };
+        if handled || self.field_key(ks, cx) {
+            cx.stop_propagation();
+        }
+    }
+
+    /// The keys that edit whichever field is up: the search bar, or the
+    /// command panel's box.
+    fn field_key(&mut self, ks: &gpui::Keystroke, cx: &mut Context<Self>) -> bool {
+        let ctrl = ks.modifiers.control;
+        let shift = ks.modifiers.shift;
+        match ks.key.as_str() {
             "backspace" if ctrl => self.edit(cx, SearchInput::delete_word_back),
             "w" if ctrl => self.edit(cx, SearchInput::delete_word_back),
             "backspace" => self.edit(cx, SearchInput::backspace),
@@ -527,15 +589,17 @@ impl Launcher {
             "a" if ctrl => self.edit(cx, SearchInput::select_all),
             "u" if ctrl => self.edit(cx, SearchInput::clear),
             "v" if ctrl => self.paste(cx),
-            "c" if ctrl => self.copy(cx),
-            // Side actions have nothing to act on in a menu.
-            "f" if ctrl && !menu => self.reveal_selected(cx),
-            "d" if ctrl && !menu => self.delete(cx),
-            "i" if ctrl && !menu => self.paste_selected_clip(cx),
+            "c" if ctrl && self.command_mode => self.copy(cx),
             _ => false,
-        };
-        if handled {
-            cx.stop_propagation();
+        }
+    }
+
+    /// The field the keys edit right now.
+    fn field(&self) -> Entity<SearchInput> {
+        if self.command_mode {
+            self.commands.input().clone()
+        } else {
+            self.input.clone()
         }
     }
 
@@ -544,8 +608,27 @@ impl Launcher {
         cx: &mut Context<Self>,
         op: impl FnOnce(&mut SearchInput, &mut Context<SearchInput>),
     ) -> bool {
-        self.input.update(cx, op);
+        self.field().update(cx, op);
         true
+    }
+
+    // --- Command screen --------------------------------------------------------
+
+    fn enter_command_mode(&mut self, index: usize, prefill: &str, cx: &mut Context<Self>) {
+        self.close_menu();
+        self.ai.cancel();
+        self.confirm = None;
+        self.translation = None;
+        self.command_mode = true;
+        self.commands.enter(index, prefill, cx);
+        cx.notify();
+    }
+
+    /// Back to the empty home screen.
+    fn exit_command_mode(&mut self, cx: &mut Context<Self>) {
+        self.command_mode = false;
+        self.set_query("", cx);
+        cx.notify();
     }
 
     /// Escape leaves a level, then a mode, before it hides the launcher.
@@ -644,12 +727,11 @@ impl Launcher {
                 );
             }
             Open::Prefix(prefix) => self.set_query(&prefix, cx),
-            Open::Command(id) => self.banner.show(
-                format!("{COMMANDS_PENDING}: {id}"),
-                Tone::Info,
-                banner::LONG,
-                cx,
-            ),
+            Open::Command(id) => {
+                if let Some(index) = Commands::index_of(&id) {
+                    self.enter_command_mode(index, "", cx);
+                }
+            }
             Open::Clip(_) | Open::ClipImage(_) => self.copy_selected_clip(cx),
             Open::Process(_) => self
                 .preview
@@ -718,9 +800,12 @@ impl Launcher {
     /// Ctrl+C: the field's selection when there is one, else the process's
     /// PID or the row's path.
     fn copy(&mut self, cx: &mut Context<Self>) -> bool {
-        if let Some(text) = self.input.read(cx).selected_text() {
+        if let Some(text) = self.field().read(cx).selected_text() {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
             return true;
+        }
+        if self.command_mode {
+            return false;
         }
         let Some(row) = self.selected_row() else {
             return true;
@@ -751,7 +836,7 @@ impl Launcher {
             // One line: the field is single-line, and a pasted path or query
             // never wants its newlines.
             let text = text.replace(['\r', '\n'], " ");
-            self.input.update(cx, |input, cx| input.insert(&text, cx));
+            self.field().update(cx, |input, cx| input.insert(&text, cx));
         }
         true
     }
@@ -1409,6 +1494,70 @@ impl Launcher {
         );
     }
 
+    /// The command screen: one framed card under the banner slot, the
+    /// sidebar and panel inside, the hint as its footer.
+    fn command_screen(&mut self, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        let radius = th.tile_radius();
+        let bar_radius = th.bar_radius();
+        let banner = self.banner.render(th, cx).map(|banner| {
+            div()
+                .on_children_prepainted(move |cards, _, _| mark_cards(&cards, bar_radius))
+                .child(banner)
+        });
+        let body = self.commands.render(&self.icons, th, cx);
+        let hint = self.commands.hint();
+        // The panel's box holds the focus, so the keys dispatch through this
+        // root only when it tracks that handle.
+        let focus_handle = self.commands.input().read(cx).focus_handle.clone();
+        div()
+            .size_full()
+            .font_family(th.font_family.clone())
+            .text_size(px(th.font_size))
+            .text_color(th.text)
+            .track_focus(&focus_handle)
+            .on_key_down(cx.listener(Self::on_key_down))
+            .on_children_prepainted(|_, _, _| commit_blur_region())
+            .flex()
+            .flex_col()
+            .children(banner)
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .m(px(theme::CONTENT_PADDING))
+                    .flex()
+                    .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
+                    .child(
+                        card(div(), th)
+                            .flex_1()
+                            .min_w_0()
+                            .min_h_0()
+                            .rounded(px(radius))
+                            .overflow_hidden()
+                            .flex()
+                            .flex_col()
+                            .child(div().flex_1().min_h_0().child(body))
+                            .child(
+                                div()
+                                    .px(px(theme::ROW_PADDING_X + theme::ROW_INSET))
+                                    .pt(px(theme::HINT_INSET))
+                                    .pb(px(theme::HINT_INSET_BOTTOM + theme::ROW_INSET))
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .child(muted_text(hint, th))
+                                    .child(
+                                        div()
+                                            .text_size(px(COPYRIGHT_SIZE))
+                                            .text_color(th.text_muted)
+                                            .opacity(COPYRIGHT_OPACITY)
+                                            .child(COPYRIGHT),
+                                    ),
+                            ),
+                    ),
+            )
+    }
+
     fn top_bar(&mut self, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let bar_h = theme::TOP_ROW_HEIGHT + 2.0 * theme::INPUT_PADDING_Y;
         let crumbs = self.levels.breadcrumb();
@@ -1922,13 +2071,21 @@ impl Drop for Launcher {
 }
 
 impl Render for Launcher {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let th = theme::get();
         let input = self.input.read(cx);
         let home = input.text().is_empty() && !self.levels.is_active();
         let composing = input.is_composing();
         let focus_handle = input.focus_handle.clone();
 
+        // The field the keys go to: the panel's box while the screen is up.
+        let wanted = self.field().read(cx).focus_handle.clone();
+        if !wanted.is_focused(window) {
+            window.focus(&wanted, cx);
+        }
+        if self.command_mode {
+            return self.command_screen(&th, cx).into_any_element();
+        }
         // The launchpad is a setting; off, the empty query is the bar alone.
         let below = match (home, th.launchpad, self.mode) {
             (true, true, _) => self.bento(&th, cx).into_any_element(),
@@ -1970,6 +2127,7 @@ impl Render for Launcher {
                 |root, t| root.opacity(motion::curve(t)),
             ))
             .children(self.confirm.as_ref().map(|confirm| confirm.render(&th, cx)))
+            .into_any_element()
     }
 }
 
