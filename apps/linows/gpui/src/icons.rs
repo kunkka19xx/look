@@ -72,7 +72,7 @@ impl IconStore {
 }
 
 /// `data:<mime>;base64,<payload>` into the bytes the image cache decodes.
-fn decode_data_url(url: &str) -> Option<Image> {
+pub fn decode_data_url(url: &str) -> Option<Image> {
     let rest = url.strip_prefix("data:")?;
     let (mime, payload) = rest.split_once(";base64,")?;
     let format = match mime {

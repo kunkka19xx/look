@@ -284,6 +284,26 @@ kinds exists before then.
 
 Screen 1 in full, including confirm-to-press and Now Playing transport.
 
+Status 2026-10-06: built. `gpui/src/launchpad.rs` is one `Launchpad` entity
+drawn from the backend's `launchpad_layout` (the user's super-actions.toml or
+the catalog default), each tile placed by its own cell and sized by
+`ROW_H` (the macOS 76). Roles: the L slot (Todo over Clock, lunar date in the
+corner, task rotation), toggles with the accent wash, Battery with the uptime
+fallback, Weather, action tiles with the mnemonic tint, Mic as a mute flip,
+Restart and Shut Down armed on the first press and fired on the second (3 s
+disarm), Now Playing from MPRIS polled every 2 s while shown with the
+previous, play or pause, next transport, and user tiles with their readings,
+lines, state wash and inlined icon (an SVG is served through the asset
+source so it takes the tile colour). Adapter reads and presses run on the
+background executor behind a token so a late read never undoes a press. Alt
+plus a letter fires the tile's mnemonic from the launcher. Outcomes, adapter
+reasons and drawing warnings arrive as a `Notice` event the launcher shows
+as a chip over the bottom edge; M4's banner takes that event over. The
+`super_actions_enabled` setting gates the bento as the webview does.
+Verified with screenshots on sway against the user's drawing and the catalog
+default. Waiting on M5: the Pomo slot and the internal music player in Now
+Playing, which need the command screens.
+
 ### M4 Modes and row tooling
 
 Screen 3, picked multi-select, row actions, action menu, levels, source

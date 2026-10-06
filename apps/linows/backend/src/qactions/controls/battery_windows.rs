@@ -3,7 +3,8 @@
 //! `platform/windows/sysinfo.rs` does) and reports `Unavailable` with no battery.
 
 use crate::qactions::{
-    ActionIntent, ActionOutcome, ActionState, BATTERY_CHARGING_INFO_KEY, InfoValue, SystemControl,
+    ActionIntent, ActionOutcome, ActionState, BATTERY_CHARGING_INFO_KEY,
+    BATTERY_CHARGING_INFO_TEXT, InfoValue, SystemControl,
 };
 use std::collections::HashMap;
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
@@ -33,7 +34,7 @@ impl SystemControl for BatteryControl {
             BATTERY_CHARGING_INFO_KEY.to_string(),
             InfoValue::Text {
                 text: if charging_flag() {
-                    "charging".to_string()
+                    BATTERY_CHARGING_INFO_TEXT.to_string()
                 } else {
                     "idle".to_string()
                 },
