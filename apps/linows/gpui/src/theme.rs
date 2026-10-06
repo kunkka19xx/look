@@ -7,7 +7,8 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 
 use gpui::{BoxShadow, Hsla, Rgba, hsla, point, px};
-use linows_backend::config;
+use linows_backend::config::{self, LauncherLayout};
+use linows_backend::highlight::TokenType;
 use palette::IntoColor;
 
 pub const FONT_SIZE_DEFAULT: f32 = 14.0;
@@ -65,6 +66,11 @@ pub const PLATFORM_FONT: &str = "Adwaita Sans";
 pub const PLATFORM_FONT: &str = "Segoe UI";
 /// Kindle reads as paper, so it asks for a serif.
 const KINDLE_FONT: &str = "Noto Serif";
+/// Code in the preview. One designed pair per platform, as the CSS stack.
+#[cfg(target_os = "linux")]
+const PLATFORM_MONO: &str = "Adwaita Mono";
+#[cfg(not(target_os = "linux"))]
+const PLATFORM_MONO: &str = "Cascadia Code";
 
 /// One preset's palette, the `:root[data-theme]` block of theme.css plus the
 /// triplets theme-defaults.js seeds the config with.
@@ -82,10 +88,32 @@ struct Preset {
     selection: Rgba,
     accent: Rgba,
     serif: bool,
+    /// Keyword, string, comment, number.
+    syntax: [Rgba; 4],
 }
 
 fn c(r: u8, g: u8, b: u8, a: f32) -> Rgba {
     Rgba::new(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, a)
+}
+
+/// The macOS SyntaxHighlighter palette: keyword, string, comment, number.
+fn syntax_dark() -> [Rgba; 4] {
+    [
+        c(209, 125, 201, 1.0),
+        c(232, 168, 107, 1.0),
+        c(115, 120, 115, 1.0),
+        c(140, 199, 214, 1.0),
+    ]
+}
+
+/// Ink on paper: the same four, darkened for Kindle.
+fn syntax_paper() -> [Rgba; 4] {
+    [
+        c(112, 51, 108, 1.0),
+        c(133, 89, 8, 1.0),
+        c(122, 116, 105, 1.0),
+        c(30, 88, 104, 1.0),
+    ]
 }
 
 /// Built on demand: palette's colour type has no const constructor, and this
@@ -105,6 +133,7 @@ fn presets() -> Vec<Preset> {
             selection: c(88, 91, 112, 0.4),
             accent: c(137, 180, 250, 1.0),
             serif: false,
+            syntax: syntax_dark(),
         },
         Preset {
             id: "tokyo-night",
@@ -119,6 +148,7 @@ fn presets() -> Vec<Preset> {
             selection: c(97, 120, 184, 0.28),
             accent: c(133, 184, 250, 1.0),
             serif: false,
+            syntax: syntax_dark(),
         },
         Preset {
             id: "rose-pine",
@@ -133,6 +163,7 @@ fn presets() -> Vec<Preset> {
             selection: c(148, 133, 168, 0.28),
             accent: c(184, 156, 199, 1.0),
             serif: false,
+            syntax: syntax_dark(),
         },
         Preset {
             id: "gruvbox",
@@ -147,6 +178,7 @@ fn presets() -> Vec<Preset> {
             selection: c(189, 138, 66, 0.28),
             accent: c(219, 184, 102, 1.0),
             serif: false,
+            syntax: syntax_dark(),
         },
         Preset {
             id: "dracula",
@@ -161,6 +193,7 @@ fn presets() -> Vec<Preset> {
             selection: c(158, 133, 201, 0.28),
             accent: c(163, 191, 250, 1.0),
             serif: false,
+            syntax: syntax_dark(),
         },
         Preset {
             id: "kanagawa",
@@ -175,6 +208,7 @@ fn presets() -> Vec<Preset> {
             selection: c(128, 122, 97, 0.28),
             accent: c(117, 166, 209, 1.0),
             serif: false,
+            syntax: syntax_dark(),
         },
         Preset {
             id: "kindle",
@@ -189,6 +223,7 @@ fn presets() -> Vec<Preset> {
             selection: c(61, 56, 48, 0.16),
             accent: c(46, 43, 38, 1.0),
             serif: true,
+            syntax: syntax_paper(),
         },
         Preset {
             id: "liquid",
@@ -203,6 +238,7 @@ fn presets() -> Vec<Preset> {
             selection: c(102, 153, 255, 0.58),
             accent: c(112, 184, 255, 1.0),
             serif: false,
+            syntax: syntax_dark(),
         },
     ]
 }
@@ -229,10 +265,13 @@ pub struct Theme {
     pub border: Rgba,
     pub accent: Rgba,
     pub font_family: String,
+    pub mono_family: String,
     pub font_size: f32,
     pub border_thickness: f32,
     pub radius_scale: f32,
     pub inner_gap: f32,
+    pub layout: LauncherLayout,
+    syntax: [Rgba; 4],
 }
 
 impl Theme {
@@ -295,11 +334,29 @@ impl Theme {
             ),
             accent: preset.accent,
             font_family,
+            mono_family: PLATFORM_MONO.to_string(),
             font_size: num("ui_font_size", FONT_SIZE_DEFAULT),
             border_thickness: num("ui_border_thickness", DEFAULT_BORDER_THICKNESS),
             radius_scale: num("ui_surface_radius", DEFAULT_RADIUS_SCALE),
             inner_gap: num("inner_gap", DEFAULT_INNER_GAP),
+            layout: config::launcher_layout(),
+            syntax: preset.syntax,
         }
+    }
+
+    /// Whether the preview column is shown beside the results.
+    pub fn split(&self) -> bool {
+        matches!(self.layout, LauncherLayout::Split)
+    }
+
+    pub fn syntax(&self, token: TokenType) -> Rgba {
+        let at = match token {
+            TokenType::Keyword => 0,
+            TokenType::String => 1,
+            TokenType::Comment => 2,
+            TokenType::Number => 3,
+        };
+        self.syntax[at]
     }
 
     pub fn tile_radius(&self) -> f32 {

@@ -9,6 +9,7 @@ mod host;
 mod icons;
 mod launcher;
 mod motion;
+mod preview;
 mod query;
 mod rows;
 mod search;
