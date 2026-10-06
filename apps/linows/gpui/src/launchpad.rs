@@ -263,6 +263,11 @@ impl Launchpad {
         }
     }
 
+    /// Today's tally and open task names, for the results footer's widget.
+    pub fn todo_today(&self) -> (usize, usize, &[String]) {
+        (self.todo.done, self.todo.total, &self.todo.open)
+    }
+
     /// Alt+<char>: the tile owning the letter fires. False when none does.
     pub fn mnemonic(&mut self, ch: char, cx: &mut Context<Self>) -> bool {
         let id = self.tiles().iter().find_map(|tile| {
@@ -1047,6 +1052,7 @@ impl Launchpad {
                                     BODY_TIME_SIZE,
                                     th,
                                 )
+                                .line_height(px(BODY_TIME_SIZE * SLOT_TIME_LINE_HEIGHT))
                                 .text_color(th.text),
                             )
                             .child(small(DONE_TODAY, BODY_DATE_SIZE, th.text_muted)),
@@ -1054,6 +1060,7 @@ impl Launchpad {
                     .child(
                         div()
                             .mt(px(TODO_NEXT_GAP))
+                            .line_height(px(LABEL_SMALL * SLOT_SUB_LINE_HEIGHT))
                             .flex()
                             .items_center()
                             .gap(px(DOT_GAP))

@@ -21,6 +21,8 @@ anyhow = "1"
 # gpui-ce 0.2.2 exposes palette types directly, so IntoColor is needed for Hsla.
 palette = "0.7"
 chrono = "0.4"
+# Task ids, so a row stays unique across machines once task sync lands.
+uuid = { version = "1", features = ["v4"] }
 raw-window-handle = "0.6"
 # Icons travel from the backend as data URLs, the form the webview takes.
 base64 = "0.22"

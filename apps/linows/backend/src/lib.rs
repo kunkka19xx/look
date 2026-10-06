@@ -50,6 +50,7 @@ pub use look_answers;
 pub use look_calc;
 pub use look_engine;
 pub use look_lunar;
+pub use look_matching;
 pub use look_netspeed;
 pub use look_qactions;
 pub use look_sources;

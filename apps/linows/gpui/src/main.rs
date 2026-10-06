@@ -30,6 +30,7 @@ mod rows;
 mod running;
 mod search;
 mod theme;
+mod todo;
 
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};

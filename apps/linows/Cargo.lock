@@ -4357,6 +4357,7 @@ dependencies = [
  "linows-backend",
  "palette",
  "raw-window-handle",
+ "uuid",
  "windows 0.62.2",
 ]
 

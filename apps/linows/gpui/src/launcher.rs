@@ -12,7 +12,7 @@ use std::time::Duration;
 use gpui::{
     Animation, AnimationExt, AnyElement, Bounds, ClipboardItem, Context, Div, Entity, FontWeight,
     KeyDownEvent, Pixels, Render, ScrollStrategy, SharedString, Task, UniformListScrollHandle,
-    Window, div, img, prelude::*, px, svg, uniform_list,
+    Window, deferred, div, img, prelude::*, px, relative, svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
@@ -74,6 +74,17 @@ const LANGUAGES: [(&str, &str); 3] = [("vi", "TIẾNG VIỆT"), ("en", "ENGLISH"
 const CLIP_DELETED: &str = "Clipboard item deleted";
 const CLIP_IMAGE_DELETED: &str = "Image removed from history";
 const HINT_LEVEL: &str = "Enter: Open \u{2022} Ctrl+K: Actions \u{2022} Esc: Back";
+const HINT_SEP: &str = " \u{2022} ";
+/// The results footer's Todo tally, the webview's `.hint-todo`: it takes
+/// the hint's last slot, and hovering it lists what is left today.
+const TODO_HINT_GAP: f32 = 4.0;
+const TODO_HINT_ICON: f32 = 12.0;
+const TODO_BUBBLE_W: f32 = 240.0;
+const TODO_BUBBLE_GAP: f32 = 10.0;
+const TODO_BUBBLE_PADDING_X: f32 = 12.0;
+const TODO_BUBBLE_PADDING_Y: f32 = 10.0;
+const TODO_BUBBLE_TITLE_GAP: f32 = 4.0;
+const TODO_BUBBLE_TITLE: &str = "Unfinished today";
 /// The classic frame's footer carries this at its right, as the webview's
 /// hint bar does.
 const COPYRIGHT: &str = "\u{a9} 2026 by Kunkka";
@@ -136,6 +147,8 @@ pub struct Launcher {
     /// Bumped on every menu open and close, so a list still resolving when
     /// the user moved on cannot open behind them.
     menu_token: u64,
+    /// The footer's Todo tally is under the pointer, so its bubble shows.
+    todo_hovered: bool,
     /// Bumped per keystroke; a search that comes back for an older one is dropped.
     version: u64,
     _search: Option<Task<()>>,
@@ -194,6 +207,7 @@ impl Launcher {
             levels: Levels::default(),
             pending_restore: None,
             menu_token: 0,
+            todo_hovered: false,
             version: 0,
             _search: None,
         };
@@ -1666,6 +1680,91 @@ impl Launcher {
             .children(tiles)
     }
 
+    /// The results card's foot: the hint, and in the home hint context the
+    /// Todo tally in its last slot, with the unfinished tasks on hover and
+    /// the screen on click. Hidden when today has no tasks.
+    fn footer(&self, hint: &'static str, th: &Theme, cx: &mut Context<Self>) -> Div {
+        let base = div()
+            .px(px(theme::ROW_PADDING_X))
+            .pt(px(theme::HINT_INSET))
+            .pb(px(theme::HINT_INSET_BOTTOM));
+        let home_context = self.mode == Mode::Search && !self.levels.is_active();
+        let (done, total, open) = {
+            let (done, total, open) = self.launchpad.read(cx).todo_today();
+            (done, total, open.to_vec())
+        };
+        if !home_context || total == 0 {
+            return base.child(muted_text(hint, th));
+        }
+        let lead = hint.rfind(HINT_SEP).map_or(hint, |at| &hint[..at]);
+        let bubble = (self.todo_hovered && !open.is_empty()).then(|| {
+            deferred(
+                div()
+                    .absolute()
+                    .bottom(relative(1.0))
+                    .left_0()
+                    .pb(px(TODO_BUBBLE_GAP))
+                    .child(
+                        div()
+                            .w(px(TODO_BUBBLE_W))
+                            .px(px(TODO_BUBBLE_PADDING_X))
+                            .py(px(TODO_BUBBLE_PADDING_Y))
+                            .rounded(px(th.bar_radius()))
+                            .bg(th.card_face())
+                            .border(px(1.0))
+                            .border_color(th.border)
+                            .shadow(th.card_shadow())
+                            .font_weight(FontWeight::NORMAL)
+                            .text_color(th.text)
+                            .child(
+                                div()
+                                    .mb(px(TODO_BUBBLE_TITLE_GAP))
+                                    .text_size(px(th.font_size - 3.0))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(th.text_muted)
+                                    .child(TODO_BUBBLE_TITLE),
+                            )
+                            .children(open.iter().map(|name| {
+                                div()
+                                    .text_size(px(th.font_size - 2.0))
+                                    .line_clamp(2)
+                                    .child(format!("\u{2022} {name}"))
+                            })),
+                    ),
+            )
+        });
+        let widget = div()
+            .id("todo-hint")
+            .relative()
+            .flex()
+            .items_center()
+            .gap(px(TODO_HINT_GAP))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(th.accent)
+            .cursor_pointer()
+            .on_hover(cx.listener(|this, hovered, _, cx| {
+                this.todo_hovered = *hovered;
+                cx.notify();
+            }))
+            .on_click(cx.listener(|this, _, _, cx| {
+                if let Some(index) = Commands::index_of("todo") {
+                    this.enter_command_mode(index, "", cx);
+                }
+            }))
+            .child(
+                svg()
+                    .path(glyphs::LIST_CHECKS)
+                    .size(px(TODO_HINT_ICON))
+                    .text_color(th.accent),
+            )
+            .child(format!("Todo {done}/{total}"))
+            .children(bubble);
+        base.flex()
+            .items_center()
+            .child(muted_text(format!("{lead}{HINT_SEP}"), th))
+            .child(widget)
+    }
+
     /// Whether the empty query is showing, launchpad or not.
     fn on_home(&self, cx: &gpui::App) -> bool {
         self.input.read(cx).text().is_empty()
@@ -1875,12 +1974,7 @@ impl Launcher {
                     card.child(list)
                 }
             })
-            .child(
-                muted_text(hint, th)
-                    .px(px(theme::ROW_PADDING_X))
-                    .pt(px(theme::HINT_INSET))
-                    .pb(px(theme::HINT_INSET_BOTTOM)),
-            );
+            .child(self.footer(hint, th, cx));
         // Split: the preview floats beside the list as its own card, except
         // for the menus, whose rows have nothing to describe.
         let preview_card = (th.split() && !self.mode.is_menu()).then(|| {
