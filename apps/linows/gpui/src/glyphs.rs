@@ -65,6 +65,14 @@ pub const SPARKLES: &str = "icons/sparkles.svg";
 pub const ARROW_UP_RIGHT: &str = "icons/arrow-up-right.svg";
 pub const SETTINGS: &str = "icons/settings.svg";
 pub const TIMER: &str = "icons/timer.svg";
+// Todo
+pub const BAR_CHART: &str = "icons/bar-chart.svg";
+pub const FLAME: &str = "icons/flame.svg";
+pub const PLUS: &str = "icons/plus.svg";
+pub const SAVE: &str = "icons/save.svg";
+pub const CALENDAR_PLUS: &str = "icons/calendar-plus.svg";
+pub const CALENDAR: &str = "icons/calendar.svg";
+pub const ACTIVITY: &str = "icons/activity.svg";
 pub const CHEVRON_RIGHT: &str = "icons/chevron-right.svg";
 pub const CHEVRON_DOWN: &str = "icons/chevron-down.svg";
 
@@ -107,6 +115,34 @@ const GLYPHS: &[(&str, &[u8])] = &[
     lucide!(
         CALC,
         r#"<rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="8" y1="18" x2="8" y2="18.01"/><line x1="12" y1="18" x2="12" y2="18.01"/>"#
+    ),
+    lucide!(
+        BAR_CHART,
+        r#"<line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>"#
+    ),
+    lucide!(
+        FLAME,
+        r#"<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>"#
+    ),
+    lucide!(
+        PLUS,
+        r#"<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>"#
+    ),
+    lucide!(
+        SAVE,
+        r#"<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>"#
+    ),
+    lucide!(
+        CALENDAR_PLUS,
+        r#"<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/>"#
+    ),
+    lucide!(
+        CALENDAR,
+        r#"<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>"#
+    ),
+    lucide!(
+        ACTIVITY,
+        r#"<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>"#
     ),
     lucide!(
         LIST_CHECKS,

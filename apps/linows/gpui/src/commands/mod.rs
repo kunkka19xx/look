@@ -9,6 +9,7 @@ mod kill;
 mod pomo;
 mod shell;
 mod sys;
+mod todo;
 
 use gpui::{AnyElement, Context, Div, Entity, FontWeight, deferred, div, prelude::*, px, svg};
 
@@ -87,6 +88,7 @@ pub struct Commands {
     pub(super) calc: calc::Calc,
     pub(super) sys: sys::Sys,
     pub(super) pomo: pomo::Panel,
+    pub(super) todo: todo::Panel,
 }
 
 impl Commands {
@@ -100,6 +102,7 @@ impl Commands {
             calc: calc::Calc::default(),
             sys: sys::Sys::default(),
             pomo: pomo::Panel::default(),
+            todo: todo::Panel::default(),
         }
     }
 
@@ -137,14 +140,15 @@ impl Commands {
     /// panel is up stops.
     pub fn exit(&mut self) {
         self.pomo.leave();
+        self.todo.leave();
     }
 
     /// A row's field open for typing, which the launcher's keys edit.
     pub fn editing_field(&self) -> Option<Entity<SearchInput>> {
-        if self.entry().id == pomo::ID {
-            self.pomo.editing_field()
-        } else {
-            None
+        match self.entry().id {
+            pomo::ID => self.pomo.editing_field(),
+            todo::ID => self.todo.editing_field(),
+            _ => None,
         }
     }
 
@@ -166,6 +170,7 @@ impl Commands {
             calc::ID => self.calc.enter(),
             sys::ID => self.sys.enter(cx),
             pomo::ID => self.pomo.enter(cx),
+            todo::ID => self.todo.enter(cx),
             _ => {}
         }
         cx.notify();
@@ -181,6 +186,8 @@ impl Commands {
                 self.calc.preview(&typed);
                 cx.notify();
             }
+            // The list filters as the search box changes.
+            todo::ID => cx.notify(),
             _ => {}
         }
     }
@@ -199,6 +206,7 @@ impl Commands {
             let dismissed = match self.entry().id {
                 kill::ID => self.kill.dismiss(cx),
                 pomo::ID => self.pomo.dismiss(cx),
+                todo::ID => self.todo.dismiss(cx),
                 _ => false,
             };
             return if dismissed {
@@ -209,7 +217,10 @@ impl Commands {
         }
         // A row's field being typed into owns Tab.
         if self.editing_field().is_some() {
-            return self.pomo.key(key, cx);
+            return match self.entry().id {
+                todo::ID => self.todo.key(ks, cx),
+                _ => self.pomo.key(key, cx),
+            };
         }
         if key == "tab" {
             let count = COMMAND_ENTRIES.len() as isize;
@@ -234,6 +245,7 @@ impl Commands {
             }
             kill::ID => self.kill.key(key, cx),
             pomo::ID => self.pomo.key(key, cx),
+            todo::ID => self.todo.key(ks, cx),
             calc::ID if key == "enter" => {
                 let expr = self.typed(cx);
                 self.calc.run(&expr, cx);
@@ -328,6 +340,7 @@ impl Commands {
             calc::ID => calc::panel(self, th).into_any_element(),
             sys::ID => sys::panel(self, th).into_any_element(),
             pomo::ID => pomo::panel(self, th, cx).into_any_element(),
+            todo::ID => todo::panel(self, th, cx).into_any_element(),
             _ => self.pending_panel(th).into_any_element(),
         };
         // The pomo at rest keeps only its ring.

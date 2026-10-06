@@ -458,6 +458,38 @@ Now Playing shows the internal player while it plays, driving it from the
 tile. Verified with screenshots on sway: idle, running, faded, all three
 faces, the music card playing, the slot.
 
+Slice 4 (todo, 2026-10-06): the data lives in `gpui/src/todo.rs` for the
+process (tasks by day, undo and redo to 50 steps, the saved revision), as
+the webview keeps its edits across a hide; `commands/todo.rs` is the
+screen. Tasks page: the search bar (the frame's box, folded with
+`look_matching::normalize_for_search` and matched as a subsequence over
+task names and the card titles), the toolbar (done today, Tasks | Stats,
+Add date + N, Save with its dirty dot), a card per day newest first with
+the progress ring, the title, the relative phrase, complete-all and
+clear-all, rows with the checkbox, EXTENDED and OVERDUE tags, the remove
+mark on hover, and the dashed add row (box open on click, Enter keeps it
+open until the day holds three unfinished, Esc closes). Double-click a
+name to rename it. Ctrl+Z and Ctrl+Shift+Z step the history, Ctrl+N flips
+the page, Ctrl+S saves the whole set back and says so in the capsule at
+the foot (a failure keeps its Retry). Stats page: the week and month
+donuts, the streak with its seven dots, the thirty-day trend line, the
+year heatmap and the four insight tiles, all drawn on `canvas`; the page
+scrolls when taller than the panel, as the webview's content box does.
+Ids come from `uuid` v4 (already in the tree through gpui). Verified with
+screenshots on sway against a seeded scratch database (`LOOK_DB_PATH`):
+tasks, a search, stats. The results footer carries the webview's
+`.hint-todo` widget in the hint's last slot while a query shows (the
+resting home hides the hint bar in the webview too): the tally, the
+unfinished tasks in a bubble on hover, the screen on click. The slot tile
+sets the pomo line heights on its tally and next task, which had been
+clipping the task. Heatmap cells show the webview's data-tip bubble on
+hover (`Sun, Oct 4: 2/2 done`): the canvas inserts a hitbox and a mouse
+move handler that stores the hovered cell on the panel, and the bubble is
+a `deferred` window-anchored element so the scrolling stats column cannot
+clip it. Hint strings differ from the webview on purpose until
+M6: Search says `Ctrl+F: Reveal` and Translate `Esc: Clear` where the
+webview says `Ctrl+H: Help`, since the help screen is not there yet.
+
 Size, same day: the release binary was 33.7 MB. cargo-bloat put the text at
 26.5 MiB with std, zbus, gpui and its Linux platform, naga and wgpu as the
 largest. A separate `release-gpui` profile (`opt-level = "s"`,
