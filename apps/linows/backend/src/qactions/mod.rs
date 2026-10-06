@@ -82,6 +82,8 @@ pub enum ActionOutcome {
 /// is linows-only; defined once here rather than in each per-OS adapter file
 /// so the Linux and Windows adapters can't drift out of sync on the spelling.
 pub const BATTERY_CHARGING_INFO_KEY: &str = "charging";
+/// The text the Battery adapters answer under that key while charging.
+pub const BATTERY_CHARGING_INFO_TEXT: &str = "charging";
 
 /// A resolved info-field value. The shared descriptor declares `label` +
 /// `value_key`; the adapter resolves the key to what to display.

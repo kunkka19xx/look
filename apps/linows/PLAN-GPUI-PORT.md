@@ -122,8 +122,46 @@ that replaces it. Line counts are the current JS, for sizing only.
 | Hint bar, footers | `app.js` hint strings | none | spike hint chips. Per-screen hint text from one table |
 | Layout | `layout.js` 261 | `apply_layout` | classic framed vs floating gap. Spike does floating only; add the gap 0 case (one panel, hairline divider) |
 | Theme | `theme.css`, `liquid.css`, `theme-defaults.js` | `get_config` | `theme.rs`: 8 presets + custom + Liquid surface axis, resolved from config at show. Face colours stay one quad each |
-| Motion | `motion.css`, `motion.js` | none | `motion.rs` already has the numbers. Entrance done. Add row stagger, screen crossfade, banner fade, hide fade. Honour the animations-off setting |
+| Motion | `motion.css`, `motion.js`, keyframes in seven component sheets | none | `motion.rs` has the numbers and the rules. Entrance done. The rest is listed under Motion inventory below, per milestone |
 | Blur region | `blur.js` 92 | `set_blur_region` | done in spike (`mark_cards`, rounded staircase). Fix the frost-before-fade nit by scaling region alpha with the entrance |
+
+### Motion inventory
+
+Everything the webview animates, with where it lands in the port. The rules
+come from M3: gpui 0.2.2 has no element scale and no transform, so a box can
+only be resized, which relays out the text in it every frame and makes labels
+shimmer. So in the port things fade, and move by whole pixels on the settle
+curve (`motion::rise`), never on the CSS spring: its overshoot in whole pixels
+is a one pixel bounce at the end. An `svg` can scale through
+`with_transformation`, so a glyph may still bounce or zoom; an `img` cannot.
+Durations and delays stay the CSS numbers. Both switches that turn motion
+off (`animations_enabled` in the config, and the desktop's reduce-motion
+preference on Linux, read the way `platform.js` reads it) collapse every
+duration to zero; the caret blink and the AI spinner stay, as the CSS keeps
+them.
+
+| Animation | Tauri source | Port | Milestone |
+| --- | --- | --- | --- |
+| Shell arrive (fade plus scale 0.965) | `motion.css` shell-arrive | fade only | done |
+| Bar spawn (fade plus 8 px rise, spring) | shell-spawn | fade plus whole pixel rise, settle curve | done |
+| Launchpad cascade (fade, 10 px rise, scale 0.985, 35 ms stagger) | `superactions.css` ctl-tile-in | fade plus rise, stagger kept, no scale | done |
+| Glyph bounce riding the cascade | glyph-bounce | `svg` scale through `with_transformation`, same delay as its tile | M3 follow-up |
+| Tile press pulse (keyboard activation) | ctl-press | opacity dip on the tile face, 180 ms | M3 follow-up |
+| L slot crossfade when the source changes | ctl-slot-fade | fade of the new body, 240 ms | M5, with Pomo |
+| Pomo progress bar width glide | ctl-slot-bar-fill | width of a plain quad, 900 ms linear; no text in it, so it may resize | M5 |
+| Placeholder slide in (spring, delayed) | placeholder-slide-in | fade plus whole pixel slide | M4 |
+| Running apps strip slide in, staggered | strip-slide-in | fade plus whole pixel slide per tile, same stagger | M4 |
+| Results list ease in when leaving the launchpad | `results.css` results-list-in | fade plus 6 px rise of the card, once per switch, never per keystroke | M4 |
+| Selection pill glide (translate and height) and the title shift | `results.css`, motion.css glide | the pill is its own quad under the rows: animate its top and height by whole pixels; the text block moves by whole pixels | M4 |
+| Selection gain: icon zoom and pill stretch | row-icon-gain, pill-gain | pill stretch drops (it resizes a quad over text); icon zoom only for glyph icons through `svg` scale, none for pictures | M4 |
+| Banner in | `banner.css` banner-in | fade plus rise, 200 ms; the M3 notice chip grows into it | M4 |
+| Confirm bar in | `confirm.css` confirm-in | fade plus rise, 180 ms | M4 |
+| Smooth caret: glide between positions, blink | `caret.css` | glide by whole pixels, 105 ms; blink is an opacity loop that stays with motion off | M4 |
+| AI spinner | `ai-card.css` ai-spin | `svg` rotation through `with_transformation`, stays with motion off | M4 |
+| Pomo card, controls, session list fades, chevron rotate, field reject shake | `commands.css` | fades as they are; chevron through `svg` rotation; the shake is a whole pixel nudge | M5 |
+| Speed gauge sweep | `speed.js` | drawn each frame from the value, no CSS to port | M5 |
+| Hide | none, the window hides at once | same | done |
+| Motion off switches | `platform.js` data-motion | one `motion::enabled()` read at show, every duration zero when false | M4, with settings reading it in M6 |
 
 ### 1. Home (empty query)
 
@@ -283,6 +321,36 @@ kinds exists before then.
 ### M3 Home launchpad
 
 Screen 1 in full, including confirm-to-press and Now Playing transport.
+
+Status 2026-10-06: built. `gpui/src/launchpad.rs` is one `Launchpad` entity
+drawn from the backend's `launchpad_layout` (the user's super-actions.toml or
+the catalog default), each tile placed by its own cell and sized by
+`ROW_H` (the macOS 76). Roles: the L slot (Todo over Clock, lunar date in the
+corner, task rotation), toggles with the accent wash, Battery with the uptime
+fallback, Weather, action tiles with the mnemonic tint, Mic as a mute flip,
+Restart and Shut Down armed on the first press and fired on the second (3 s
+disarm), Now Playing from MPRIS polled every 2 s while shown with the
+previous, play or pause, next transport, and user tiles with their readings,
+lines, state wash and inlined icon (an SVG is served through the asset
+source so it takes the tile colour). Adapter reads and presses run on the
+background executor behind a token so a late read never undoes a press. Alt
+plus a letter fires the tile's mnemonic from the launcher. Outcomes, adapter
+reasons and drawing warnings arrive as a `Notice` event the launcher shows
+as a chip over the bottom edge; M4's banner takes that event over. The
+`super_actions_enabled` setting gates the bento as the webview does.
+Verified with screenshots on sway against the user's drawing and the catalog
+default. Waiting on M5: the Pomo slot and the internal music player in Now
+Playing, which need the command screens.
+
+Motion note, same day: the tiles shimmered while landing. A 60 fps recording
+showed every label shifting half a pixel from frame to frame, because the
+tile box was being resized to stand in for the CSS scale and the arrive
+animation inset the whole window, so the text relaid out each frame. gpui
+0.2.2 has no element scale, so the port drops the scales: tiles keep their
+final size and rise by whole pixels (`motion::rise`), the arrive is a fade.
+The CSS spring went too: its overshoot in whole pixels was a one pixel
+bounce as each tile landed, so the bar and the tiles use the settle curve.
+Measured per frame after the change: the label descends and stays put.
 
 ### M4 Modes and row tooling
 

@@ -14,7 +14,6 @@ use palette::IntoColor;
 pub const FONT_SIZE_DEFAULT: f32 = 14.0;
 pub const CAPTION_SIZE: f32 = 11.0;
 pub const TILE_VALUE_SIZE: f32 = 20.0;
-pub const TILE_VALUE_SIZE_LARGE: f32 = 40.0;
 
 pub const WINDOW_W: f32 = 1008.0;
 pub const WINDOW_H: f32 = 672.0;
@@ -51,6 +50,8 @@ const SHADOW_BLUR: f32 = 7.0;
 const SHADOW_ALPHA: f32 = 0.25;
 
 const DEFAULT_THEME: &str = "kanagawa";
+/// Off unless the user turned it on, as the webview reads it.
+const LAUNCHPAD_KEY: &str = "super_actions_enabled";
 const CUSTOM_THEME: &str = "custom";
 const DEFAULT_TINT_OPACITY: f32 = 0.96;
 const DEFAULT_FONT_OPACITY: f32 = 0.96;
@@ -87,6 +88,9 @@ struct Preset {
     control: Rgba,
     selection: Rgba,
     accent: Rgba,
+    /// Success, warning, danger: the semantic trio theme.css gives every
+    /// dark preset alike, and Kindle and Liquid their own.
+    semantic: [Rgba; 3],
     serif: bool,
     /// Keyword, string, comment, number.
     syntax: [Rgba; 4],
@@ -103,6 +107,27 @@ fn syntax_dark() -> [Rgba; 4] {
         c(232, 168, 107, 1.0),
         c(115, 120, 115, 1.0),
         c(140, 199, 214, 1.0),
+    ]
+}
+
+/// `--color-success`, `--color-warning`, `--color-danger` of the dark presets.
+fn semantic_dark() -> [Rgba; 3] {
+    [
+        c(166, 227, 161, 1.0),
+        c(250, 179, 135, 1.0),
+        c(243, 139, 168, 1.0),
+    ]
+}
+
+fn semantic_paper() -> [Rgba; 3] {
+    [c(41, 107, 56, 1.0), c(133, 89, 8, 1.0), c(158, 38, 33, 1.0)]
+}
+
+fn semantic_liquid() -> [Rgba; 3] {
+    [
+        c(102, 219, 168, 1.0),
+        c(255, 199, 107, 1.0),
+        c(255, 117, 133, 1.0),
     ]
 }
 
@@ -132,6 +157,7 @@ fn presets() -> Vec<Preset> {
             control: c(69, 71, 90, 0.5),
             selection: c(88, 91, 112, 0.4),
             accent: c(137, 180, 250, 1.0),
+            semantic: semantic_dark(),
             serif: false,
             syntax: syntax_dark(),
         },
@@ -147,6 +173,7 @@ fn presets() -> Vec<Preset> {
             control: c(36, 43, 71, 0.34),
             selection: c(97, 120, 184, 0.28),
             accent: c(133, 184, 250, 1.0),
+            semantic: semantic_dark(),
             serif: false,
             syntax: syntax_dark(),
         },
@@ -162,6 +189,7 @@ fn presets() -> Vec<Preset> {
             control: c(51, 46, 64, 0.34),
             selection: c(148, 133, 168, 0.28),
             accent: c(184, 156, 199, 1.0),
+            semantic: semantic_dark(),
             serif: false,
             syntax: syntax_dark(),
         },
@@ -177,6 +205,7 @@ fn presets() -> Vec<Preset> {
             control: c(54, 43, 33, 0.34),
             selection: c(189, 138, 66, 0.28),
             accent: c(219, 184, 102, 1.0),
+            semantic: semantic_dark(),
             serif: false,
             syntax: syntax_dark(),
         },
@@ -192,6 +221,7 @@ fn presets() -> Vec<Preset> {
             control: c(54, 51, 77, 0.34),
             selection: c(158, 133, 201, 0.28),
             accent: c(163, 191, 250, 1.0),
+            semantic: semantic_dark(),
             serif: false,
             syntax: syntax_dark(),
         },
@@ -207,6 +237,7 @@ fn presets() -> Vec<Preset> {
             control: c(46, 51, 61, 0.34),
             selection: c(128, 122, 97, 0.28),
             accent: c(117, 166, 209, 1.0),
+            semantic: semantic_dark(),
             serif: false,
             syntax: syntax_dark(),
         },
@@ -222,6 +253,7 @@ fn presets() -> Vec<Preset> {
             control: c(217, 209, 194, 0.55),
             selection: c(61, 56, 48, 0.16),
             accent: c(46, 43, 38, 1.0),
+            semantic: semantic_paper(),
             serif: true,
             syntax: syntax_paper(),
         },
@@ -237,6 +269,7 @@ fn presets() -> Vec<Preset> {
             control: c(168, 194, 240, 0.12),
             selection: c(102, 153, 255, 0.58),
             accent: c(112, 184, 255, 1.0),
+            semantic: semantic_liquid(),
             serif: false,
             syntax: syntax_dark(),
         },
@@ -264,6 +297,9 @@ pub struct Theme {
     pub selection_fill: Rgba,
     pub border: Rgba,
     pub accent: Rgba,
+    pub success: Rgba,
+    pub warning: Rgba,
+    pub danger: Rgba,
     pub font_family: String,
     pub mono_family: String,
     pub font_size: f32,
@@ -271,6 +307,8 @@ pub struct Theme {
     pub radius_scale: f32,
     pub inner_gap: f32,
     pub layout: LauncherLayout,
+    /// `super_actions_enabled`: whether the empty query shows the launchpad.
+    pub launchpad: bool,
     syntax: [Rgba; 4],
 }
 
@@ -333,6 +371,9 @@ impl Theme {
                 num("ui_border_opacity", border_op),
             ),
             accent: preset.accent,
+            success: preset.semantic[0],
+            warning: preset.semantic[1],
+            danger: preset.semantic[2],
             font_family,
             mono_family: PLATFORM_MONO.to_string(),
             font_size: num("ui_font_size", FONT_SIZE_DEFAULT),
@@ -340,6 +381,7 @@ impl Theme {
             radius_scale: num("ui_surface_radius", DEFAULT_RADIUS_SCALE),
             inner_gap: num("inner_gap", DEFAULT_INNER_GAP),
             layout: config::launcher_layout(),
+            launchpad: get(LAUNCHPAD_KEY) == Some("true"),
             syntax: preset.syntax,
         }
     }
@@ -417,6 +459,26 @@ pub fn get() -> Theme {
 
 pub fn hsla_of(c: Rgba) -> Hsla {
     c.into_color()
+}
+
+/// `tint` at `alpha` laid over `face`: the accent wash of an active tile, the
+/// danger wash of an armed one. Still one quad.
+pub fn wash(face: Rgba, tint: Rgba, alpha: f32) -> Rgba {
+    over(
+        Rgba::new(tint.color.red, tint.color.green, tint.color.blue, alpha),
+        face,
+    )
+}
+
+/// `color-mix(in srgb, a <share>, b)`: the hover and state borders.
+pub fn mix(a: Rgba, b: Rgba, share: f32) -> Rgba {
+    let lerp = |x: f32, y: f32| x * share + y * (1.0 - share);
+    Rgba::new(
+        lerp(a.color.red, b.color.red),
+        lerp(a.color.green, b.color.green),
+        lerp(a.color.blue, b.color.blue),
+        lerp(a.alpha, b.alpha),
+    )
 }
 
 /// Source-over, what the CSS gradient stacks resolve to on a transparent

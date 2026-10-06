@@ -3,11 +3,13 @@
 
 mod blur;
 mod fonts;
+mod glyphs;
 #[cfg_attr(target_os = "linux", path = "host/linux.rs")]
 #[cfg_attr(windows, path = "host/windows.rs")]
 mod host;
 mod icons;
 mod launcher;
+mod launchpad;
 mod motion;
 mod preview;
 mod query;
@@ -15,15 +17,12 @@ mod rows;
 mod search;
 mod theme;
 
-use std::borrow::Cow;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use gpui::{
-    App, AppContext, AssetSource, QuitMode, SharedString, WindowBounds, WindowOptions, px, size,
-};
+use gpui::{App, AppContext, QuitMode, WindowBounds, WindowOptions, px, size};
 use linows_backend::health::HealthIssue;
 use linows_backend::host::{ClipForm, Host, LauncherWindow};
 use linows_backend::look_engine::modes;
@@ -33,49 +32,6 @@ use linows_backend::state::AppState;
 use linows_backend::{crash, launch_query};
 
 use launcher::Launcher;
-
-/// The glyphs the shell draws itself, Lucide outlines as the webview uses.
-const GLYPHS: &[(&str, &[u8])] = &[
-    (
-        "icons/search.svg",
-        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>"##,
-    ),
-    (
-        rows::GLYPH_FILE,
-        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>"##,
-    ),
-    (
-        rows::GLYPH_FOLDER,
-        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>"##,
-    ),
-    (
-        rows::GLYPH_APP,
-        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 4v4"/><path d="M2 8h20"/><path d="M6 4v4"/></svg>"##,
-    ),
-    (
-        rows::GLYPH_GLOBE,
-        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>"##,
-    ),
-    (
-        rows::GLYPH_CALC,
-        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="8" y1="18" x2="8" y2="18.01"/><line x1="12" y1="18" x2="12" y2="18.01"/></svg>"##,
-    ),
-];
-
-struct Assets;
-
-impl AssetSource for Assets {
-    fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
-        Ok(GLYPHS
-            .iter()
-            .find(|(name, _)| *name == path)
-            .map(|(_, bytes)| Cow::Borrowed(*bytes)))
-    }
-
-    fn list(&self, _path: &str) -> anyhow::Result<Vec<SharedString>> {
-        Ok(Vec::new())
-    }
-}
 
 /// What reaches the main loop: from the hotkey, the control socket, and the
 /// backend's hooks.
@@ -402,7 +358,7 @@ fn main() {
     }
 
     gpui_platform::application()
-        .with_assets(Assets)
+        .with_assets(glyphs::Assets)
         .run(move |cx: &mut App| {
             // Hiding the launcher closes its only window; the process stays.
             cx.set_quit_mode(QuitMode::Explicit);

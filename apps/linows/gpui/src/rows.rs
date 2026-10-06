@@ -45,11 +45,10 @@ pub struct Row {
     pub last_used: Option<i64>,
 }
 
-pub const GLYPH_FILE: &str = "icons/file.svg";
-pub const GLYPH_FOLDER: &str = "icons/folder.svg";
-pub const GLYPH_APP: &str = "icons/app.svg";
-pub const GLYPH_GLOBE: &str = "icons/globe.svg";
-pub const GLYPH_CALC: &str = "icons/calculator.svg";
+pub use crate::glyphs::{
+    APP as GLYPH_APP, CALC as GLYPH_CALC, FILE as GLYPH_FILE, FOLDER as GLYPH_FOLDER,
+    GLOBE as GLYPH_GLOBE,
+};
 
 const WEB_URL_ID: &str = "weburl:";
 const CALC_ID: &str = "calc:";
