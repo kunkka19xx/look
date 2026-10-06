@@ -52,8 +52,8 @@ pub struct ClipboardImageEntry {
 #[derive(Serialize)]
 pub struct ClipboardImageRow {
     #[serde(flatten)]
-    entry: ClipboardImageEntry,
-    thumb_path: String,
+    pub entry: ClipboardImageEntry,
+    pub thumb_path: String,
 }
 
 struct ClipboardState {

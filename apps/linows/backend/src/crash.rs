@@ -49,13 +49,21 @@ fn panic_message(info: &std::panic::PanicHookInfo) -> String {
     }
 }
 
+/// Where the app keeps what is neither config nor index: the crash log, and
+/// what the shell remembers between launches.
+pub fn state_dir() -> Option<PathBuf> {
+    Some(
+        dirs::state_dir()
+            .or_else(dirs::data_local_dir)?
+            .join("look"),
+    )
+}
+
 /// Append the crash to `<state dir>/look/crash.log` and return its path.
 /// Linux: ~/.local/state/look (XDG state dir). Windows has no state-dir
 /// notion - falls back to %LOCALAPPDATA%\look, next to the index database.
 fn append_crash_log(message: &str) -> Option<PathBuf> {
-    let dir = dirs::state_dir()
-        .or_else(dirs::data_local_dir)?
-        .join("look");
+    let dir = state_dir()?;
     std::fs::create_dir_all(&dir).ok()?;
     let path = dir.join(CRASH_LOG_NAME);
     let unix_s = std::time::SystemTime::now()

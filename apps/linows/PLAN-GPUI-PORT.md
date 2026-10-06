@@ -102,7 +102,7 @@ clipboard change. Everything else under `platform/` is already free of both.
 
 Each milestone builds and runs on both platforms before it closes. The
 Windows VM covers screens and input; only the GPU-bound checks (blur, 60 fps
-motion) wait for a real machine, and those are M7's job.
+motion) wait for a real machine, and those are M8's job.
 
 ## Screen inventory
 
@@ -127,8 +127,10 @@ that replaces it. Line counts are the current JS, for sizing only.
 
 ### Motion inventory
 
-Everything the webview animates, with where it lands in the port. The rules
-come from M3: gpui 0.2.2 has no element scale and no transform, so a box can
+Everything the webview animates, with where it lands in the port. Only the
+entrance is in place; the rest is one pass of its own (M7) once every screen
+is ported, since each is an effect on an element that has to exist first.
+The rules come from M3: gpui 0.2.2 has no element scale and no transform, so a box can
 only be resized, which relays out the text in it every frame and makes labels
 shimmer. So in the port things fade, and move by whole pixels on the settle
 curve (`motion::rise`), never on the CSS spring: its overshoot in whole pixels
@@ -145,23 +147,23 @@ them.
 | Shell arrive (fade plus scale 0.965) | `motion.css` shell-arrive | fade only | done |
 | Bar spawn (fade plus 8 px rise, spring) | shell-spawn | fade plus whole pixel rise, settle curve | done |
 | Launchpad cascade (fade, 10 px rise, scale 0.985, 35 ms stagger) | `superactions.css` ctl-tile-in | fade plus rise, stagger kept, no scale | done |
-| Glyph bounce riding the cascade | glyph-bounce | `svg` scale through `with_transformation`, same delay as its tile | M3 follow-up |
-| Tile press pulse (keyboard activation) | ctl-press | opacity dip on the tile face, 180 ms | M3 follow-up |
-| L slot crossfade when the source changes | ctl-slot-fade | fade of the new body, 240 ms | M5, with Pomo |
-| Pomo progress bar width glide | ctl-slot-bar-fill | width of a plain quad, 900 ms linear; no text in it, so it may resize | M5 |
-| Placeholder slide in (spring, delayed) | placeholder-slide-in | fade plus whole pixel slide | M4 |
-| Running apps strip slide in, staggered | strip-slide-in | fade plus whole pixel slide per tile, same stagger | M4 |
-| Results list ease in when leaving the launchpad | `results.css` results-list-in | fade plus 6 px rise of the card, once per switch, never per keystroke | M4 |
-| Selection pill glide (translate and height) and the title shift | `results.css`, motion.css glide | the pill is its own quad under the rows: animate its top and height by whole pixels; the text block moves by whole pixels | M4 |
-| Selection gain: icon zoom and pill stretch | row-icon-gain, pill-gain | pill stretch drops (it resizes a quad over text); icon zoom only for glyph icons through `svg` scale, none for pictures | M4 |
-| Banner in | `banner.css` banner-in | fade plus rise, 200 ms; the M3 notice chip grows into it | M4 |
-| Confirm bar in | `confirm.css` confirm-in | fade plus rise, 180 ms | M4 |
-| Smooth caret: glide between positions, blink | `caret.css` | glide by whole pixels, 105 ms; blink is an opacity loop that stays with motion off | M4 |
-| AI spinner | `ai-card.css` ai-spin | `svg` rotation through `with_transformation`, stays with motion off | M4 |
-| Pomo card, controls, session list fades, chevron rotate, field reject shake | `commands.css` | fades as they are; chevron through `svg` rotation; the shake is a whole pixel nudge | M5 |
-| Speed gauge sweep | `speed.js` | drawn each frame from the value, no CSS to port | M5 |
+| Glyph bounce riding the cascade | glyph-bounce | `svg` scale through `with_transformation`, same delay as its tile | M7 |
+| Tile press pulse (keyboard activation) | ctl-press | opacity dip on the tile face, 180 ms | M7 |
+| L slot crossfade when the source changes | ctl-slot-fade | fade of the new body, 240 ms | M7 |
+| Pomo progress bar width glide | ctl-slot-bar-fill | width of a plain quad, 900 ms linear; no text in it, so it may resize | M7 |
+| Placeholder slide in (spring, delayed) | placeholder-slide-in | fade plus whole pixel slide | M7 |
+| Running apps strip slide in, staggered | strip-slide-in | fade plus whole pixel slide per tile, same stagger | M7 |
+| Results list ease in when leaving the launchpad | `results.css` results-list-in | fade plus 6 px rise of the card, once per switch, never per keystroke | M7 |
+| Selection pill glide (translate and height) and the title shift | `results.css`, motion.css glide | the pill is its own quad under the rows: animate its top and height by whole pixels; the text block moves by whole pixels | M7 |
+| Selection gain: icon zoom and pill stretch | row-icon-gain, pill-gain | pill stretch drops (it resizes a quad over text); icon zoom only for glyph icons through `svg` scale, none for pictures | M7 |
+| Banner in | `banner.css` banner-in | fade plus rise, 200 ms; the M3 notice chip grows into it | M7 |
+| Confirm bar in | `confirm.css` confirm-in | fade plus rise, 180 ms | M7 |
+| Smooth caret: glide between positions, blink | `caret.css` | glide by whole pixels, 105 ms; blink is an opacity loop that stays with motion off | M7 |
+| AI spinner | `ai-card.css` ai-spin | `svg` rotation through `with_transformation`, stays with motion off | M7 |
+| Pomo card, controls, session list fades, chevron rotate, field reject shake | `commands.css` | fades as they are; chevron through `svg` rotation; the shake is a whole pixel nudge | M7 |
+| Speed gauge sweep | `speed.js` | drawn each frame from the value, no CSS to port | M7 |
 | Hide | none, the window hides at once | same | done |
-| Motion off switches | `platform.js` data-motion | one `motion::enabled()` read at show, every duration zero when false | M4, with settings reading it in M6 |
+| Motion off switches | `platform.js` data-motion | one `motion::enabled()` read at show, every duration zero when false | M7 |
 
 ### 1. Home (empty query)
 
@@ -281,7 +283,7 @@ with `-p look-gpui`), wired to the backend through `Host` and
 and layout from config, the Wayland hotkey and D-Bus service, `--toggle`
 over that service, the crash hook: done and seen running on sway. Still on
 gpui-ce 0.2.2. Left for later milestones: hide on focus loss and the hotkey
-on Windows (M7), query retention (M1), autostart registration (M7).
+on Windows (M8), query retention (M1), autostart registration (M8).
 
 Done when: `lookapp-gpui` starts hidden on login, Alt+Space summons it with
 the configured theme, Esc hides it, pacing stays at 16.7 ms, on niri and in
@@ -358,6 +360,41 @@ Screen 3, picked multi-select, row actions, action menu, levels, source
 blocks, AI and instant answers, running apps strip, banner and health,
 confirm bar.
 
+Status 2026-10-06: built. One `Mode` enum (`modes.rs`) replaces the
+webview's booleans: `"` and `:` menus, `t"`, `c"`, `ci"`, `rc"`, `ps"`, each
+with its rows, keys, hint and empty state; `query::run` answers every mode
+off the UI thread. New previews for clips, copied images (decoded from the
+backend's data URL), processes (facts at once, CPU on Enter) and the
+clipboard tips. The translate panel takes the whole content row. The banner
+(`banner.rs`) is a card above the bar: toasts, and the sticky health notice
+with dismissals kept in the state directory (`health.rs`); the launchpad's
+notice chip became a banner call. Picks (`picked.rs`): Ctrl+P, Shift+Enter,
+Ctrl+Shift+P, the panel in the preview column, the count badge in compact,
+files copied to the clipboard. Row actions (`actions.rs`): the Ctrl+K menu
+with tool names resolved by core, a block's `then` targets and the actions
+declared with `applies`, the question asked in the menu, Ctrl+E, Ctrl+T,
+Ctrl+F through core's tools. The confirm bar (`confirm.rs`) backs emptying
+the trash and hiding an app. Levels (`levels.rs`) descend from a target that
+lists, with the breadcrumb in the bar, Escape back with the query and
+selection restored, and `{parent.*}` through the ancestors the backend
+spells. Source rows wear their block's name and declared icon
+(`blocks.rs`). The running apps strip (`running.rs`) sits at the bar's right
+end with Alt+digit. Web suggestions append below the local rows and the
+answer card (`answers.rs`) streams DuckDuckGo, Wikipedia and the instant
+providers over the list. Every backend call goes through `bg::fetch`; the
+clipboard in particular deadlocks the main loop if called on it. The probe
+socket takes `key <keystroke>` so screenshots can reach what a chord
+reaches. Verified with screenshots on sway for each mode, the menu, picks,
+the confirm bar, the strip, the answer card and a Branches level.
+
+Not in this milestone: the `:cmd` rows and `:cmd <args>` trigger wait for
+the command screens (M5), as does the internal music player in Now Playing;
+the Quick Actions section of a settings row's preview (`qactions.js`) and
+Ctrl+O; answer images (gpui's image-from-URL needs an HTTP client); the
+AI two-column layout, since the card sits over one list here; Ctrl+Shift+Enter
+elevated launch (Windows); Ctrl+H help, Ctrl+Shift+, settings and
+Ctrl+Shift+; reload (M6).
+
 ### M5 Command screens
 
 Screen 4. Order: index, calc, shell, sys, kill, then todo, pomo, speed.
@@ -366,7 +403,13 @@ Screen 4. Order: index, calc, shell, sys, kill, then todo, pomo, speed.
 
 Screen 5, shortcut recorder, update widget.
 
-### M7 Parity and flip
+### M7 Motion pass
+
+The Motion inventory above, in one go: every effect lands on an element that
+exists by then, under the whole-pixel rules. Closes with a frame strip per
+animation, as M3's entrance was checked.
+
+### M8 Parity and flip
 
 Windows on a GPU machine (blur, 60 fps motion). X11 toplevel on GNOME
 and i3, KDE and Hyprland blur through the protocol module (already in
@@ -396,7 +439,7 @@ putting its gpui shot next to the reference.
    renderer in M4 if it hurts.
 4. GNOME Wayland without layer shell: xdg toplevel plus the GNOME extension
    for focus, as the Tauri build does today. No new work, but it must be
-   tested in the GNOME VM at M7.
+   tested in the GNOME VM at M8.
 5. Linux clipboard writes. GTK is gone, so text goes through gpui's
    clipboard and file lists through wl-copy or xclip with the
    `x-special/gnome-copied-files` MIME. Needed by M1 for copy path.

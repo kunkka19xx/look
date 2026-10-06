@@ -1,19 +1,30 @@
 //! linows drawn by gpui-ce. The backend (`linows_backend`) does the work;
 //! this binary owns the window, the hotkey, and the control socket.
 
+mod actions;
+mod answers;
+mod banner;
+mod bg;
+mod blocks;
 mod blur;
+mod confirm;
 mod fonts;
 mod glyphs;
+mod health;
 #[cfg_attr(target_os = "linux", path = "host/linux.rs")]
 #[cfg_attr(windows, path = "host/windows.rs")]
 mod host;
 mod icons;
 mod launcher;
 mod launchpad;
+mod levels;
+mod modes;
 mod motion;
+mod picked;
 mod preview;
 mod query;
 mod rows;
+mod running;
 mod search;
 mod theme;
 
@@ -25,7 +36,7 @@ use std::time::Duration;
 use gpui::{App, AppContext, QuitMode, WindowBounds, WindowOptions, px, size};
 use linows_backend::health::HealthIssue;
 use linows_backend::host::{ClipForm, Host, LauncherWindow};
-use linows_backend::look_engine::modes;
+use linows_backend::look_engine::modes as engine_modes;
 use linows_backend::platform::IconCache;
 use linows_backend::query_retention;
 use linows_backend::state::AppState;
@@ -40,8 +51,13 @@ pub enum Command {
     Show,
     Hide,
     Query(String),
+    /// Dev control: a keystroke handed to the launcher, so a probe can reach
+    /// what a key reaches without synthesizing one at the compositor.
+    Key(gpui::Keystroke),
     /// The index finished a refresh; the open query re-runs.
     Refresh,
+    /// The backend's setup problems changed; the sticky notice follows.
+    Health(Vec<HealthIssue>),
     /// The backend wants the clipboard owned for these forms; the reply says
     /// whether the shell took it.
     OwnClipboard(Vec<ClipForm>, std::sync::mpsc::SyncSender<bool>),
@@ -95,9 +111,7 @@ impl Host for Shell {
     }
 
     fn health_changed(&self, issues: Vec<HealthIssue>) {
-        for issue in issues {
-            eprintln!("[health] {}: {}", issue.id, issue.message);
-        }
+        self.send(Command::Health(issues));
     }
 
     /// Text goes through gpui's clipboard on the main loop. A file or image
@@ -152,6 +166,15 @@ fn serve_commands(tx: async_channel::Sender<Command>) -> std::io::Result<()> {
                     "show" => Command::Show,
                     "hide" => Command::Hide,
                     "quit" => Command::Quit,
+                    key if key.starts_with("key ") => {
+                        match gpui::Keystroke::parse(key["key ".len()..].trim()) {
+                            Ok(keystroke) => Command::Key(keystroke),
+                            Err(err) => {
+                                eprintln!("bad keystroke: {err}");
+                                continue;
+                            }
+                        }
+                    }
                     query if query.starts_with("query ") => {
                         Command::Query(query["query ".len()..].to_owned())
                     }
@@ -207,8 +230,10 @@ fn open(shell: &Shell, cx: &mut App) {
                     .lock()
                     .unwrap_or_else(|p| p.into_inner())
                     .clone();
+                // Selected whole, cursor at the end: typing replaces it, Right
+                // keeps it, as the webview's select() on show.
                 if !kept.is_empty() {
-                    with_launcher(cx, |launcher, cx| launcher.set_query(&kept, cx));
+                    with_launcher(cx, |launcher, cx| launcher.restore_query(&kept, cx));
                 }
             }
         }
@@ -252,7 +277,13 @@ fn with_launcher(cx: &mut App, f: impl Fn(&mut Launcher, &mut gpui::Context<Laun
 fn apply(command: Command, cx: &mut App) {
     match command {
         Command::Query(text) => with_launcher(cx, |launcher, cx| launcher.set_query(&text, cx)),
+        Command::Key(keystroke) => {
+            with_launcher(cx, |launcher, cx| launcher.press_key(keystroke.clone(), cx))
+        }
         Command::Refresh => with_launcher(cx, |launcher, cx| launcher.refresh(cx)),
+        Command::Health(issues) => {
+            with_launcher(cx, |launcher, cx| launcher.set_health(issues.clone(), cx))
+        }
         Command::OwnClipboard(forms, reply) => {
             let text = forms
                 .into_iter()
@@ -296,28 +327,31 @@ fn main() {
         return;
     }
 
-    let launch = modes::parse_args(std::env::args().skip(1));
+    let launch = engine_modes::parse_args(std::env::args().skip(1));
     match &launch {
-        modes::Launch::ListModes => {
-            print!("{}", modes::list_text());
+        engine_modes::Launch::ListModes => {
+            print!("{}", engine_modes::list_text());
             return;
         }
-        modes::Launch::UnknownMode(name) => {
-            eprintln!("lookapp: unknown mode \"{name}\"\n\n{}", modes::list_text());
+        engine_modes::Launch::UnknownMode(name) => {
+            eprintln!(
+                "lookapp: unknown mode \"{name}\"\n\n{}",
+                engine_modes::list_text()
+            );
             std::process::exit(2);
         }
-        modes::Launch::UnavailableMode(name) => {
+        engine_modes::Launch::UnavailableMode(name) => {
             eprintln!("lookapp: mode \"{name}\" is not available on this platform");
             std::process::exit(2);
         }
-        modes::Launch::ReloadConfig => {
+        engine_modes::Launch::ReloadConfig => {
             eprintln!("lookapp: reload-config is not wired in the gpui shell yet");
             return;
         }
         // A running launcher answers the same D-Bus call the hotkey makes;
         // with none running, this process becomes it.
         #[cfg(target_os = "linux")]
-        modes::Launch::Toggle
+        engine_modes::Launch::Toggle
             if linows_backend::platform::linux::wayland_shortcut::request_toggle() =>
         {
             return;
@@ -339,6 +373,9 @@ fn main() {
     };
     linows_backend::host::install(Box::new(shell.clone()));
     state().start_bootstrap();
+    // The histories `c"` and `ci"` list: loaded from disk now, then kept by
+    // the poll thread.
+    linows_backend::clipboard::start_monitor();
 
     if let Err(err) = serve_commands(shell.tx.clone()) {
         eprintln!("control socket: {err}");
