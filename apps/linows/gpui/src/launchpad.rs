@@ -725,15 +725,15 @@ impl Launchpad {
 
             tiles.push(
                 self.tile_face(i, tile, th, cx)
+                    // The box keeps its final size: resizing it would relayout
+                    // the text every frame and the labels would shimmer.
                     .with_animation(("tile", i), Animation::new(total), move |tile, progress| {
-                        let t = motion::spring(motion::staggered(progress, total, delay, duration));
-                        let scale = motion::TILE_SCALE + (1.0 - motion::TILE_SCALE) * t;
-                        let (sw, sh) = (w * scale, h * scale);
+                        let t = motion::curve(motion::staggered(progress, total, delay, duration));
                         tile.opacity(t.min(1.0))
-                            .left(px(x + (w - sw) / 2.0))
-                            .top(px(y + (h - sh) / 2.0 + motion::TILE_RISE * (1.0 - t)))
-                            .w(px(sw))
-                            .h(px(sh))
+                            .left(px(x))
+                            .top(px(motion::rise(y, motion::TILE_RISE, t)))
+                            .w(px(w))
+                            .h(px(h))
                     })
                     .into_any_element(),
             );

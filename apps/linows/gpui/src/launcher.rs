@@ -364,9 +364,9 @@ impl Launcher {
             .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
             .child(
                 bar.with_animation("top-bar", Animation::new(spawn), |bar, t| {
-                    let t = motion::spring(t);
+                    let t = motion::curve(t);
                     bar.opacity(t.min(1.0))
-                        .top(px(motion::SPAWN_RISE * (1.0 - t)))
+                        .top(px(motion::rise(0.0, motion::SPAWN_RISE, t)))
                 }),
             )
     }
@@ -609,10 +609,10 @@ impl Render for Launcher {
             .child(self.top_bar(&th))
             .child(below);
 
-        // gpui 0.2.2 has no element scale, so the arrive scale is an inset.
+        // gpui 0.2.2 has no element scale, and an inset in its place relayouts
+        // every card each frame, so the arrive is the fade alone; the bar and
+        // the tiles carry the motion.
         let arrive = Duration::from_millis(motion::ARRIVE_MS);
-        let inset_x = theme::WINDOW_W * (1.0 - motion::ARRIVE_SCALE) / 2.0;
-        let inset_y = theme::WINDOW_H * (1.0 - motion::ARRIVE_SCALE) / 2.0;
 
         div()
             .when(crate::probe_wanted(), |root| root.child(pace_probe()))
@@ -626,12 +626,7 @@ impl Render for Launcher {
             .child(div().size_full().child(body).with_animation(
                 "arrive",
                 Animation::new(arrive),
-                move |root, t| {
-                    let t = motion::curve(t);
-                    root.opacity(t)
-                        .px(px(inset_x * (1.0 - t)))
-                        .py(px(inset_y * (1.0 - t)))
-                },
+                |root, t| root.opacity(motion::curve(t)),
             ))
             .children(self.notice_chip(&th))
     }
