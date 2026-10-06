@@ -21,7 +21,9 @@ mod launchpad;
 mod levels;
 mod modes;
 mod motion;
+mod pick;
 mod picked;
+mod pomo;
 mod preview;
 mod query;
 mod rows;
@@ -43,7 +45,7 @@ use linows_backend::query_retention;
 use linows_backend::state::AppState;
 use linows_backend::{crash, launch_query};
 
-use launcher::Launcher;
+use launcher::{Launcher, Retained};
 
 /// What reaches the main loop: from the hotkey, the control socket, and the
 /// backend's hooks.
@@ -95,9 +97,9 @@ pub fn icon_cache() -> &'static IconCache {
 pub struct Shell {
     tx: async_channel::Sender<Command>,
     visible: Arc<AtomicBool>,
-    /// The query the last hide left behind, for the retention rule to
-    /// restore or clear on the next summon.
-    last_query: Arc<Mutex<String>>,
+    /// What the last hide left behind, for the retention rule to restore
+    /// or drop on the next summon.
+    retained: Arc<Mutex<Retained>>,
 }
 
 impl Shell {
@@ -224,19 +226,16 @@ fn open(shell: &Shell, cx: &mut App) {
     match result {
         Ok(_) => {
             shell_visible(cx, true);
-            // The query survives a short dismissal, as the config says.
-            if query_retention::query_clear_decision_after_show(true) == Some(false) {
-                let kept = shell
-                    .last_query
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner())
-                    .clone();
-                // Selected whole, cursor at the end: typing replaces it, Right
-                // keeps it, as the webview's select() on show.
-                if !kept.is_empty() {
-                    with_launcher(cx, |launcher, cx| launcher.restore_query(&kept, cx));
-                }
+            // A command screen stays up until Esc leaves it, however long the
+            // launcher was away; the query alone is subject to the retention
+            // window.
+            let expired = query_retention::query_clear_decision_after_show(true) != Some(false);
+            let mut kept =
+                std::mem::take(&mut *shell.retained.lock().unwrap_or_else(|p| p.into_inner()));
+            if expired {
+                kept.query.clear();
             }
+            with_launcher(cx, |launcher, cx| launcher.restore(&kept, cx));
         }
         Err(err) => eprintln!("open window: {err:#}"),
     }
@@ -247,8 +246,8 @@ fn hide(cx: &mut App) {
     for handle in cx.windows() {
         let _ = handle.update(cx, |view, window, cx| {
             if let Ok(launcher) = view.downcast::<Launcher>() {
-                *shell.last_query.lock().unwrap_or_else(|p| p.into_inner()) =
-                    launcher.read(cx).query(cx);
+                *shell.retained.lock().unwrap_or_else(|p| p.into_inner()) =
+                    launcher.read(cx).retained(cx);
             }
             window.remove_window();
         });
@@ -370,7 +369,7 @@ fn main() {
     let shell = Shell {
         tx,
         visible: Arc::new(AtomicBool::new(false)),
-        last_query: Arc::new(Mutex::new(String::new())),
+        retained: Arc::new(Mutex::new(Retained::default())),
     };
     linows_backend::host::install(Box::new(shell.clone()));
     state().start_bootstrap();

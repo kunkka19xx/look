@@ -422,6 +422,52 @@ last result standing, and Enter copies the result with a banner;
 header bar and lays them out as label and mono value rows with a gap
 between sections. Three panels left: pomo, todo, speed.
 
+Slice 3 (pomo, 2026-10-06): the timer, the plan and the music live in
+`gpui/src/pomo.rs` for the process, since the window is rebuilt per summon;
+the plan persists in `~/.look/config` under the keys macOS writes
+(`pomo_sessions` as `type:minutes:name`, `pomo_timer_style`,
+`pomo_music_folder`), so both shells share one. `commands/pomo.rs` is the
+panel: header, the face drawn each frame on a `canvas` (gpui 0.2.2 has one,
+the earlier note was wrong) as a ring, a dial or digits over a bar, the
+state-coloured controls, the style row behind the gear, the session list
+with inline name and minute fields (own `SearchInput` per open field, Enter
+or Tab commits, a blank name or a minute count outside 1 to 120 is refused
+with a banner), and the music card with its transport and a folder picked
+through the desktop portal. Not through gpui's path prompt: that exports the
+focused surface as the dialog's parent over xdg_foreign, and a layer-shell
+surface is no xdg toplevel, so the compositor answers `zxdg_exporter_v2`
+error 0 and the Wayland connection dies (found on first use, 2026-10-06).
+`pick.rs` calls the portal's file chooser directly with no parent on Linux
+and keeps gpui's prompt elsewhere; the fix for upstream is a
+`window_identifier` that returns `None` for layer-shell windows. Space, R
+and P as the webview binds them. Five idle seconds while running fade the
+panel to the ring alone, the sidebar with it; any key, click or scroll
+restores it. A thread ticks the running session each second, window or no
+window, and sends the phase notifications through `notify-send`; the
+panel and the slot read the clock projected to the instant, so a summon
+shows the true time at once (first cut ticked from the panel, so the clock
+sat still while hidden and showed stale for the first half second). A
+music thread advances the track when one ends, panel open or not. A hide
+from a command screen keeps that screen, with its box text, for the next
+summon however long the launcher was away (the user's call, 2026-10-06:
+a running timer must be where it was left; the macOS source drops the
+screen with the query once retention expires, so macOS may want the same
+change); the query alone obeys the retention window. The launchpad's slot now shows a
+running session first (countdown, phase and session, progress bar), and
+Now Playing shows the internal player while it plays, driving it from the
+tile. Verified with screenshots on sway: idle, running, faded, all three
+faces, the music card playing, the slot.
+
+Size, same day: the release binary was 33.7 MB. cargo-bloat put the text at
+26.5 MiB with std, zbus, gpui and its Linux platform, naga and wgpu as the
+largest. A separate `release-gpui` profile (`opt-level = "s"`,
+`codegen-units = 1`, inheriting release) brings it to 22.7 MB with the
+pace probe still at 16.7 ms per frame; `opt-level = "z"` with
+`panic = "abort"` reached 18.0 MB but the backend re-raises a thread's
+panic in `dbus.rs`, so unwinding stays. Build with
+`cargo build -p look-gpui --profile release-gpui`; the tools default to that
+path. The Nix package picks the profile up in M8.
+
 ### M6 Settings, help, update
 
 Screen 5, shortcut recorder, update widget.

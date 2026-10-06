@@ -29,6 +29,7 @@ use linows_backend::{lunar, sysinfo, todo};
 use crate::glyphs;
 use crate::icons;
 use crate::motion;
+use crate::pomo;
 use crate::theme::{self, Theme};
 
 /// One grid row, the macOS `Launchpad.rowHeight`.
@@ -147,13 +148,24 @@ struct TodoToday {
     open: Vec<String>,
 }
 
-/// What the L slot shows, by priority. Pomo joins when the command screens
-/// land in M5.
+/// What the L slot shows, by priority: a running Pomodoro, today's open
+/// tasks, the clock.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Slot {
+    Pomo,
     Todo,
     Clock,
 }
+
+/// The Pomo body's own lines.
+const POMO_BAR_H: f32 = 3.0;
+const POMO_BAR_MARGIN: f32 = 10.0;
+const POMO_SUB_MARGIN: f32 = 6.0;
+/// The big time sits tight, as `.ctl-slot-time` sets it, or the lines
+/// under it fall off the tile.
+const SLOT_TIME_LINE_HEIGHT: f32 = 1.05;
+const SLOT_SUB_LINE_HEIGHT: f32 = 1.2;
+const POMO_ARTIST: &str = "Pomodoro";
 
 /// The layout survives the window, so a summon never waits on the file.
 static LAYOUT: Mutex<Option<Arc<LayoutPayload>>> = Mutex::new(None);
@@ -170,6 +182,12 @@ pub struct Launchpad {
     uptime: Option<String>,
     weather: Option<WeatherSnapshot>,
     media: Option<NowPlayingSnapshot>,
+    /// The Now Playing tile shows the Pomodoro's own player, which never
+    /// reaches MPRIS, so the transport drives it directly.
+    media_internal: bool,
+    /// Which source last actually played, so a paused one does not hijack
+    /// a just-paused other.
+    last_internal: bool,
     lunar: Option<LunarDate>,
     lunar_day: Option<NaiveDate>,
     todo: TodoToday,
@@ -208,6 +226,8 @@ impl Launchpad {
             uptime: None,
             weather: None,
             media: None,
+            media_internal: false,
+            last_internal: false,
             lunar: None,
             lunar_day: None,
             todo: TodoToday::default(),
@@ -273,7 +293,9 @@ impl Launchpad {
     }
 
     fn slot(&self) -> Slot {
-        if self.todo.open.is_empty() {
+        if pomo::snapshot().is_some() {
+            Slot::Pomo
+        } else if self.todo.open.is_empty() {
             Slot::Clock
         } else {
             Slot::Todo
@@ -435,10 +457,45 @@ impl Launchpad {
         );
     }
 
+    /// The Pomodoro's player while it plays, else the MPRIS player; with
+    /// nothing playing, whichever played last, as the webview arbitrates.
     fn refresh_media(&mut self, cx: &mut Context<Self>) {
-        self.fetch(cx, nowplaying::now_playing_current, |this, media, _| {
-            this.media = media;
-        });
+        self.fetch(
+            cx,
+            || (nowplaying::now_playing_current(), pomo::music_snapshot()),
+            |this, (mpris, internal), _| {
+                let internal_media = internal.as_ref().map(|m| NowPlayingSnapshot {
+                    title: m.track.clone(),
+                    artist: Some(POMO_ARTIST.to_string()),
+                    app: None,
+                    is_playing: m.playing,
+                    player: None,
+                });
+                let mpris_playing = mpris
+                    .as_ref()
+                    .is_some_and(|m| m.is_playing && !m.title.is_empty());
+                let mpris_present = mpris.as_ref().is_some_and(|m| !m.title.is_empty());
+                let use_internal = match (&internal, mpris_playing) {
+                    (Some(m), _) if m.playing => true,
+                    (_, true) => false,
+                    (Some(_), false) => this.last_internal || !mpris_present,
+                    (None, _) => false,
+                };
+                if use_internal {
+                    this.media = internal_media;
+                    this.media_internal = true;
+                    if internal.as_ref().is_some_and(|m| m.playing) {
+                        this.last_internal = true;
+                    }
+                } else {
+                    this.media = mpris;
+                    this.media_internal = false;
+                    if mpris_playing {
+                        this.last_internal = false;
+                    }
+                }
+            },
+        );
     }
 
     /// Two reads on purpose: the cache answers at once so the strip never
@@ -487,6 +544,9 @@ impl Launchpad {
         if minute != self.minute {
             self.minute = minute;
             self.refresh_lunar();
+            cx.notify();
+        }
+        if self.shown && self.slot() == Slot::Pomo {
             cx.notify();
         }
         if !self.shown {
@@ -600,6 +660,21 @@ impl Launchpad {
     }
 
     fn transport(&mut self, command: &'static str, cx: &mut Context<Self>) {
+        if self.media_internal {
+            // The internal player flips at once, so a re-read lands the truth.
+            if command == PLAYPAUSE
+                && let Some(media) = self.media.as_mut()
+            {
+                media.is_playing = !media.is_playing;
+                cx.notify();
+            }
+            self.fetch(
+                cx,
+                move || pomo::lock().music_command(command),
+                |this, (), cx| this.refresh_media(cx),
+            );
+            return;
+        }
         let player = self.media.as_ref().and_then(|m| m.player.clone());
         if command == PLAYPAUSE {
             // Flip now, roll back unless delivered. No re-read: MPRIS lags the
@@ -841,6 +916,7 @@ impl Launchpad {
             .rounded(px(th.bar_radius()))
             .child(glyph(
                 match slot {
+                    Slot::Pomo => glyphs::TIMER,
                     Slot::Todo => glyphs::LIST_CHECKS,
                     Slot::Clock => glyphs::CLOCK,
                 },
@@ -867,7 +943,7 @@ impl Launchpad {
                     .text_color(th.text),
                 )
                 .child(small(lunar_word, STATE_SIZE, th.text_muted)),
-            Slot::Todo => corner
+            Slot::Todo | Slot::Pomo => corner
                 .child(
                     mono(now.format(TIME_FORMAT).to_string(), HEAD_TIME_SIZE, th)
                         .text_color(th.text),
@@ -887,6 +963,54 @@ impl Launchpad {
         };
 
         let body = match slot {
+            Slot::Pomo => {
+                let snap = pomo::snapshot();
+                let (time, sub, progress) = match snap {
+                    Some(s) => (
+                        pomo::format_time(s.seconds_left),
+                        format!("{} - session {}/{}", s.kind.label(), s.index + 1, s.count),
+                        s.progress,
+                    ),
+                    None => (pomo::format_time(0), String::new(), 0.0),
+                };
+                let cols = self
+                    .layout
+                    .as_ref()
+                    .map_or(1.0, |l| f32::from(l.columns.max(1)));
+                let gap = th.inner_gap;
+                let inner_w = theme::WINDOW_W - 2.0 * theme::CONTENT_PADDING;
+                let cell_w = (inner_w - gap * (cols - 1.0)) / cols;
+                let bar_w = 2.0 * cell_w + gap - 2.0 * SLOT_PADDING;
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        mono(time, BODY_TIME_SIZE, th)
+                            .line_height(px(BODY_TIME_SIZE * SLOT_TIME_LINE_HEIGHT))
+                            .text_color(th.text),
+                    )
+                    .child(
+                        small(sub, LABEL_SMALL, th.text_secondary)
+                            .line_height(px(LABEL_SMALL * SLOT_SUB_LINE_HEIGHT))
+                            .mt(px(POMO_SUB_MARGIN)),
+                    )
+                    .child(
+                        div()
+                            .mt(px(POMO_BAR_MARGIN))
+                            .w(px(bar_w))
+                            .h(px(POMO_BAR_H))
+                            .rounded(px(POMO_BAR_H / 2.0))
+                            .bg(th.control_fill)
+                            .overflow_hidden()
+                            .child(
+                                div()
+                                    .w(px(bar_w * progress))
+                                    .h_full()
+                                    .rounded(px(POMO_BAR_H / 2.0))
+                                    .bg(th.accent),
+                            ),
+                    )
+            }
             Slot::Clock => div()
                 .flex()
                 .flex_col()

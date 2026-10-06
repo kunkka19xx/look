@@ -65,6 +65,8 @@ pub const SPARKLES: &str = "icons/sparkles.svg";
 pub const ARROW_UP_RIGHT: &str = "icons/arrow-up-right.svg";
 pub const SETTINGS: &str = "icons/settings.svg";
 pub const TIMER: &str = "icons/timer.svg";
+pub const CHEVRON_RIGHT: &str = "icons/chevron-right.svg";
+pub const CHEVRON_DOWN: &str = "icons/chevron-down.svg";
 
 /// A Lucide body in the shared 24-unit frame.
 macro_rules! lucide {
@@ -280,6 +282,8 @@ const GLYPHS: &[(&str, &[u8])] = &[
         TIMER,
         r#"<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>"#
     ),
+    lucide!(CHEVRON_RIGHT, r#"<polyline points="9 18 15 12 9 6"/>"#),
+    lucide!(CHEVRON_DOWN, r#"<polyline points="6 9 12 15 18 9"/>"#),
 ];
 
 pub struct Assets;

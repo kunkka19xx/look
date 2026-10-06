@@ -31,3 +31,6 @@ windows = { version = "0.62", features = ["Win32_Graphics_Dwm", "Win32_Graphics_
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gpui_platform = { package = "gpui_ce_platform", version = "0.1.0", features = ["wayland"] }
+# The same build gpui's Linux platform already links; only the folder dialog
+# calls it here, with no parent window (see pick.rs).
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "file_chooser"] }
