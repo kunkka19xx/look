@@ -101,3 +101,31 @@ pub fn source_preview(row: RowArgs) -> Option<PreviewOutcome> {
 pub fn refresh_run_blocks() -> RefreshOutcome {
     look_engine::sources::refresh_run_blocks()
 }
+
+/// The levels a row was reached through, nearest parent first, in the form
+/// `RowArgs::ancestors` carries. Built here so the shell never spells the
+/// JSON the engine parses.
+pub fn ancestors_json(parents: &[(String, String, String)]) -> String {
+    if parents.is_empty() {
+        return String::new();
+    }
+    let list: Vec<serde_json::Value> = parents
+        .iter()
+        .map(|(id, title, path)| serde_json::json!({ "id": id, "title": title, "path": path }))
+        .collect();
+    serde_json::Value::Array(list).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ancestors_json;
+
+    #[test]
+    fn ancestors_round_trip_through_the_engine() {
+        let json = ancestors_json(&[("b".into(), "main".into(), "/r".into())]);
+        let parents = look_engine::sources::parents_from_json(&json);
+        assert_eq!(parents.len(), 1);
+        assert_eq!(parents[0].title, "main");
+        assert_eq!(ancestors_json(&[]), "");
+    }
+}
