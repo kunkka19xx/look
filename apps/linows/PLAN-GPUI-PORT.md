@@ -161,7 +161,7 @@ them.
 | Smooth caret: glide between positions, blink | `caret.css` | glide by whole pixels, 105 ms; blink is an opacity loop that stays with motion off | M7 |
 | AI spinner | `ai-card.css` ai-spin | `svg` rotation through `with_transformation`, stays with motion off | M7 |
 | Pomo card, controls, session list fades, chevron rotate, field reject shake | `commands.css` | fades as they are; chevron through `svg` rotation; the shake is a whole pixel nudge | M7 |
-| Speed gauge sweep | `speed.js` | drawn each frame from the value, no CSS to port | M7 |
+| Speed gauge sweep | `speed.js` | drawn each frame from the value, no CSS to port; the dial requests its own frames and stops under reduce motion | done |
 | Hide | none, the window hides at once | same | done |
 | Motion off switches | `platform.js` data-motion | one `motion::enabled()` read at show, every duration zero when false | M7 |
 
@@ -489,6 +489,28 @@ a `deferred` window-anchored element so the scrolling stats column cannot
 clip it. Hint strings differ from the webview on purpose until
 M6: Search says `Ctrl+F: Reveal` and Translate `Esc: Clear` where the
 webview says `Ctrl+H: Help`, since the help screen is not there yet.
+
+Slice 5 (speed, 2026-10-06): `gpui/src/speed.rs` holds what outlives the
+window, as the webview's module state and the macOS controller do: the
+last reading, the run in flight on a `look-speed` thread (the measurement
+has no cancel, so a second one is never started beside it and the next
+open rejoins it), the LAN address, and the dial's motion. The reading
+persists through the backend (`netspeed::remember`/`last_reading`, a JSON
+file under the state dir, public address dropped), where the webview used
+localStorage and macOS UserDefaults. `commands/speed.rs` is the panel:
+addresses line with click-to-copy chips, the masked WAN address and its
+eye toggle (`E`), the gauge, the legend, the verdict and the carrier line,
+`R` to rerun. The gauge is one `canvas` drawing the macOS SpeedGaugeView's
+orbit: dashed rings, ticks and labels, the latency pulse, two comets whose
+tails are stroked arcs with a dot at each end for the round caps gpui's
+paths cannot set. Each paint advances the motion by the wall clock and
+asks for the next frame with `request_animation_frame`, so the dial runs
+only while the panel is on screen; under `cx.reduce_motion()` it snaps to
+the reading and draws once. The elapsed count ticks once a second. The
+canvas text and circle helpers moved out of the todo panel into
+`commands/draw.rs`; the pomo's `Face::text` still has its own copy to fold
+in later. Reduce motion is gpui's flag; wiring `animations_enabled` to it
+is M7's.
 
 Size, same day: the release binary was 33.7 MB. cargo-bloat put the text at
 26.5 MiB with std, zbus, gpui and its Linux platform, naga and wgpu as the

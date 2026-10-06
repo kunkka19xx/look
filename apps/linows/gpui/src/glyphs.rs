@@ -19,6 +19,8 @@ pub const CALC: &str = "icons/calculator.svg";
 
 // Launchpad
 pub const LIST_CHECKS: &str = "icons/list-checks.svg";
+pub const EYE: &str = "icons/eye.svg";
+pub const EYE_OFF: &str = "icons/eye-off.svg";
 pub const CLOCK: &str = "icons/clock.svg";
 pub const BLUETOOTH: &str = "icons/bluetooth.svg";
 pub const WIFI: &str = "icons/wifi.svg";
@@ -143,6 +145,14 @@ const GLYPHS: &[(&str, &[u8])] = &[
     lucide!(
         ACTIVITY,
         r#"<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>"#
+    ),
+    lucide!(
+        EYE,
+        r#"<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>"#
+    ),
+    lucide!(
+        EYE_OFF,
+        r#"<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 11 7 11 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 1 12s4 8 11 8a9.74 9.74 0 0 0 5.39-1.61"/><line x1="1" y1="1" x2="23" y2="23"/>"#
     ),
     lucide!(
         LIST_CHECKS,
