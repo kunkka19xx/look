@@ -272,6 +272,14 @@ a pinned folder. Awaiting the day of dogfooding.
 All preview kinds from screen 2, the highlight runs output, folder listing,
 clipboard image rendering, process live view.
 
+Status 2026-10-05: built for every row kind M1 produces. `highlight_runs`
+sits beside the HTML output in the backend; the gpui `Preview` entity
+reads the backend after a 120 ms dwell, caches per row, and draws the app,
+file (image or code), folder, calculator and URL panels beside the list in
+the split layout. Verified with screenshots on sway. The clipboard, image
+and process previews arrive with their modes in M4, since no row of those
+kinds exists before then.
+
 ### M3 Home launchpad
 
 Screen 1 in full, including confirm-to-press and Now Playing transport.

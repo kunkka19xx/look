@@ -77,8 +77,16 @@ dismissal, text copies through gpui's clipboard, the theme and layout keys
 of the config, the global hotkey and D-Bus service on Wayland, the crash
 hook.
 
-Not yet: the preview column, the launchpad tiles (the bento is still
-placeholder tiles), the `c" ci" t" ps"` modes and the `"` and `:` menus,
+Also wired: the preview column in the split layout, following the
+selection after a short dwell. App rows show version and command, files
+show size, path and modified date with the picture or the highlighted text
+(the backend's tokenizer, drawn as text runs), folders list their contents
+with counts and open on click, and the calculator and URL rows show their
+card. Previews are cached for the session.
+
+Not yet: the launchpad tiles (the bento is still placeholder tiles), the
+`c" ci" t" ps"` modes and the `"` and `:` menus (and with them the
+clipboard, image and process previews),
 file and image copies (the backend shells out to wl-copy or xclip for
 those), the clipboard monitor, autostart registration, hide on focus loss
 on Windows, a Windows hotkey. Each is a milestone in the plan.

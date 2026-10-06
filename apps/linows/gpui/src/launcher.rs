@@ -18,6 +18,7 @@ use linows_backend::{clipboard, launch, weburl};
 use crate::blur::{self, BlurRect};
 use crate::icons::{IconRequest, IconStore};
 use crate::motion;
+use crate::preview::Preview;
 use crate::query;
 use crate::rows::{Icon, Open, Row};
 use crate::search::{Changed, SearchInput, search_field};
@@ -60,6 +61,7 @@ pub struct Launcher {
     shell: Shell,
     input: Entity<SearchInput>,
     icons: Entity<IconStore>,
+    preview: Entity<Preview>,
     rows: Arc<Vec<Row>>,
     selected: usize,
     scroll: UniformListScrollHandle,
@@ -76,6 +78,8 @@ impl Launcher {
             .detach();
         let icons = cx.new(|_| IconStore::new());
         cx.observe(&icons, |_, _, cx| cx.notify()).detach();
+        let preview = cx.new(|_| Preview::new(shell.clone(), icons.clone()));
+        cx.observe(&preview, |_, _, cx| cx.notify()).detach();
         let focus_handle = input.read(cx).focus_handle.clone();
         window.focus(&focus_handle, cx);
         blur::attach_window(window);
@@ -93,6 +97,7 @@ impl Launcher {
             shell,
             input,
             icons,
+            preview,
             rows: Arc::new(Vec::new()),
             selected: 0,
             scroll: UniformListScrollHandle::new(),
@@ -123,6 +128,7 @@ impl Launcher {
         if query.trim().is_empty() {
             self.rows = Arc::new(Vec::new());
             self.selected = 0;
+            self.sync_preview(cx);
             cx.notify();
             return;
         }
@@ -150,6 +156,7 @@ impl Launcher {
                 this.rows = Arc::new(rows);
                 this.selected = 0;
                 this.scroll.scroll_to_item(0, ScrollStrategy::Top);
+                this.sync_preview(cx);
                 cx.notify();
             });
         }));
@@ -208,9 +215,20 @@ impl Launcher {
             self.selected = (self.selected as isize + delta).rem_euclid(len) as usize;
             self.scroll
                 .scroll_to_item(self.selected, ScrollStrategy::Nearest);
+            self.sync_preview(cx);
             cx.notify();
         }
         true
+    }
+
+    /// The preview follows the selection; the compact layout has none.
+    fn sync_preview(&mut self, cx: &mut Context<Self>) {
+        let split = theme::get().split();
+        let row = self.rows.get(self.selected).cloned();
+        self.preview.update(cx, |preview, cx| match row {
+            Some(row) if split => preview.show(&row, cx),
+            _ => preview.clear(cx),
+        });
     }
 
     fn selected_row(&self) -> Option<&Row> {
@@ -507,14 +525,12 @@ impl Launcher {
 
         // One floating card: rows, then the hint as the card's own footer.
         let radius = th.tile_radius();
-        let card = card(div(), th)
-            .mx(px(theme::CONTENT_PADDING))
-            .mt(px(th.inner_gap))
-            .mb(px(theme::CONTENT_PADDING))
+        let results_card = card(div(), th)
             .px(px(theme::ROW_INSET))
             .pt(px(theme::ROW_INSET))
             .pb(px(theme::HINT_INSET_BOTTOM))
             .flex_1()
+            .min_w_0()
             .min_h_0()
             .flex()
             .flex_col()
@@ -527,13 +543,32 @@ impl Launcher {
                     .pt(px(theme::HINT_INSET))
                     .pb(px(theme::HINT_INSET_BOTTOM)),
             );
+        // Split: the preview floats beside the list as its own card.
+        let preview_card = th.split().then(|| {
+            let panel_theme = th.clone();
+            let body = self
+                .preview
+                .update(cx, |preview, cx| preview.render_in(&panel_theme, cx));
+            card(div(), th)
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .overflow_hidden()
+                .rounded(px(radius))
+                .child(body)
+        });
         div()
             .flex_1()
             .min_h_0()
+            .mx(px(theme::CONTENT_PADDING))
+            .mt(px(th.inner_gap))
+            .mb(px(theme::CONTENT_PADDING))
             .flex()
-            .flex_col()
+            .flex_row()
+            .gap(px(th.inner_gap))
             .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
-            .child(card)
+            .child(results_card)
+            .children(preview_card)
     }
 }
 

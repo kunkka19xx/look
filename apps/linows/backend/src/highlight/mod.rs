@@ -1,6 +1,7 @@
 /// Syntax highlighting module for file preview.
-/// Ported from macOS `SyntaxHighlighter.swift` - same tokenizer logic,
-/// adapted for the webview: outputs pre-built HTML with CSS classes.
+/// Ported from macOS `SyntaxHighlighter.swift` - same tokenizer logic. Two
+/// outputs over one tokenizer: HTML with CSS classes for the webview, and
+/// the spans themselves for a shell that draws text runs.
 ///
 /// Structure:
 ///   lang.rs      - language detection + keyword/comment definitions
@@ -12,6 +13,8 @@ mod tokenizer;
 
 use lang::Language;
 use serde::Serialize;
+
+pub use tokenizer::{Span, TokenType};
 
 /// Text extensions eligible for syntax preview.
 /// Matches macOS `QuickLookPreviewService.textExtensions`.
@@ -54,31 +57,57 @@ fn size_cap(path: &str) -> u64 {
     }
 }
 
-/// Read a file and return syntax-highlighted HTML.
-/// Returns `None` if the file is missing, too large, or not a text file.
-pub fn highlight_file(path: &str) -> Option<HighlightResult> {
+/// The file's text with its token spans, for a shell that styles runs itself.
+/// Spans are byte offsets into `text`; a file that is not valid UTF-8 keeps
+/// its text (lossily) and loses the spans, since the offsets would no longer
+/// line up.
+pub struct HighlightRuns {
+    pub text: String,
+    pub spans: Vec<Span>,
+    pub truncated: bool,
+}
+
+/// The bytes the preview shows: the file up to the display cap. `None` if the
+/// file is missing, too large, or not a text file.
+fn preview_bytes(path: &str) -> Option<(Vec<u8>, bool)> {
     if !is_text_file(path) {
         return None;
     }
-
     let meta = std::fs::metadata(path).ok()?;
     if meta.len() > size_cap(path) {
         return None;
     }
-
-    let data = std::fs::read(path).ok()?;
+    let mut data = std::fs::read(path).ok()?;
     let truncated = data.len() > DISPLAY_BYTE_CAP;
-    let slice = if truncated {
-        &data[..DISPLAY_BYTE_CAP]
-    } else {
-        &data
-    };
+    data.truncate(DISPLAY_BYTE_CAP);
+    Some((data, truncated))
+}
 
-    let lang = Language::from_path(path);
-    let spans = tokenizer::tokenize(slice, lang);
-    let html = html::render(slice, &spans);
-
+/// Read a file and return syntax-highlighted HTML.
+/// Returns `None` if the file is missing, too large, or not a text file.
+pub fn highlight_file(path: &str) -> Option<HighlightResult> {
+    let (data, truncated) = preview_bytes(path)?;
+    let spans = tokenizer::tokenize(&data, Language::from_path(path));
+    let html = html::render(&data, &spans);
     Some(HighlightResult { html, truncated })
+}
+
+/// Read a file and return its text with token spans.
+pub fn highlight_runs(path: &str) -> Option<HighlightRuns> {
+    let (data, truncated) = preview_bytes(path)?;
+    let spans = tokenizer::tokenize(&data, Language::from_path(path));
+    let (text, spans) = match String::from_utf8(data) {
+        Ok(text) => (text, spans),
+        Err(err) => (
+            String::from_utf8_lossy(err.as_bytes()).into_owned(),
+            Vec::new(),
+        ),
+    };
+    Some(HighlightRuns {
+        text,
+        spans,
+        truncated,
+    })
 }
 
 /// Highlight a file and return HTML + truncation flag.

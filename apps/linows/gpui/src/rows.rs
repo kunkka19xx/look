@@ -41,6 +41,8 @@ pub struct Row {
     pub score: i64,
     pub icon: Icon,
     pub open: Open,
+    /// When the row was last opened through Look, for the preview.
+    pub last_used: Option<i64>,
 }
 
 pub const GLYPH_FILE: &str = "icons/file.svg";
@@ -136,6 +138,7 @@ impl Row {
             path: r.path,
             score: r.score,
             icon: Icon::Resolve { glyph },
+            last_used: r.last_used_at_unix_s,
         }
     }
 
@@ -155,6 +158,7 @@ impl Row {
                 raw: calc.raw,
                 expr: expr.to_string(),
             },
+            last_used: None,
         }
     }
 
@@ -170,6 +174,7 @@ impl Row {
             score,
             icon: Icon::Glyph(GLYPH_GLOBE),
             open: Open::Url(url.to_string()),
+            last_used: None,
         }
     }
 
@@ -193,6 +198,7 @@ impl Row {
             open: Open::Path {
                 usage: "open_folder",
             },
+            last_used: None,
         }
     }
 }
