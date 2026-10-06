@@ -29,6 +29,7 @@ mod query;
 mod rows;
 mod running;
 mod search;
+mod speed;
 mod theme;
 mod todo;
 

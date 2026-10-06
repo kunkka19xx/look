@@ -5,9 +5,11 @@
 //! in place of their body.
 
 mod calc;
+mod draw;
 mod kill;
 mod pomo;
 mod shell;
+mod speed;
 mod sys;
 mod todo;
 
@@ -89,6 +91,7 @@ pub struct Commands {
     pub(super) sys: sys::Sys,
     pub(super) pomo: pomo::Panel,
     pub(super) todo: todo::Panel,
+    pub(super) speed: speed::Panel,
 }
 
 impl Commands {
@@ -103,6 +106,7 @@ impl Commands {
             sys: sys::Sys::default(),
             pomo: pomo::Panel::default(),
             todo: todo::Panel::default(),
+            speed: speed::Panel::default(),
         }
     }
 
@@ -141,6 +145,7 @@ impl Commands {
     pub fn exit(&mut self) {
         self.pomo.leave();
         self.todo.leave();
+        self.speed.leave();
     }
 
     /// A row's field open for typing, which the launcher's keys edit.
@@ -171,6 +176,7 @@ impl Commands {
             sys::ID => self.sys.enter(cx),
             pomo::ID => self.pomo.enter(cx),
             todo::ID => self.todo.enter(cx),
+            speed::ID => self.speed.enter(cx),
             _ => {}
         }
         cx.notify();
@@ -246,6 +252,7 @@ impl Commands {
             kill::ID => self.kill.key(key, cx),
             pomo::ID => self.pomo.key(key, cx),
             todo::ID => self.todo.key(ks, cx),
+            speed::ID => self.speed.key(ks, cx),
             calc::ID if key == "enter" => {
                 let expr = self.typed(cx);
                 self.calc.run(&expr, cx);
@@ -341,6 +348,7 @@ impl Commands {
             sys::ID => sys::panel(self, th).into_any_element(),
             pomo::ID => pomo::panel(self, th, cx).into_any_element(),
             todo::ID => todo::panel(self, th, cx).into_any_element(),
+            speed::ID => speed::panel(self, th, cx).into_any_element(),
             _ => self.pending_panel(th).into_any_element(),
         };
         // The pomo at rest keeps only its ring.
@@ -503,7 +511,15 @@ mod tests {
 
     #[test]
     fn the_panel_ids_are_in_the_catalog() {
-        for id in [shell::ID, kill::ID, calc::ID, sys::ID, pomo::ID] {
+        for id in [
+            shell::ID,
+            kill::ID,
+            calc::ID,
+            sys::ID,
+            pomo::ID,
+            todo::ID,
+            speed::ID,
+        ] {
             assert!(Commands::index_of(id).is_some(), "{id}");
         }
     }

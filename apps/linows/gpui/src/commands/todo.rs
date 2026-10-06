@@ -10,10 +10,11 @@ use chrono::NaiveDate;
 use gpui::{
     Anchor, AnchoredPositionMode, Bounds, ClickEvent, Context, Div, Edges, Entity, FontWeight,
     HitboxBehavior, Hsla, MouseMoveEvent, PathBuilder, Pixels, Point, ScrollHandle, SharedString,
-    Stateful, Task, TextAlign, TextRun, Window, anchored, canvas, deferred, div, fill, point,
-    prelude::*, px, size, svg,
+    Stateful, Task, Window, anchored, canvas, deferred, div, fill, point, prelude::*, px, size,
+    svg,
 };
 
+use super::draw::{Type, paint_circle, paint_dot, paint_text};
 use super::{Commands, KeyOutcome};
 use crate::bg;
 use crate::glyphs;
@@ -144,7 +145,6 @@ const HEAT_TIP_PADDING_X: f32 = 8.0;
 const HEAT_TIP_PADDING_Y: f32 = 4.0;
 const INSIGHT_GAP: f32 = 4.0;
 const INSIGHT_PADDING_Y: f32 = 4.0;
-const LINE_HEIGHT: f32 = 1.2;
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum Page {
@@ -1061,10 +1061,13 @@ fn donut(label: &'static str, (done, total): (usize, usize), th: &Theme) -> Div 
                 window,
                 cx,
                 &done.to_string(),
-                DONUT_DONE_SIZE,
-                &mono,
-                FontWeight::BOLD,
-                text,
+                &Type {
+                    size: DONUT_DONE_SIZE,
+                    family: &mono,
+                    weight: FontWeight::BOLD,
+                    colour: text,
+                    spacing: 0.0,
+                },
                 cx_,
                 top + DONUT_DONE_Y,
             );
@@ -1079,10 +1082,13 @@ fn donut(label: &'static str, (done, total): (usize, usize), th: &Theme) -> Div 
                 window,
                 cx,
                 &total.to_string(),
-                DONUT_TOTAL_SIZE,
-                &mono,
-                FontWeight::NORMAL,
-                secondary,
+                &Type {
+                    size: DONUT_TOTAL_SIZE,
+                    family: &mono,
+                    weight: FontWeight::NORMAL,
+                    colour: secondary,
+                    spacing: 0.0,
+                },
                 cx_,
                 top + DONUT_TOTAL_Y,
             );
@@ -1311,10 +1317,13 @@ fn heatmap(counts: &todo::Counts, th: &Theme, cx: &mut Context<Launcher>) -> imp
                         window,
                         cx,
                         label,
-                        HEAT_LABEL_SIZE,
-                        &mono,
-                        FontWeight::NORMAL,
-                        muted,
+                        &Type {
+                            size: HEAT_LABEL_SIZE,
+                            family: &mono,
+                            weight: FontWeight::NORMAL,
+                            colour: muted,
+                            spacing: 0.0,
+                        },
                         grid.left + HEAT_LABEL_W / 3.0,
                         grid.top + row as f32 * stride + grid.cell / 2.0,
                     );
@@ -1512,26 +1521,6 @@ fn ring(size_px: f32, r: f32, width: f32, f: f32, th: &Theme) -> impl IntoElemen
     .flex_shrink_0()
 }
 
-/// A circle of radius `r` as two half arcs, from the top.
-fn circle_path(builder: &mut PathBuilder, centre: Point<Pixels>, r: f32) {
-    let (cx, cy) = (f32::from(centre.x), f32::from(centre.y));
-    builder.move_to(point(px(cx), px(cy - r)));
-    builder.arc_to(
-        point(px(r), px(r)),
-        px(0.0),
-        false,
-        true,
-        point(px(cx), px(cy + r)),
-    );
-    builder.arc_to(
-        point(px(r), px(r)),
-        px(0.0),
-        false,
-        true,
-        point(px(cx), px(cy - r)),
-    );
-}
-
 fn paint_ring(
     window: &mut Window,
     centre: Point<Pixels>,
@@ -1559,59 +1548,4 @@ fn paint_ring(
     if let Ok(path) = arc.build() {
         window.paint_path(path, accent);
     }
-}
-
-fn paint_circle(window: &mut Window, centre: Point<Pixels>, r: f32, width: f32, colour: Hsla) {
-    let mut builder = PathBuilder::stroke(px(width));
-    circle_path(&mut builder, centre, r);
-    if let Ok(path) = builder.build() {
-        window.paint_path(path, colour);
-    }
-}
-
-fn paint_dot(window: &mut Window, centre: Point<Pixels>, r: f32, colour: Hsla) {
-    let mut builder = PathBuilder::fill();
-    circle_path(&mut builder, centre, r);
-    if let Ok(path) = builder.build() {
-        window.paint_path(path, colour);
-    }
-}
-
-/// `text` centred on (`cx`, `cy`).
-#[allow(clippy::too_many_arguments)]
-fn paint_text(
-    window: &mut Window,
-    cx: &mut gpui::App,
-    text: &str,
-    font_size: f32,
-    family: &str,
-    weight: FontWeight,
-    colour: Hsla,
-    centre_x: f32,
-    centre_y: f32,
-) {
-    let mut font = window.text_style().font();
-    font.family = family.to_string().into();
-    font.weight = weight;
-    let run = TextRun {
-        len: text.len(),
-        font,
-        color: colour,
-        background_color: None,
-        underline: None,
-        strikethrough: None,
-        letter_spacing: None,
-    };
-    let line = window.text_system().shape_line(
-        SharedString::from(text.to_string()),
-        px(font_size),
-        &[run],
-        None,
-    );
-    let line_height = px(font_size * LINE_HEIGHT);
-    let origin = point(
-        px(centre_x) - line.width() / 2.0,
-        px(centre_y) - line_height / 2.0,
-    );
-    let _ = line.paint(origin, line_height, TextAlign::Left, None, window, cx);
 }
