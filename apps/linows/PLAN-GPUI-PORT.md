@@ -23,6 +23,9 @@ time. The Tauri build keeps shipping until the last milestone.
   gpui-ce 0.2.2.
 - Performance first. One quad per card face, `uniform_list` for rows, no
   per-keystroke relayout, blur region committed only when bounds change.
+- Mimic is the default, not the ceiling. Where the webview was working
+  around WebKitGTK, or gpui offers a plainly better way, note it in
+  `PORT-GAINS.md` during the slice: shipped, open, or for macOS.
 
 ## Code layout
 
@@ -580,7 +583,7 @@ a click away commits, empty means `system-ui`, and `fonts::ensure_family`
 loads what was picked. `settings_blur_multiplier` scales the tint alpha
 of the frame while the screen is up. Running Apps and Super Actions show
 in the split layout only; Animations is saved and read by M7. The
-Advanced and Shortcuts tabs are placeholders. Ctrl+Shift+; reloads the
+The Shortcuts tab is a placeholder. Ctrl+Shift+; reloads the
 theme, the fonts, the engine and, if up, the working copy, with the
 webview's banner.
 
@@ -618,6 +621,44 @@ reload banner, gap 0 with results and with a translate query, and the
 preset, slider, toggle, Save sequence with the file diffed before and
 after. The clicks (sliders, selects, the font box) wait for
 dogfood: the socket sends keys only.
+
+Slice 2 (2026-10-08): `gpui/src/settings/advanced.rs` is the tab, the
+screen now a module directory. Web answers (`ai_enabled`, which the
+answer card reads on Save, no reload), Background, Indexing, Privacy &
+Logs, Startup, Config File, and on Linux Rendering with the one switch
+that still means something here, `ui_compositor_blur`: the frost region
+goes to the compositor only while it is on, and the card shadows come
+back while it is off, as the macOS material has one or the other. The
+WebKitGTK switches (`disable_gpu_compositing`, `disable_blur_effect`)
+are not on this shell. Launch at login and, on Windows, Add to PATH read
+the OS on open and go back to it on Save; the drive chips are Windows
+only too. The number boxes are `SearchInput` fields like the font box
+(`FieldKind`), Enter, Tab or a click away snapping the value into range,
+a blank to the default. The folder lists are chips with a remove mark,
+through `config_list` (the CSV contract moved out of the launcher, where
+hiding an app used it). Create Fresh Config asks in the confirm bar,
+which now draws on the screen frame too and takes the keys before the
+settings screen does; on yes the defaults are written, the engine, the
+theme, the fonts and the working copy read the file again.
+
+The background picture: `bgimage.rs` decodes `ui_bg_image` off the UI
+thread, scales it to the size it is drawn at, blurs it once with the
+`image` crate (gpui has no image filter) and keeps that one bitmap; every
+card and the seated panel paint their own slice of it through
+`paint_image(card, picture, radius)`, the card as the clip and the whole
+picture as the placement, so the floating tiles read as one picture cut
+apart by the gaps, as the webview's per-tile `::before` did from a
+ResizeObserver. Opacity is the layer's `opacity()`. While the exact
+bitmap is still being built the last one for the file stands in, so a
+blur drag does not blank the cards. Image Layout is the webview's four
+(`BgLayout`). `pick::image` is the portal file chooser with an image
+filter, beside the folder one. Verified with screenshots on sway through
+the probe socket, which grew `wheel <x> <y> <lines>` for the scrolling
+body: the tab top to bottom, the picture across the two cards and across
+the seated panel, blur dragged to 15, the number box, the frost switch
+and its hint, the fresh config question and the reset file diffed.
+Picking a file through the portal waits for dogfood, as does typing in
+the number boxes: the socket's keys carry no character.
 
 ### M7 Motion pass
 

@@ -25,9 +25,11 @@ use crate::actions::{self, ActionId, Menu};
 use crate::answers::{self, AiAnswer};
 use crate::banner::{self, Banner, Message};
 use crate::bg;
+use crate::bgimage::{self, Backdrop};
 use crate::blocks;
 use crate::blur::{self, BlurRect};
 use crate::commands::{self, Commands, KeyOutcome};
+use crate::config_list;
 use crate::confirm::{Confirm, OnYes};
 use crate::glyphs;
 use crate::icons::{IconRequest, IconStore};
@@ -101,6 +103,9 @@ const TRASH_LABEL: &str = "Trash";
 /// Windows.
 const TRASH_PIN_IDS: [&str; 2] = ["quickfolder:trash", "quickfolder:recycle bin"];
 const APP_EXCLUDE_KEY: &str = "app_exclude_names";
+const FRESH_CONFIG_ASK: &str = "Create a fresh config?";
+const FRESH_CONFIG_DONE: &str = "Config reset to defaults";
+const FRESH_CONFIG_FAILED: &str = "Reset failed";
 /// `look_indexing::UsageAction::EXECUTE`: a block run ranks like an open.
 const USAGE_EXECUTE: &str = "execute";
 
@@ -157,6 +162,8 @@ pub struct Launcher {
     todo_hovered: bool,
     /// Bumped per keystroke; a search that comes back for an older one is dropped.
     version: u64,
+    /// The background picture being decoded, so a frame does not ask twice.
+    backdrop_loading: Option<bgimage::Key>,
     _search: Option<Task<()>>,
 }
 
@@ -215,6 +222,7 @@ impl Launcher {
             levels: Levels::default(),
             pending_restore: None,
             menu_token: 0,
+            backdrop_loading: None,
             todo_hovered: false,
             version: 0,
             _search: None,
@@ -518,6 +526,16 @@ impl Launcher {
             cx.stop_propagation();
             return;
         }
+        // The confirm bar owns every key while it asks, over any screen.
+        if self.confirm.is_some() {
+            match ks.key.as_str() {
+                "y" | "enter" => self.settle_confirm(true, cx),
+                "n" | "escape" => self.settle_confirm(false, cx),
+                _ => {}
+            }
+            cx.stop_propagation();
+            return;
+        }
         // The settings screen owns every key, as the webview's does.
         if self.settings_open {
             match self.settings.handle_key(ks, cx) {
@@ -574,17 +592,7 @@ impl Launcher {
             }
             return;
         }
-        // The confirm bar owns every key while it asks.
-        if self.confirm.is_some() {
-            match ks.key.as_str() {
-                "y" | "enter" => self.settle_confirm(true, cx),
-                "n" | "escape" => self.settle_confirm(false, cx),
-                _ => {}
-            }
-            cx.stop_propagation();
-            return;
-        }
-        // So does the action menu: movement, Enter and Escape.
+        // The action menu owns its keys: movement, Enter and Escape.
         if self.menu.is_some() {
             let vim = ctrl && !shift && (ks.key == "j" || ks.key == "k");
             let consumed = match ks.key.as_str() {
@@ -764,6 +772,54 @@ impl Launcher {
             },
         );
         cx.notify();
+    }
+
+    /// Create Fresh Config: the question, then the defaults written over
+    /// the file and everything that reads it read again.
+    pub(crate) fn fresh_config(&mut self, cx: &mut Context<Self>) {
+        let on_yes: OnYes = Box::new(|_, cx| {
+            bg::fetch(
+                cx,
+                || {
+                    config::reset_config()?;
+                    engine::reload_config(app_state());
+                    app_state().force_index_refresh();
+                    Ok::<(), String>(())
+                },
+                |this, result, cx| match result {
+                    Ok(()) => {
+                        theme::load();
+                        fonts::ensure_family(cx, &theme::get().font_family);
+                        this.settings.reload(cx);
+                        this.running.refresh(cx);
+                        this.banner.show(
+                            FRESH_CONFIG_DONE.into(),
+                            Tone::Success,
+                            banner::SHORT,
+                            cx,
+                        );
+                    }
+                    Err(err) => this.banner.show(
+                        format!("{FRESH_CONFIG_FAILED}: {err}"),
+                        Tone::Error,
+                        banner::SHORT,
+                        cx,
+                    ),
+                },
+            );
+        });
+        self.ask(
+            Confirm {
+                title: FRESH_CONFIG_ASK.into(),
+                detail: format!(
+                    "{} is replaced by the defaults",
+                    config::config_file_path().display()
+                ),
+                glyph: Some(glyphs::REFRESH),
+                on_yes: Some(on_yes),
+            },
+            cx,
+        );
     }
 
     // --- Command screen --------------------------------------------------------
@@ -1274,7 +1330,7 @@ impl Launcher {
 
     // --- Confirm ---------------------------------------------------------------
 
-    fn ask(&mut self, confirm: Confirm, cx: &mut Context<Self>) {
+    pub(crate) fn ask(&mut self, confirm: Confirm, cx: &mut Context<Self>) {
         self.close_menu();
         self.confirm = Some(confirm);
         cx.notify();
@@ -1680,6 +1736,7 @@ impl Launcher {
     ) -> Div {
         let radius = th.tile_radius();
         let bar_radius = th.bar_radius();
+        let frosted = th.frosted();
         let banner = self.banner.render(th, cx).map(|banner| {
             div()
                 .on_children_prepainted(move |cards, _, _| mark_cards(&cards, bar_radius))
@@ -1688,6 +1745,7 @@ impl Launcher {
         // The focused field (the panel's box, or a row's open field) is where
         // the keys dispatch from, so this root must track that handle.
         let focus_handle = self.focus_target(cx);
+        let confirm = self.confirm.as_ref().map(|confirm| confirm.render(th, cx));
         div()
             .size_full()
             .font_family(th.font_family.clone())
@@ -1695,7 +1753,7 @@ impl Launcher {
             .text_color(th.text)
             .track_focus(&focus_handle)
             .on_key_down(cx.listener(Self::on_key_down))
-            .on_children_prepainted(|_, _, _| commit_blur_region())
+            .on_children_prepainted(move |_, _, _| commit_blur_region(frosted))
             .flex()
             .flex_col()
             .children(banner)
@@ -1707,11 +1765,10 @@ impl Launcher {
                     .flex()
                     .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
                     .child(
-                        card(div(), th)
+                        card(div(), th, radius)
                             .flex_1()
                             .min_w_0()
                             .min_h_0()
-                            .rounded(px(radius))
                             .overflow_hidden()
                             .flex()
                             .flex_col()
@@ -1730,6 +1787,7 @@ impl Launcher {
                             ),
                     ),
             )
+            .children(confirm)
     }
 
     /// Floating, the bar is its own frosted tile; seated (gap 0 with a
@@ -1750,9 +1808,7 @@ impl Launcher {
                         .border_b(px(1.0))
                         .border_color(th.divider())
                 } else {
-                    card(el, th)
-                        .px(px(theme::INPUT_PADDING_X))
-                        .rounded(px(th.bar_radius()))
+                    card(el, th, th.bar_radius()).px(px(theme::INPUT_PADDING_X))
                 }
             })
             .absolute()
@@ -2100,7 +2156,7 @@ impl Launcher {
         // One floating card: rows, then the hint as the card's own footer.
         let radius = th.tile_radius();
         let results_card = div()
-            .when(!seated, |el| card(el, th).rounded(px(radius)))
+            .when(!seated, |el| card(el, th, radius))
             .px(px(theme::ROW_INSET))
             .pt(px(theme::ROW_INSET))
             .flex_1()
@@ -2139,7 +2195,7 @@ impl Launcher {
                     if seated {
                         el.border_l(px(1.0)).border_color(th.divider())
                     } else {
-                        card(el, th).rounded(px(radius))
+                        card(el, th, radius)
                     }
                 })
                 .flex_1()
@@ -2360,7 +2416,7 @@ impl Launcher {
             })
             .child(
                 div()
-                    .when(!seated, |el| card(el, th).rounded(px(radius)))
+                    .when(!seated, |el| card(el, th, radius))
                     .flex_1()
                     .min_w_0()
                     .min_h_0()
@@ -2388,6 +2444,8 @@ impl Drop for Launcher {
 impl Render for Launcher {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let th = theme::get();
+        let frosted = th.frosted();
+        self.prepare_backdrop(&th, window, cx);
         let input = self.input.read(cx);
         let home = input.text().is_empty() && !self.levels.is_active();
         let focus_handle = input.focus_handle.clone();
@@ -2436,11 +2494,10 @@ impl Render for Launcher {
                             .flex()
                             .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
                             .child(
-                                panel(div(), &th)
+                                panel(div(), &th, radius)
                                     .flex_1()
                                     .min_w_0()
                                     .min_h_0()
-                                    .rounded(px(radius))
                                     .overflow_hidden()
                                     .flex()
                                     .flex_col()
@@ -2466,7 +2523,7 @@ impl Render for Launcher {
             .text_color(th.text)
             .track_focus(&focus_handle)
             .on_key_down(cx.listener(Self::on_key_down))
-            .on_children_prepainted(|_, _, _| commit_blur_region())
+            .on_children_prepainted(move |_, _, _| commit_blur_region(frosted))
             .child(div().size_full().child(body).with_animation(
                 "arrive",
                 Animation::new(arrive),
@@ -2486,53 +2543,17 @@ fn hide_app(name: &str) -> Result<bool, String> {
         .find(|e| e.key == APP_EXCLUDE_KEY)
         .map(|e| e.value)
         .unwrap_or_default();
-    let mut names = parse_config_list(&current);
+    let mut names = config_list::parse(&current);
     if names.iter().any(|n| n.trim().eq_ignore_ascii_case(name)) {
         return Ok(false);
     }
     names.push(name.to_string());
     config::set_config(vec![config::ConfigUpdate {
         key: APP_EXCLUDE_KEY.into(),
-        value: render_config_list(&names),
+        value: config_list::render(&names),
     }])?;
     engine::reload_config(app_state());
     Ok(true)
-}
-
-/// The backend's CSV contract for config lists: `\,` is a literal comma and
-/// `\\` a literal backslash.
-fn parse_config_list(value: &str) -> Vec<String> {
-    let mut entries = Vec::new();
-    let mut current = String::new();
-    let mut chars = value.chars().peekable();
-    while let Some(ch) = chars.next() {
-        match ch {
-            '\\' if matches!(chars.peek(), Some(',') | Some('\\')) => {
-                current.push(chars.next().unwrap_or_default());
-            }
-            ',' => {
-                let entry = current.trim();
-                if !entry.is_empty() {
-                    entries.push(entry.to_string());
-                }
-                current.clear();
-            }
-            _ => current.push(ch),
-        }
-    }
-    let entry = current.trim();
-    if !entry.is_empty() {
-        entries.push(entry.to_string());
-    }
-    entries
-}
-
-fn render_config_list(entries: &[String]) -> String {
-    entries
-        .iter()
-        .map(|e| e.replace('\\', "\\\\").replace(',', "\\,"))
-        .collect::<Vec<_>>()
-        .join(",")
 }
 
 thread_local! {
@@ -2555,17 +2576,57 @@ fn mark_cards(cards: &[Bounds<Pixels>], radius: f32) {
     });
 }
 
-fn commit_blur_region() {
-    blur::set_region(BLUR_FRAME.take());
+/// The frame's cards to the compositor; none when the frost is off, so the
+/// desktop shows sharp behind the tint.
+fn commit_blur_region(frosted: bool) {
+    let frame = BLUR_FRAME.take();
+    blur::set_region(if frosted { frame } else { Vec::new() });
+}
+
+thread_local! {
+    /// The background picture for this frame's cards, set before any card
+    /// is built.
+    static BACKDROP: RefCell<Option<Arc<Backdrop>>> = const { RefCell::new(None) };
+}
+
+impl Launcher {
+    /// The picture the cards slice this frame: the cached one, with the
+    /// exact one decoded off the UI thread when the theme asks for another.
+    fn prepare_backdrop(&mut self, th: &Theme, window: &Window, cx: &mut Context<Self>) {
+        let key = bgimage::Key::of(th, window);
+        let ready = key.as_ref().and_then(bgimage::ready);
+        BACKDROP.set(ready);
+        let Some(key) = key else {
+            return;
+        };
+        if bgimage::is_exact(&key) || self.backdrop_loading.as_ref() == Some(&key) {
+            return;
+        }
+        self.backdrop_loading = Some(key.clone());
+        bg::fetch(
+            cx,
+            move || bgimage::load(key),
+            |this, result, _| {
+                this.backdrop_loading = None;
+                match result {
+                    Ok(backdrop) => bgimage::store(backdrop),
+                    Err(err) => eprintln!("background image: {err}"),
+                }
+            },
+        );
+    }
 }
 
 /// The classic panel's face: the tint alone under a border, as
-/// `.launcher-window` draws it.
-fn panel(el: Div, th: &Theme) -> Div {
+/// `.launcher-window` draws it, with the background picture over the tint.
+fn panel(el: Div, th: &Theme, radius: f32) -> Div {
+    let backdrop = BACKDROP.with_borrow(|b| b.clone());
     el.bg(th.tint)
         .border(px(th.border_thickness))
         .border_color(th.border)
+        .rounded(px(radius))
         .shadow(th.card_shadow())
+        .children(backdrop.map(|b| bgimage::layer(b, radius, th)))
 }
 
 /// The band's leading at the hint's size.
@@ -2581,12 +2642,16 @@ fn copyright(th: &Theme) -> Div {
         .child(COPYRIGHT)
 }
 
-/// The frosted card face shared by the bar, the tiles and the results card.
-fn card(el: Div, th: &Theme) -> Div {
+/// The frosted card face shared by the bar, the tiles and the results card,
+/// with its slice of the background picture under whatever the caller adds.
+fn card(el: Div, th: &Theme, radius: f32) -> Div {
+    let backdrop = BACKDROP.with_borrow(|b| b.clone());
     el.bg(th.card_face())
         .border(px(th.border_thickness))
         .border_color(th.border)
+        .rounded(px(radius))
         .shadow(th.card_shadow())
+        .children(backdrop.map(|b| bgimage::layer(b, radius, th)))
 }
 
 fn muted_text(text: impl Into<SharedString>, th: &Theme) -> Div {
@@ -2672,18 +2737,4 @@ fn pace_probe() -> impl IntoElement {
             probe.opacity(t)
         },
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn config_lists_round_trip_their_escapes() {
-        let names = vec!["Zed".to_string(), "a,b".to_string(), "c\\d".to_string()];
-        let rendered = render_config_list(&names);
-        assert_eq!(rendered, "Zed,a\\,b,c\\\\d");
-        assert_eq!(parse_config_list(&rendered), names);
-        assert_eq!(parse_config_list(" , x ,"), vec!["x".to_string()]);
-    }
 }

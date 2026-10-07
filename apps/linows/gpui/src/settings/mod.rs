@@ -3,6 +3,8 @@
 //! every control edits a working copy that the theme follows at once, Save
 //! Config writes the lot to the file in one go, Esc discards.
 
+mod advanced;
+
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -12,8 +14,9 @@ use gpui::{
     deferred, div, px, relative,
 };
 use linows_backend::config::{self, ConfigUpdate};
-use linows_backend::files;
+use linows_backend::platform::{self, CandidateDrive};
 use linows_backend::search as engine;
+use linows_backend::{autostart, cli_path, files};
 
 use crate::bg;
 use crate::commands::KeyOutcome;
@@ -110,13 +113,13 @@ const BLUR_STYLE_OPACITY: [f32; 3] = [0.95, 0.8, 0.6];
 const BLUR_STYLE_DEFAULT: usize = 0;
 
 /// A switch's config spelling.
-struct Switch {
-    id: &'static str,
-    key: &'static str,
-    label: &'static str,
-    on: &'static str,
-    off: &'static str,
-    default_on: bool,
+pub(super) struct Switch {
+    pub id: &'static str,
+    pub key: &'static str,
+    pub label: &'static str,
+    pub on: &'static str,
+    pub off: &'static str,
+    pub default_on: bool,
 }
 
 const RUNNING_APPS: Switch = Switch {
@@ -148,7 +151,7 @@ const ANIMATIONS: Switch = Switch {
 /// Where a slider's value comes from when the config has none: a preset
 /// colour channel, a preset opacity, or the spec's default.
 #[derive(Clone, Copy, PartialEq)]
-enum Slot {
+pub(super) enum Slot {
     Plain,
     Tint(usize),
     Font(usize),
@@ -164,13 +167,13 @@ impl Slot {
     }
 }
 
-struct Slider {
-    key: &'static str,
-    label: &'static str,
-    range: Range,
-    default: f32,
-    slot: Slot,
-    decimals: usize,
+pub(super) struct Slider {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub range: Range,
+    pub default: f32,
+    pub slot: Slot,
+    pub decimals: usize,
 }
 
 const UNIT: Range = Range {
@@ -179,7 +182,12 @@ const UNIT: Range = Range {
     step: 0.01,
 };
 
-const fn unit(key: &'static str, label: &'static str, default: f32, slot: Slot) -> Slider {
+pub(super) const fn unit(
+    key: &'static str,
+    label: &'static str,
+    default: f32,
+    slot: Slot,
+) -> Slider {
     Slider {
         key,
         label,
@@ -359,11 +367,18 @@ impl Tab {
     }
 }
 
-/// The font box while it edits.
-struct Field {
-    input: Entity<SearchInput>,
+/// Which box is open, and what Enter does with it.
+pub(super) enum FieldKind {
+    Font,
+    Number(&'static advanced::Number),
+}
+
+/// A box while it edits.
+pub(super) struct Field {
+    pub input: Entity<SearchInput>,
     /// The suggestion the arrows landed on.
-    highlighted: Option<usize>,
+    pub highlighted: Option<usize>,
+    pub kind: FieldKind,
 }
 
 struct SaveMessage {
@@ -376,6 +391,8 @@ pub struct Settings {
     /// The config as this screen last read it, with its own changes on top.
     entries: HashMap<String, String>,
     fonts: Vec<String>,
+    /// Windows: the fixed drives that are not the system's.
+    drives: Vec<CandidateDrive>,
     field: Option<Field>,
     /// The open dropdown's key.
     select: Option<&'static str>,
@@ -395,6 +412,7 @@ impl Settings {
             tab: Tab::default(),
             entries: HashMap::new(),
             fonts: Vec::new(),
+            drives: Vec::new(),
             field: None,
             select: None,
             drag: None,
@@ -422,11 +440,32 @@ impl Settings {
         self.drag = None;
     }
 
-    /// Read the file again: on open, and on Ctrl+Shift+; while open.
+    /// Read the file again: on open, and on Ctrl+Shift+; while open. The
+    /// OS owns autostart and PATH, so their switches read the OS, not the
+    /// file, and the drives come along on Windows.
     pub fn reload(&mut self, cx: &mut Context<Launcher>) {
-        bg::fetch(cx, theme::entries, |this, entries, _| {
-            this.settings.entries = entries;
-        });
+        bg::fetch(
+            cx,
+            || {
+                let mut entries = theme::entries();
+                let flag = |on: bool| if on { "true" } else { "false" }.to_string();
+                entries.insert(
+                    advanced::LAUNCH_AT_LOGIN.key.to_string(),
+                    flag(autostart::get_autostart()),
+                );
+                if cfg!(windows) {
+                    entries.insert(
+                        advanced::ADD_TO_PATH.key.to_string(),
+                        flag(cli_path::get_cli_path()),
+                    );
+                }
+                (entries, platform::list_candidate_drives())
+            },
+            |this, (entries, drives), _| {
+                this.settings.entries = entries;
+                this.settings.drives = drives;
+            },
+        );
     }
 
     pub fn hint(&self) -> &'static str {
@@ -456,19 +495,24 @@ impl Settings {
             }
             return KeyOutcome::Consumed;
         }
-        if self.field.is_some() {
-            return match ks.key.as_str() {
-                "escape" => {
+        if let Some(field) = &self.field {
+            let number = match field.kind {
+                FieldKind::Number(spec) => Some(spec),
+                FieldKind::Font => None,
+            };
+            return match (ks.key.as_str(), number) {
+                ("escape", _) => {
                     self.field = None;
                     cx.notify();
                     KeyOutcome::Consumed
                 }
-                "enter" => {
+                ("enter" | "tab", Some(spec)) => self.commit_number(spec, cx),
+                ("enter", None) => {
                     self.commit_font(cx);
                     KeyOutcome::Consumed
                 }
-                "down" => self.move_highlight(1, cx),
-                "up" => self.move_highlight(-1, cx),
+                ("down", None) => self.move_highlight(1, cx),
+                ("up", None) => self.move_highlight(-1, cx),
                 _ => KeyOutcome::Pass,
             };
         }
@@ -650,13 +694,18 @@ impl Settings {
         self.field = Some(Field {
             input,
             highlighted: None,
+            kind: FieldKind::Font,
         });
         cx.notify();
     }
 
     /// The installed families containing what the box holds.
     fn suggestions(&self, cx: &Context<Launcher>) -> Vec<String> {
-        let Some(field) = &self.field else {
+        let Some(field) = self
+            .field
+            .as_ref()
+            .filter(|f| matches!(f.kind, FieldKind::Font))
+        else {
             return Vec::new();
         };
         let needle = field.input.read(cx).text().trim().to_lowercase();
@@ -711,27 +760,41 @@ impl Settings {
     }
 
     /// Save Config: the screen's keys, in one write, then the engine reads
-    /// the file again.
+    /// the file again and the OS takes the startup switches.
     fn save_all(&mut self, cx: &mut Context<Launcher>) {
+        if let Some(field) = &self.field
+            && let FieldKind::Number(spec) = field.kind
+        {
+            self.commit_number(spec, cx);
+        }
         self.field = None;
         self.select = None;
         let updates: Vec<ConfigUpdate> = KEYS
             .iter()
             .copied()
             .chain(SLIDERS.iter().map(|s| s.key))
+            .chain(advanced::keys())
+            .chain(advanced::SLIDERS.iter().map(|s| s.key))
             .map(|key| ConfigUpdate {
                 key: key.to_string(),
                 value: self.get(key).unwrap_or_default().to_string(),
             })
             .collect();
+        let ai_on = self.ai_on();
+        let launch = self.launch_at_login();
+        let add_to_path = self.add_to_path();
         bg::fetch(
             cx,
             move || {
                 config::set_config(updates)?;
                 engine::reload_config(app_state());
+                autostart::set_autostart(launch)?;
+                if cfg!(windows) {
+                    cli_path::set_cli_path(add_to_path)?;
+                }
                 Ok::<(), String>(())
             },
-            |this, result, cx| {
+            move |this, result, cx| {
                 let ok = result.is_ok();
                 if let Err(err) = result {
                     this.banner.show(
@@ -741,6 +804,7 @@ impl Settings {
                         cx,
                     );
                 }
+                this.ai.enabled = ai_on;
                 this.settings.show_saved(ok, cx);
             },
         );
@@ -773,7 +837,8 @@ impl Settings {
     pub fn render(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let body: AnyElement = match self.tab {
             Tab::Appearance => self.appearance(th, cx).into_any_element(),
-            Tab::Advanced | Tab::Shortcuts => div()
+            Tab::Advanced => self.advanced(th, cx).into_any_element(),
+            Tab::Shortcuts => div()
                 .pt(px(HEADER_PADDING_Y))
                 .text_color(th.text_muted)
                 .child(format!("{} {PENDING_TAB}", self.tab.label()))

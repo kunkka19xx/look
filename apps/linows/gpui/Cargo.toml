@@ -26,6 +26,9 @@ uuid = { version = "1", features = ["v4"] }
 raw-window-handle = "0.6"
 # Icons travel from the backend as data URLs, the form the webview takes.
 base64 = "0.22"
+# The background picture is scaled and blurred once into a bitmap; gpui
+# already builds this version for its own decoding.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif"] }
 
 [target.'cfg(windows)'.dependencies]
 # Same version gpui_ce_windows pins, so features unify into one build.
