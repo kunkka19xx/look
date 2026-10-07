@@ -47,7 +47,6 @@ use crate::{Shell, fonts, health, state as app_state};
 
 const PLACEHOLDER: &str = "Search apps, files, actions";
 const HINT_EMPTY: &str = "No match \u{2022} Ctrl+Enter: Search the web";
-const HINT_COMPOSING: &str = "Composing with fcitx5";
 const WEB_SEARCH_URL: &str = "https://www.google.com/search?q=";
 const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=en&text=";
 /// How long a keystroke waits for the next before the query runs; the
@@ -312,7 +311,7 @@ impl Launcher {
     fn search(&mut self, cx: &mut Context<Self>) {
         self.version += 1;
         let version = self.version;
-        let query = self.input.read(cx).committed();
+        let query = self.input.read(cx).text().to_string();
         // A level owns the list: its rows are produced live and are not in
         // the index, so typing filters them rather than searching.
         if self.levels.is_active() {
@@ -436,7 +435,7 @@ impl Launcher {
     /// than read from the selection: the user may have moved on.
     fn descend(&mut self, block_id: String, title: String, parent: Row, cx: &mut Context<Self>) {
         let token = self.levels.begin();
-        let restored_query = self.input.read(cx).committed();
+        let restored_query = self.input.read(cx).text().to_string();
         let restored_selection = Some(parent.id.clone());
         let args = sources::RowArgs {
             candidate_id: parent.id.clone(),
@@ -910,7 +909,7 @@ impl Launcher {
 
     /// Ctrl+Enter: the query as a web search.
     fn search_web(&mut self, cx: &mut Context<Self>) -> bool {
-        let query = self.input.read(cx).committed();
+        let query = self.input.read(cx).text().to_string();
         let trimmed = query.trim();
         if trimmed.is_empty() {
             return true;
@@ -1156,7 +1155,7 @@ impl Launcher {
 
     /// `t"` Enter: the three translations, each landing as it answers.
     fn translate(&mut self, cx: &mut Context<Self>) {
-        let query = self.input.read(cx).committed();
+        let query = self.input.read(cx).text().to_string();
         let (_, term) = Mode::of(&query);
         let text = term.trim().to_string();
         if text.is_empty() {
@@ -2075,13 +2074,7 @@ impl Launcher {
     /// Floating: the list and the preview as two cards with the hint in the
     /// list's foot. Seated: two columns split by a hairline, the hint as a
     /// full-width bar under them.
-    fn results(
-        &mut self,
-        composing: bool,
-        seated: bool,
-        th: &Theme,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn results(&mut self, seated: bool, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let rows = self.rows.clone();
         let row_theme = th.clone();
         let launcher = cx.entity();
@@ -2096,9 +2089,7 @@ impl Launcher {
         .flex_1()
         .min_h_0();
 
-        let hint = if composing {
-            HINT_COMPOSING
-        } else if self.levels.is_active() {
+        let hint = if self.levels.is_active() {
             HINT_LEVEL
         } else if self.rows.is_empty() && self.mode == Mode::Search {
             HINT_EMPTY
@@ -2399,7 +2390,6 @@ impl Render for Launcher {
         let th = theme::get();
         let input = self.input.read(cx);
         let home = input.text().is_empty() && !self.levels.is_active();
-        let composing = input.is_composing();
         let focus_handle = input.focus_handle.clone();
 
         // The field the keys go to: the panel's box while the screen is up.
@@ -2421,7 +2411,7 @@ impl Render for Launcher {
             (true, true, _) => self.bento(&th, cx).into_any_element(),
             (true, false, _) => div().into_any_element(),
             (false, _, Mode::Translate) => self.translate_panel(seated, &th, cx).into_any_element(),
-            (false, _, _) => self.results(composing, seated, &th, cx).into_any_element(),
+            (false, _, _) => self.results(seated, &th, cx).into_any_element(),
         };
         let bar_radius = th.bar_radius();
         let banner = self.banner.render(&th, cx).map(|banner| {

@@ -44,7 +44,8 @@ impl SearchInput {
         &self.text
     }
 
-    /// What a search should see: the committed text without any preedit.
+    /// The text without any preedit, for a field that commits its value.
+    /// Search reads `text()` instead so results follow the preedit too.
     pub fn committed(&self) -> String {
         match &self.marked {
             Some(range) => {
@@ -54,10 +55,6 @@ impl SearchInput {
             }
             None => self.text.clone(),
         }
-    }
-
-    pub fn is_composing(&self) -> bool {
-        self.marked.is_some()
     }
 
     /// The selected byte range, normalised, when it is not empty.
