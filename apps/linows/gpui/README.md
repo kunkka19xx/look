@@ -16,6 +16,8 @@ below under Findings, since the numbers still describe this code.
 | --- | --- |
 | `src/main.rs` | Startup, the backend hooks (`Host`, `LauncherWindow`), the window, the control socket |
 | `src/launcher.rs` | The shell: top bar, launchpad bento, results list, hint bar, keyboard |
+| `src/settings.rs`, `src/controls.rs` | The settings screen and the controls it is built from |
+| `src/elide.rs` | A line that keeps both ends when it does not fit, for paths |
 | `src/search.rs` | Query field. `EntityInputHandler` carries fcitx5 preedit and commits |
 | `src/theme.rs` | The look, resolved from `~/.look/config` the way the webview resolves it |
 | `src/motion.rs` | The motion numbers, copied from the CSS |
@@ -45,14 +47,18 @@ over the `com.look.Desktop` D-Bus call. That name is shared with the Tauri
 shell, so only one of the two owns Alt+Space at a time: quit the installed
 Look to hand the key to this one.
 
-Commands on the socket: `toggle`, `show`, `hide`, `query <text>`, `quit`.
-`query` fills the field directly so a results screenshot needs no typing.
+Commands on the socket: `toggle`, `show`, `hide`, `query <text>`,
+`key <keystroke>`, `click <x> <y>`, `drag <x1> <y1> <x2> <y2>`, `quit`.
+`query` fills the field directly so a results screenshot needs no typing;
+`key ctrl-<` reaches what a chord reaches, `click` and `drag` what the
+pointer reaches, in window pixels, without touching the real one.
 
 Keys: Esc hides, Enter opens the selected row, Ctrl+Enter searches the web
 for the query, Up/Down, Tab/Shift+Tab or Ctrl+N/P move, Ctrl+F reveals the
 row, Ctrl+C copies its path (or the field's selection), Ctrl+V pastes,
 Ctrl+A selects all, Shift with the arrows extends a selection, Ctrl with
 Left/Right jumps words, Ctrl+Backspace or Ctrl+W deletes one, Ctrl+U clears.
+Ctrl+Shift+, opens and closes Settings, Ctrl+Shift+; reads the config again.
 
 Capture eight summon cycles and score them, or measure steady-state pacing.
 Both start a measurement instance beside the launcher in use: with

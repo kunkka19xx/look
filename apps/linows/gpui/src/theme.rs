@@ -45,22 +45,27 @@ pub const CARET_HEIGHT: f32 = 1.2;
 pub const ROW_INSET: f32 = 6.0;
 pub const HINT_INSET: f32 = 4.0;
 pub const HINT_INSET_BOTTOM: f32 = 2.0;
+/// The hint band's leading (`.hint-bar, .pane-footer { line-height: 1.2 }`):
+/// gpui's default is phi, which read as a thicker bar than it is.
+pub const HINT_LINE_HEIGHT: f32 = 1.2;
 const SHADOW_OFFSET_Y: f32 = 3.0;
 const SHADOW_BLUR: f32 = 7.0;
 const SHADOW_ALPHA: f32 = 0.25;
+const DIVIDER_ALPHA: f32 = 0.32;
 
-const DEFAULT_THEME: &str = "kanagawa";
+pub const DEFAULT_THEME: &str = "kanagawa";
 /// Off unless the user turned it on, as the webview reads it.
 const LAUNCHPAD_KEY: &str = "super_actions_enabled";
-const CUSTOM_THEME: &str = "custom";
-const DEFAULT_TINT_OPACITY: f32 = 0.96;
-const DEFAULT_FONT_OPACITY: f32 = 0.96;
-const DEFAULT_BORDER_OPACITY: f32 = 0.5;
-const DEFAULT_BORDER_THICKNESS: f32 = 2.0;
-const DEFAULT_RADIUS_SCALE: f32 = 1.5;
-const DEFAULT_INNER_GAP: f32 = 7.0;
+pub const CUSTOM_THEME: &str = "custom";
+const LAYOUT_KEY: &str = "layout";
+pub const DEFAULT_TINT_OPACITY: f32 = 0.96;
+pub const DEFAULT_FONT_OPACITY: f32 = 0.96;
+pub const DEFAULT_BORDER_OPACITY: f32 = 0.5;
+pub const DEFAULT_BORDER_THICKNESS: f32 = 2.0;
+pub const DEFAULT_RADIUS_SCALE: f32 = 1.5;
+pub const DEFAULT_INNER_GAP: f32 = 7.0;
 /// "Let the theme decide", the config's spelling of no family.
-const SYSTEM_FONT: &str = "system-ui";
+pub const SYSTEM_FONT: &str = "system-ui";
 #[cfg(target_os = "linux")]
 pub const PLATFORM_FONT: &str = "Adwaita Sans";
 #[cfg(not(target_os = "linux"))]
@@ -141,6 +146,73 @@ fn syntax_paper() -> [Rgba; 4] {
         c(122, 116, 105, 1.0),
         c(30, 88, 104, 1.0),
     ]
+}
+
+/// What a custom theme derives around the user's own colours, the macOS
+/// ThemeStore fallbacks: text tones dimmed from the font colour, neutral
+/// fills, the accent as the font colour itself.
+const CUSTOM_SECONDARY_FACTOR: f32 = 0.82;
+const CUSTOM_MUTED_FACTOR: f32 = 0.64;
+const CUSTOM_ACCENT_ALPHA: f32 = 0.95;
+/// Ink on a light custom accent, the dark presets' panel tone.
+const ON_LIGHT_ACCENT: [f32; 3] = [0.10, 0.10, 0.12];
+
+fn luminance(c: Rgba) -> f32 {
+    0.2126 * c.color.red + 0.7152 * c.color.green + 0.0722 * c.color.blue
+}
+
+/// The font colour dimmed towards black, or lightened towards white when
+/// the text is dark (ThemeStore.dimmableColor).
+fn dimmed(text: Rgba, factor: f32) -> Rgba {
+    let (r, g, b) = (text.color.red, text.color.green, text.color.blue);
+    if luminance(text) > 0.5 {
+        Rgba::new(r * factor, g * factor, b * factor, text.alpha)
+    } else {
+        let lift = |c: f32| c + (1.0 - c) * (1.0 - factor);
+        Rgba::new(lift(r), lift(g), lift(b), text.alpha)
+    }
+}
+
+/// The custom palette: the preset's slots, filled from `text`. The accent
+/// is the text colour, so what sits on it takes the opposite pole.
+fn custom_preset(text: Rgba) -> Preset {
+    let accent = Rgba::new(
+        text.color.red,
+        text.color.green,
+        text.color.blue,
+        CUSTOM_ACCENT_ALPHA,
+    );
+    let on_accent = if luminance(accent) > 0.5 {
+        Rgba::new(
+            ON_LIGHT_ACCENT[0],
+            ON_LIGHT_ACCENT[1],
+            ON_LIGHT_ACCENT[2],
+            1.0,
+        )
+    } else {
+        Rgba::new(1.0, 1.0, 1.0, 1.0)
+    };
+    Preset {
+        id: CUSTOM_THEME,
+        tint: [0.0; 3],
+        font: [0.0; 3],
+        border: [0.0; 3],
+        opacities: None,
+        secondary: dimmed(text, CUSTOM_SECONDARY_FACTOR),
+        muted: dimmed(text, CUSTOM_MUTED_FACTOR),
+        panel: Rgba::new(0.10, 0.10, 0.12, 0.30),
+        control: Rgba::new(0.18, 0.18, 0.20, 0.30),
+        selection: Rgba::new(0.50, 0.50, 0.58, 0.25),
+        accent,
+        semantic: [
+            Rgba::new(0.65, 0.90, 0.62, 1.0),
+            Rgba::new(0.96, 0.86, 0.66, 1.0),
+            Rgba::new(0.94, 0.50, 0.55, 1.0),
+        ],
+        on_accent,
+        serif: false,
+        syntax: syntax_dark(),
+    }
 }
 
 /// Built on demand: palette's colour type has no const constructor, and this
@@ -323,16 +395,44 @@ pub struct Theme {
     syntax: [Rgba; 4],
 }
 
+/// The `ui_*` triplets a preset seeds the settings sliders with.
+pub struct PresetColours {
+    pub tint: [f32; 3],
+    pub font: [f32; 3],
+    pub border: [f32; 3],
+    /// Tint, font and border opacity, for the presets that own theirs.
+    pub opacities: Option<[f32; 3]>,
+}
+
+pub fn preset_colours(id: &str) -> PresetColours {
+    let p = preset(id);
+    PresetColours {
+        tint: p.tint,
+        font: p.font,
+        border: p.border,
+        opacities: p.opacities,
+    }
+}
+
+/// The config as the theme reads it: `key=` means unset, not "".
+pub fn entries() -> HashMap<String, String> {
+    config::get_config()
+        .entries
+        .into_iter()
+        .filter(|e| !e.value.is_empty())
+        .map(|e| (e.key, e.value))
+        .collect()
+}
+
 impl Theme {
     /// Read the config and resolve every token. Called at start and on reload.
     pub fn from_config() -> Self {
-        let entries: HashMap<String, String> = config::get_config()
-            .entries
-            .into_iter()
-            // `key=` means unset, not "".
-            .filter(|e| !e.value.is_empty())
-            .map(|e| (e.key, e.value))
-            .collect();
+        Self::from_entries(&entries())
+    }
+
+    /// Resolve every token from a key set: the file's, or the settings
+    /// screen's working copy while a slider moves.
+    pub fn from_entries(entries: &HashMap<String, String>) -> Self {
         let get = |key: &str| entries.get(key).map(String::as_str);
         let num =
             |key: &str, fallback: f32| get(key).and_then(|v| v.parse().ok()).unwrap_or(fallback);
@@ -344,11 +444,9 @@ impl Theme {
             DEFAULT_FONT_OPACITY,
             DEFAULT_BORDER_OPACITY,
         ]);
-        // A custom theme is its keys; a preset ignores stale ones left behind.
+        // The preset is the base and the keys win over it, as the macOS
+        // store reads the file: a tuned preset keeps its name and palette.
         let triplet = |prefix: &str, fallback: [f32; 3]| {
-            if id != CUSTOM_THEME {
-                return fallback;
-            }
             [
                 num(&format!("{prefix}_red"), fallback[0]),
                 num(&format!("{prefix}_green"), fallback[1]),
@@ -362,23 +460,32 @@ impl Theme {
             None if preset.serif => KINDLE_FONT.to_string(),
             None => PLATFORM_FONT.to_string(),
         };
+        let text = rgba(
+            triplet("ui_font", preset.font),
+            num("ui_font_opacity", font_op),
+        );
+        // Custom has no palette of its own; the fallback preset only lends
+        // its triplets to keys the config lacks.
+        let (tint_fallback, border_fallback) = (preset.tint, preset.border);
+        let preset = if id == CUSTOM_THEME {
+            custom_preset(text)
+        } else {
+            preset
+        };
 
         Self {
             tint: rgba(
-                triplet("ui_tint", preset.tint),
+                triplet("ui_tint", tint_fallback),
                 num("ui_tint_opacity", tint_op),
             ),
-            text: rgba(
-                triplet("ui_font", preset.font),
-                num("ui_font_opacity", font_op),
-            ),
+            text,
             text_secondary: preset.secondary,
             text_muted: preset.muted,
             panel_fill: preset.panel,
             control_fill: preset.control,
             selection_fill: preset.selection,
             border: rgba(
-                triplet("ui_border", preset.border),
+                triplet("ui_border", border_fallback),
                 num("ui_border_opacity", border_op),
             ),
             accent: preset.accent,
@@ -392,10 +499,25 @@ impl Theme {
             border_thickness: num("ui_border_thickness", DEFAULT_BORDER_THICKNESS),
             radius_scale: num("ui_surface_radius", DEFAULT_RADIUS_SCALE),
             inner_gap: num("inner_gap", DEFAULT_INNER_GAP),
-            layout: config::launcher_layout(),
+            layout: get(LAYOUT_KEY)
+                .and_then(LauncherLayout::parse)
+                .unwrap_or_default(),
             launchpad: get(LAUNCHPAD_KEY) == Some("true"),
             syntax: preset.syntax,
         }
+    }
+
+    /// Gap above zero: the home screen is floating tiles. At zero it is
+    /// the classic framed panel with hairline dividers.
+    pub fn floating(&self) -> bool {
+        self.inner_gap > 0.0
+    }
+
+    /// The classic panel's hairline (`--divider-color`): the selection
+    /// colour, fainter.
+    pub fn divider(&self) -> Rgba {
+        let c = self.selection_fill;
+        Rgba::new(c.color.red, c.color.green, c.color.blue, DIVIDER_ALPHA)
     }
 
     /// Whether the preview column is shown beside the results.
@@ -457,7 +579,12 @@ static THEME: RwLock<Option<Theme>> = RwLock::new(None);
 
 /// Resolve the config again. Cheap: one file read.
 pub fn load() {
-    *THEME.write().unwrap_or_else(|p| p.into_inner()) = Some(Theme::from_config());
+    install(Theme::from_config());
+}
+
+/// Make `theme` the one every render reads, written to the config or not.
+pub fn install(theme: Theme) {
+    *THEME.write().unwrap_or_else(|p| p.into_inner()) = Some(theme);
 }
 
 /// A snapshot for one render, so every token in a frame agrees.
@@ -467,6 +594,11 @@ pub fn get() -> Theme {
         Some(theme) => theme.clone(),
         None => Theme::from_config(),
     }
+}
+
+/// `c` with no transparency: a popover over content.
+pub fn opaque(c: Rgba) -> Rgba {
+    Rgba::new(c.color.red, c.color.green, c.color.blue, 1.0)
 }
 
 pub fn hsla_of(c: Rgba) -> Hsla {

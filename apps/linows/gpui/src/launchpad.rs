@@ -37,6 +37,10 @@ pub const ROW_H: f32 = 76.0;
 
 // Tile anatomy, from superactions.css.
 const SLOT_PADDING: f32 = 16.0;
+/// The seams between tiles, and the air above the grid: macOS
+/// `Launchpad.gap` and `outerTopPadding`, fixed whatever the inner gap.
+const GAP: f32 = 8.0;
+pub const OUTER_TOP: f32 = 8.0;
 const TILE_GAP: f32 = 10.0;
 const MEDIA_GAP: f32 = 14.0;
 const ACTION_GAP: f32 = 8.0;
@@ -779,7 +783,7 @@ impl Launchpad {
         let Some(layout) = self.layout.clone() else {
             return (0.0, Vec::new());
         };
-        let gap = th.inner_gap;
+        let gap = GAP;
         let cols = f32::from(layout.columns.max(1));
         let rows = f32::from(layout.rows.max(1));
         let inner_w = theme::WINDOW_W - 2.0 * theme::CONTENT_PADDING;
@@ -982,7 +986,7 @@ impl Launchpad {
                     .layout
                     .as_ref()
                     .map_or(1.0, |l| f32::from(l.columns.max(1)));
-                let gap = th.inner_gap;
+                let gap = GAP;
                 let inner_w = theme::WINDOW_W - 2.0 * theme::CONTENT_PADDING;
                 let cell_w = (inner_w - gap * (cols - 1.0)) / cols;
                 let bar_w = 2.0 * cell_w + gap - 2.0 * SLOT_PADDING;

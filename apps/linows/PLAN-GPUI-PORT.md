@@ -524,7 +524,100 @@ path. The Nix package picks the profile up in M8.
 
 ### M6 Settings, help, update
 
-Screen 5, shortcut recorder, update widget.
+Screen 5, shortcut recorder, update widget. Sliced like M5, one PR each:
+
+1. Settings shell, the controls, the Appearance tab, Ctrl+Shift+; reload.
+2. Advanced tab: web answers, background image (an image picker beside
+   `pick::folder`), indexing fields and folder lists, log level, startup,
+   fresh config behind the confirm bar, the Linux rendering switches that
+   still mean something without WebKitGTK.
+3. Shortcuts tab: a key catalog with labels and descriptions that the hint
+   strings and the help overlay read from, the shortcut recorder for
+   `launcher_hotkey` (`hotkey_check`, `launcher_hotkey_state`,
+   `launcher_hotkey_set_active`), the pending notice.
+4. Help overlay on Ctrl+H from the same catalog, and the update widget
+   (the release check moves into the backend, where the webview fetched
+   GitHub from JS).
+
+Slice 1 (2026-10-07): `gpui/src/settings.rs` is the screen, a sibling of
+`command_mode` on the launcher rather than a `COMMAND_ENTRIES` entry, so
+it is in no sidebar and on no Ctrl+digit. Ctrl+Shift+, toggles it from
+anywhere (a command screen is left first, as the webview does), Esc
+leaves it. It draws in the command screen's frame, which became
+`Launcher::screen(body, hint)` for both; the card keeps the blur region
+and the hint footer. While it is up and no box edits, a plain
+`FocusHandle` holds the keys, so typing cannot reach the hidden search
+field through the input handler. `gpui/src/controls.rs` is the control
+set, built once: section header, divider, labelled row, switch, slider,
+select, segmented, text box, button, hint and readout, at the sizes of
+`settings.css`. The slider is a `canvas` with a hitbox; its drag lives
+on the window's mouse events so the thumb follows a pointer that leaves
+the track, and the drag state sits on the screen so a release anywhere
+ends it. The select's list and the font box's suggestions are
+`deferred` absolute children, so the scrolling body cannot clip them,
+and a press outside closes them.
+
+The screen runs the way the macOS ThemeStore runs, not the way the
+webview did: every control edits a working copy of the config that the
+theme follows on the same frame (`Theme::from_entries` resolves a key
+map, `theme::install` makes it the one every render reads), nothing
+touches the file until Save Config writes every key the screen owns in
+one `set_config`, and Esc discards back to the file. The webview wrote
+each key as it changed; on this shell those writes ran on separate
+threads and raced each other, one read-modify-write losing the other's
+key, which was the first thing dogfood hit. Picking a preset copies its
+triplets into the keys and keeps its name, so the sliders tune it under
+its own palette, as `style.apply(to:)` does; only Custom drops the name,
+and the palette then derives from the user's colours the way
+`ThemeStore+Appearance` falls back (text tones dimmed from the font
+colour, neutral fills, the font colour as the accent, the ink on it by
+luminance). Reading the file follows the same store: the named preset is
+the base and the `ui_*` keys win over it, where the webview ignored them
+under a preset. Kindle and Liquid still bring their opacities, Blur
+Style its opacity. Font Name is a box over `SearchInput` with an
+`fc-list` suggestion list (`list_fonts`, fetched once per open), Enter or
+a click away commits, empty means `system-ui`, and `fonts::ensure_family`
+loads what was picked. `settings_blur_multiplier` scales the tint alpha
+of the frame while the screen is up. Running Apps and Super Actions show
+in the split layout only; Animations is saved and read by M7. The
+Advanced and Shortcuts tabs are placeholders. Ctrl+Shift+; reloads the
+theme, the fonts, the engine and, if up, the working copy, with the
+webview's banner.
+
+Dogfood on the seated layout, same day: the preview column scrolled as a
+whole, header included, since each body had the webview's fixed cap and
+the column is a hint bar shorter there. The panel no longer scrolls and
+every body shrinks to the leftover height before anything else moves,
+the webview's `.preview-slot` and the macOS ScrollView. The launchpad's
+seams are macOS `Launchpad.gap`, a fixed 8 under its 8 of air, not the
+inner gap. The hint band has the webview's 1.2 leading in place of
+gpui's phi, and sits on the card edge as macOS's card footer does; the
+seated bar has the hint bar's 4 14 2. Preview info rows elide in the
+middle (`elide.rs`, a shaped line probed by binary search), the macOS
+`.truncationMode(.middle)`, so a path keeps its root and its file name.
+
+The slider takes its release in the frame of the press as well as while
+dragging: the release listener used to exist only once the state said
+dragging, which is the frame after the press, so a quick click never
+got its release and the slider stayed armed, following the pointer to
+whatever was clicked next. The probe socket grew `click <x> <y>` and
+`drag <x1> <y1> <x2> <y2>`, dispatched through `Window::dispatch_event`,
+which is how that was reproduced and checked without touching the
+user's pointer.
+
+The Inner Gap slider at 0 exposed that the shell drew
+floating tiles only (the Platform axis row above asked for the gap 0
+case): `Theme::floating` now gates it, and at 0 with a query the home is
+the classic framed panel of `.launcher-window`, the bar seated as its
+header over a hairline (`Theme::divider`), the list and the preview
+split by one, the hint and copyright in a full-width bar under them;
+the resting home keeps the frosted bar in both modes, as the spec says.
+Verified with screenshots on niri through the
+probe socket: the Appearance tab, the tab cycle, Esc back to home, the
+reload banner, gap 0 with results and with a translate query, and the
+preset, slider, toggle, Save sequence with the file diffed before and
+after. The clicks (sliders, selects, the font box) wait for
+dogfood: the socket sends keys only.
 
 ### M7 Motion pass
 

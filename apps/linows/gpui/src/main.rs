@@ -9,6 +9,8 @@ mod blocks;
 mod blur;
 mod commands;
 mod confirm;
+mod controls;
+mod elide;
 mod fonts;
 mod glyphs;
 mod health;
@@ -29,6 +31,7 @@ mod query;
 mod rows;
 mod running;
 mod search;
+mod settings;
 mod speed;
 mod theme;
 mod todo;
@@ -38,7 +41,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use gpui::{App, AppContext, QuitMode, WindowBounds, WindowOptions, px, size};
+use gpui::{
+    App, AppContext, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
+    PlatformInput, Point, QuitMode, WindowBounds, WindowOptions, point, px, size,
+};
 use linows_backend::health::HealthIssue;
 use linows_backend::host::{ClipForm, Host, LauncherWindow};
 use linows_backend::look_engine::modes as engine_modes;
@@ -59,6 +65,11 @@ pub enum Command {
     /// Dev control: a keystroke handed to the launcher, so a probe can reach
     /// what a key reaches without synthesizing one at the compositor.
     Key(gpui::Keystroke),
+    /// Dev control: a left button press and release, through the window's
+    /// own dispatch, for what only a click reaches. Drag moves between the
+    /// press and the release.
+    Click(Point<Pixels>),
+    Drag(Point<Pixels>, Point<Pixels>),
     /// The index finished a refresh; the open query re-runs.
     Refresh,
     /// The backend's setup problems changed; the sticky notice follows.
@@ -183,6 +194,22 @@ fn serve_commands(tx: async_channel::Sender<Command>) -> std::io::Result<()> {
                     query if query.starts_with("query ") => {
                         Command::Query(query["query ".len()..].to_owned())
                     }
+                    click if click.starts_with("click ") => {
+                        match points(&click["click ".len()..])[..] {
+                            [at] => Command::Click(at),
+                            _ => {
+                                eprintln!("usage: click <x> <y>");
+                                continue;
+                            }
+                        }
+                    }
+                    drag if drag.starts_with("drag ") => match points(&drag["drag ".len()..])[..] {
+                        [from, to] => Command::Drag(from, to),
+                        _ => {
+                            eprintln!("usage: drag <x1> <y1> <x2> <y2>");
+                            continue;
+                        }
+                    },
                     other => {
                         eprintln!("unknown command {other:?}");
                         continue;
@@ -276,12 +303,68 @@ fn with_launcher(cx: &mut App, f: impl Fn(&mut Launcher, &mut gpui::Context<Laun
     }
 }
 
+/// Window pixels, pairwise, from "x y x y ...".
+fn points(text: &str) -> Vec<Point<Pixels>> {
+    let numbers: Vec<f32> = text
+        .split_whitespace()
+        .filter_map(|n| n.parse().ok())
+        .collect();
+    numbers
+        .chunks_exact(2)
+        .map(|pair| point(px(pair[0]), px(pair[1])))
+        .collect()
+}
+
+/// Press at the first point, move through the rest, release at the last.
+fn mouse(cx: &mut App, path: &[Point<Pixels>]) {
+    let (Some(first), Some(last)) = (path.first(), path.last()) else {
+        return;
+    };
+    for handle in cx.windows() {
+        let _ = handle.update(cx, |_, window, cx| {
+            let modifiers = Modifiers::default();
+            let moved = |position, pressed_button| {
+                PlatformInput::MouseMove(MouseMoveEvent {
+                    position,
+                    pressed_button,
+                    modifiers,
+                })
+            };
+            window.dispatch_event(moved(*first, None), cx);
+            window.dispatch_event(
+                PlatformInput::MouseDown(MouseDownEvent {
+                    button: MouseButton::Left,
+                    position: *first,
+                    modifiers,
+                    click_count: 1,
+                    first_mouse: false,
+                }),
+                cx,
+            );
+            for at in &path[1..] {
+                window.dispatch_event(moved(*at, Some(MouseButton::Left)), cx);
+            }
+            window.dispatch_event(
+                PlatformInput::MouseUp(MouseUpEvent {
+                    button: MouseButton::Left,
+                    position: *last,
+                    modifiers,
+                    click_count: 1,
+                }),
+                cx,
+            );
+        });
+    }
+}
+
 fn apply(command: Command, cx: &mut App) {
     match command {
         Command::Query(text) => with_launcher(cx, |launcher, cx| launcher.set_query(&text, cx)),
         Command::Key(keystroke) => {
             with_launcher(cx, |launcher, cx| launcher.press_key(keystroke.clone(), cx))
         }
+        Command::Click(at) => mouse(cx, &[at, at]),
+        Command::Drag(from, to) => mouse(cx, &[from, to]),
         Command::Refresh => with_launcher(cx, |launcher, cx| launcher.refresh(cx)),
         Command::Health(issues) => {
             with_launcher(cx, |launcher, cx| launcher.set_health(issues.clone(), cx))
