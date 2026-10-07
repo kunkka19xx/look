@@ -5,9 +5,11 @@ mod actions;
 mod answers;
 mod banner;
 mod bg;
+mod bgimage;
 mod blocks;
 mod blur;
 mod commands;
+mod config_list;
 mod confirm;
 mod controls;
 mod elide;
@@ -43,7 +45,8 @@ use std::time::Duration;
 
 use gpui::{
     App, AppContext, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
-    PlatformInput, Point, QuitMode, WindowBounds, WindowOptions, point, px, size,
+    PlatformInput, Point, QuitMode, ScrollDelta, ScrollWheelEvent, TouchPhase, WindowBounds,
+    WindowOptions, point, px, size,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::{ClipForm, Host, LauncherWindow};
@@ -70,6 +73,8 @@ pub enum Command {
     /// press and the release.
     Click(Point<Pixels>),
     Drag(Point<Pixels>, Point<Pixels>),
+    /// Dev control: a wheel turn at a point, in lines, for what scrolls.
+    Wheel(Point<Pixels>, f32),
     /// The index finished a refresh; the open query re-runs.
     Refresh,
     /// The backend's setup problems changed; the sticky notice follows.
@@ -203,6 +208,19 @@ fn serve_commands(tx: async_channel::Sender<Command>) -> std::io::Result<()> {
                             }
                         }
                     }
+                    wheel if wheel.starts_with("wheel ") => {
+                        let numbers: Vec<f32> = wheel["wheel ".len()..]
+                            .split_whitespace()
+                            .filter_map(|n| n.parse().ok())
+                            .collect();
+                        match numbers[..] {
+                            [x, y, lines] => Command::Wheel(point(px(x), px(y)), lines),
+                            _ => {
+                                eprintln!("usage: wheel <x> <y> <lines>");
+                                continue;
+                            }
+                        }
+                    }
                     drag if drag.starts_with("drag ") => match points(&drag["drag ".len()..])[..] {
                         [from, to] => Command::Drag(from, to),
                         _ => {
@@ -316,6 +334,22 @@ fn points(text: &str) -> Vec<Point<Pixels>> {
 }
 
 /// Press at the first point, move through the rest, release at the last.
+fn wheel(cx: &mut App, at: Point<Pixels>, lines: f32) {
+    for handle in cx.windows() {
+        let _ = handle.update(cx, |_, window, cx| {
+            window.dispatch_event(
+                PlatformInput::ScrollWheel(ScrollWheelEvent {
+                    position: at,
+                    delta: ScrollDelta::Lines(point(0.0, -lines)),
+                    modifiers: Modifiers::default(),
+                    touch_phase: TouchPhase::Moved,
+                }),
+                cx,
+            );
+        });
+    }
+}
+
 fn mouse(cx: &mut App, path: &[Point<Pixels>]) {
     let (Some(first), Some(last)) = (path.first(), path.last()) else {
         return;
@@ -365,6 +399,7 @@ fn apply(command: Command, cx: &mut App) {
         }
         Command::Click(at) => mouse(cx, &[at, at]),
         Command::Drag(from, to) => mouse(cx, &[from, to]),
+        Command::Wheel(at, lines) => wheel(cx, at, lines),
         Command::Refresh => with_launcher(cx, |launcher, cx| launcher.refresh(cx)),
         Command::Health(issues) => {
             with_launcher(cx, |launcher, cx| launcher.set_health(issues.clone(), cx))

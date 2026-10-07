@@ -5,6 +5,9 @@ Tauri v2 desktop app for **Windows + Linux**. Vanilla HTML/CSS/JS frontend.
 The macOS SwiftUI app (`apps/macos/`) is the design source of truth; this app replicates
 its look, feel, and feature set using web technologies.
 
+The gpui port lives in `gpui/`: `PLAN-GPUI-PORT.md` is the plan and the record of
+what was built, `PORT-GAINS.md` what it does better than the webview or macOS.
+
 ## Architecture
 
 ```

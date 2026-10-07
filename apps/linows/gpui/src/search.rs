@@ -200,6 +200,18 @@ impl SearchInput {
         cx.notify();
     }
 
+    /// A change only when the text differs from `before`: an IME commit
+    /// that lands the same text as its preedit just drops the underline,
+    /// and a search for it would put the selection back at the top after
+    /// the key that committed it moved it.
+    fn changed_from(&mut self, before: &str, cx: &mut Context<Self>) {
+        if self.text == before {
+            cx.notify();
+        } else {
+            self.changed(cx);
+        }
+    }
+
     fn splice(&mut self, range: Range<usize>, new_text: &str) -> usize {
         let range = range.start.min(self.text.len())..range.end.min(self.text.len());
         self.text.replace_range(range.clone(), new_text);
@@ -273,11 +285,12 @@ impl EntityInputHandler for SearchInput {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let before = self.text.clone();
         let start = self.splice(self.target(range_utf16), new_text);
         self.cursor = start + new_text.len();
         self.anchor = None;
         self.marked = None;
-        self.changed(cx);
+        self.changed_from(&before, cx);
     }
 
     fn replace_and_mark_text_in_range(
@@ -288,12 +301,13 @@ impl EntityInputHandler for SearchInput {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let before = self.text.clone();
         let start = self.splice(self.target(range_utf16), new_text);
         let end = start + new_text.len();
         self.anchor = None;
         self.marked = (!new_text.is_empty()).then_some(start..end);
         self.cursor = end;
-        self.changed(cx);
+        self.changed_from(&before, cx);
     }
 
     fn bounds_for_range(

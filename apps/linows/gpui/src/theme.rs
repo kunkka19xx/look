@@ -4,6 +4,7 @@
 //! keys alone.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::RwLock;
 
 use gpui::{BoxShadow, Hsla, Rgba, hsla, point, px};
@@ -58,6 +59,16 @@ pub const DEFAULT_THEME: &str = "kanagawa";
 const LAUNCHPAD_KEY: &str = "super_actions_enabled";
 pub const CUSTOM_THEME: &str = "custom";
 const LAYOUT_KEY: &str = "layout";
+pub const BG_IMAGE_KEY: &str = "ui_bg_image";
+pub const BG_LAYOUT_KEY: &str = "ui_bg_layout";
+pub const BG_OPACITY_KEY: &str = "ui_bg_opacity";
+pub const BG_BLUR_KEY: &str = "ui_bg_blur";
+pub const DEFAULT_BG_OPACITY: f32 = 0.62;
+pub const DEFAULT_BG_BLUR: f32 = 10.3;
+/// Behind-window frost: unset means on only where it has been seen to
+/// render right, which is KWin today. niri answers with xray blur, one
+/// frozen copy of the wallpaper behind every window.
+pub const COMPOSITOR_BLUR_KEY: &str = "ui_compositor_blur";
 pub const DEFAULT_TINT_OPACITY: f32 = 0.96;
 pub const DEFAULT_FONT_OPACITY: f32 = 0.96;
 pub const DEFAULT_BORDER_OPACITY: f32 = 0.5;
@@ -368,6 +379,43 @@ fn preset(id: &str) -> Preset {
     all.swap_remove(at)
 }
 
+/// How `ui_bg_image` fills the window, the webview's `background-size`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum BgLayout {
+    /// Natural size, centred.
+    Center,
+    /// Scaled to cover, edges cropped.
+    #[default]
+    Fill,
+    /// Scaled to the window's exact size.
+    Stretch,
+    /// Natural size, tiled.
+    Duplicate,
+}
+
+impl BgLayout {
+    pub const ALL: [BgLayout; 4] = [
+        BgLayout::Center,
+        BgLayout::Fill,
+        BgLayout::Stretch,
+        BgLayout::Duplicate,
+    ];
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|l| l.key() == value)
+    }
+
+    /// The config spelling.
+    pub fn key(self) -> &'static str {
+        match self {
+            BgLayout::Center => "center",
+            BgLayout::Fill => "fill",
+            BgLayout::Stretch => "stretch",
+            BgLayout::Duplicate => "duplicate",
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Theme {
     pub tint: Rgba,
@@ -392,6 +440,14 @@ pub struct Theme {
     pub layout: LauncherLayout,
     /// `super_actions_enabled`: whether the empty query shows the launchpad.
     pub launchpad: bool,
+    /// `ui_bg_image`: a picture under the cards, above the tint.
+    pub bg_image: Option<PathBuf>,
+    pub bg_layout: BgLayout,
+    pub bg_opacity: f32,
+    /// In pixels, the webview's `filter: blur()`.
+    pub bg_blur: f32,
+    /// `ui_compositor_blur`: whether the frost behind the window is wanted.
+    pub compositor_blur: bool,
     syntax: [Rgba; 4],
 }
 
@@ -411,6 +467,18 @@ pub fn preset_colours(id: &str) -> PresetColours {
         font: p.font,
         border: p.border,
         opacities: p.opacities,
+    }
+}
+
+/// Where an unset `ui_compositor_blur` lands.
+pub fn compositor_blur_default() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        linows_backend::platform::linux::wm::is_kde()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
     }
 }
 
@@ -503,8 +571,24 @@ impl Theme {
                 .and_then(LauncherLayout::parse)
                 .unwrap_or_default(),
             launchpad: get(LAUNCHPAD_KEY) == Some("true"),
+            bg_image: get(BG_IMAGE_KEY).map(PathBuf::from),
+            bg_layout: get(BG_LAYOUT_KEY)
+                .and_then(BgLayout::parse)
+                .unwrap_or_default(),
+            bg_opacity: num(BG_OPACITY_KEY, DEFAULT_BG_OPACITY),
+            bg_blur: num(BG_BLUR_KEY, DEFAULT_BG_BLUR),
+            compositor_blur: match get(COMPOSITOR_BLUR_KEY) {
+                Some(set) => set != "false",
+                None => compositor_blur_default(),
+            },
             syntax: preset.syntax,
         }
+    }
+
+    /// Frost actually behind the window: granted by the compositor and
+    /// wanted by the user.
+    pub fn frosted(&self) -> bool {
+        self.compositor_blur && crate::blur::is_supported()
     }
 
     /// Gap above zero: the home screen is floating tiles. At zero it is
@@ -562,7 +646,7 @@ impl Theme {
     /// Off under a compositor blur: any shadow pixel in a gap would be frosted
     /// with it (shadow or blur, not both, as the macOS material).
     pub fn card_shadow(&self) -> Vec<BoxShadow> {
-        if crate::blur::is_supported() {
+        if self.frosted() {
             return Vec::new();
         }
         vec![BoxShadow {
