@@ -209,6 +209,14 @@ jobs:
       - name: Test (ffi crate)
         run: cargo test --manifest-path bridge/ffi/Cargo.toml
 
+      - name: Build x86_64-apple-darwin slice (cross)
+        if: runner.os == 'macOS'
+        run: |
+          rustup toolchain install nightly --profile minimal
+          rustup target add x86_64-apple-darwin --toolchain nightly
+          cargo +nightly build --target x86_64-apple-darwin --workspace --manifest-path core/Cargo.toml
+          cargo +nightly build --target x86_64-apple-darwin --manifest-path bridge/ffi/Cargo.toml
+
   build:
     name: build
     runs-on: ubuntu-latest

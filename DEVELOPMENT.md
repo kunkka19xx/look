@@ -41,7 +41,7 @@ Guide for building Look locally and contributing to the project.
 
 Common:
 
-- Rust stable toolchain (for the core engine and FFI bridge)
+- Rust stable toolchain (for the core engine) plus the **nightly** toolchain (the macOS "Build Rust FFI" phase builds with `cargo +nightly`)
 - GNU Make (top-level `Makefile` dispatches to `scripts/Makefile.mac` or `scripts/Makefile.win` based on host OS)
 
 macOS:
@@ -74,6 +74,83 @@ cd bridge/ffi
 cargo check
 cargo test
 ```
+
+macOS architectures:
+
+Releases ship **one asset per architecture**, not a universal binary. `Look.app`
+is 98.9% Mach-O (a 28 MB executable against 316 KB of resources), so a fat
+binary would roughly double every Apple Silicon download to carry a slice those
+users never execute.
+
+| asset | architecture |
+| --- | --- |
+| `Look-<version>-macOS.zip` | arm64 |
+| `Look-<version>-macOS-x86_64.zip` | x86_64 |
+
+Build either locally, from the repo root:
+
+```bash
+./scripts/release-macos-app.sh 0.1.1               # arm64, the default
+ARCHS=x86_64 ./scripts/release-macos-app.sh 0.1.1  # Intel
+```
+
+The script pins `-destination "generic/platform=macOS"` ("Any Mac") and passes
+`ARCHS` explicitly. Without the destination, `xcodebuild` resolves the concrete
+"My Mac" destination and filters `ARCHS` down to the host arch, which is why
+every release before 0.7.2 was arm64 only. It then asserts the built binary is
+exactly the requested slice, so a collapsed build fails instead of shipping.
+
+Cross-compiling to Intel needs the target on the **nightly** toolchain, because
+that is what the FFI phase uses:
+
+```bash
+rustup target add x86_64-apple-darwin --toolchain nightly
+```
+
+Standalone cargo targets, for checking a cross break without a full app build:
+
+```bash
+make core-build-x86_64   # core workspace for x86_64-apple-darwin (release)
+make ffi-build-x86_64    # ffi crate for x86_64-apple-darwin (release)
+```
+
+**The Rust FFI phase.** `apps/macos/LauncherApp/build-rust-ffi.sh` builds the
+ffi crate for whatever `$ARCHS` Xcode is building and leaves the result at
+`RustBuild/liblook_ffi.a`. When `$ARCHS` is a single arch and it matches your
+host, which is every Debug dev loop, it builds without `--target` and keeps
+`bridge/ffi/target/<profile>` as its only cargo cache, so an Apple Silicon dev
+loop needs no cross target installed and no second cache. Anything else builds
+per slice with `--target` and `lipo`s them, which is what an Xcode GUI build
+against "Any Mac" asks for.
+
+A failed cross slice is fatal. Only a host-arch Debug build falls back to
+reusing the previous `liblook_ffi.a`, and it says so:
+
+```
+warning: Rust build skipped; using existing RustBuild/liblook_ffi.a
+```
+
+If you see that during an `xcodebuild` run, find the real cargo error by running
+the phase standalone:
+
+```bash
+cd apps/macos/LauncherApp && CONFIGURATION=Debug PROJECT_DIR="$PWD" ./build-rust-ffi.sh
+```
+
+**Release builds are stripped.** Release sets `STRIP_INSTALLED_PRODUCT` with
+`STRIP_STYLE = all`, which takes the binary from 28.1 MB to 14.4 MB because
+`__LINKEDIT` alone was 14.7 MB of local and debug symbols from the Rust
+staticlib. `DEBUG_INFORMATION_FORMAT` is `dwarf-with-dsym`, so the dSYM in
+DerivedData is what symbolicates a crash report. Debug builds are not stripped,
+and `make symbols` inspects the Debug build, so it keeps working. Stripping
+invalidates a code signature, so Xcode strips before it signs and the release
+workflow re-signs afterwards.
+
+**FFI phase sandboxing.** The Look target sets
+`ENABLE_USER_SCRIPT_SANDBOXING = NO`: Xcode's user-script sandbox refuses to
+read repo files, including the phase script itself, so cargo cannot run
+sandboxed. The FFI phase is the only shell phase in the project, so the opt-out
+is scoped to it.
 
 Linows (Tauri) dev run: `cd apps/linows && cargo tauri dev` (release: `cargo tauri build`; on NixOS prefix with `nix develop -c`). Per-distro and Windows `vcvars` specifics are in [apps/linows/BUILDING.md](apps/linows/BUILDING.md).
 
@@ -156,13 +233,20 @@ Benchmark snapshots land under [docs/bench-notes/](docs/bench-notes/). Add a new
 
 ## Releasing (maintainers)
 
-Build release artifacts:
+Build release artifacts. Each call produces one architecture; release CI runs
+both in parallel:
 
 ```bash
-./scripts/build-release.sh 1.0.0
+./scripts/build-release.sh 1.0.0                # arm64
+ARCHS=x86_64 ./scripts/build-release.sh 1.0.0   # Intel
 ```
 
 The Homebrew cask lives in [homebrew/cask](https://github.com/Homebrew/homebrew-cask/blob/main/Casks/l/look.rb). BrewTestBot bumps it automatically after a GitHub release; if it misses one, run `brew bump-cask-pr --version <version> look`. Other changes (artifact names, minimum macOS, zap paths) need a regular pull request editing the cask.
+
+The cask currently has a single `url` and `sha256` pointing at the arm64 asset,
+so Intel users who run `brew install --cask look` get an arm64 build that
+cannot launch. Serving them needs `on_arm` and `on_intel` stanzas, which is a
+manual cask pull request; BrewTestBot's auto-bump keeps working afterwards.
 
 Signing and notarization:
 
