@@ -18,6 +18,7 @@ use linows_backend::process::ProcDetail;
 use linows_backend::{clipboard, files, launch, process};
 
 use crate::Shell;
+use crate::elide::middle_elided;
 use crate::glyphs;
 use crate::icons::{self, IconRequest, IconStore};
 use crate::modes::Mode;
@@ -147,7 +148,6 @@ pub struct Preview {
     cache: HashMap<String, Arc<Content>>,
     /// The row the panel is waiting on; an answer for another is dropped.
     wanted: Option<String>,
-    scroll: ScrollHandle,
     /// The body's own scroll, reset per row.
     body_scroll: ScrollHandle,
     /// The CPU reading of the process on screen, by pid, so a sample for a
@@ -165,7 +165,6 @@ impl Preview {
             current: None,
             cache: HashMap::new(),
             wanted: None,
-            scroll: ScrollHandle::new(),
             body_scroll: ScrollHandle::new(),
             cpu: None,
             _load: None,
@@ -231,7 +230,6 @@ impl Preview {
         if let Some(content) = self.cache.get(&key) {
             self.current = Some((key, content.clone()));
             self.wanted = None;
-            self.scroll.set_offset(Default::default());
             self.body_scroll.set_offset(Default::default());
             cx.notify();
             return;
@@ -254,7 +252,6 @@ impl Preview {
                 this.cache.insert(key.clone(), content.clone());
                 this.current = Some((key, content));
                 this.wanted = None;
-                this.scroll.set_offset(Default::default());
                 this.body_scroll.set_offset(Default::default());
                 cx.notify();
             });
@@ -262,12 +259,14 @@ impl Preview {
     }
 
     pub fn render_in(&mut self, th: &Theme, cx: &mut Context<Self>) -> Stateful<Div> {
+        // The panel never scrolls: the body gives way to the rows under it,
+        // as the webview's `.preview-slot` and the macOS ScrollView do, so
+        // the header and the metadata stay wherever the column ends.
         let panel = div()
             .id("preview")
             .size_full()
             .p(px(theme::CONTENT_PADDING))
-            .overflow_y_scroll()
-            .track_scroll(&self.scroll)
+            .overflow_hidden()
             .flex()
             .flex_col();
         let Some((_, content)) = self.current.clone() else {
@@ -291,6 +290,7 @@ impl Preview {
                         div()
                             .id("clip-text")
                             .max_h(px(CLIP_CARD_MAX_H))
+                            .min_h_0()
                             .overflow_y_scroll()
                             .track_scroll(&self.body_scroll)
                             .p(px(CODE_PADDING))
@@ -313,6 +313,7 @@ impl Preview {
                     Some(image) => div()
                         .mb(px(CLIP_LABEL_MARGIN_TOP))
                         .max_h(px(CLIP_IMAGE_MAX_H + 2.0 * CODE_PADDING))
+                        .min_h_0()
                         .p(px(CODE_PADDING))
                         .rounded(px(th.control_radius()))
                         .bg(th.control_fill)
@@ -421,6 +422,7 @@ impl Preview {
                         div()
                             .id("proc-cmd")
                             .max_h(px(CLIP_CARD_MAX_H))
+                            .min_h_0()
                             .overflow_y_scroll()
                             .track_scroll(&self.body_scroll)
                             .p(px(CODE_PADDING))
@@ -464,6 +466,7 @@ impl Preview {
                         div()
                             .id("block-preview")
                             .max_h(px(CLIP_CARD_MAX_H))
+                            .min_h_0()
                             .overflow_y_scroll()
                             .track_scroll(&self.body_scroll)
                             .p(px(CODE_PADDING))
@@ -607,6 +610,7 @@ impl Preview {
             Body::None => div().into_any_element(),
             Body::Image(path) => div()
                 .mt(px(BODY_MARGIN))
+                .min_h_0()
                 .flex()
                 .justify_center()
                 .child(
@@ -637,6 +641,7 @@ impl Preview {
                 div()
                     .mt(px(BODY_MARGIN))
                     .max_h(px(BODY_MAX_H))
+                    .min_h_0()
                     .rounded(px(th.control_radius()))
                     .bg(th.control_fill)
                     .flex()
@@ -688,6 +693,7 @@ impl Preview {
                     .id("folder-list")
                     .mt(px(BODY_MARGIN))
                     .max_h(px(BODY_MAX_H))
+                    .min_h_0()
                     .overflow_y_scroll()
                     .track_scroll(&self.body_scroll)
                     .p(px(FOLDER_PADDING))
@@ -1095,8 +1101,7 @@ fn info_rows(info: &[(&'static str, String)], th: &Theme) -> Div {
                         .min_w_0()
                         .text_size(px(th.font_size - 1.0))
                         .text_color(th.text_secondary)
-                        .truncate()
-                        .child(value.clone()),
+                        .child(middle_elided(value.clone())),
                 ),
         );
     }

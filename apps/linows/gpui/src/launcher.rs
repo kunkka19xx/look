@@ -31,7 +31,7 @@ use crate::commands::{self, Commands, KeyOutcome};
 use crate::confirm::{Confirm, OnYes};
 use crate::glyphs;
 use crate::icons::{IconRequest, IconStore};
-use crate::launchpad::{Launchpad, Notice, Tone};
+use crate::launchpad::{self, Launchpad, Notice, Tone};
 use crate::levels::{self, Levels};
 use crate::modes::Mode;
 use crate::motion;
@@ -41,12 +41,12 @@ use crate::query;
 use crate::rows::{Icon, Open, Row};
 use crate::running::RunningApps;
 use crate::search::{Changed, SearchInput, search_field};
+use crate::settings::{self, Settings};
 use crate::theme::{self, Theme};
-use crate::{Shell, health, state as app_state};
+use crate::{Shell, fonts, health, state as app_state};
 
 const PLACEHOLDER: &str = "Search apps, files, actions";
 const HINT_EMPTY: &str = "No match \u{2022} Ctrl+Enter: Search the web";
-const HINT_COMPOSING: &str = "Composing with fcitx5";
 const WEB_SEARCH_URL: &str = "https://www.google.com/search?q=";
 const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=en&text=";
 /// How long a keystroke waits for the next before the query runs; the
@@ -75,6 +75,9 @@ const CLIP_DELETED: &str = "Clipboard item deleted";
 const CLIP_IMAGE_DELETED: &str = "Image removed from history";
 const HINT_LEVEL: &str = "Enter: Open \u{2022} Ctrl+K: Actions \u{2022} Esc: Back";
 const HINT_SEP: &str = " \u{2022} ";
+/// macOS `stackedContentGap`: the seam between the bar and what stacks
+/// under it when nothing floats.
+const STACKED_CONTENT_GAP: f32 = 12.0;
 /// The results footer's Todo tally, the webview's `.hint-todo`: it takes
 /// the hint's last slot, and hovering it lists what is left today.
 const TODO_HINT_GAP: f32 = 4.0;
@@ -140,6 +143,9 @@ pub struct Launcher {
     pub(crate) commands: Commands,
     /// The command screen is up: it owns the window and the keys.
     command_mode: bool,
+    pub(crate) settings: Settings,
+    /// Ctrl+Shift+, : the settings screen is up, in the command screen's frame.
+    settings_open: bool,
     levels: Levels,
     /// A selection to put back once the rows it names are on screen, and
     /// the query it was captured under: a level was just left.
@@ -204,6 +210,8 @@ impl Launcher {
             ai: AiAnswer::default(),
             commands: Commands::new(command_input),
             command_mode: false,
+            settings: Settings::new(cx),
+            settings_open: false,
             levels: Levels::default(),
             pending_restore: None,
             menu_token: 0,
@@ -303,7 +311,7 @@ impl Launcher {
     fn search(&mut self, cx: &mut Context<Self>) {
         self.version += 1;
         let version = self.version;
-        let query = self.input.read(cx).committed();
+        let query = self.input.read(cx).text().to_string();
         // A level owns the list: its rows are produced live and are not in
         // the index, so typing filters them rather than searching.
         if self.levels.is_active() {
@@ -427,7 +435,7 @@ impl Launcher {
     /// than read from the selection: the user may have moved on.
     fn descend(&mut self, block_id: String, title: String, parent: Row, cx: &mut Context<Self>) {
         let token = self.levels.begin();
-        let restored_query = self.input.read(cx).committed();
+        let restored_query = self.input.read(cx).text().to_string();
         let restored_selection = Some(parent.id.clone());
         let args = sources::RowArgs {
             candidate_id: parent.id.clone(),
@@ -498,6 +506,34 @@ impl Launcher {
     fn handle_key(&mut self, ks: &gpui::Keystroke, cx: &mut Context<Self>) {
         let ctrl = ks.modifiers.control;
         let shift = ks.modifiers.shift;
+        // A shifted symbol reaches here as the symbol with shift dropped
+        // (`<`, `:`); the socket's parser keeps shift on the base key.
+        if ctrl && (ks.key == "<" || (shift && ks.key == ",")) {
+            self.toggle_settings(cx);
+            cx.stop_propagation();
+            return;
+        }
+        if ctrl && (ks.key == ":" || (shift && ks.key == ";")) {
+            self.reload_config(cx);
+            cx.stop_propagation();
+            return;
+        }
+        // The settings screen owns every key, as the webview's does.
+        if self.settings_open {
+            match self.settings.handle_key(ks, cx) {
+                KeyOutcome::Consumed => cx.stop_propagation(),
+                KeyOutcome::Exit => {
+                    self.close_settings(cx);
+                    cx.stop_propagation();
+                }
+                KeyOutcome::Pass => {
+                    if self.field_key(ks, cx) {
+                        cx.stop_propagation();
+                    }
+                }
+            }
+            return;
+        }
         // Alt+digit: a running app.
         if ks.modifiers.alt
             && !ctrl
@@ -640,7 +676,11 @@ impl Launcher {
 
     /// The field the keys edit right now.
     fn field(&self) -> Entity<SearchInput> {
-        if self.command_mode {
+        if self.settings_open {
+            self.settings
+                .editing_field()
+                .unwrap_or_else(|| self.input.clone())
+        } else if self.command_mode {
             self.commands
                 .editing_field()
                 .unwrap_or_else(|| self.commands.input().clone())
@@ -656,6 +696,74 @@ impl Launcher {
     ) -> bool {
         self.field().update(cx, op);
         true
+    }
+
+    /// Where the keys land: the settings screen's own handle while no box
+    /// there edits, else the field.
+    fn focus_target(&self, cx: &gpui::App) -> gpui::FocusHandle {
+        if self.settings_open && self.settings.editing_field().is_none() {
+            self.settings.focus_handle()
+        } else {
+            self.field().read(cx).focus_handle.clone()
+        }
+    }
+
+    // --- Settings ----------------------------------------------------------------
+
+    fn toggle_settings(&mut self, cx: &mut Context<Self>) {
+        if self.settings_open {
+            self.close_settings(cx);
+        } else {
+            self.open_settings(cx);
+        }
+    }
+
+    /// Opens over whatever was up; a command screen is left first, as the
+    /// webview does.
+    fn open_settings(&mut self, cx: &mut Context<Self>) {
+        if self.command_mode {
+            self.exit_command_mode(cx);
+        }
+        self.close_menu();
+        self.ai.cancel();
+        self.confirm = None;
+        self.translation = None;
+        self.settings_open = true;
+        self.settings.enter(cx);
+        cx.notify();
+    }
+
+    /// Esc discards what was not saved: the file is the theme again.
+    fn close_settings(&mut self, cx: &mut Context<Self>) {
+        self.settings.leave();
+        self.settings_open = false;
+        theme::load();
+        self.set_query("", cx);
+        cx.notify();
+    }
+
+    /// Ctrl+Shift+; : the file was edited by hand. The theme, the fonts and
+    /// the engine read it again; the settings screen, if up, too.
+    fn reload_config(&mut self, cx: &mut Context<Self>) {
+        theme::load();
+        fonts::ensure_family(cx, &theme::get().font_family);
+        if self.settings_open {
+            self.settings.reload(cx);
+        }
+        self.running.refresh(cx);
+        bg::fetch(
+            cx,
+            || engine::reload_config(app_state()),
+            |this, _, cx| {
+                this.banner.show(
+                    settings::RELOADED.to_string(),
+                    Tone::Info,
+                    settings::RELOADED_SECS,
+                    cx,
+                );
+            },
+        );
+        cx.notify();
     }
 
     // --- Command screen --------------------------------------------------------
@@ -801,7 +909,7 @@ impl Launcher {
 
     /// Ctrl+Enter: the query as a web search.
     fn search_web(&mut self, cx: &mut Context<Self>) -> bool {
-        let query = self.input.read(cx).committed();
+        let query = self.input.read(cx).text().to_string();
         let trimmed = query.trim();
         if trimmed.is_empty() {
             return true;
@@ -1047,7 +1155,7 @@ impl Launcher {
 
     /// `t"` Enter: the three translations, each landing as it answers.
     fn translate(&mut self, cx: &mut Context<Self>) {
-        let query = self.input.read(cx).committed();
+        let query = self.input.read(cx).text().to_string();
         let (_, term) = Mode::of(&query);
         let text = term.trim().to_string();
         if text.is_empty() {
@@ -1547,6 +1655,29 @@ impl Launcher {
     /// The command screen: one framed card under the banner slot, the
     /// sidebar and panel inside, the hint as its footer.
     fn command_screen(&mut self, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        let body = self.commands.render(&self.icons, th, cx).into_any_element();
+        let hint = self.commands.hint();
+        self.screen(body, hint, th, cx)
+    }
+
+    /// The settings screen in the same frame, its tint share applied.
+    fn settings_screen(&mut self, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut th = th.clone();
+        th.tint.alpha *= self.settings.tint_share();
+        let body = self.settings.render(&th, cx).into_any_element();
+        let hint = self.settings.hint();
+        self.screen(body, hint, &th, cx)
+    }
+
+    /// A full-window screen: one framed card under the banner slot, `body`
+    /// inside, the hint as its footer.
+    fn screen(
+        &mut self,
+        body: AnyElement,
+        hint: &'static str,
+        th: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let radius = th.tile_radius();
         let bar_radius = th.bar_radius();
         let banner = self.banner.render(th, cx).map(|banner| {
@@ -1554,11 +1685,9 @@ impl Launcher {
                 .on_children_prepainted(move |cards, _, _| mark_cards(&cards, bar_radius))
                 .child(banner)
         });
-        let body = self.commands.render(&self.icons, th, cx);
-        let hint = self.commands.hint();
         // The focused field (the panel's box, or a row's open field) is where
         // the keys dispatch from, so this root must track that handle.
-        let focus_handle = self.field().read(cx).focus_handle.clone();
+        let focus_handle = self.focus_target(cx);
         div()
             .size_full()
             .font_family(th.font_family.clone())
@@ -1592,23 +1721,21 @@ impl Launcher {
                                     .px(px(theme::ROW_PADDING_X + theme::ROW_INSET))
                                     .pt(px(theme::HINT_INSET))
                                     .pb(px(theme::HINT_INSET_BOTTOM + theme::ROW_INSET))
+                                    .line_height(px(hint_line_height(th)))
                                     .flex()
                                     .items_center()
                                     .justify_between()
                                     .child(muted_text(hint, th))
-                                    .child(
-                                        div()
-                                            .text_size(px(COPYRIGHT_SIZE))
-                                            .text_color(th.text_muted)
-                                            .opacity(COPYRIGHT_OPACITY)
-                                            .child(COPYRIGHT),
-                                    ),
+                                    .child(copyright(th)),
                             ),
                     ),
             )
     }
 
-    fn top_bar(&mut self, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Floating, the bar is its own frosted tile; seated (gap 0 with a
+    /// query), it is the framed panel's header, flush, with a hairline
+    /// under it, the inset moved into its padding so the text keeps its place.
+    fn top_bar(&mut self, seated: bool, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let bar_h = theme::TOP_ROW_HEIGHT + 2.0 * theme::INPUT_PADDING_Y;
         let crumbs = self.levels.breadcrumb();
         let placeholder = if crumbs.is_empty() { PLACEHOLDER } else { "" };
@@ -1616,16 +1743,25 @@ impl Launcher {
         let strip = (th.split() && self.mode != Mode::Translate)
             .then(|| self.running.render(&self.icons, th, cx))
             .flatten();
-        let bar = card(div(), th)
+        let bar = div()
+            .map(|el| {
+                if seated {
+                    el.px(px(theme::ROW_INSET + theme::INPUT_PADDING_X))
+                        .border_b(px(1.0))
+                        .border_color(th.divider())
+                } else {
+                    card(el, th)
+                        .px(px(theme::INPUT_PADDING_X))
+                        .rounded(px(th.bar_radius()))
+                }
+            })
             .absolute()
             .left_0()
             .right_0()
             .h(px(bar_h))
-            .px(px(theme::INPUT_PADDING_X))
             .flex()
             .items_center()
             .gap(px(theme::SEARCH_GAP))
-            .rounded(px(th.bar_radius()))
             .text_size(px(th.font_size + 1.0))
             .child(
                 svg()
@@ -1652,9 +1788,12 @@ impl Launcher {
         div()
             .relative()
             .h(px(bar_h))
-            .mx(px(theme::CONTENT_PADDING))
-            .mt(px(theme::CONTENT_PADDING))
-            .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
+            .flex_shrink_0()
+            .when(!seated, |el| {
+                el.mx(px(theme::CONTENT_PADDING))
+                    .mt(px(theme::CONTENT_PADDING))
+                    .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
+            })
             .child(
                 bar.with_animation("top-bar", Animation::new(spawn), |bar, t| {
                     let t = motion::curve(t);
@@ -1671,10 +1810,17 @@ impl Launcher {
             .launchpad
             .update(cx, |launchpad, cx| launchpad.tiles_in(th, cx));
         let radius = th.tile_radius();
+        // Under the bar by the content gap (the inner gap floating, the
+        // seated stack's seam otherwise), then the grid's own air on top.
+        let seam = if th.floating() {
+            th.inner_gap
+        } else {
+            STACKED_CONTENT_GAP
+        };
         div()
             .relative()
             .mx(px(theme::CONTENT_PADDING))
-            .mt(px(th.inner_gap))
+            .mt(px(seam + launchpad::OUTER_TOP))
             .h(px(grid_h))
             .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
             .children(tiles)
@@ -1687,7 +1833,8 @@ impl Launcher {
         let base = div()
             .px(px(theme::ROW_PADDING_X))
             .pt(px(theme::HINT_INSET))
-            .pb(px(theme::HINT_INSET_BOTTOM));
+            .pb(px(theme::HINT_INSET_BOTTOM))
+            .line_height(px(hint_line_height(th)));
         let home_context = self.mode == Mode::Search && !self.levels.is_active();
         let (done, total, open) = {
             let (done, total, open) = self.launchpad.read(cx).todo_today();
@@ -1767,7 +1914,7 @@ impl Launcher {
 
     /// Whether the empty query is showing, launchpad or not.
     fn on_home(&self, cx: &gpui::App) -> bool {
-        self.input.read(cx).text().is_empty()
+        !self.command_mode && !self.settings_open && self.input.read(cx).text().is_empty()
     }
 
     fn row(&self, i: usize, row: &Row, th: &Theme, cx: &mut Context<Self>) -> AnyElement {
@@ -1924,7 +2071,10 @@ impl Launcher {
         }
     }
 
-    fn results(&mut self, composing: bool, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Floating: the list and the preview as two cards with the hint in the
+    /// list's foot. Seated: two columns split by a hairline, the hint as a
+    /// full-width bar under them.
+    fn results(&mut self, seated: bool, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let rows = self.rows.clone();
         let row_theme = th.clone();
         let launcher = cx.entity();
@@ -1939,9 +2089,7 @@ impl Launcher {
         .flex_1()
         .min_h_0();
 
-        let hint = if composing {
-            HINT_COMPOSING
-        } else if self.levels.is_active() {
+        let hint = if self.levels.is_active() {
             HINT_LEVEL
         } else if self.rows.is_empty() && self.mode == Mode::Search {
             HINT_EMPTY
@@ -1951,17 +2099,16 @@ impl Launcher {
 
         // One floating card: rows, then the hint as the card's own footer.
         let radius = th.tile_radius();
-        let results_card = card(div(), th)
+        let results_card = div()
+            .when(!seated, |el| card(el, th).rounded(px(radius)))
             .px(px(theme::ROW_INSET))
             .pt(px(theme::ROW_INSET))
-            .pb(px(theme::HINT_INSET_BOTTOM))
             .flex_1()
             .min_w_0()
             .min_h_0()
             .flex()
             .flex_col()
             .gap(px(theme::ROW_SPACING))
-            .rounded(px(radius))
             .children(
                 self.ai
                     .render(th, cx)
@@ -1974,7 +2121,7 @@ impl Launcher {
                     card.child(list)
                 }
             })
-            .child(self.footer(hint, th, cx));
+            .when(!seated, |card| card.child(self.footer(hint, th, cx)));
         // Split: the preview floats beside the list as its own card, except
         // for the menus, whose rows have nothing to describe.
         let preview_card = (th.split() && !self.mode.is_menu()).then(|| {
@@ -1987,36 +2134,72 @@ impl Launcher {
             } else {
                 self.picked.panel(&self.icons, th, cx).into_any_element()
             };
-            card(div(), th)
+            div()
+                .map(|el| {
+                    if seated {
+                        el.border_l(px(1.0)).border_color(th.divider())
+                    } else {
+                        card(el, th).rounded(px(radius))
+                    }
+                })
                 .flex_1()
                 .min_w_0()
                 .min_h_0()
                 .overflow_hidden()
-                .rounded(px(radius))
                 .child(body)
         });
         let menu = self
             .menu
             .as_ref()
             .map(|menu| menu.render(th.split(), th, cx));
-        div()
+        let row = div()
             .relative()
             .flex_1()
             .min_h_0()
-            .mx(px(theme::CONTENT_PADDING))
-            .mt(px(th.inner_gap))
-            .mb(px(theme::CONTENT_PADDING))
             .flex()
             .flex_row()
-            .gap(px(th.inner_gap))
-            .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
+            .when(!seated, |el| {
+                el.mx(px(theme::CONTENT_PADDING))
+                    .mt(px(th.inner_gap))
+                    .mb(px(theme::CONTENT_PADDING))
+                    .gap(px(th.inner_gap))
+                    .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
+            })
             .child(results_card)
             .children(preview_card)
-            .children(menu)
+            .children(menu);
+        if !seated {
+            return row;
+        }
+        div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .child(row)
+            .child(self.hint_bar(hint, th, cx))
+    }
+
+    /// The classic full-width hint bar: the hint (and the Todo tally) left,
+    /// the copyright right.
+    fn hint_bar(&self, hint: &'static str, th: &Theme, cx: &mut Context<Self>) -> Div {
+        div()
+            .flex_shrink_0()
+            .px(px(theme::CONTENT_PADDING - theme::ROW_PADDING_X))
+            .flex()
+            .items_center()
+            .justify_between()
+            .child(self.footer(hint, th, cx))
+            .child(copyright(th).pr(px(theme::ROW_PADDING_X)))
     }
 
     /// `t"`: the whole content row, before and after Enter.
-    fn translate_panel(&self, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    fn translate_panel(
+        &self,
+        seated: bool,
+        th: &Theme,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let radius = th.tile_radius();
         let body: AnyElement = match &self.translation {
             None => div()
@@ -2168,20 +2351,22 @@ impl Launcher {
         div()
             .flex_1()
             .min_h_0()
-            .mx(px(theme::CONTENT_PADDING))
-            .mt(px(th.inner_gap))
-            .mb(px(theme::CONTENT_PADDING))
             .flex()
-            .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
+            .when(!seated, |el| {
+                el.mx(px(theme::CONTENT_PADDING))
+                    .mt(px(th.inner_gap))
+                    .mb(px(theme::CONTENT_PADDING))
+                    .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
+            })
             .child(
-                card(div(), th)
+                div()
+                    .when(!seated, |el| card(el, th).rounded(px(radius)))
                     .flex_1()
                     .min_w_0()
                     .min_h_0()
                     .px(px(theme::CONTENT_PADDING))
                     .pt(px(TRANSLATE_PADDING_Y))
                     .pb(px(theme::HINT_INSET_BOTTOM))
-                    .rounded(px(radius))
                     .flex()
                     .flex_col()
                     .child(body)
@@ -2205,23 +2390,28 @@ impl Render for Launcher {
         let th = theme::get();
         let input = self.input.read(cx);
         let home = input.text().is_empty() && !self.levels.is_active();
-        let composing = input.is_composing();
         let focus_handle = input.focus_handle.clone();
 
         // The field the keys go to: the panel's box while the screen is up.
-        let wanted = self.field().read(cx).focus_handle.clone();
+        let wanted = self.focus_target(cx);
         if !wanted.is_focused(window) {
             window.focus(&wanted, cx);
+        }
+        if self.settings_open {
+            return self.settings_screen(&th, cx).into_any_element();
         }
         if self.command_mode {
             return self.command_screen(&th, cx).into_any_element();
         }
+        // Gap 0 with a query: the classic framed panel. The resting home
+        // keeps the frosted bar in both modes.
+        let seated = !th.floating() && !home;
         // The launchpad is a setting; off, the empty query is the bar alone.
         let below = match (home, th.launchpad, self.mode) {
             (true, true, _) => self.bento(&th, cx).into_any_element(),
             (true, false, _) => div().into_any_element(),
-            (false, _, Mode::Translate) => self.translate_panel(&th, cx).into_any_element(),
-            (false, _, _) => self.results(composing, &th, cx).into_any_element(),
+            (false, _, Mode::Translate) => self.translate_panel(seated, &th, cx).into_any_element(),
+            (false, _, _) => self.results(seated, &th, cx).into_any_element(),
         };
         let bar_radius = th.bar_radius();
         let banner = self.banner.render(&th, cx).map(|banner| {
@@ -2229,13 +2419,39 @@ impl Render for Launcher {
                 .on_children_prepainted(move |cards, _, _| mark_cards(&cards, bar_radius))
                 .child(banner)
         });
+        let bar = self.top_bar(seated, &th, cx);
+        let radius = th.tile_radius();
         let body = div()
             .size_full()
             .flex()
             .flex_col()
             .children(banner)
-            .child(self.top_bar(&th, cx))
-            .child(below);
+            .map(|body| {
+                if seated {
+                    body.child(
+                        div()
+                            .flex_1()
+                            .min_h_0()
+                            .m(px(theme::CONTENT_PADDING))
+                            .flex()
+                            .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
+                            .child(
+                                panel(div(), &th)
+                                    .flex_1()
+                                    .min_w_0()
+                                    .min_h_0()
+                                    .rounded(px(radius))
+                                    .overflow_hidden()
+                                    .flex()
+                                    .flex_col()
+                                    .child(bar)
+                                    .child(below),
+                            ),
+                    )
+                } else {
+                    body.child(bar).child(below)
+                }
+            });
 
         // gpui 0.2.2 has no element scale, and an inset in its place relayouts
         // every card each frame, so the arrive is the fade alone; the bar and
@@ -2341,6 +2557,28 @@ fn mark_cards(cards: &[Bounds<Pixels>], radius: f32) {
 
 fn commit_blur_region() {
     blur::set_region(BLUR_FRAME.take());
+}
+
+/// The classic panel's face: the tint alone under a border, as
+/// `.launcher-window` draws it.
+fn panel(el: Div, th: &Theme) -> Div {
+    el.bg(th.tint)
+        .border(px(th.border_thickness))
+        .border_color(th.border)
+        .shadow(th.card_shadow())
+}
+
+/// The band's leading at the hint's size.
+fn hint_line_height(th: &Theme) -> f32 {
+    (th.font_size - 1.0) * theme::HINT_LINE_HEIGHT
+}
+
+fn copyright(th: &Theme) -> Div {
+    div()
+        .text_size(px(COPYRIGHT_SIZE))
+        .text_color(th.text_muted)
+        .opacity(COPYRIGHT_OPACITY)
+        .child(COPYRIGHT)
 }
 
 /// The frosted card face shared by the bar, the tiles and the results card.
