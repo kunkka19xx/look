@@ -60,6 +60,7 @@ pub const EXTERNAL_LINK: &str = "icons/external-link.svg";
 pub const HISTORY: &str = "icons/history.svg";
 pub const ZAP: &str = "icons/zap.svg";
 pub const X_CIRCLE: &str = "icons/x-circle.svg";
+pub const LOADER: &str = "icons/loader.svg";
 pub const TERMINAL: &str = "icons/terminal.svg";
 pub const INFO: &str = "icons/info.svg";
 pub const GAUGE: &str = "icons/gauge.svg";
@@ -94,6 +95,10 @@ macro_rules! lucide {
 }
 
 const GLYPHS: &[(&str, &[u8])] = &[
+    (
+        LOADER,
+        br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>"##,
+    ),
     (
         SEARCH,
         br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>"##,

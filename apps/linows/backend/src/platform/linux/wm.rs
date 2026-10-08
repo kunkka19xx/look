@@ -7,6 +7,24 @@ pub fn is_sway() -> bool {
         .unwrap_or(false)
 }
 
+/// swayfx, which frosts layer surfaces through its own `layer_effects`
+/// rather than a blur protocol. Its version reply carries the sway it is
+/// built on, which plain sway's does not. Asked once.
+pub fn is_swayfx() -> bool {
+    static SWAYFX: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *SWAYFX.get_or_init(|| {
+        is_sway()
+            && super::host_command("swaymsg")
+                .args(["-t", "get_version"])
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .is_some_and(|out| {
+                    String::from_utf8_lossy(&out.stdout).contains("sway_original_version")
+                })
+    })
+}
+
 /// Returns true if niri is actually running (its IPC socket exists).
 pub fn is_niri() -> bool {
     std::env::var("NIRI_SOCKET")

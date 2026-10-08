@@ -517,6 +517,7 @@ fn main() {
         }
     }
 
+    motion::set_desktop_reduces(linows_backend::platform::reduce_motion());
     gpui_platform::application()
         .with_assets(glyphs::Assets)
         .run(move |cx: &mut App| {

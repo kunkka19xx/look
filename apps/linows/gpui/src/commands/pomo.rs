@@ -6,9 +6,9 @@
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AnyElement, Bounds, Context, Corners, Div, Entity, FontWeight, PathBuilder, Pixels, Rgba,
-    ScrollHandle, SharedString, Stateful, Task, TextAlign, TextRun, Window, canvas, div, fill,
-    point, prelude::*, px, svg,
+    Animation, AnimationExt, AnyElement, Bounds, Context, Corners, Div, Entity, FontWeight,
+    PathBuilder, Pixels, Rgba, ScrollHandle, SharedString, Stateful, Task, TextAlign, TextRun,
+    Transformation, Window, canvas, div, fill, point, prelude::*, px, radians, svg,
 };
 
 use super::{Commands, KeyOutcome};
@@ -17,6 +17,7 @@ use crate::bg;
 use crate::glyphs;
 use crate::launcher::Launcher;
 use crate::launchpad::Tone;
+use crate::motion;
 use crate::pick;
 use crate::pomo::{self, Kind, STYLES, Style};
 use crate::search::{SearchInput, search_field};
@@ -84,6 +85,7 @@ const ADD_PADDING_X: f32 = 10.0;
 const ADD_PADDING_Y: f32 = 3.0;
 const ADD_GAP: f32 = 8.0;
 const CHEVRON: f32 = 12.0;
+const QUARTER_TURN: f32 = std::f32::consts::FRAC_PI_2;
 const MUSIC_PADDING: f32 = 10.0;
 const MUSIC_MARGIN_X: f32 = 8.0;
 const MUSIC_MARGIN_BOTTOM: f32 = 8.0;
@@ -134,6 +136,9 @@ pub struct Panel {
     idle: bool,
     last_activity: Option<Instant>,
     editing: Option<Editing>,
+    /// The field whose entry was refused, and a count keying its flash.
+    rejected: Option<(Field, usize)>,
+    reject_seq: u64,
     sessions_scroll: ScrollHandle,
     _tick: Option<Task<()>>,
 }
@@ -273,6 +278,8 @@ impl Panel {
             ),
         };
         if !ok {
+            self.rejected = Some((editing.field, editing.index));
+            self.reject_seq += 1;
             let launcher = cx.entity();
             cx.defer(move |cx| {
                 launcher.update(cx, |this, cx| {
@@ -558,6 +565,7 @@ fn sessions_block(
             }))
             .child(label)
     };
+    let open = state.sessions_open;
     let header = div()
         .id("pomo-sessions-toggle")
         .py(px(SESSIONS_HEADER_PADDING_Y))
@@ -573,15 +581,25 @@ fn sessions_block(
             this.commands.pomo.activity();
             cx.notify();
         }))
+        // One chevron that turns a quarter, the webview's 0.2 s transition.
         .child(
             svg()
-                .path(if state.sessions_open {
-                    glyphs::CHEVRON_DOWN
-                } else {
-                    glyphs::CHEVRON_RIGHT
-                })
+                .path(glyphs::CHEVRON_RIGHT)
                 .size(px(CHEVRON))
-                .text_color(th.text_secondary),
+                .text_color(th.text_secondary)
+                .with_animation(
+                    ("chevron", usize::from(open)),
+                    Animation::new(motion::dur(motion::CHEVRON_MS)),
+                    move |icon, t| {
+                        let (from, to) = if open {
+                            (0.0, QUARTER_TURN)
+                        } else {
+                            (QUARTER_TURN, 0.0)
+                        };
+                        let angle = from + (to - from) * motion::curve(t);
+                        icon.with_transformation(Transformation::rotate(radians(angle)))
+                    },
+                ),
         )
         .child(format!("{SESSION_LIST} ({})", sessions.len()))
         .child(div().flex_1())
@@ -600,6 +618,8 @@ fn sessions_block(
             .as_ref()
             .filter(|e| e.index == i)
             .map(|e| (e.field, e.input.clone()));
+        let rejected = state.rejected;
+        let reject_seq = state.reject_seq;
         let field = |which: Field, text: String, grow: bool| -> AnyElement {
             match &editing {
                 Some((f, input)) if *f == which => div()
@@ -637,7 +657,27 @@ fn sessions_block(
                         this.commands.pomo.open_field(i, which, cx);
                     }))
                     .child(SharedString::from(text))
-                    .into_any_element(),
+                    // A refused entry flashes the danger wash over the box,
+                    // the webview's `cmd-pomo-field-reject`.
+                    .map(|el| {
+                        if rejected == Some((which, i)) {
+                            let danger = th.danger;
+                            el.with_animation(
+                                ("reject", reject_seq),
+                                Animation::new(motion::dur(motion::REJECT_MS)),
+                                move |el, t| {
+                                    let wash =
+                                        motion::REJECT_WASH * motion::hump(t, motion::REJECT_PEAK);
+                                    let mut flash = danger;
+                                    flash.alpha = wash;
+                                    el.bg(flash)
+                                },
+                            )
+                            .into_any_element()
+                        } else {
+                            el.into_any_element()
+                        }
+                    }),
             }
         };
         div()

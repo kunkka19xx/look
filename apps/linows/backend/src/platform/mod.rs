@@ -12,6 +12,25 @@ pub mod windows;
 
 pub mod shared;
 
+/// Whether the desktop asks for less motion: GNOME's animations switch,
+/// which is what GTK and the webview's `prefers-reduced-motion` read.
+/// Elsewhere, or without gsettings, the answer is no.
+pub fn reduce_motion() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        linux::host_command("gsettings")
+            .args(["get", "org.gnome.desktop.interface", "enable-animations"])
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .is_some_and(|out| String::from_utf8_lossy(&out.stdout).trim() == "false")
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Mutex;

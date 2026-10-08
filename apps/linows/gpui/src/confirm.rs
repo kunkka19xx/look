@@ -2,9 +2,10 @@
 //! (Enter and Escape too), or the two buttons. While it is up it owns the
 //! keys. Used by the destructive chords: emptying the trash, hiding an app.
 
-use gpui::{Context, Div, FontWeight, div, prelude::*, px, svg};
+use gpui::{Animation, AnimationExt, Context, FontWeight, div, prelude::*, px, svg};
 
 use crate::launcher::Launcher;
+use crate::motion;
 use crate::theme::{self, Theme};
 
 const PADDING_X: f32 = 14.0;
@@ -29,8 +30,9 @@ pub struct Confirm {
 }
 
 impl Confirm {
-    /// The bar as a card at the bottom of the window.
-    pub fn render(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+    /// The bar as a card at the bottom of the window, rising in; `seq`
+    /// keys the entrance to this asking.
+    pub fn render(&self, seq: u64, th: &Theme, cx: &mut Context<Launcher>) -> impl IntoElement {
         let button = |id: &'static str, label: &'static str, yes: bool| {
             div()
                 .id(id)
@@ -95,6 +97,18 @@ impl Confirm {
                     .gap(px(BUTTON_GAP))
                     .child(button("confirm-yes", YES_LABEL, true))
                     .child(button("confirm-no", NO_LABEL, false)),
+            )
+            .with_animation(
+                ("confirm-in", seq),
+                Animation::new(motion::dur(motion::CONFIRM_MS)),
+                |bar, t| {
+                    let t = motion::curve(t);
+                    bar.opacity(t).bottom(px(motion::rise(
+                        theme::CONTENT_PADDING,
+                        -motion::CONFIRM_RISE,
+                        t,
+                    )))
+                },
             )
     }
 }

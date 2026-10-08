@@ -5,13 +5,18 @@
 
 use std::time::Duration;
 
-use gpui::{Context, Div, FontWeight, SharedString, div, prelude::*, px, svg};
+use std::time::Instant;
+
+use gpui::{
+    Context, Div, FontWeight, SharedString, Transformation, div, prelude::*, px, radians, svg,
+};
 use linows_backend::answers;
 use linows_backend::look_answers::Answer;
 
 use crate::bg;
 use crate::glyphs;
 use crate::launcher::Launcher;
+use crate::motion;
 use crate::theme::{self, Theme};
 
 const DEBOUNCE: Duration = Duration::from_millis(350);
@@ -24,6 +29,7 @@ const BLOCK_GAP: f32 = 14.0;
 const ICON: f32 = 16.0;
 const LINE_HEIGHT: f32 = 1.5;
 const THINKING: &str = "Thinking\u{2026}";
+const SPINNER: f32 = 12.0;
 const NO_ANSWER: &str = "Couldn't find an answer.";
 const FALLBACK_TITLE: &str = "Web answer";
 pub const AI_KEY: &str = "ai_enabled";
@@ -372,14 +378,35 @@ impl AiAnswer {
                         .when_some(status, |el, status| {
                             el.child(
                                 div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(GAP / 2.0))
                                     .text_size(px(th.font_size - 1.0))
                                     .text_color(th.text_muted)
+                                    .when(state == State::Streaming, |el| el.child(spinner(th)))
                                     .child(status),
                             )
                         }),
                 ),
         )
     }
+}
+
+/// The ring that turns while an answer streams. Its angle is the wall
+/// clock's, and the launcher asks for frames while streaming, so it keeps
+/// turning with motion off, as the CSS exempts it.
+fn spinner(th: &Theme) -> impl IntoElement {
+    static START: std::sync::LazyLock<Instant> = std::sync::LazyLock::new(Instant::now);
+    let period = motion::secs(motion::SPIN_MS);
+    let turn = (START.elapsed().as_secs_f32() % period) / period;
+    svg()
+        .path(glyphs::LOADER)
+        .size(px(SPINNER))
+        .text_color(th.text_muted)
+        .flex_shrink_0()
+        .with_transformation(Transformation::rotate(radians(
+            turn * std::f32::consts::TAU,
+        )))
 }
 
 #[cfg(test)]

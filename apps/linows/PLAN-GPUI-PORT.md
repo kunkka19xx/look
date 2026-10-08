@@ -722,6 +722,102 @@ The Motion inventory above, in one go: every effect lands on an element that
 exists by then, under the whole-pixel rules. Closes with a frame strip per
 animation, as M3's entrance was checked.
 
+Status 2026-10-08: built, on three gpui mechanisms rather than ported
+keyframes. `with_animation` keyed by an element id carries every
+entrance, restarting when the id first appears: the results card rising
+in keyed by a switch count (once per launchpad-to-results, never per
+keystroke), the banner by its sequence, the confirm bar by its asking,
+the running apps strip per tile with the slide stagger, the launchpad
+glyph bounce per tile (an `svg` scaling through its transformation,
+same delay as its tile), the L slot's crossfade keyed by its source, the
+selected row's glyph zoom keyed by the row, the pomo chevron's quarter
+turn keyed by open, and a refused pomo field's danger flash keyed by a
+count. `Transition` carries every value that glides to a goal: the
+selection pill, now one quad painted under the rows from a `canvas`
+that reads the list's scroll offset, its top gliding on the settle
+curve and jumping when the rows are new (the webview's `.results-selection`
+with `is-instant`); the caret's x; the pomo bar's fill between ticks.
+`request_animation_frame` from a custom element drives the clock-based
+effects: the placeholder's slide in, the caret's blink (solid for half a
+second after a move, then the soft dip), the answer spinner (a loader
+glyph turned by the wall clock while streaming), and the pressed tile's
+dip, which multiplies into the cascade's opacity. The switches are one
+switch: `motion::sync` hands `animations_enabled` and the desktop's
+GNOME animations setting (`platform::reduce_motion`, read once at
+start) to `App::set_reduce_motion`, which every `with_animation` already
+honours by landing on its last frame; transitions get a 1 ms length; the
+caret blink and the spinner keep going by design. `LOOK_MOTION_SCALE=8`
+stretches every duration for a frame strip taken with grim, which is too
+slow for a 300 ms glide otherwise. Verified that way on sway: the pill
+between two rows mid-glide, the summon with the bar first, tiles fading
+and rising in order, strip icons sliding in and the placeholder fading
+in after them, the banner and the confirm bar. Still only built, not
+seen: the glyph bounce, the press dip, the slot crossfade, the bar
+glide, the chevron and the reject flash, since each needs a state the
+probe cannot reach without typing or a running timer. Not ported: the
+pill stretch, dropped by the rules. Found on the way: the floating Save
+button painted over the confirm bar; it now steps aside while a
+question is up.
+
+Dogfood, same day: the picture icons had no zoom (only glyphs were
+wired) and stepped through whole-pixel sizes once they had one, which
+read as a glitch; a picture now resizes on fractional pixels inside its
+fixed chip, since an image has no text to shimmer, while a glyph keeps
+the svg transform, which gpui applies as a sprite matrix without
+rasterising again. A held Tab retargeted the 300 ms glide every repeat
+and a wrap sent the pill across the whole list; the pill now never
+starts more than one row from its goal, so it trails a held key by one
+row and lands within the glide of the last repeat. The macOS
+`titleShift` came in after all, as an offset rather than padding: the
+selected row's text sits 4 px right, sliding out on the glide as the
+row takes the selection and back as the selection leaves (`shifted`,
+keyed on the row and a change count packed into one id), so nothing
+reflows and the row the selection left animates too. The icon zoom
+then felt quick and sharp against macOS: its hump peaked and fell
+straight off the reversed settle curve. It is now the macOS pair,
+`motion::zoom`: a cubic ease-out to 1.24 over 110 ms, then a damped
+spring back (0.3 s response, 0.6 damping, the SwiftUI numbers) that
+undershoots a touch and settles over the rest of 710 ms.
+
+Frost-before-fade, the nit from the motion table, same day: the
+compositor frosts a region the moment it is set, so a card sat frosted
+before it had faded in. The regions now wait for the entrances: the
+bar's, the cards' and the panels' until the bar's spawn has landed, the
+tiles' until the cascade has, with frames asked for until both have
+(`arm_frost`, a frame flag the marking reads; reduce motion lands them
+at once). Built and compiled only: this sway session speaks no blur
+protocol, so niri is where it shows. With that, M7 is complete.
+
+swayfx, same day: it frosts through its own `layer_effects` on the whole
+layer surface, not a protocol, so the region the app sends means nothing
+there. The spike's recipe holds (`blur enable`, then `layer_effects
+"lookapp"` with `blur enable`, `blur_ignore_transparent enable` and
+`shadows disable`, one effect per `swaymsg` call), but the port drew card
+shadows whenever no blur protocol answered, and swayfx frosted their
+alpha into a halo around every card. `wm::is_swayfx` (the version reply
+carries `sway_original_version`) now counts as able to frost, so with
+Blur behind window on the shadows go, as on niri and KWin, and the
+Advanced hint names the swayfx effects. Verified on the user's swayfx
+0.6: per-card frost, sharp gaps, no halo.
+Then the summon read as tiles going black before turning normal: with
+`blur_ignore_transparent`, swayfx frosts a pixel only once its alpha
+passes a threshold, so a card fading in from nothing sat dark over the
+sharp desktop until the frost popped in. Under swayfx frost
+(`blur::surfaces_fade`) the shell arrive, the bar's spawn, the tile
+cascade and the results lift keep their motion at full opacity, so the
+frost is there from the first frame. Other compositors keep the fades.
+
+Banner placement, same day, the user's call on the recommendation: a
+toast no longer sits above the bar, where every one moved the bar down
+and back. On the home and results it floats over the body just under
+the bar, `deferred` and absolute, with an opaque face so the row under
+it cannot read through, and its rise in; the bar and the rows stay put.
+The sticky health notice stays until dismissed, so it takes a place in
+the flow between the bar and the body instead. The command and settings
+screens have no bar and keep the banner above their card. Verified on
+sway for the toast over results; the sticky notice's fake-issue hook is
+debug-only, so it waits for a debug run.
+
 ### M8 Parity and flip
 
 Windows on a GPU machine (blur, 60 fps motion). X11 toplevel on GNOME
