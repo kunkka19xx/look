@@ -285,7 +285,7 @@ Clipboard mode (`c"`):
 
 Translation mode (`t"`/`tw"`):
 
-- supports EN/VI/JA result sections,
+- shows one result section per target language, default VI/EN/JA and configurable via `translate_languages` (see File-only settings below),
 - translation uses network requests.
 
 ## Command mode
@@ -664,6 +664,7 @@ These keys have no control in the Settings screens. Edit `~/.look/config` direct
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
 - `launcher_hotkey` (global shortcut that shows and hides Look; modifiers `cmd`/`win`, `ctrl`, `alt`/`option`, `shift` plus one key: a letter, digit, `space`, `enter`, `tab`, `esc`, `f1`-`f20`, or a symbol like `` ` ``. Examples: `ctrl+space`, `alt+shift+space`, `f13`. Default `cmd+space` on macOS, `alt+space` on Windows and Linux. `none` stops Look registering any key, so you can bind `lookapp --toggle` in your desktop or a tool like skhd/AutoHotkey instead; Linux accepts only `none` and applies it on restart. An invalid value falls back to the default and the reload banner says why)
 - `query_retention_seconds` (how long the main query survives while Look is hidden, in seconds; the first open past it returns to the empty home screen; default 5, `0` clears on every hide, and any negative value keeps the query indefinitely)
+- `translate_languages` (comma-separated language codes for the `t"` translation panel, shown in this order; default `vi,en,ja`. Use codes from Look's built-in set - `vi`, `en`, `ja`, `fr`, `de`, `es`, `ko`, `zh-cn`, and about 60 more. A code that isn't recognized is a typo or an unsupported language, so it is dropped from both the labels and the result sections; an empty or all-invalid list falls back to the default)
 - `text_editor`, `code_editor`, `terminal`, `file_manager` (the tools `Cmd+E` / `Cmd+T` / `Cmd+F` act through, see [Preferred tools](#preferred-tools); undeclared means the system default)
 
 - `ignored_patterns_<group>` uses gitignore-style path glob syntax: `*`, `**`, `?`, `[abc]`
