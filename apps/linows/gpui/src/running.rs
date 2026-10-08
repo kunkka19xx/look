@@ -8,6 +8,7 @@ use gpui::{
 };
 use linows_backend::process::{self, RunningApp};
 
+use crate::Shell;
 use crate::bg;
 use crate::glyphs;
 use crate::icons::{IconRequest, IconStore};
@@ -68,7 +69,7 @@ impl RunningApps {
     }
 
     /// Alt+digit. True when an app answered to it.
-    pub fn activate_key(&self, key: u8, cx: &mut Context<Launcher>) -> bool {
+    pub fn activate_key(&self, key: u8, shell: &Shell, cx: &mut Context<Launcher>) -> bool {
         if !self.enabled {
             return false;
         }
@@ -76,15 +77,17 @@ impl RunningApps {
         let Some(at) = keys.iter().position(|k| *k == key) else {
             return false;
         };
-        self.activate(at, cx);
+        self.activate(at, shell, cx);
         true
     }
 
-    fn activate(&self, at: usize, cx: &mut Context<Launcher>) {
+    /// The shell comes from the caller: this runs inside the launcher's own
+    /// update, where reading the entity again panics.
+    fn activate(&self, at: usize, shell: &Shell, cx: &mut Context<Launcher>) {
         let Some(app) = self.apps.get(at).cloned() else {
             return;
         };
-        let shell = cx.entity().read(cx).shell.clone();
+        let shell = shell.clone();
         cx.background_executor()
             .spawn(async move {
                 if let Err(err) =
@@ -173,7 +176,9 @@ impl RunningApps {
                 .flex_shrink_0()
                 .cursor_pointer()
                 .hover(|s| s.opacity(1.0))
-                .on_click(cx.listener(move |this, _, _, cx| this.running.activate(i, cx)))
+                .on_click(
+                    cx.listener(move |this, _, _, cx| this.running.activate(i, &this.shell, cx)),
+                )
                 .child(icon)
                 .child(badge)
                 .with_animation(

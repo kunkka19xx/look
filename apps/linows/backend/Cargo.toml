@@ -47,6 +47,9 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 # wl_display, which only the sys backend can adopt.
 wayland-client = { version = "0.31", features = ["system"], default-features = false }
 wayland-protocols-wlr = { version = "0.3", features = ["client"], default-features = false }
+# One copy offered in several types (pixels, files, path) without a focused
+# surface, over data-control. Already in the tree through arboard.
+wl-clipboard-rs = "0.9"
 # Behind-window blur: the cross-desktop staging protocol (KWin 6.7+, Hyprland
 # 0.56+, Niri; Mutter in review) plus KDE's own, which Plasma used until 6.7.
 wayland-protocols = { version = "0.32", features = [

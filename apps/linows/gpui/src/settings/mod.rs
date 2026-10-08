@@ -14,7 +14,7 @@ use gpui::{
     AnyElement, Context, Div, Entity, FocusHandle, FontWeight, ScrollHandle, SharedString,
     deferred, div, px, relative,
 };
-use linows_backend::config::{self, ConfigUpdate};
+use linows_backend::config::{self, ConfigUpdate, LauncherLayout};
 use linows_backend::platform::{self, CandidateDrive};
 use linows_backend::search as engine;
 use linows_backend::{autostart, cli_path, files, hotkey};
@@ -83,8 +83,8 @@ const THEMES: &[Option_] = &[
     (LIQUID, "Liquid"),
     (theme::CUSTOM_THEME, "Custom"),
 ];
+const SESSION_LAYOUT_HINT: &str = "Ringed: this session only (Ctrl+Shift+C)";
 const LAYOUTS: &[Option_] = &[("split", "Split"), ("compact", "Compact")];
-const LAYOUT_DEFAULT: &str = "split";
 
 #[cfg(target_os = "linux")]
 const BLUR_STYLES: &[Option_] = &[
@@ -666,6 +666,7 @@ impl Settings {
     }
 
     fn pick_layout(&mut self, layout: &str, cx: &mut Context<Launcher>) {
+        theme::clear_session_layout();
         self.set(LAYOUT_KEY, layout);
         self.apply(cx);
     }
@@ -966,13 +967,7 @@ impl Settings {
             .child(self.header_row(th, cx))
             .child(controls::divider(th))
             .child(controls::section("Layout", th))
-            .child(controls::row("Window", th).child(controls::segmented(
-                "settings-layout",
-                LAYOUTS,
-                self.get(LAYOUT_KEY).unwrap_or(LAYOUT_DEFAULT),
-                th,
-                cx.listener(|this, layout: &str, _, cx| this.settings.pick_layout(layout, cx)),
-            )))
+            .child(self.layout_row(th, cx))
             .child(self.slider_row(&INNER_GAP, th, cx))
             .child(self.slider_row(&CORNER_RADIUS, th, cx))
             .child(controls::divider(th))
@@ -1007,6 +1002,26 @@ impl Settings {
             .child(controls::section("Border", th))
             .child(self.slider_row(&BORDER_THICKNESS, th, cx))
             .children(BORDER.iter().map(|s| self.slider_row(s, th, cx)))
+    }
+
+    /// The fill is the saved layout. Ctrl+Shift+C can leave the window in
+    /// the other one for the rest of the run, and that one takes the ring.
+    fn layout_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+        let saved = self
+            .get(LAYOUT_KEY)
+            .and_then(LauncherLayout::parse)
+            .unwrap_or_default();
+        let live = (th.layout != saved).then_some(th.layout);
+        controls::row("Window", th)
+            .child(controls::segmented(
+                "settings-layout",
+                LAYOUTS,
+                saved.key(),
+                live.map(LauncherLayout::key),
+                th,
+                cx.listener(|this, layout: &str, _, cx| this.settings.pick_layout(layout, cx)),
+            ))
+            .children(live.map(|_| controls::hint(SESSION_LAYOUT_HINT, th)))
     }
 
     /// Theme, then the switches; the strip ones only in the split layout,

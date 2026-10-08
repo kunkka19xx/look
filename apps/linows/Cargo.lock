@@ -4256,6 +4256,7 @@ dependencies = [
  "wayland-protocols-plasma",
  "wayland-protocols-wlr",
  "windows 0.61.3",
+ "wl-clipboard-rs",
  "x11rb",
  "zbus",
  "zip",

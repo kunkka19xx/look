@@ -4,9 +4,9 @@
 //! A clipboard advertises a *list* of types and the pasting app asks for the
 //! one it understands, which is how macOS writes a URL and a string in a single
 //! copy (`NSPasteboard.writeObjects([url, path])`). `wl-copy` and `xclip` each
-//! advertise one type per invocation, so Look owns the clipboard itself through
-//! the shell's toolkit and answers whichever type is requested. They stay as
-//! the fallback for the case where the grab fails.
+//! advertise one type per invocation, so Look owns the clipboard itself: through
+//! the shell's toolkit where it can offer them all, else over data-control
+//! (sway, niri, Hyprland, KDE). They stay as the fallback where neither can.
 
 use std::io::Write;
 use std::process::Stdio;
@@ -102,8 +102,40 @@ fn payloads(paths: &[String]) -> (String, String, String) {
 }
 
 /// Whether the grab took, so a failed one still reaches the shell fallback.
+/// Plain text stays with the shell's own clipboard. Several forms go over
+/// data-control first, which offers them all whatever the shell; the shell
+/// is the next try (GTK can, gpui cannot).
 fn own_clipboard(forms: Vec<Form>) -> bool {
+    if forms.len() > 1 && data_control(&forms) {
+        return true;
+    }
     crate::host::host().is_some_and(|host| host.own_clipboard(forms))
+}
+
+/// Every form in one copy, served from a thread of its own until another
+/// app takes the clipboard. No focused surface needed, so it works while
+/// the launcher hides. `false` where the compositor lacks the protocol,
+/// GNOME among them.
+fn data_control(forms: &[Form]) -> bool {
+    use wl_clipboard_rs::copy::{MimeSource, MimeType, Options, Source};
+
+    if !super::transparency::is_wayland() {
+        return false;
+    }
+    let sources = forms
+        .iter()
+        .flat_map(|form| {
+            let payload: Box<[u8]> = form.payload.as_slice().into();
+            form.targets.iter().map(move |target| MimeSource {
+                source: Source::Bytes(payload.clone()),
+                mime_type: MimeType::Specific((*target).to_string()),
+            })
+        })
+        .collect();
+    let mut options = Options::new();
+    // The text forms are spelled out already, in their order.
+    options.omit_additional_text_mime_types(true);
+    options.copy_multi(sources).is_ok()
 }
 
 /// wl-copy (Wayland) then xclip (X11), neither a hard runtime dependency. One

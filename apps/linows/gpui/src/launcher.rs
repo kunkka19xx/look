@@ -11,9 +11,9 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Div, Entity,
-    FontWeight, KeyDownEvent, Pixels, Render, ScrollStrategy, SharedString, Task, Transformation,
-    Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred, div, fill, img,
-    point, prelude::*, px, relative, size, svg, uniform_list,
+    FontWeight, KeyDownEvent, Pixels, Render, ScrollStrategy, SharedString, Stateful, Task,
+    Transformation, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred,
+    div, fill, img, point, prelude::*, px, relative, size, svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
@@ -40,7 +40,7 @@ use crate::levels::{self, Levels};
 use crate::modes::Mode;
 use crate::motion;
 use crate::picked::{self, Picked};
-use crate::preview::{ClipDeleted, Preview};
+use crate::preview::{self, ClipDeleted, Preview};
 use crate::query;
 use crate::rows::{Icon, Open, Row};
 use crate::running::RunningApps;
@@ -107,6 +107,7 @@ const TODO_BUBBLE_TITLE: &str = "Unfinished today";
 /// The classic frame's footer carries this at its right, as the webview's
 /// hint bar does.
 const COPYRIGHT: &str = "\u{a9} 2026 by Kunkka";
+const AUTHOR_URL: &str = "https://github.com/kunkka19xx";
 const COPYRIGHT_SIZE: f32 = 10.0;
 const COPYRIGHT_OPACITY: f32 = 0.6;
 const BREADCRUMB_SEPARATOR: &str = "  \u{203a}  ";
@@ -202,6 +203,9 @@ pub struct Launcher {
     confirm_seq: u64,
     /// When this window came up: the frost waits for the entrances.
     shown_at: Instant,
+    /// When the launchpad grid last mounted, `None` while it is off screen.
+    /// Every mount replays the cascade, so the tiles' frost waits from here.
+    grid_since: Option<Instant>,
     _search: Option<Task<()>>,
 }
 
@@ -272,6 +276,7 @@ impl Launcher {
             was_home: true,
             confirm_seq: 0,
             shown_at: Instant::now(),
+            grid_since: None,
             todo_hovered: false,
             version: 0,
             _search: None,
@@ -575,6 +580,12 @@ impl Launcher {
             cx.stop_propagation();
             return;
         }
+        // From any screen, settings too, where the picker follows it.
+        if ctrl && shift && ks.key == "c" {
+            self.toggle_layout(cx);
+            cx.stop_propagation();
+            return;
+        }
         // Ctrl+H from anywhere but settings, which owns its keys.
         if ctrl && !shift && ks.key == "h" && !self.settings_open {
             self.toggle_help(cx);
@@ -620,13 +631,14 @@ impl Launcher {
             && !shift
             && let Some(digit) = ks.key.chars().next().and_then(|c| c.to_digit(10))
             && (1..=9).contains(&digit)
-            && self.running.activate_key(digit as u8, cx)
+            && theme::get().split()
+            && self.running.activate_key(digit as u8, &self.shell, cx)
         {
             cx.stop_propagation();
             return;
         }
         // Alt+<letter> on the home screen is a launchpad mnemonic.
-        if ks.modifiers.alt && !ctrl && self.on_home(cx) {
+        if ks.modifiers.alt && !ctrl && self.on_home(cx) && theme::get().shows_launchpad() {
             let mut chars = ks.key.chars();
             if let (Some(ch), None) = (chars.next(), chars.next())
                 && self
@@ -785,6 +797,15 @@ impl Launcher {
     /// Leave the process, the way the socket's `quit` does.
     pub(crate) fn quit(&self) {
         self.shell.send(crate::Command::Quit);
+    }
+
+    /// Ctrl+Shift+C. The preview follows: it loads for split, and for the
+    /// process row's facts in compact.
+    fn toggle_layout(&mut self, cx: &mut Context<Self>) {
+        theme::toggle_session_layout();
+        self.close_menu();
+        self.sync_preview(cx);
+        cx.notify();
     }
 
     fn toggle_help(&mut self, cx: &mut Context<Self>) {
@@ -969,13 +990,16 @@ impl Launcher {
 
     /// The preview follows the selection; the compact layout has none, and
     /// the menus hide the column. An empty clipboard history shows its tips.
+    /// Compact still loads a process, whose facts its row carries.
     fn sync_preview(&mut self, cx: &mut Context<Self>) {
         let split = theme::get().split();
         let row = self.rows.get(self.selected).cloned();
         let mode = self.mode;
         let ancestors = self.levels.ancestors();
         self.preview.update(cx, |preview, cx| match row {
-            Some(row) if split && !mode.is_menu() => preview.show(&row, ancestors, cx),
+            Some(row) if (split && !mode.is_menu()) || matches!(row.open, Open::Process(_)) => {
+                preview.show(&row, ancestors, cx)
+            }
             None if split && mode.is_clipboard() => preview.show_help(mode, cx),
             _ => preview.clear(cx),
         });
@@ -1844,6 +1868,8 @@ impl Launcher {
         // The focused field (the panel's box, or a row's open field) is where
         // the keys dispatch from, so this root must track that handle.
         let focus_handle = self.focus_target(cx);
+        let footer = hint.is_some() || trailing.is_some();
+        let trailing = trailing.unwrap_or_else(|| copyright(th, cx).into_any_element());
         let seq = self.confirm_seq;
         let confirm = self
             .confirm
@@ -1876,7 +1902,7 @@ impl Launcher {
                             .flex()
                             .flex_col()
                             .child(div().flex_1().min_h_0().child(body))
-                            .children((hint.is_some() || trailing.is_some()).then(|| {
+                            .children(footer.then(|| {
                                 div()
                                     .px(px(theme::ROW_PADDING_X + theme::ROW_INSET))
                                     .pt(px(theme::HINT_INSET))
@@ -1889,10 +1915,7 @@ impl Launcher {
                                     .items_end()
                                     .justify_between()
                                     .child(muted_text(hint.unwrap_or_default(), th))
-                                    .child(
-                                        trailing
-                                            .unwrap_or_else(|| copyright(th).into_any_element()),
-                                    )
+                                    .child(trailing)
                             }))
                             .children(float),
                     ),
@@ -1945,7 +1968,10 @@ impl Launcher {
             })
             .child(search_field(self.input.clone(), placeholder))
             .children((!th.split()).then(|| self.picked.badge(th)).flatten())
-            .children(strip);
+            .children(strip)
+            .when(!th.split(), |el| {
+                el.child(copyright(th, cx).flex_shrink_0())
+            });
 
         // The bar rises in place, so its slot is fixed and the body below
         // does not move with it.
@@ -2090,6 +2116,17 @@ impl Launcher {
 
     fn row(&self, i: usize, row: &Row, th: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let selected = i == self.selected;
+        // Compact has no panel, so the selected process shows its facts here.
+        let facts = match &row.open {
+            Open::Process(p) if selected && !th.split() => {
+                self.preview.read(cx).process_facts(p.pid)
+            }
+            _ => None,
+        };
+        let context = match facts {
+            Some(facts) => format!("{}{}{facts}", row.context, preview::FACT_SEP),
+            None => row.context.clone(),
+        };
         let text = div()
             .flex_1()
             .flex()
@@ -2101,8 +2138,8 @@ impl Launcher {
                     .truncate()
                     .child(row.title.clone()),
             )
-            .when(!row.context.is_empty(), |col| {
-                col.child(muted_text(row.context.clone(), th).truncate())
+            .when(!context.is_empty(), |col| {
+                col.child(muted_text(context, th).truncate())
             });
         let picture = match &row.icon {
             Icon::Resolve { glyph } => {
@@ -2246,19 +2283,32 @@ impl Launcher {
                         .child(SharedString::from(help.to_string())),
                 )
         };
+        // Compact has no column for the tips, so they stack under the info.
+        let tips = |info: Div| {
+            if th.split() {
+                info
+            } else {
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .child(info)
+                    .child(preview::help(self.mode, th))
+            }
+        };
         match self.mode {
-            Mode::Clipboard => rich(
+            Mode::Clipboard => tips(rich(
                 glyphs::CLIPBOARD,
                 "Clipboard History",
                 "No clipboard items yet",
                 "Copy any text, then search with c\"word to find it here.",
-            ),
-            Mode::ClipboardImage => rich(
+            )),
+            Mode::ClipboardImage => tips(rich(
                 glyphs::IMAGE,
                 "Copied Images",
                 "No images copied yet",
                 "Copy a picture or take a screenshot, then find it here with ci\"name.",
-            ),
+            )),
             Mode::Recent => rich(
                 glyphs::HISTORY,
                 "Recent files & folders",
@@ -2345,7 +2395,9 @@ impl Launcher {
                     card.child(list)
                 }
             })
-            .when(!seated, |card| card.child(self.footer(hint, th, cx)))
+            .when(!seated && th.split(), |card| {
+                card.child(self.footer(hint, th, cx))
+            })
             // Leaving the launchpad, the card rises in: once per switch, never
             // per keystroke, so the id carries the switch count.
             .with_animation(
@@ -2406,13 +2458,14 @@ impl Launcher {
         if !seated {
             return row;
         }
+        // Compact has no hint rows; the copyright rides in the bar.
         div()
             .flex_1()
             .min_h_0()
             .flex()
             .flex_col()
             .child(row)
-            .child(self.hint_bar(hint, th, cx))
+            .when(th.split(), |el| el.child(self.hint_bar(hint, th, cx)))
     }
 
     /// The classic full-width hint bar: the hint (and the Todo tally) left,
@@ -2425,7 +2478,7 @@ impl Launcher {
             .items_center()
             .justify_between()
             .child(self.footer(hint, th, cx))
-            .child(copyright(th).pr(px(theme::ROW_PADDING_X)))
+            .child(copyright(th, cx).pr(px(theme::ROW_PADDING_X)))
     }
 
     /// `t"`: the whole content row, before and after Enter.
@@ -2621,11 +2674,28 @@ impl Drop for Launcher {
 }
 
 impl Render for Launcher {
+    /// Every screen draws inside the layout's panel: the whole window in
+    /// split, the compact size centred under the same top otherwise.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let th = theme::get();
+        let frame = th.frame_size();
+        let content = self.content(th, window, cx);
+        div().size_full().flex().justify_center().child(
+            div()
+                .flex_shrink_0()
+                .w(frame.width)
+                .h(frame.height)
+                .child(content),
+        )
+    }
+}
+
+impl Launcher {
+    fn content(&mut self, th: Theme, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let frosted = th.frosted();
         motion::sync(th.animations, cx);
-        self.arm_frost(window, cx);
+        self.arm_frost(blur::surfaces_fade(frosted), window, cx);
+        let grid_since = self.grid_since.take();
         self.prepare_backdrop(&th, window, cx);
         let input = self.input.read(cx);
         let home = input.text().is_empty() && !self.levels.is_active();
@@ -2656,8 +2726,11 @@ impl Render for Launcher {
         // keeps the frosted bar in both modes.
         let seated = !th.floating() && !home;
         // The launchpad is a setting; off, the empty query is the bar alone.
-        let below = match (home, th.launchpad, self.mode) {
-            (true, true, _) => self.bento(&th, window, cx).into_any_element(),
+        let below = match (home, th.shows_launchpad(), self.mode) {
+            (true, true, _) => {
+                self.grid_since = Some(grid_since.unwrap_or_else(Instant::now));
+                self.bento(&th, window, cx).into_any_element()
+            }
             (true, false, _) => div().into_any_element(),
             (false, _, Mode::Translate) => self.translate_panel(seated, &th, cx).into_any_element(),
             (false, _, _) => self.results(seated, &th, window, cx).into_any_element(),
@@ -2841,18 +2914,21 @@ thread_local! {
 }
 
 impl Launcher {
-    /// The compositor frosts a region the moment it is set, so a card would
-    /// sit frosted before it has faded in. The cards' regions wait for the
+    /// The compositor frosts a region the moment it is set, so a card that
+    /// fades would sit frosted before it shows. Its region waits for the
     /// bar's spawn, the tiles' for the end of the cascade; frames are asked
-    /// for until both have landed.
-    fn arm_frost(&self, window: &mut Window, cx: &App) {
-        let elapsed = self.shown_at.elapsed();
-        let landed = |ms: u64| cx.reduce_motion() || elapsed >= motion::dur(ms);
+    /// for until both have landed. Cards that arrive opaque frost at once.
+    fn arm_frost(&self, fade: bool, window: &mut Window, cx: &App) {
+        let still = !fade || cx.reduce_motion();
+        let landed = |since: Instant, ms: u64| since.elapsed() >= motion::dur(ms);
         let frost = Frost {
-            cards: landed(motion::SPAWN_MS),
-            tiles: landed(motion::TILE_MAX_STAGGER_MS + motion::TILE_MS),
+            cards: still || landed(self.shown_at, motion::SPAWN_MS),
+            tiles: still
+                || self.grid_since.is_some_and(|since| {
+                    landed(since, motion::TILE_MAX_STAGGER_MS + motion::TILE_MS)
+                }),
         };
-        if !(frost.cards && frost.tiles) {
+        if !frost.cards || (self.grid_since.is_some() && !frost.tiles) {
             window.request_animation_frame();
         }
         FROST.set(frost);
@@ -2964,11 +3040,16 @@ fn hint_line_height(th: &Theme) -> f32 {
     (th.font_size - 1.0) * theme::HINT_LINE_HEIGHT
 }
 
-fn copyright(th: &Theme) -> Div {
+/// The author link, macOS `copyrightLink`.
+fn copyright(th: &Theme, cx: &mut Context<Launcher>) -> Stateful<Div> {
     div()
+        .id("copyright")
         .text_size(px(COPYRIGHT_SIZE))
         .text_color(th.text_muted)
         .opacity(COPYRIGHT_OPACITY)
+        .cursor_pointer()
+        .hover(|s| s.opacity(1.0))
+        .on_click(cx.listener(|this, _, _, _| this.open_url(AUTHOR_URL)))
         .child(COPYRIGHT)
 }
 

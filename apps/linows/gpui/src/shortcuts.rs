@@ -75,6 +75,7 @@ pub const COMMAND_MODE: &str = "main.commandMode";
 pub const COMMAND_JUMP: &str = "main.commandJump";
 pub const SETTINGS: &str = "main.settings";
 pub const RELOAD_CONFIG: &str = "main.reloadConfig";
+pub const SWITCH_LAYOUT: &str = "main.switchLayout";
 pub const HIDE_APP: &str = "main.hideApp";
 pub const HELP: &str = "main.help";
 pub const BACK: &str = "main.back";
@@ -197,6 +198,11 @@ fn build() -> Vec<Group> {
                 ),
                 Entry::new(SETTINGS, "Ctrl+Shift+,", "Open/close settings panel"),
                 Entry::new(RELOAD_CONFIG, "Ctrl+Shift+;", "Reload .look/config"),
+                Entry::new(
+                    SWITCH_LAYOUT,
+                    "Ctrl+Shift+C",
+                    "Switch split / compact until Look quits (config unchanged)",
+                ),
                 Entry::new(HIDE_APP, "Ctrl+Shift+H", "Hide the selected app from Look"),
                 Entry::new(HELP, "Ctrl+H", "Toggle the help screen"),
                 Entry::new(BACK, "Esc", "Close help / back / hide launcher"),
