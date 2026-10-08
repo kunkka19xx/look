@@ -20,10 +20,10 @@ pub fn configured() -> LauncherHotkey {
 
 #[derive(Serialize)]
 pub struct LauncherHotkeyState {
-    display: String,
-    default_spec: String,
-    default_display: Option<String>,
-    configurable: bool,
+    pub display: String,
+    pub default_spec: String,
+    pub default_display: Option<String>,
+    pub configurable: bool,
 }
 
 pub fn launcher_hotkey_state() -> LauncherHotkeyState {

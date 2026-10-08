@@ -6,7 +6,7 @@
 //! the inner gap as every seam.
 
 use std::cell::RefCell;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use gpui::{
@@ -32,6 +32,7 @@ use crate::commands::{self, Commands, KeyOutcome};
 use crate::config_list;
 use crate::confirm::{Confirm, OnYes};
 use crate::glyphs;
+use crate::help::Help;
 use crate::icons::{IconRequest, IconStore};
 use crate::launchpad::{self, Launchpad, Notice, Tone};
 use crate::levels::{self, Levels};
@@ -44,11 +45,18 @@ use crate::rows::{Icon, Open, Row};
 use crate::running::RunningApps;
 use crate::search::{Changed, SearchInput, search_field};
 use crate::settings::{self, Settings};
+use crate::shortcuts::{self, Piece};
 use crate::theme::{self, Theme};
+use crate::update::Update;
 use crate::{Shell, fonts, health, state as app_state};
 
 const PLACEHOLDER: &str = "Search apps, files, actions";
-const HINT_EMPTY: &str = "No match \u{2022} Ctrl+Enter: Search the web";
+static HINT_EMPTY: LazyLock<String> = LazyLock::new(|| {
+    shortcuts::hint(&[
+        Piece::Text("No match"),
+        Piece::Id(shortcuts::WEB_SEARCH, "Search the web"),
+    ])
+});
 const WEB_SEARCH_URL: &str = "https://www.google.com/search?q=";
 const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=en&text=";
 /// How long a keystroke waits for the next before the query runs; the
@@ -75,8 +83,13 @@ const OPEN_IN_BROWSER: &str = "Open in Browser";
 const LANGUAGES: [(&str, &str); 3] = [("vi", "TIẾNG VIỆT"), ("en", "ENGLISH"), ("ja", "日本語")];
 const CLIP_DELETED: &str = "Clipboard item deleted";
 const CLIP_IMAGE_DELETED: &str = "Image removed from history";
-const HINT_LEVEL: &str = "Enter: Open \u{2022} Ctrl+K: Actions \u{2022} Esc: Back";
-const HINT_SEP: &str = " \u{2022} ";
+static HINT_LEVEL: LazyLock<String> = LazyLock::new(|| {
+    shortcuts::hint(&[
+        Piece::Id(shortcuts::ACTIONS, "Actions"),
+        Piece::Id(shortcuts::BACK, "Back"),
+    ])
+});
+const HINT_SEP: &str = shortcuts::HINT_SEP;
 /// macOS `stackedContentGap`: the seam between the bar and what stacks
 /// under it when nothing floats.
 const STACKED_CONTENT_GAP: f32 = 12.0;
@@ -151,6 +164,10 @@ pub struct Launcher {
     pub(crate) settings: Settings,
     /// Ctrl+Shift+, : the settings screen is up, in the command screen's frame.
     settings_open: bool,
+    /// Ctrl+H: the help screen, in the same frame.
+    pub(crate) help: Help,
+    /// Version and update status, shown by settings and help.
+    pub(crate) update: Update,
     levels: Levels,
     /// A selection to put back once the rows it names are on screen, and
     /// the query it was captured under: a level was just left.
@@ -219,6 +236,8 @@ impl Launcher {
             command_mode: false,
             settings: Settings::new(cx),
             settings_open: false,
+            help: Help::new(cx),
+            update: Update::new(),
             levels: Levels::default(),
             pending_restore: None,
             menu_token: 0,
@@ -526,6 +545,19 @@ impl Launcher {
             cx.stop_propagation();
             return;
         }
+        // Ctrl+H from anywhere but settings, which owns its keys.
+        if ctrl && !shift && ks.key == "h" && !self.settings_open {
+            self.toggle_help(cx);
+            cx.stop_propagation();
+            return;
+        }
+        if self.help.open {
+            if self.help.handle_key(ks, cx) == KeyOutcome::Exit {
+                self.toggle_help(cx);
+            }
+            cx.stop_propagation();
+            return;
+        }
         // The confirm bar owns every key while it asks, over any screen.
         if self.confirm.is_some() {
             match ks.key.as_str() {
@@ -711,9 +743,32 @@ impl Launcher {
     fn focus_target(&self, cx: &gpui::App) -> gpui::FocusHandle {
         if self.settings_open && self.settings.editing_field().is_none() {
             self.settings.focus_handle()
+        } else if self.help.open {
+            self.help.focus_handle()
         } else {
             self.field().read(cx).focus_handle.clone()
         }
+    }
+
+    // --- Help ----------------------------------------------------------------------
+
+    /// Leave the process, the way the socket's `quit` does.
+    pub(crate) fn quit(&self) {
+        self.shell.send(crate::Command::Quit);
+    }
+
+    fn toggle_help(&mut self, cx: &mut Context<Self>) {
+        self.close_menu();
+        self.confirm = None;
+        self.help.toggle();
+        cx.notify();
+    }
+
+    /// The help screen in the command screen's frame.
+    fn help_screen(&mut self, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        let body = self.help.render(th, &self.update, cx).into_any_element();
+        let hint = self.help.hint();
+        self.screen(body, Some(hint), None, None, th, cx)
     }
 
     // --- Settings ----------------------------------------------------------------
@@ -1713,24 +1768,34 @@ impl Launcher {
     fn command_screen(&mut self, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let body = self.commands.render(&self.icons, th, cx).into_any_element();
         let hint = self.commands.hint();
-        self.screen(body, hint, th, cx)
+        self.screen(body, Some(hint), None, None, th, cx)
     }
 
     /// The settings screen in the same frame, its tint share applied.
     fn settings_screen(&mut self, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let mut th = th.clone();
         th.tint.alpha *= self.settings.tint_share();
-        let body = self.settings.render(&th, cx).into_any_element();
+        let body = self
+            .settings
+            .render(&th, &self.update, cx)
+            .into_any_element();
         let hint = self.settings.hint();
-        self.screen(body, hint, &th, cx)
+        // No copyright on this screen: the footer is the tab's hint alone.
+        let trailing = hint.map(|_| div().into_any_element());
+        let float = self.settings.save_float(&th, cx);
+        self.screen(body, hint, trailing, Some(float), &th, cx)
     }
 
     /// A full-window screen: one framed card under the banner slot, `body`
-    /// inside, the hint as its footer.
+    /// inside, a footer when the screen has a hint or something for the
+    /// footer's right end, which is the copyright unless `trailing` says,
+    /// and `float` placed over it all as the card's own child.
     fn screen(
         &mut self,
         body: AnyElement,
-        hint: &'static str,
+        hint: Option<&'static str>,
+        trailing: Option<AnyElement>,
+        float: Option<AnyElement>,
         th: &Theme,
         cx: &mut Context<Self>,
     ) -> Div {
@@ -1773,18 +1838,25 @@ impl Launcher {
                             .flex()
                             .flex_col()
                             .child(div().flex_1().min_h_0().child(body))
-                            .child(
+                            .children((hint.is_some() || trailing.is_some()).then(|| {
                                 div()
                                     .px(px(theme::ROW_PADDING_X + theme::ROW_INSET))
                                     .pt(px(theme::HINT_INSET))
                                     .pb(px(theme::HINT_INSET_BOTTOM + theme::ROW_INSET))
                                     .line_height(px(hint_line_height(th)))
                                     .flex()
-                                    .items_center()
+                                    // The text keeps the results footer's
+                                    // baseline; a taller trailing element
+                                    // stands above it rather than lifting it.
+                                    .items_end()
                                     .justify_between()
-                                    .child(muted_text(hint, th))
-                                    .child(copyright(th)),
-                            ),
+                                    .child(muted_text(hint.unwrap_or_default(), th))
+                                    .child(
+                                        trailing
+                                            .unwrap_or_else(|| copyright(th).into_any_element()),
+                                    )
+                            }))
+                            .children(float),
                     ),
             )
             .children(confirm)
@@ -1834,8 +1906,7 @@ impl Launcher {
             })
             .child(search_field(self.input.clone(), placeholder))
             .children((!th.split()).then(|| self.picked.badge(th)).flatten())
-            .children(strip)
-            .child(hint_chip("Esc", th));
+            .children(strip);
 
         // The bar rises in place, so its slot is fixed and the body below
         // does not move with it.
@@ -2047,7 +2118,6 @@ impl Launcher {
                 el.child(muted_text(row.kind_label.clone(), th))
             })
             .when(self.picked.contains(row), |el| el.child(picked::check(th)))
-            .when(selected, |el| el.child(hint_chip("Enter", th)))
             .into_any_element()
     }
 
@@ -2146,9 +2216,9 @@ impl Launcher {
         .min_h_0();
 
         let hint = if self.levels.is_active() {
-            HINT_LEVEL
+            &HINT_LEVEL
         } else if self.rows.is_empty() && self.mode == Mode::Search {
-            HINT_EMPTY
+            &HINT_EMPTY
         } else {
             self.mode.hint()
         };
@@ -2458,6 +2528,9 @@ impl Render for Launcher {
         if self.settings_open {
             return self.settings_screen(&th, cx).into_any_element();
         }
+        if self.help.open {
+            return self.help_screen(&th, cx).into_any_element();
+        }
         if self.command_mode {
             return self.command_screen(&th, cx).into_any_element();
         }
@@ -2659,18 +2732,6 @@ fn muted_text(text: impl Into<SharedString>, th: &Theme) -> Div {
         .text_size(px(th.font_size - 1.0))
         .text_color(th.text_muted)
         .child(text.into())
-}
-
-fn hint_chip(label: &'static str, th: &Theme) -> Div {
-    div()
-        .px(px(theme::CHIP_PADDING_X))
-        .py(px(theme::CHIP_PADDING_Y))
-        .rounded(px(th.chip_radius()))
-        .bg(th.panel_fill)
-        .text_size(px(theme::CAPTION_SIZE))
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(th.text_secondary)
-        .child(label)
 }
 
 /// The glyph a row wears until its picture lands, in the accent like the

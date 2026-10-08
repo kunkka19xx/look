@@ -16,6 +16,7 @@ mod elide;
 mod fonts;
 mod glyphs;
 mod health;
+mod help;
 #[cfg_attr(target_os = "linux", path = "host/linux.rs")]
 #[cfg_attr(windows, path = "host/windows.rs")]
 mod host;
@@ -34,9 +35,11 @@ mod rows;
 mod running;
 mod search;
 mod settings;
+mod shortcuts;
 mod speed;
 mod theme;
 mod todo;
+mod update;
 
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
