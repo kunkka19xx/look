@@ -19,7 +19,7 @@ use gpui::{
 };
 use image::imageops::FilterType;
 
-use crate::theme::{BgLayout, Theme};
+use crate::theme::{self, BgLayout, Theme};
 
 /// Blur steps on the slider, so a drag does not rebuild the bitmap per
 /// hundredth of a pixel.
@@ -31,7 +31,7 @@ pub struct Key {
     path: PathBuf,
     layout: BgLayout,
     blur_steps: u32,
-    /// The window, in logical pixels, rounded.
+    /// The panel, in logical pixels, rounded.
     viewport: (u32, u32),
     /// Device pixels per logical pixel, in hundredths.
     scale: u32,
@@ -41,7 +41,7 @@ impl Key {
     /// `None` when the theme has no picture.
     pub fn of(th: &Theme, window: &Window) -> Option<Self> {
         let path = th.bg_image.clone()?;
-        let viewport = window.viewport_size();
+        let viewport = th.frame_size();
         Some(Self {
             path,
             layout: th.bg_layout,
@@ -133,7 +133,7 @@ pub fn load(key: Key) -> Result<Backdrop, String> {
     })
 }
 
-/// Where the picture goes in window coordinates: centred, scaled by the
+/// Where the picture goes in panel coordinates: centred, scaled by the
 /// layout. The webview's `drawnImageRect`.
 fn drawn_rect(layout: BgLayout, viewport: Size<Pixels>, natural: Size<Pixels>) -> Bounds<Pixels> {
     let (w, h) = match layout {
@@ -156,12 +156,14 @@ fn drawn_rect(layout: BgLayout, viewport: Size<Pixels>, natural: Size<Pixels>) -
 pub fn layer(backdrop: Arc<Backdrop>, radius: f32, th: &Theme) -> impl IntoElement {
     let opacity = th.bg_opacity.clamp(0.0, 1.0);
     let radius = (radius - th.border_thickness).max(0.0);
+    let frame_size = th.frame_size();
     div().absolute().inset_0().opacity(opacity).child(
         canvas(
             |_, _, _| (),
             move |bounds: Bounds<Pixels>, _, window, _| {
-                let viewport = window.viewport_size();
-                let drawn = drawn_rect(backdrop.key.layout, viewport, backdrop.natural);
+                let frame = theme::place_frame(frame_size, window.viewport_size());
+                let mut drawn = drawn_rect(backdrop.key.layout, frame.size, backdrop.natural);
+                drawn.origin += frame.origin;
                 let corners = Corners::all(px(radius));
                 let mut paint = |placement: Bounds<Pixels>| {
                     let _ = window.paint_image(

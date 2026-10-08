@@ -198,6 +198,21 @@ impl LauncherLayout {
             _ => None,
         }
     }
+
+    /// The config value, as `parse` reads it back.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Split => "split",
+            Self::Compact => "compact",
+        }
+    }
+
+    pub fn flipped(self) -> Self {
+        match self {
+            Self::Split => Self::Compact,
+            Self::Compact => Self::Split,
+        }
+    }
 }
 
 /// Drops a trailing comment. `#` only starts one at the beginning of the line or after

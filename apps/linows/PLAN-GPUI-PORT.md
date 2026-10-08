@@ -818,6 +818,31 @@ screens have no bar and keep the banner above their card. Verified on
 sway for the toast over results; the sticky notice's fake-issue hook is
 debug-only, so it waits for a debug run.
 
+Compact layout, same day. The panel is 680 by 440 at the window's rung
+(816 by 528), drawn inside the split surface, centred and top-aligned so
+the bar keeps its place, and the background picture is placed against it.
+Compact drops the preview, the launchpad (and its Alt+letter keys), the
+running strip (and Alt+digit), and the hint rows. The copyright and the
+picked count ride in the bar, the actions menu floats opaque on the list's
+right edge at macOS's 320 wide, an empty clipboard history stacks its tips
+under the info, and the selected process row carries its memory and, once
+Enter measures it, CPU. Ctrl+Shift+C flips the layout until Look quits:
+the backend's session layout, dropped when the configured `layout`
+changes. The settings picker fills the saved layout and, as on macOS,
+rings the live one when the session left it, with a one-line hint; a
+pick saves and ends the override. Verified on
+sway, floating and seated: home, results, process, menu, settings and a
+command screen, and back to split.
+
+Clipboard forms, same day. gpui's clipboard holds one type, so a pick
+(files) or a `ci"` copy (pixels plus file) fell to wl-copy with one type
+and pasted nothing in a terminal or Dolphin. Copies with several forms now
+go over data-control through `wl-clipboard-rs` (already in the tree via
+arboard), served from its own thread: picks offer the GNOME file list,
+`text/uri-list` and the path as text, an image adds `image/png`. Verified
+on sway with `wl-paste`. GNOME Wayland has no data-control and still gets
+the single-type fallback; plain text stays on gpui's clipboard.
+
 ### M8 Parity and flip
 
 Windows on a GPU machine (blur, 60 fps motion). X11 toplevel on GNOME

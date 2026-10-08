@@ -10,8 +10,8 @@ pub const BASE_W: f64 = 840.0;
 pub const BASE_H: f64 = 560.0;
 /// Compact layout base size, tall enough for 6-7 rows. Mirrors macOS
 /// `WindowAutoScale.compactBaseWidth/Height`.
-const COMPACT_W: f64 = 680.0;
-const COMPACT_H: f64 = 440.0;
+pub const COMPACT_W: f64 = 680.0;
+pub const COMPACT_H: f64 = 440.0;
 
 /// Ctrl+Shift+C's layout for this run only; `None` follows the config file.
 static SESSION_LAYOUT: Mutex<Option<LauncherLayout>> = Mutex::new(None);
@@ -20,6 +20,10 @@ pub fn set_session_layout(layout: Option<LauncherLayout>) {
     if let Ok(mut session) = SESSION_LAYOUT.lock() {
         *session = layout;
     }
+}
+
+pub fn session_layout() -> Option<LauncherLayout> {
+    SESSION_LAYOUT.lock().ok().and_then(|session| *session)
 }
 
 pub fn effective_layout() -> LauncherLayout {

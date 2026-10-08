@@ -69,6 +69,7 @@ const HELP_PADDING: f32 = 12.0;
 const HELP_GAP: f32 = 10.0;
 const IMAGE_MISSING_PADDING: f32 = 24.0;
 const IMAGE_MISSING: &str = "The image is no longer on disk";
+pub const FACT_SEP: &str = " \u{b7} ";
 const CPU_PROMPT: &str = "Enter to measure";
 const CPU_MEASURING: &str = "measuring\u{2026}";
 const UNAVAILABLE: &str = "unavailable";
@@ -205,6 +206,29 @@ impl Preview {
                 }
             });
         }));
+    }
+
+    /// Memory and CPU of the shown process, for the compact row that stands
+    /// in for the panel; CPU once Enter has asked for it.
+    pub fn process_facts(&self, pid: u32) -> Option<String> {
+        let (_, content) = self.current.as_ref()?;
+        let Content::Process { meta, detail } = content.as_ref() else {
+            return None;
+        };
+        if meta.pid != pid {
+            return None;
+        }
+        let memory = detail
+            .as_ref()
+            .filter(|d| d.rss_kb > 0)
+            .map(|d| format_size(d.rss_kb * 1024));
+        let cpu = self
+            .cpu
+            .as_ref()
+            .filter(|(p, _)| *p == pid)
+            .map(|(_, text)| format!("CPU {text}"));
+        let facts: Vec<String> = memory.into_iter().chain(cpu).collect();
+        (!facts.is_empty()).then(|| facts.join(FACT_SEP))
     }
 
     pub fn clear(&mut self, cx: &mut Context<Self>) {
@@ -886,7 +910,9 @@ fn clip_label(text: &'static str, th: &Theme) -> Div {
 
 /// The "How to use" tips of an empty history, the right half of its empty
 /// state; the list card shows the left half.
-fn help(mode: Mode, th: &Theme) -> Div {
+/// The clipboard histories' "How to use": the preview column's in split,
+/// under the empty state in compact.
+pub fn help(mode: Mode, th: &Theme) -> Div {
     let tips: &[&str] = match mode {
         Mode::ClipboardImage => &[
             "Type ci\" to list the latest images",

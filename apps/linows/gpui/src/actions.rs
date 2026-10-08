@@ -37,6 +37,9 @@ const SYSTEM_FILE_MANAGER: &str = "Explorer";
 
 const MENU_TOP: f32 = 84.0;
 const MENU_PADDING: f32 = 6.0;
+/// macOS `ActionMenu.compactWidth` and `compactInset`.
+const COMPACT_W: f32 = 320.0;
+const COMPACT_INSET: f32 = 10.0;
 const ROW_PADDING_X: f32 = 10.0;
 const ROW_PADDING_Y: f32 = 7.0;
 const ROW_GAP: f32 = 16.0;
@@ -335,15 +338,10 @@ impl Menu {
         }
     }
 
-    /// The popover: over the preview column in the split layout, over the
-    /// list in the compact one.
+    /// The popover: over the preview column in the split layout; in the
+    /// compact one, over the list, centred on its right edge and opaque so
+    /// the rows under it do not read through.
     pub fn render(&self, split: bool, th: &Theme, cx: &mut Context<Launcher>) -> Div {
-        let inner_w = theme::WINDOW_W - 2.0 * theme::CONTENT_PADDING;
-        let column_w = if split {
-            (inner_w - th.inner_gap) / 2.0
-        } else {
-            inner_w
-        };
         let rows = self.items.iter().enumerate().map(|(i, item)| {
             let focused = i == self.focused;
             div()
@@ -376,20 +374,31 @@ impl Menu {
                     )
                 })
         });
-        div()
-            .absolute()
-            .top(px(MENU_TOP))
-            .right(px(theme::CONTENT_PADDING))
-            .w(px(column_w - 2.0 * theme::CONTENT_PADDING))
+        let menu = div()
             .p(px(MENU_PADDING))
             .rounded(px(th.control_radius()))
-            .bg(th.card_face())
             .border(px(th.border_thickness))
             .border_color(th.border)
             .shadow(th.card_shadow())
             .flex()
             .flex_col()
-            .children(rows)
+            .children(rows);
+        if !split {
+            return div()
+                .absolute()
+                .inset_0()
+                .pr(px(COMPACT_INSET))
+                .flex()
+                .items_center()
+                .justify_end()
+                .child(menu.w(px(COMPACT_W)).bg(theme::opaque(th.card_face())));
+        }
+        let column_w = (theme::WINDOW_W - 2.0 * theme::CONTENT_PADDING - th.inner_gap) / 2.0;
+        menu.absolute()
+            .top(px(MENU_TOP))
+            .right(px(theme::CONTENT_PADDING))
+            .w(px(column_w - 2.0 * theme::CONTENT_PADDING))
+            .bg(th.card_face())
     }
 }
 

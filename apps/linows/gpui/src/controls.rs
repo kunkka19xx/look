@@ -43,6 +43,8 @@ const SEGMENT_PADDING: f32 = 2.0;
 const SEGMENT_GAP: f32 = 2.0;
 const SEGMENT_ITEM_PADDING_X: f32 = 14.0;
 const SEGMENT_ITEM_PADDING_Y: f32 = 3.0;
+/// Every item carries it, clear unless ringed, so a ring moves nothing.
+const SEGMENT_RING: f32 = 1.0;
 const BUTTON_PADDING_X: f32 = 14.0;
 const BUTTON_PADDING_Y: f32 = 5.0;
 const BOX_PADDING_X: f32 = 8.0;
@@ -150,6 +152,7 @@ pub fn segmented(
     id: &'static str,
     options: &'static [Option_],
     active: &str,
+    ringed: Option<&str>,
     th: &Theme,
     pick: impl Fn(&str, &mut Window, &mut App) + 'static,
 ) -> Div {
@@ -162,11 +165,18 @@ pub fn segmented(
         .gap(px(SEGMENT_GAP))
         .children(options.iter().enumerate().map(|(i, (value, label))| {
             let on = *value == active;
+            let ring = !on && ringed == Some(*value);
             let pick = pick.clone();
             div()
                 .id((id, i))
-                .px(px(SEGMENT_ITEM_PADDING_X))
-                .py(px(SEGMENT_ITEM_PADDING_Y))
+                .px(px(SEGMENT_ITEM_PADDING_X - SEGMENT_RING))
+                .py(px(SEGMENT_ITEM_PADDING_Y - SEGMENT_RING))
+                .border(px(SEGMENT_RING))
+                .border_color(if ring {
+                    theme::hsla_of(th.accent)
+                } else {
+                    gpui::transparent_black()
+                })
                 .rounded(px(th.chip_radius()))
                 .text_size(px(th.font_size - 2.0))
                 .font_weight(FontWeight::SEMIBOLD)

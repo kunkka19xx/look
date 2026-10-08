@@ -139,8 +139,9 @@ impl Host for Shell {
     }
 
     /// Text goes through gpui's clipboard on the main loop. A file or image
-    /// copy needs its MIME types offered side by side, which gpui cannot do,
-    /// so those answer `false` and the backend shells out to wl-copy.
+    /// copy needs its MIME types offered side by side, which gpui cannot do;
+    /// the backend offers those over data-control and only lands here where
+    /// that is missing, and `false` sends it on to wl-copy.
     #[cfg(target_os = "linux")]
     fn own_clipboard(&self, forms: Vec<ClipForm>) -> bool {
         if !forms.iter().all(|form| form.targets.contains(&TEXT_TARGET)) {

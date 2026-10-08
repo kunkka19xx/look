@@ -5,10 +5,11 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
 
-use gpui::{BoxShadow, Hsla, Rgba, hsla, point, px};
+use gpui::{Bounds, BoxShadow, Hsla, Pixels, Rgba, Size, hsla, point, px, size};
 use linows_backend::config::{self, LauncherLayout};
+use linows_backend::geometry;
 use linows_backend::highlight::TokenType;
 use palette::IntoColor;
 
@@ -18,6 +19,12 @@ pub const TILE_VALUE_SIZE: f32 = 20.0;
 
 pub const WINDOW_W: f32 = 1008.0;
 pub const WINDOW_H: f32 = 672.0;
+/// The compact panel at the window's rung. It is drawn inside the split
+/// window, top-aligned, so the bar keeps its place across layouts and a
+/// switch needs no new surface.
+const WINDOW_SCALE: f32 = WINDOW_W / geometry::BASE_W as f32;
+pub const COMPACT_W: f32 = geometry::COMPACT_W as f32 * WINDOW_SCALE;
+pub const COMPACT_H: f32 = geometry::COMPACT_H as f32 * WINDOW_SCALE;
 
 // Every themed radius is the macOS base times the surface scale.
 const TILE_RADIUS_BASE: f32 = 12.0;
@@ -441,6 +448,7 @@ pub struct Theme {
     pub border_thickness: f32,
     pub radius_scale: f32,
     pub inner_gap: f32,
+    /// `layout`, or Ctrl+Shift+C's choice for this run.
     pub layout: LauncherLayout,
     /// `super_actions_enabled`: whether the empty query shows the launchpad.
     pub launchpad: bool,
@@ -586,9 +594,11 @@ impl Theme {
             border_thickness: num("ui_border_thickness", DEFAULT_BORDER_THICKNESS),
             radius_scale: num("ui_surface_radius", DEFAULT_RADIUS_SCALE),
             inner_gap: num("inner_gap", DEFAULT_INNER_GAP),
-            layout: get(LAYOUT_KEY)
-                .and_then(LauncherLayout::parse)
-                .unwrap_or_default(),
+            layout: effective_layout(
+                get(LAYOUT_KEY)
+                    .and_then(LauncherLayout::parse)
+                    .unwrap_or_default(),
+            ),
             launchpad: get(LAUNCHPAD_KEY) == Some("true"),
             bg_image: get(BG_IMAGE_KEY).map(PathBuf::from),
             bg_layout: get(BG_LAYOUT_KEY)
@@ -624,6 +634,20 @@ impl Theme {
     /// Whether the preview column is shown beside the results.
     pub fn split(&self) -> bool {
         matches!(self.layout, LauncherLayout::Split)
+    }
+
+    /// The empty query's launchpad: a setting, and split only, as on macOS.
+    pub fn shows_launchpad(&self) -> bool {
+        self.launchpad && self.split()
+    }
+
+    /// The panel inside the window: all of it in split, the compact size
+    /// otherwise.
+    pub fn frame_size(&self) -> Size<Pixels> {
+        match self.layout {
+            LauncherLayout::Split => size(px(WINDOW_W), px(WINDOW_H)),
+            LauncherLayout::Compact => size(px(COMPACT_W), px(COMPACT_H)),
+        }
     }
 
     pub fn syntax(&self, token: TokenType) -> Rgba {
@@ -677,6 +701,45 @@ impl Theme {
 }
 
 static THEME: RwLock<Option<Theme>> = RwLock::new(None);
+/// The configured layout the session override was taken against.
+static CONFIGURED: Mutex<Option<LauncherLayout>> = Mutex::new(None);
+
+/// Centred, its top on the window's.
+pub fn place_frame(frame: Size<Pixels>, viewport: Size<Pixels>) -> Bounds<Pixels> {
+    let x = (f32::from(viewport.width - frame.width) / 2.0).round();
+    Bounds::new(point(px(x), px(0.0)), frame)
+}
+
+/// The session's layout over the configured one, until the configured one
+/// itself changes (the picker, a reload that edits `layout`).
+fn effective_layout(configured: LauncherLayout) -> LauncherLayout {
+    let mut last = CONFIGURED.lock().unwrap_or_else(|p| p.into_inner());
+    if last
+        .replace(configured)
+        .is_some_and(|prev| prev != configured)
+    {
+        geometry::set_session_layout(None);
+    }
+    geometry::session_layout().unwrap_or(configured)
+}
+
+/// Ctrl+Shift+C: the other layout until Look quits; the config is untouched.
+pub fn toggle_session_layout() {
+    let configured = CONFIGURED
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .unwrap_or_default();
+    let mut guard = THEME.write().unwrap_or_else(|p| p.into_inner());
+    let theme = guard.get_or_insert_with(Theme::from_config);
+    let next = theme.layout.flipped();
+    geometry::set_session_layout((next != configured).then_some(next));
+    theme.layout = next;
+}
+
+/// The settings picker speaks for the config, so a pick ends the override.
+pub fn clear_session_layout() {
+    geometry::set_session_layout(None);
+}
 
 /// Resolve the config again. Cheap: one file read.
 pub fn load() {
