@@ -583,7 +583,7 @@ a click away commits, empty means `system-ui`, and `fonts::ensure_family`
 loads what was picked. `settings_blur_multiplier` scales the tint alpha
 of the frame while the screen is up. Running Apps and Super Actions show
 in the split layout only; Animations is saved and read by M7. The
-The Shortcuts tab is a placeholder. Ctrl+Shift+; reloads the
+Ctrl+Shift+; reloads the
 theme, the fonts, the engine and, if up, the working copy, with the
 webview's banner.
 
@@ -659,6 +659,62 @@ the seated panel, blur dragged to 15, the number box, the frost switch
 and its hint, the fresh config question and the reset file diffed.
 Picking a file through the portal waits for dogfood, as does typing in
 the number boxes: the socket's keys carry no character.
+
+Slices 3 and 4, help half (2026-10-08): `gpui/src/shortcuts.rs` is the
+key catalog, the macOS `ShortcutCatalog` with the webview's wording:
+groups by topic (Main, Prefixes, Command), each entry an id, its keys
+and what it does; the prefix rows derive from the `"` menu's entries and
+the Ctrl+N row from `COMMAND_ENTRIES`, so neither can go stale. Every
+footer hint is built from it (`shortcuts::hint` over `Piece`s: a catalog
+id with a short label, a bare key, or a phrase), held in `LazyLock`
+statics so the `&'static str` signatures stay; the Search hint says
+`Ctrl+H: Help` again now that help exists. Settings > Shortcuts
+(`settings/shortcuts.rs`) is the catalog flat with the two footers, the
+launcher key's row a capsule that records on click where the key is
+rebindable (Windows, `hotkey::CONFIGURABLE`): the next chord goes
+through `hotkey_check`, a refusal shows after the row, Esc stops, Reset
+shows while off the default, the pending notice sits at the top and Save
+writes `launcher_hotkey` with the rest. Nothing releases or rebinds the
+key around the recording yet: the gpui binary binds no hotkey on
+Windows until M8, and Linux is not rebindable. `help.rs` is the help
+screen in the command screen's frame on Ctrl+H from anywhere but
+settings: the title row carries the All / Main / Prefixes / Command
+capsules as the macOS screen does, Tab and Shift+Tab step them, the
+body scrolls, Esc or Ctrl+H closes, and a plain `FocusHandle` holds the
+keys. Verified with screenshots on sway: the Search footer, help on All
+and on Prefixes, scrolled, back to the results with the query kept, and
+the Shortcuts tab top and middle.
+
+Update widget, same day: `backend/src/update.rs` is the release check,
+GitHub's latest release through the answers crate's HTTP path (curl, 15 s)
+against the running version, draft and prerelease ignored, the notes
+address kept only when it is GitHub's own, a dismissed version remembered
+in the state dir and overridden by a manual check; the webview fetched
+this from JS and kept the dismissal in localStorage. `gpui/src/update.rs`
+is the block, the macOS `AppUpdateStatusView` in one state for both
+places: the version line with the status after it and the Check for
+Updates pill, then the banner with Update (Windows installer builds,
+through `start_windows_update`, the process leaving on success), Release
+Notes and Dismiss, and the hint for the install method (Scoop's command
+with a Copy pill, the installer note, or the README link). It sits under
+the help title row and as About at the foot of the Advanced tab. The
+version is `LOOK_VERSION`, read by `gpui/build.rs` from
+`tauri.conf.json`, the file the release tag is checked against, until the
+Tauri shell retires. Verified on sway: the help header, a live check
+answering the latest version, and the About section.
+
+Settings header dropped, same day, the user's call ahead of macOS: no
+title row, the tabs at the top edge, Save Config and its Saved pill
+floating at the card's bottom right (`Settings::save_float`, a
+`deferred` absolute element the frame adds as the card's own child,
+since gpui anchors an absolute child to its parent; the body keeps
+clearance under its last row), the footer only where a tab has a hint
+and without the copyright (the frame takes an optional trailing element
+in the copyright's place), the close hint gone. The tabs take the
+control fill, no border: the panel fill had read as the card. The
+update block's pills are the app's buttons, and About flows the check
+button after the version rather than at the row's end, where it stacked
+on the floating Save; the help header keeps it at the end.
 
 ### M7 Motion pass
 

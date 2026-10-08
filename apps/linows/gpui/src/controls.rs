@@ -68,7 +68,7 @@ pub fn divider(th: &Theme) -> Div {
 }
 
 /// A control's row: the label column, then whatever the caller adds.
-pub fn row(label: &'static str, th: &Theme) -> Div {
+pub fn row(label: impl Into<SharedString>, th: &Theme) -> Div {
     div()
         .py(px(ROW_PADDING_Y))
         .flex()
@@ -80,7 +80,7 @@ pub fn row(label: &'static str, th: &Theme) -> Div {
                 .flex_shrink_0()
                 .text_size(px(th.font_size - 1.0))
                 .text_color(th.text_secondary)
-                .child(label),
+                .child(label.into()),
         )
 }
 

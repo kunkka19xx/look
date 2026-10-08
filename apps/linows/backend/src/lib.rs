@@ -41,6 +41,7 @@ pub mod todo;
 pub mod tools;
 pub mod translate;
 pub mod trash;
+pub mod update;
 pub mod weather;
 pub mod weburl;
 

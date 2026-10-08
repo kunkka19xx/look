@@ -4,6 +4,7 @@
 //! Config writes the lot to the file in one go, Esc discards.
 
 mod advanced;
+mod shortcuts;
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -16,7 +17,7 @@ use gpui::{
 use linows_backend::config::{self, ConfigUpdate};
 use linows_backend::platform::{self, CandidateDrive};
 use linows_backend::search as engine;
-use linows_backend::{autostart, cli_path, files};
+use linows_backend::{autostart, cli_path, files, hotkey};
 
 use crate::bg;
 use crate::commands::KeyOutcome;
@@ -27,26 +28,27 @@ use crate::launchpad::Tone;
 use crate::search::{Changed, SearchInput, search_field};
 use crate::state as app_state;
 use crate::theme::{self, Theme};
+use crate::update::Update;
 
-const TITLE: &str = "Settings";
 const SAVE: &str = "Save Config";
-const CLOSE_HINT: &str = "Esc or Ctrl+Shift+, to close";
 const SAVED: &str = "Saved";
 const SAVE_FAILED: &str = "Save failed";
 const SAVE_MESSAGE_MS: u64 = 1600;
 const SAVE_FAILED_BANNER_SECS: f32 = 4.0;
-const PENDING_TAB: &str = "comes in its own PR";
 pub const RELOADED: &str = "Config reloaded from file";
 pub const RELOADED_SECS: f32 = 1.2;
 
 const HEADER_PADDING_X: f32 = 14.0;
 const HEADER_PADDING_Y: f32 = 10.0;
 const HEADER_GAP: f32 = 10.0;
-const TITLE_SIZE_STEP: f32 = 2.0;
 const PILL_PADDING_X: f32 = 10.0;
 const PILL_PADDING_Y: f32 = 3.0;
 const TABS_GAP: f32 = 4.0;
 const TABS_PADDING_BOTTOM: f32 = 6.0;
+/// The floating Save button's distance from the card's bottom right corner.
+const SAVE_FLOAT_INSET: f32 = 10.0;
+/// What the body keeps free under its last row for the floating button.
+const SAVE_FLOAT_CLEARANCE: f32 = 36.0;
 const TAB_PADDING_Y: f32 = 7.0;
 const BODY_PADDING_BOTTOM: f32 = 14.0;
 /// The header row's items, spaced as the webview's `margin-left: 40px`.
@@ -346,17 +348,14 @@ impl Tab {
         }
     }
 
-    fn hint(self) -> &'static str {
+    /// The footer line; Appearance has none, as on macOS.
+    fn hint(self) -> Option<&'static str> {
         match self {
-            Tab::Appearance => {
-                "Tab: Switch tabs \u{2022} Save Config: Keep changes \u{2022} Esc: Discard"
-            }
-            Tab::Advanced => {
-                "Save Config applies changes immediately. Ctrl+Shift+; is only needed after editing .look/config manually."
-            }
-            Tab::Shortcuts => {
-                "Tips: t\"word for web EN/VI/JA translation \u{2022} /kill to force quit apps"
-            }
+            Tab::Appearance => None,
+            Tab::Advanced => Some(
+                "Save Config applies changes immediately. Ctrl+Shift+; is only needed after editing .look/config manually.",
+            ),
+            Tab::Shortcuts => Some(Settings::tips()),
         }
     }
 
@@ -393,6 +392,7 @@ pub struct Settings {
     fonts: Vec<String>,
     /// Windows: the fixed drives that are not the system's.
     drives: Vec<CandidateDrive>,
+    recorder: shortcuts::Recorder,
     field: Option<Field>,
     /// The open dropdown's key.
     select: Option<&'static str>,
@@ -413,6 +413,7 @@ impl Settings {
             entries: HashMap::new(),
             fonts: Vec::new(),
             drives: Vec::new(),
+            recorder: shortcuts::Recorder::default(),
             field: None,
             select: None,
             drag: None,
@@ -438,6 +439,7 @@ impl Settings {
         self.field = None;
         self.select = None;
         self.drag = None;
+        self.recorder.discard();
     }
 
     /// Read the file again: on open, and on Ctrl+Shift+; while open. The
@@ -459,16 +461,21 @@ impl Settings {
                         flag(cli_path::get_cli_path()),
                     );
                 }
-                (entries, platform::list_candidate_drives())
+                (
+                    entries,
+                    platform::list_candidate_drives(),
+                    hotkey::launcher_hotkey_state(),
+                )
             },
-            |this, (entries, drives), _| {
+            |this, (entries, drives, hotkey), _| {
                 this.settings.entries = entries;
                 this.settings.drives = drives;
+                this.settings.recorder.state = Some(hotkey);
             },
         );
     }
 
-    pub fn hint(&self) -> &'static str {
+    pub fn hint(&self) -> Option<&'static str> {
         self.tab.hint()
     }
 
@@ -488,6 +495,9 @@ impl Settings {
 
     pub fn handle_key(&mut self, ks: &gpui::Keystroke, cx: &mut Context<Launcher>) -> KeyOutcome {
         let shift = ks.modifiers.shift;
+        if self.recorder.listening {
+            return self.record_key(ks, cx);
+        }
         if self.select.is_some() {
             if ks.key == "escape" {
                 self.select = None;
@@ -783,6 +793,14 @@ impl Settings {
         let ai_on = self.ai_on();
         let launch = self.launch_at_login();
         let add_to_path = self.add_to_path();
+        let mut updates = updates;
+        if let Some(pending) = self.recorder.pending.take() {
+            updates.push(ConfigUpdate {
+                key: shortcuts::HOTKEY_KEY.to_string(),
+                value: pending.spec,
+            });
+        }
+        self.recorder.stop();
         bg::fetch(
             cx,
             move || {
@@ -805,6 +823,7 @@ impl Settings {
                     );
                 }
                 this.ai.enabled = ai_on;
+                this.settings.recorder.state = Some(hotkey::launcher_hotkey_state());
                 this.settings.show_saved(ok, cx);
             },
         );
@@ -834,21 +853,16 @@ impl Settings {
 
     // --- Render ------------------------------------------------------------------
 
-    pub fn render(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+    pub fn render(&self, th: &Theme, update: &Update, cx: &mut Context<Launcher>) -> Div {
         let body: AnyElement = match self.tab {
             Tab::Appearance => self.appearance(th, cx).into_any_element(),
-            Tab::Advanced => self.advanced(th, cx).into_any_element(),
-            Tab::Shortcuts => div()
-                .pt(px(HEADER_PADDING_Y))
-                .text_color(th.text_muted)
-                .child(format!("{} {PENDING_TAB}", self.tab.label()))
-                .into_any_element(),
+            Tab::Advanced => self.advanced(th, update, cx).into_any_element(),
+            Tab::Shortcuts => self.shortcuts(th, cx).into_any_element(),
         };
         div()
             .size_full()
             .flex()
             .flex_col()
-            .child(self.header(th, cx))
             .child(self.tabs(th, cx))
             .child(
                 div()
@@ -858,14 +872,31 @@ impl Settings {
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
                     .px(px(HEADER_PADDING_X))
-                    .pb(px(BODY_PADDING_BOTTOM))
+                    // Room for the floating button, so the last row can
+                    // still scroll out from under it.
+                    .pb(px(BODY_PADDING_BOTTOM + SAVE_FLOAT_CLEARANCE))
                     .flex()
                     .flex_col()
                     .child(body),
             )
     }
 
-    fn header(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+    /// Save floats at the card's bottom right, over the footer where there
+    /// is one: no row of its own, the user's call ahead of macOS. The frame
+    /// places it, since an absolute child anchors to its own parent.
+    pub fn save_float(&self, th: &Theme, cx: &mut Context<Launcher>) -> AnyElement {
+        deferred(
+            div()
+                .absolute()
+                .bottom(px(SAVE_FLOAT_INSET))
+                .right(px(SAVE_FLOAT_INSET))
+                .child(self.save_controls(th, cx)),
+        )
+        .into_any_element()
+    }
+
+    /// The Saved pill, then Save Config.
+    fn save_controls(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let pill = self.save_message.as_ref().map(|m| {
             div()
                 .px(px(PILL_PADDING_X))
@@ -878,31 +909,23 @@ impl Settings {
                 .child(m.text)
         });
         div()
-            .px(px(HEADER_PADDING_X))
-            .py(px(HEADER_PADDING_Y))
             .flex()
             .items_center()
             .gap(px(HEADER_GAP))
-            .child(
-                div()
-                    .flex_1()
-                    .text_size(px(th.font_size + TITLE_SIZE_STEP))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(TITLE),
-            )
             .children(pill)
             .child(
                 controls::button("settings-save", SAVE, th)
                     .on_click(cx.listener(|this, _, _, cx| this.settings.save_all(cx))),
             )
-            .child(controls::hint(CLOSE_HINT, th).text_size(px(th.font_size - 1.0)))
     }
 
     fn tabs(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         div()
             .px(px(HEADER_PADDING_X))
+            .pt(px(HEADER_PADDING_Y))
             .pb(px(TABS_PADDING_BOTTOM))
             .flex()
+            .items_center()
             .gap(px(TABS_GAP))
             .children(Tab::ALL.into_iter().enumerate().map(|(i, tab)| {
                 let active = tab == self.tab;
@@ -915,13 +938,14 @@ impl Settings {
                     .text_size(px(th.font_size - 1.0))
                     .font_weight(FontWeight::MEDIUM)
                     .cursor_pointer()
+                    // The control fill: the panel fill reads as the card itself.
                     .map(|el| {
                         if active {
                             el.bg(th.selection_fill).text_color(th.text)
                         } else {
-                            el.bg(th.panel_fill)
+                            el.bg(th.control_fill)
                                 .text_color(th.text_secondary)
-                                .hover(|s| s.bg(th.control_fill).text_color(th.text))
+                                .hover(|s| s.bg(th.selection_fill).text_color(th.text))
                         }
                     })
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -1142,9 +1166,9 @@ mod tests {
     }
 
     #[test]
-    fn every_tab_hint_names_a_way_out_or_a_tip() {
-        for tab in Tab::ALL {
-            assert!(!tab.hint().is_empty());
-        }
+    fn appearance_alone_has_no_footer() {
+        assert!(Tab::Appearance.hint().is_none());
+        assert!(Tab::Advanced.hint().is_some());
+        assert!(Tab::Shortcuts.hint().is_some());
     }
 }

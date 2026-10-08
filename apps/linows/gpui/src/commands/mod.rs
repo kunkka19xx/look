@@ -13,6 +13,10 @@ mod speed;
 mod sys;
 mod todo;
 
+use std::collections::HashMap;
+use std::sync::LazyLock;
+
+use crate::shortcuts;
 use gpui::{AnyElement, Context, Div, Entity, FontWeight, deferred, div, prelude::*, px, svg};
 
 use crate::icons::IconStore;
@@ -57,17 +61,71 @@ const BUBBLE_PADDING_X: f32 = 12.0;
 const BUBBLE_PADDING_Y: f32 = 9.0;
 const BUBBLE_LINE_HEIGHT: f32 = 1.35;
 
-/// What each panel does on Enter, Tab and Escape, for the footer.
+/// What each panel does on Enter, Tab and Escape, for the footer; the
+/// keys are the catalog's.
 fn hint(id: &str) -> &'static str {
-    match id {
-        "pomo" => "Space: Start/pause \u{2022} R: Reset \u{2022} Esc: Back",
-        "todo" => "Ctrl+Z/Shift+Z: Undo/Redo \u{2022} Ctrl+S: Save \u{2022} Esc: Back",
-        "speed" => "R: Rerun \u{2022} E: Show IP \u{2022} Esc: Back",
-        "kill" => "Y: Confirm \u{2022} N: Cancel \u{2022} Esc: Back",
-        "sys" => "Esc: Back",
-        "calc" => "Enter: Evaluate \u{2022} Tab: Select \u{2022} Esc: Back",
-        _ => "Enter: Run \u{2022} Tab: Select \u{2022} Esc: Back",
-    }
+    use shortcuts::Piece::{Id, Key};
+    static HINTS: LazyLock<HashMap<&'static str, String>> = LazyLock::new(|| {
+        let back = Id(shortcuts::COMMAND_BACK, "Back");
+        HashMap::from([
+            (
+                "pomo",
+                shortcuts::hint(&[
+                    Id(shortcuts::POMO_START_PAUSE, "Start/pause"),
+                    Id(shortcuts::POMO_RESET, "Reset"),
+                    back,
+                ]),
+            ),
+            (
+                "todo",
+                shortcuts::hint(&[
+                    Key("Ctrl+Z/Shift+Z", "Undo/Redo"),
+                    Id(shortcuts::TODO_SAVE, "Save"),
+                    Id(shortcuts::COMMAND_BACK, "Back"),
+                ]),
+            ),
+            (
+                "speed",
+                shortcuts::hint(&[
+                    Id(shortcuts::SPEED_RERUN, "Rerun"),
+                    Id(shortcuts::SPEED_REVEAL, "Show IP"),
+                    Id(shortcuts::COMMAND_BACK, "Back"),
+                ]),
+            ),
+            (
+                "kill",
+                shortcuts::hint(&[
+                    Key("Y", "Confirm"),
+                    Key("N", "Cancel"),
+                    Id(shortcuts::COMMAND_BACK, "Back"),
+                ]),
+            ),
+            (
+                "sys",
+                shortcuts::hint(&[Id(shortcuts::COMMAND_BACK, "Back")]),
+            ),
+            (
+                "calc",
+                shortcuts::hint(&[
+                    Id(shortcuts::CALC_EVALUATE, "Evaluate"),
+                    Key("Tab", "Select"),
+                    Id(shortcuts::COMMAND_BACK, "Back"),
+                ]),
+            ),
+            (
+                "",
+                shortcuts::hint(&[
+                    Key("Enter", "Run"),
+                    Key("Tab", "Select"),
+                    Id(shortcuts::COMMAND_BACK, "Back"),
+                ]),
+            ),
+        ])
+    });
+    HINTS
+        .get(id)
+        .or_else(|| HINTS.get(""))
+        .map_or("", String::as_str)
 }
 
 /// What the screen did with a key.

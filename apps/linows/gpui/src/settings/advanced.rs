@@ -17,10 +17,12 @@ use crate::launchpad::Tone;
 use crate::pick;
 use crate::search::{Changed, SearchInput, search_field};
 use crate::theme::{self, BgLayout, Theme};
+use crate::update::Update;
 use gpui::prelude::*;
 use gpui::{Context, Div, FontWeight, div, px};
 
 const NUMBER_BOX_W: f32 = 80.0;
+const ABOUT_PADDING_BOTTOM: f32 = 6.0;
 const DIR_GAP_X: f32 = 6.0;
 const DIR_GAP_Y: f32 = 4.0;
 const DIR_PADDING_X: f32 = 8.0;
@@ -415,7 +417,7 @@ impl Settings {
 
     // --- Render ------------------------------------------------------------------
 
-    pub(super) fn advanced(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+    pub(super) fn advanced(&self, th: &Theme, update: &Update, cx: &mut Context<Launcher>) -> Div {
         div()
             .flex()
             .flex_col()
@@ -486,6 +488,10 @@ impl Settings {
                     .child(controls::section("Rendering", th))
                     .child(self.frost_row(th, cx))
             })
+            // About, at the foot of the scroll as on macOS.
+            .child(controls::divider(th))
+            .child(controls::section("About", th))
+            .child(update.about(th, cx).pb(px(ABOUT_PADDING_BOTTOM)))
     }
 
     fn switch_row(&self, sw: &'static Switch, th: &Theme, cx: &mut Context<Launcher>) -> Div {
