@@ -203,6 +203,9 @@ pub struct Launcher {
     confirm_seq: u64,
     /// When this window came up: the frost waits for the entrances.
     shown_at: Instant,
+    /// When the launchpad grid last mounted, `None` while it is off screen.
+    /// Every mount replays the cascade, so the tiles' frost waits from here.
+    grid_since: Option<Instant>,
     _search: Option<Task<()>>,
 }
 
@@ -273,6 +276,7 @@ impl Launcher {
             was_home: true,
             confirm_seq: 0,
             shown_at: Instant::now(),
+            grid_since: None,
             todo_hovered: false,
             version: 0,
             _search: None,
@@ -2690,7 +2694,8 @@ impl Launcher {
     fn content(&mut self, th: Theme, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let frosted = th.frosted();
         motion::sync(th.animations, cx);
-        self.arm_frost(window, cx);
+        self.arm_frost(blur::surfaces_fade(frosted), window, cx);
+        let grid_since = self.grid_since.take();
         self.prepare_backdrop(&th, window, cx);
         let input = self.input.read(cx);
         let home = input.text().is_empty() && !self.levels.is_active();
@@ -2722,7 +2727,10 @@ impl Launcher {
         let seated = !th.floating() && !home;
         // The launchpad is a setting; off, the empty query is the bar alone.
         let below = match (home, th.shows_launchpad(), self.mode) {
-            (true, true, _) => self.bento(&th, window, cx).into_any_element(),
+            (true, true, _) => {
+                self.grid_since = Some(grid_since.unwrap_or_else(Instant::now));
+                self.bento(&th, window, cx).into_any_element()
+            }
             (true, false, _) => div().into_any_element(),
             (false, _, Mode::Translate) => self.translate_panel(seated, &th, cx).into_any_element(),
             (false, _, _) => self.results(seated, &th, window, cx).into_any_element(),
@@ -2906,18 +2914,21 @@ thread_local! {
 }
 
 impl Launcher {
-    /// The compositor frosts a region the moment it is set, so a card would
-    /// sit frosted before it has faded in. The cards' regions wait for the
+    /// The compositor frosts a region the moment it is set, so a card that
+    /// fades would sit frosted before it shows. Its region waits for the
     /// bar's spawn, the tiles' for the end of the cascade; frames are asked
-    /// for until both have landed.
-    fn arm_frost(&self, window: &mut Window, cx: &App) {
-        let elapsed = self.shown_at.elapsed();
-        let landed = |ms: u64| cx.reduce_motion() || elapsed >= motion::dur(ms);
+    /// for until both have landed. Cards that arrive opaque frost at once.
+    fn arm_frost(&self, fade: bool, window: &mut Window, cx: &App) {
+        let still = !fade || cx.reduce_motion();
+        let landed = |since: Instant, ms: u64| since.elapsed() >= motion::dur(ms);
         let frost = Frost {
-            cards: landed(motion::SPAWN_MS),
-            tiles: landed(motion::TILE_MAX_STAGGER_MS + motion::TILE_MS),
+            cards: still || landed(self.shown_at, motion::SPAWN_MS),
+            tiles: still
+                || self.grid_since.is_some_and(|since| {
+                    landed(since, motion::TILE_MAX_STAGGER_MS + motion::TILE_MS)
+                }),
         };
-        if !(frost.cards && frost.tiles) {
+        if !frost.cards || (self.grid_since.is_some() && !frost.tiles) {
             window.request_animation_frame();
         }
         FROST.set(frost);

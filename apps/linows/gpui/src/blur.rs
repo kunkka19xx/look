@@ -4,14 +4,15 @@
 
 pub use linows_backend::platform::BlurRect;
 
-/// Whether a surface may fade in. swayfx frosts a pixel only once its
-/// alpha passes a threshold, so a card fading in from nothing shows dark
-/// over the sharp desktop and then the frost pops in; under its frost the
-/// surfaces arrive by motion alone, at full opacity.
+/// Whether a surface may fade in. A Wayland compositor's frost is on or
+/// off per region, never partial, so a card fading in over it either sits
+/// on a bare frosted patch or shows the sharp desktop until the frost pops
+/// in (swayfx frosts past an alpha threshold, the same pop). Under frost
+/// the surfaces arrive by motion alone, at full opacity.
 pub fn surfaces_fade(frosted: bool) -> bool {
     #[cfg(target_os = "linux")]
     {
-        !(frosted && linows_backend::platform::linux::wm::is_swayfx())
+        !frosted
     }
     #[cfg(not(target_os = "linux"))]
     {
