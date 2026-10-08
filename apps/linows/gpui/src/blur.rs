@@ -4,6 +4,36 @@
 
 pub use linows_backend::platform::BlurRect;
 
+/// Whether a surface may fade in. swayfx frosts a pixel only once its
+/// alpha passes a threshold, so a card fading in from nothing shows dark
+/// over the sharp desktop and then the frost pops in; under its frost the
+/// surfaces arrive by motion alone, at full opacity.
+pub fn surfaces_fade(frosted: bool) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        !(frosted && linows_backend::platform::linux::wm::is_swayfx())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = frosted;
+        true
+    }
+}
+
+/// The compositor frosts behind the window one way or another: through a
+/// blur protocol, or swayfx's `layer_effects` on the whole surface with
+/// transparent pixels skipped, where any shadow alpha would be frosted.
+pub fn can_frost() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        is_supported() || linows_backend::platform::linux::wm::is_swayfx()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        is_supported()
+    }
+}
+
 #[cfg(windows)]
 #[path = "blur/windows.rs"]
 mod backend;

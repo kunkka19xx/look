@@ -3,13 +3,16 @@
 //! open; hidden in the compact layout, while translating, and when the
 //! `running_apps_placement` setting says none.
 
-use gpui::{Context, Div, FontWeight, SharedString, div, img, prelude::*, px, svg};
+use gpui::{
+    Animation, AnimationExt, Context, Div, FontWeight, SharedString, div, img, prelude::*, px, svg,
+};
 use linows_backend::process::{self, RunningApp};
 
 use crate::bg;
 use crate::glyphs;
 use crate::icons::{IconRequest, IconStore};
 use crate::launcher::Launcher;
+use crate::motion;
 use crate::theme::{self, Theme};
 
 const MAX_ITEMS: usize = 9;
@@ -160,6 +163,10 @@ impl RunningApps {
                 .font_weight(FontWeight::BOLD)
                 .text_color(th.text)
                 .child(SharedString::from(keys[i].to_string()));
+            // Each tile slides in from the left behind the bar, staggered.
+            let delay = motion::slide_delay(i);
+            let duration = motion::dur(motion::SLIDE_MS);
+            let total = delay + duration;
             div()
                 .id(("running", i))
                 .relative()
@@ -169,6 +176,15 @@ impl RunningApps {
                 .on_click(cx.listener(move |this, _, _, cx| this.running.activate(i, cx)))
                 .child(icon)
                 .child(badge)
+                .with_animation(
+                    ("strip", i),
+                    Animation::new(total),
+                    move |tile, progress| {
+                        let t = motion::curve(motion::staggered(progress, total, delay, duration));
+                        tile.opacity(t)
+                            .left(px(motion::rise(0.0, motion::STRIP_SHIFT, t)))
+                    },
+                )
         });
         Some(
             div()

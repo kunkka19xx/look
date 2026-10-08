@@ -69,6 +69,10 @@ pub const DEFAULT_BG_BLUR: f32 = 10.3;
 /// render right, which is KWin today. niri answers with xray blur, one
 /// frozen copy of the wallpaper behind every window.
 pub const COMPOSITOR_BLUR_KEY: &str = "ui_compositor_blur";
+const ANIMATIONS_KEY: &str = "animations_enabled";
+const BLUR_OPACITY_KEY: &str = "ui_blur_opacity";
+/// High Contrast's, the default blur style.
+const DEFAULT_BLUR_OPACITY: f32 = 0.95;
 pub const DEFAULT_TINT_OPACITY: f32 = 0.96;
 pub const DEFAULT_FONT_OPACITY: f32 = 0.96;
 pub const DEFAULT_BORDER_OPACITY: f32 = 0.5;
@@ -448,6 +452,8 @@ pub struct Theme {
     pub bg_blur: f32,
     /// `ui_compositor_blur`: whether the frost behind the window is wanted.
     pub compositor_blur: bool,
+    /// `animations_enabled`: off collapses every motion to its last frame.
+    pub animations: bool,
     syntax: [Rgba; 4],
 }
 
@@ -522,6 +528,11 @@ impl Theme {
             ]
         };
         let rgba = |[r, g, b]: [f32; 3], a: f32| Rgba::new(r, g, b, a);
+        let compositor_blur = match get(COMPOSITOR_BLUR_KEY) {
+            Some(set) => set != "false",
+            None => compositor_blur_default(),
+        };
+        let frost = get(BG_IMAGE_KEY).is_some() || (compositor_blur && crate::blur::can_frost());
 
         let font_family = match get("ui_font_name").filter(|f| *f != SYSTEM_FONT) {
             Some(family) => family.to_string(),
@@ -542,9 +553,17 @@ impl Theme {
         };
 
         Self {
+            // Blur Opacity thins the tint only where there is frost to show
+            // through it, the compositor's or the background picture's;
+            // otherwise Tint Opacity alone decides, as the webview settled.
             tint: rgba(
                 triplet("ui_tint", tint_fallback),
-                num("ui_tint_opacity", tint_op),
+                num("ui_tint_opacity", tint_op)
+                    * if frost {
+                        num(BLUR_OPACITY_KEY, DEFAULT_BLUR_OPACITY)
+                    } else {
+                        1.0
+                    },
             ),
             text,
             text_secondary: preset.secondary,
@@ -577,10 +596,8 @@ impl Theme {
                 .unwrap_or_default(),
             bg_opacity: num(BG_OPACITY_KEY, DEFAULT_BG_OPACITY),
             bg_blur: num(BG_BLUR_KEY, DEFAULT_BG_BLUR),
-            compositor_blur: match get(COMPOSITOR_BLUR_KEY) {
-                Some(set) => set != "false",
-                None => compositor_blur_default(),
-            },
+            compositor_blur,
+            animations: get(ANIMATIONS_KEY) != Some("false"),
             syntax: preset.syntax,
         }
     }
@@ -588,7 +605,7 @@ impl Theme {
     /// Frost actually behind the window: granted by the compositor and
     /// wanted by the user.
     pub fn frosted(&self) -> bool {
-        self.compositor_blur && crate::blur::is_supported()
+        self.compositor_blur && crate::blur::can_frost()
     }
 
     /// Gap above zero: the home screen is floating tiles. At zero it is

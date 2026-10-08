@@ -4,16 +4,22 @@
 
 use std::time::Duration;
 
-use gpui::{Context, Div, FontWeight, Rgba, Task, div, prelude::*, px, svg};
+use gpui::{Animation, AnimationExt, Context, FontWeight, Rgba, Task, div, prelude::*, px, svg};
 
 use crate::glyphs;
 use crate::launcher::Launcher;
 use crate::launchpad::Tone;
+use crate::motion;
 use crate::theme::{self, Theme};
 
 const PADDING_Y: f32 = 8.0;
 const GAP: f32 = 12.0;
 const WASH: f32 = 0.16;
+const DOT: f32 = 8.0;
+/// Fixed, so a heavy theme border does not turn a toast into a frame.
+const BORDER: f32 = 1.0;
+/// How much of the tone the border takes.
+const BORDER_MIX: f32 = 0.55;
 const DISMISS: &str = "Dismiss";
 pub const SHORT: f32 = 1.0;
 pub const MEDIUM: f32 = 1.2;
@@ -63,9 +69,22 @@ impl Banner {
         self.sticky = message;
     }
 
-    /// The banner as a card above the bar, or nothing. `on_dismiss` runs
-    /// when the sticky notice's button is pressed.
-    pub fn render(&self, th: &Theme, cx: &mut Context<Launcher>) -> Option<Div> {
+    /// A toast is up, rather than the sticky notice or nothing: the home
+    /// floats it over the body, the sticky notice takes a place in the flow.
+    pub fn showing_toast(&self) -> bool {
+        self.toast.is_some()
+    }
+
+    /// The banner as a card, or nothing; the caller places it. `on_dismiss`
+    /// runs when the sticky notice's button is pressed.
+    /// `floating` is the toast over the body: its face is opaque, or the
+    /// row under it would read through.
+    pub fn render(
+        &self,
+        th: &Theme,
+        floating: bool,
+        cx: &mut Context<Launcher>,
+    ) -> Option<impl IntoElement> {
         let (message, sticky) = match (&self.toast, &self.sticky) {
             (Some(toast), _) => (toast, false),
             (None, Some(sticky)) => (sticky, true),
@@ -73,28 +92,39 @@ impl Banner {
         };
         let colour = tone_colour(message.tone, th);
         let banner = div()
-            .mx(px(theme::CONTENT_PADDING))
-            .mt(px(theme::CONTENT_PADDING))
             .px(px(theme::INPUT_PADDING_X))
             .py(px(PADDING_Y))
             .rounded(px(th.bar_radius()))
-            .bg(theme::wash(th.card_face(), colour, WASH))
-            .border(px(th.border_thickness))
-            .border_color(th.border)
+            .bg({
+                let face = theme::wash(th.card_face(), colour, WASH);
+                if floating { theme::opaque(face) } else { face }
+            })
+            .border(px(BORDER))
+            .border_color(theme::mix(colour, th.border, BORDER_MIX))
             .shadow(th.card_shadow())
             .flex()
             .items_center()
             .gap(px(GAP))
+            // The tone rides on a dot and the border; the words stay in the
+            // theme's text colour so they read on any wash.
+            .child(
+                div()
+                    .size(px(DOT))
+                    .flex_shrink_0()
+                    .rounded_full()
+                    .bg(colour),
+            )
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
-                    .text_size(px(th.font_size - 1.0))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(colour)
+                    .text_size(px(th.font_size))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(th.text)
                     .child(message.text.clone()),
             );
-        Some(banner.when(sticky, |el| {
+        let seq = self.seq;
+        let banner = banner.when(sticky, |el| {
             el.child(
                 div()
                     .id("banner-dismiss")
@@ -115,7 +145,17 @@ impl Banner {
                     )
                     .child(DISMISS),
             )
-        }))
+        });
+        // In from just above, keyed to this showing.
+        Some(banner.with_animation(
+            ("banner-in", seq),
+            Animation::new(motion::dur(motion::BANNER_MS)),
+            |el, t| {
+                let t = motion::curve(t);
+                el.opacity(t)
+                    .top(px(motion::rise(0.0, motion::BANNER_RISE, t)))
+            },
+        ))
     }
 }
 

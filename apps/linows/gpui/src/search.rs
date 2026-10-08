@@ -3,14 +3,16 @@
 //! preedit arrives as marked text, a commit as a plain replace.
 
 use std::ops::Range;
+use std::time::Instant;
 
 use gpui::{
-    App, Bounds, Context, Element, ElementInputHandler, Entity, EntityInputHandler, EventEmitter,
-    FocusHandle, GlobalElementId, InspectorElementId, IntoElement, LayoutId, PaintQuad, Pixels,
-    ShapedLine, SharedString, TextAlign, TextRun, UTF16Selection, UnderlineStyle, Window, fill,
-    point, px, size,
+    App, AppContext, Bounds, Context, Element, ElementInputHandler, Entity, EntityInputHandler,
+    EventEmitter, FocusHandle, GlobalElementId, Hsla, InspectorElementId, IntoElement, LayoutId,
+    PaintQuad, Pixels, ShapedLine, SharedString, TextAlign, TextRun, Transition, TransitionState,
+    UTF16Selection, UnderlineStyle, Window, fill, point, px, size,
 };
 
+use crate::motion;
 use crate::theme;
 
 pub struct Changed;
@@ -24,6 +26,12 @@ pub struct SearchInput {
     anchor: Option<usize>,
     marked: Option<Range<usize>>,
     caret: Bounds<Pixels>,
+    /// The caret's x, gliding to each new column.
+    caret_x: Entity<TransitionState<f32>>,
+    /// When the caret last moved: solid for a while after, then blinking.
+    caret_moved: Instant,
+    /// When the field appeared, for the placeholder's slide in.
+    shown: Instant,
 }
 
 impl EventEmitter<Changed> for SearchInput {}
@@ -37,6 +45,9 @@ impl SearchInput {
             anchor: None,
             marked: None,
             caret: Bounds::default(),
+            caret_x: cx.new(|_| TransitionState::new(0.0)),
+            caret_moved: Instant::now(),
+            shown: Instant::now(),
         }
     }
 
@@ -421,6 +432,8 @@ pub struct FieldPrepaint {
     line: ShapedLine,
     selection: Option<PaintQuad>,
     caret: Option<PaintQuad>,
+    /// The placeholder's progress in, 1 once landed or when text shows.
+    slide: f32,
 }
 
 impl IntoElement for SearchField {
@@ -486,9 +499,24 @@ impl Element for SearchField {
             letter_spacing: None,
         };
 
+        // The placeholder slides in from the right behind the bar; a frame
+        // is asked for until it has landed.
+        let slide = if text.is_empty() && !cx.reduce_motion() {
+            let elapsed = input.shown.elapsed().as_secs_f32();
+            let delay = motion::secs(motion::SLIDE_DELAY_MS);
+            let t = ((elapsed - delay) / (motion::secs(motion::SLIDE_MS))).clamp(0.0, 1.0);
+            if t < 1.0 {
+                window.request_animation_frame();
+            }
+            motion::curve(t)
+        } else {
+            1.0
+        };
         let line = if text.is_empty() {
             let placeholder = self.placeholder.clone();
-            let runs = [run(placeholder.len(), theme::hsla_of(th.text_muted), None)];
+            let mut muted = theme::hsla_of(th.text_muted);
+            muted.alpha *= slide;
+            let runs = [run(placeholder.len(), muted, None)];
             window
                 .text_system()
                 .shape_line(placeholder, font_size, &runs, None)
@@ -530,21 +558,45 @@ impl Element for SearchField {
         });
 
         let caret = if input.focus_handle.is_focused(window) {
-            let x = if text.is_empty() {
-                px(0.0)
+            let goal = if text.is_empty() {
+                0.0
             } else {
-                line.x_for_index(cursor)
+                f32::from(line.x_for_index(cursor))
             };
+            // The caret glides to its column on a `Transition` and stays
+            // solid while it moves; idle, it blinks on its own frames, with
+            // motion off too, as the CSS keeps it.
+            let glide = Transition::new(
+                input.caret_x.clone(),
+                motion::transition(motion::CARET_GLIDE_MS, cx),
+            )
+            .with_easing(motion::curve);
+            let moved = glide.update(cx, |x, _| *x = goal);
+            if moved {
+                self.input
+                    .update(cx, |input, _| input.caret_moved = Instant::now());
+            }
+            let x = glide.evaluate(window, cx).round();
+            let idle = self.input.read(cx).caret_moved.elapsed().as_secs_f32()
+                - motion::secs(motion::CARET_SOLID_MS);
+            let alpha = if idle <= 0.0 {
+                1.0
+            } else {
+                motion::blink(idle / (motion::secs(motion::CARET_BLINK_MS)))
+            };
+            window.request_animation_frame();
             let caret_h = font_size * theme::CARET_HEIGHT;
             let caret_bounds = Bounds::new(
                 point(
-                    bounds.left() + x,
+                    bounds.left() + px(x),
                     bounds.top() + (line_height - caret_h) / 2.0,
                 ),
                 size(px(theme::CARET_WIDTH), caret_h),
             );
             self.input.update(cx, |input, _| input.caret = caret_bounds);
-            Some(fill(caret_bounds, theme::hsla_of(th.accent)))
+            let mut colour: Hsla = theme::hsla_of(th.accent);
+            colour.alpha *= alpha;
+            Some(fill(caret_bounds, colour))
         } else {
             None
         };
@@ -553,6 +605,7 @@ impl Element for SearchField {
             line,
             selection,
             caret,
+            slide,
         }
     }
 
@@ -576,10 +629,11 @@ impl Element for SearchField {
         if let Some(selection) = prepaint.selection.take() {
             window.paint_quad(selection);
         }
+        let shift = motion::rise(0.0, motion::PLACEHOLDER_SHIFT, prepaint.slide);
         prepaint
             .line
             .paint(
-                bounds.origin,
+                bounds.origin + point(px(shift), px(0.0)),
                 line_height,
                 TextAlign::Left,
                 None,

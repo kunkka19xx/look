@@ -710,6 +710,13 @@ impl Settings {
     }
 
     fn frost_hint(&self) -> &'static str {
+        if swayfx() {
+            return if self.compositor_blur_on() {
+                "Frosted by swayfx: needs layer_effects \"lookapp\" blur and blur_ignore_transparent"
+            } else {
+                "Clear glass; card shadows on"
+            };
+        }
         if !crate::blur::is_supported() {
             return "Your compositor does not offer it; Look stays clear glass";
         }
@@ -724,6 +731,17 @@ impl Settings {
             }
             (false, false) => "Clear glass: the desktop shows sharp behind the tint",
         }
+    }
+}
+
+fn swayfx() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        linows_backend::platform::linux::wm::is_swayfx()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
     }
 }
 

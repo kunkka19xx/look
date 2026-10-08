@@ -5,14 +5,15 @@
 //! layout: no window box, the bar and the cards float on the desktop with
 //! the inner gap as every seam.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::sync::{Arc, LazyLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, Bounds, ClipboardItem, Context, Div, Entity, FontWeight,
-    KeyDownEvent, Pixels, Render, ScrollStrategy, SharedString, Task, UniformListScrollHandle,
-    Window, deferred, div, img, prelude::*, px, relative, svg, uniform_list,
+    Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Div, Entity,
+    FontWeight, KeyDownEvent, Pixels, Render, ScrollStrategy, SharedString, Task, Transformation,
+    Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred, div, fill, img,
+    point, prelude::*, px, relative, size, svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
@@ -117,6 +118,8 @@ const TRASH_LABEL: &str = "Trash";
 const TRASH_PIN_IDS: [&str; 2] = ["quickfolder:trash", "quickfolder:recycle bin"];
 const APP_EXCLUDE_KEY: &str = "app_exclude_names";
 const FRESH_CONFIG_ASK: &str = "Create a fresh config?";
+/// Low bits of a text shift key hold the row index; the change count sits above.
+const SHIFT_ROW_BITS: usize = 20;
 const FRESH_CONFIG_DONE: &str = "Config reset to defaults";
 const FRESH_CONFIG_FAILED: &str = "Reset failed";
 /// `look_indexing::UsageAction::EXECUTE`: a block run ranks like an open.
@@ -181,6 +184,24 @@ pub struct Launcher {
     version: u64,
     /// The background picture being decoded, so a frame does not ask twice.
     backdrop_loading: Option<bgimage::Key>,
+    /// The selection pill's top, in list pixels, gliding between rows.
+    pill: Entity<TransitionState<f32>>,
+    /// The rows the pill last landed on: a new set lands it without a glide.
+    pill_rows: *const Vec<Row>,
+    /// Bumped each time the results replace the launchpad, keying their
+    /// entrance.
+    results_epoch: u64,
+    /// The row the selection last left and a count keying the text shift
+    /// of both rows, so the leaving row slides back as the new one slides
+    /// out, the macOS `titleShift` riding the glide.
+    prev_selected: Option<usize>,
+    shift_epoch: u64,
+    last_selected: usize,
+    was_home: bool,
+    /// Bumped per confirm bar shown, keying its entrance.
+    confirm_seq: u64,
+    /// When this window came up: the frost waits for the entrances.
+    shown_at: Instant,
     _search: Option<Task<()>>,
 }
 
@@ -242,6 +263,15 @@ impl Launcher {
             pending_restore: None,
             menu_token: 0,
             backdrop_loading: None,
+            pill: cx.new(|_| TransitionState::new(0.0)),
+            pill_rows: std::ptr::null(),
+            results_epoch: 0,
+            prev_selected: None,
+            shift_epoch: 0,
+            last_selected: 0,
+            was_home: true,
+            confirm_seq: 0,
+            shown_at: Instant::now(),
             todo_hovered: false,
             version: 0,
             _search: None,
@@ -1388,6 +1418,7 @@ impl Launcher {
     pub(crate) fn ask(&mut self, confirm: Confirm, cx: &mut Context<Self>) {
         self.close_menu();
         self.confirm = Some(confirm);
+        self.confirm_seq += 1;
         cx.notify();
     }
 
@@ -1782,8 +1813,9 @@ impl Launcher {
         let hint = self.settings.hint();
         // No copyright on this screen: the footer is the tab's hint alone.
         let trailing = hint.map(|_| div().into_any_element());
-        let float = self.settings.save_float(&th, cx);
-        self.screen(body, hint, trailing, Some(float), &th, cx)
+        // The question's bar takes the corner while it asks.
+        let float = (self.confirm.is_none()).then(|| self.settings.save_float(&th, cx));
+        self.screen(body, hint, trailing, float, &th, cx)
     }
 
     /// A full-window screen: one framed card under the banner slot, `body`
@@ -1802,15 +1834,21 @@ impl Launcher {
         let radius = th.tile_radius();
         let bar_radius = th.bar_radius();
         let frosted = th.frosted();
-        let banner = self.banner.render(th, cx).map(|banner| {
+        let banner = self.banner.render(th, false, cx).map(|banner| {
             div()
+                .mx(px(theme::CONTENT_PADDING))
+                .mt(px(theme::CONTENT_PADDING))
                 .on_children_prepainted(move |cards, _, _| mark_cards(&cards, bar_radius))
                 .child(banner)
         });
         // The focused field (the panel's box, or a row's open field) is where
         // the keys dispatch from, so this root must track that handle.
         let focus_handle = self.focus_target(cx);
-        let confirm = self.confirm.as_ref().map(|confirm| confirm.render(th, cx));
+        let seq = self.confirm_seq;
+        let confirm = self
+            .confirm
+            .as_ref()
+            .map(|confirm| confirm.render(seq, th, cx).into_any_element());
         div()
             .size_full()
             .font_family(th.font_family.clone())
@@ -1866,6 +1904,7 @@ impl Launcher {
     /// query), it is the framed panel's header, flush, with a hairline
     /// under it, the inset moved into its padding so the text keeps its place.
     fn top_bar(&mut self, seated: bool, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        let fade = blur::surfaces_fade(th.frosted());
         let bar_h = theme::TOP_ROW_HEIGHT + 2.0 * theme::INPUT_PADDING_Y;
         let crumbs = self.levels.breadcrumb();
         let placeholder = if crumbs.is_empty() { PLACEHOLDER } else { "" };
@@ -1910,7 +1949,7 @@ impl Launcher {
 
         // The bar rises in place, so its slot is fixed and the body below
         // does not move with it.
-        let spawn = Duration::from_millis(motion::SPAWN_MS);
+        let spawn = motion::dur(motion::SPAWN_MS);
         let radius = th.bar_radius();
         div()
             .relative()
@@ -1922,9 +1961,9 @@ impl Launcher {
                     .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
             })
             .child(
-                bar.with_animation("top-bar", Animation::new(spawn), |bar, t| {
+                bar.with_animation("top-bar", Animation::new(spawn), move |bar, t| {
                     let t = motion::curve(t);
-                    bar.opacity(t.min(1.0))
+                    bar.opacity(if fade { t.min(1.0) } else { 1.0 })
                         .top(px(motion::rise(0.0, motion::SPAWN_RISE, t)))
                 }),
             )
@@ -1932,10 +1971,15 @@ impl Launcher {
 
     /// The empty query shows the launchpad: the tiles the entity draws, in a
     /// grid whose seams are the inner gap, each marked for the blur region.
-    fn bento(&mut self, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    fn bento(
+        &mut self,
+        th: &Theme,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let (grid_h, tiles) = self
             .launchpad
-            .update(cx, |launchpad, cx| launchpad.tiles_in(th, cx));
+            .update(cx, |launchpad, cx| launchpad.tiles_in(th, window, cx));
         let radius = th.tile_radius();
         // Under the bar by the content gap (the inner gap floating, the
         // seated stack's seam otherwise), then the grid's own air on top.
@@ -1949,7 +1993,7 @@ impl Launcher {
             .mx(px(theme::CONTENT_PADDING))
             .mt(px(seam + launchpad::OUTER_TOP))
             .h(px(grid_h))
-            .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
+            .on_children_prepainted(move |cards, _, _| mark_tiles(&cards, radius))
             .children(tiles)
     }
 
@@ -2046,6 +2090,20 @@ impl Launcher {
 
     fn row(&self, i: usize, row: &Row, th: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let selected = i == self.selected;
+        let text = div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .min_w_0()
+            .child(
+                div()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .truncate()
+                    .child(row.title.clone()),
+            )
+            .when(!row.context.is_empty(), |col| {
+                col.child(muted_text(row.context.clone(), th).truncate())
+            });
         let picture = match &row.icon {
             Icon::Resolve { glyph } => {
                 let image = self.icons.update(cx, |store, cx| {
@@ -2059,16 +2117,28 @@ impl Launcher {
                     )
                 });
                 match image {
-                    Some(image) => img(image).size(px(ROW_ICON)).into_any_element(),
+                    Some(image) => gain(i, selected, img(image)),
                     None => glyph_icon(glyph, th).into_any_element(),
                 }
             }
-            Icon::Glyph(glyph) => glyph_icon(glyph, th).into_any_element(),
-            Icon::File(path) => img(path.clone())
-                .size(px(ROW_ICON))
-                .rounded(px(th.chip_radius() / 1.5))
-                .object_fit(gpui::ObjectFit::Cover)
+            Icon::Glyph(glyph) if selected => glyph_icon(glyph, th)
+                .with_animation(
+                    ("gain", i),
+                    Animation::new(motion::dur(motion::ZOOM_MS)),
+                    |icon, t| {
+                        let scale = motion::zoom(t);
+                        icon.with_transformation(Transformation::scale(size(scale, scale)))
+                    },
+                )
                 .into_any_element(),
+            Icon::Glyph(glyph) => glyph_icon(glyph, th).into_any_element(),
+            Icon::File(path) => gain(
+                i,
+                selected,
+                img(path.clone())
+                    .rounded(px(th.chip_radius() / 1.5))
+                    .object_fit(gpui::ObjectFit::Cover),
+            ),
             Icon::Text(text) => div()
                 .text_size(px(ROW_ICON * 0.8))
                 .child(SharedString::from(text.clone()))
@@ -2083,7 +2153,6 @@ impl Launcher {
             .items_center()
             .gap(px(theme::SEARCH_GAP))
             .rounded(px(th.control_radius()))
-            .when(selected, |el| el.bg(th.selection_fill))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.selected = i;
                 this.sync_preview(cx);
@@ -2098,26 +2167,39 @@ impl Launcher {
                     .justify_center()
                     .child(picture),
             )
-            .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .truncate()
-                            .child(row.title.clone()),
-                    )
-                    .when(!row.context.is_empty(), |col| {
-                        col.child(muted_text(row.context.clone(), th).truncate())
-                    }),
-            )
+            .child(self.shifted(i, selected, text))
             .when(!row.kind_label.is_empty(), |el| {
                 el.child(muted_text(row.kind_label.clone(), th))
             })
             .when(self.picked.contains(row), |el| el.child(picked::check(th)))
+            .into_any_element()
+    }
+
+    /// The row's text held `TITLE_SHIFT` to the right while selected: an
+    /// offset, not padding, so nothing reflows. It slides out on the glide
+    /// as the row takes the selection and back as the selection leaves.
+    fn shifted(&self, i: usize, selected: bool, text: Div) -> AnyElement {
+        let leaving = self.prev_selected == Some(i);
+        if !selected && !leaving {
+            return text.into_any_element();
+        }
+        // One integer carries the row and the change count: gpui keys an
+        // element on a name and one number.
+        let key = (self.shift_epoch as usize) << SHIFT_ROW_BITS | i;
+        text.relative()
+            .with_animation(
+                ("shift", key),
+                Animation::new(motion::dur(motion::GLIDE_MS)),
+                move |text, t| {
+                    let t = motion::curve(t);
+                    let x = if selected {
+                        motion::rise(motion::TITLE_SHIFT, -motion::TITLE_SHIFT, t)
+                    } else {
+                        motion::rise(0.0, motion::TITLE_SHIFT, t)
+                    };
+                    text.left(px(x))
+                },
+            )
             .into_any_element()
     }
 
@@ -2200,7 +2282,13 @@ impl Launcher {
     /// Floating: the list and the preview as two cards with the hint in the
     /// list's foot. Seated: two columns split by a hairline, the hint as a
     /// full-width bar under them.
-    fn results(&mut self, seated: bool, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    fn results(
+        &mut self,
+        seated: bool,
+        th: &Theme,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let rows = self.rows.clone();
         let row_theme = th.clone();
         let launcher = cx.entity();
@@ -2212,8 +2300,16 @@ impl Launcher {
             })
         })
         .track_scroll(&self.scroll)
-        .flex_1()
-        .min_h_0();
+        .size_full();
+        // The selection is one pill under the rows that glides between them,
+        // the webview's `.results-selection`: a `Transition` carries its top,
+        // and a fresh row set lands it without a slide.
+        let list = div()
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .child(self.selection_pill(th, window, cx))
+            .child(list);
 
         let hint = if self.levels.is_active() {
             &HINT_LEVEL
@@ -2225,7 +2321,9 @@ impl Launcher {
 
         // One floating card: rows, then the hint as the card's own footer.
         let radius = th.tile_radius();
+        let fade = blur::surfaces_fade(th.frosted());
         let results_card = div()
+            .relative()
             .when(!seated, |el| card(el, th, radius))
             .px(px(theme::ROW_INSET))
             .pt(px(theme::ROW_INSET))
@@ -2247,7 +2345,18 @@ impl Launcher {
                     card.child(list)
                 }
             })
-            .when(!seated, |card| card.child(self.footer(hint, th, cx)));
+            .when(!seated, |card| card.child(self.footer(hint, th, cx)))
+            // Leaving the launchpad, the card rises in: once per switch, never
+            // per keystroke, so the id carries the switch count.
+            .with_animation(
+                ("results-in", self.results_epoch),
+                Animation::new(motion::dur(motion::RESULTS_IN_MS)),
+                move |card, t| {
+                    let t = motion::curve(t);
+                    card.opacity(if fade { t } else { 1.0 })
+                        .top(px(motion::rise(0.0, motion::RESULTS_IN_RISE, t)))
+                },
+            );
         // Split: the preview floats beside the list as its own card, except
         // for the menus, whose rows have nothing to describe.
         let preview_card = (th.split() && !self.mode.is_menu()).then(|| {
@@ -2515,10 +2624,19 @@ impl Render for Launcher {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let th = theme::get();
         let frosted = th.frosted();
+        motion::sync(th.animations, cx);
+        self.arm_frost(window, cx);
         self.prepare_backdrop(&th, window, cx);
         let input = self.input.read(cx);
         let home = input.text().is_empty() && !self.levels.is_active();
         let focus_handle = input.focus_handle.clone();
+        if self.was_home && !home {
+            self.results_epoch += 1;
+        }
+        self.was_home = home;
+        if self.ai.state() == answers::State::Streaming {
+            window.request_animation_frame();
+        }
 
         // The field the keys go to: the panel's box while the screen is up.
         let wanted = self.focus_target(cx);
@@ -2539,54 +2657,87 @@ impl Render for Launcher {
         let seated = !th.floating() && !home;
         // The launchpad is a setting; off, the empty query is the bar alone.
         let below = match (home, th.launchpad, self.mode) {
-            (true, true, _) => self.bento(&th, cx).into_any_element(),
+            (true, true, _) => self.bento(&th, window, cx).into_any_element(),
             (true, false, _) => div().into_any_element(),
             (false, _, Mode::Translate) => self.translate_panel(seated, &th, cx).into_any_element(),
-            (false, _, _) => self.results(seated, &th, cx).into_any_element(),
+            (false, _, _) => self.results(seated, &th, window, cx).into_any_element(),
         };
         let bar_radius = th.bar_radius();
-        let banner = self.banner.render(&th, cx).map(|banner| {
+        // A toast floats over the body just under the bar, so neither the
+        // bar nor the rows move; the sticky notice stays until dismissed, so
+        // it takes a place in the flow between them instead.
+        let toast = self.banner.showing_toast();
+        let gap = if th.floating() {
+            th.inner_gap
+        } else {
+            theme::ROW_INSET
+        };
+        let banner = self.banner.render(&th, toast, cx).map(|banner| {
             div()
                 .on_children_prepainted(move |cards, _, _| mark_cards(&cards, bar_radius))
                 .child(banner)
         });
+        let (toast_card, sticky_card) = match banner {
+            Some(card) if toast => {
+                let top = theme::CONTENT_PADDING
+                    + theme::TOP_ROW_HEIGHT
+                    + 2.0 * theme::INPUT_PADDING_Y
+                    + gap;
+                let card = deferred(
+                    div()
+                        .absolute()
+                        .top(px(top))
+                        .left(px(theme::CONTENT_PADDING))
+                        .right(px(theme::CONTENT_PADDING))
+                        .child(card),
+                );
+                (Some(card), None)
+            }
+            Some(card) => (
+                None,
+                Some(
+                    div()
+                        .mx(px(if seated { 0.0 } else { theme::CONTENT_PADDING }))
+                        .mt(px(gap))
+                        .child(card),
+                ),
+            ),
+            None => (None, None),
+        };
         let bar = self.top_bar(seated, &th, cx);
         let radius = th.tile_radius();
-        let body = div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .children(banner)
-            .map(|body| {
-                if seated {
-                    body.child(
-                        div()
-                            .flex_1()
-                            .min_h_0()
-                            .m(px(theme::CONTENT_PADDING))
-                            .flex()
-                            .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
-                            .child(
-                                panel(div(), &th, radius)
-                                    .flex_1()
-                                    .min_w_0()
-                                    .min_h_0()
-                                    .overflow_hidden()
-                                    .flex()
-                                    .flex_col()
-                                    .child(bar)
-                                    .child(below),
-                            ),
-                    )
-                } else {
-                    body.child(bar).child(below)
-                }
-            });
+        let body = div().size_full().flex().flex_col().map(|body| {
+            if seated {
+                body.child(
+                    div()
+                        .flex_1()
+                        .min_h_0()
+                        .m(px(theme::CONTENT_PADDING))
+                        .flex()
+                        .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
+                        .child(
+                            panel(div(), &th, radius)
+                                .flex_1()
+                                .min_w_0()
+                                .min_h_0()
+                                .overflow_hidden()
+                                .flex()
+                                .flex_col()
+                                .child(bar)
+                                .children(sticky_card)
+                                .child(below),
+                        ),
+                )
+            } else {
+                body.child(bar).children(sticky_card).child(below)
+            }
+        });
 
         // gpui 0.2.2 has no element scale, and an inset in its place relayouts
         // every card each frame, so the arrive is the fade alone; the bar and
         // the tiles carry the motion.
-        let arrive = Duration::from_millis(motion::ARRIVE_MS);
+        let arrive = motion::dur(motion::ARRIVE_MS);
+        let fade = blur::surfaces_fade(frosted);
 
         div()
             .when(crate::probe_wanted(), |root| root.child(pace_probe()))
@@ -2600,9 +2751,14 @@ impl Render for Launcher {
             .child(div().size_full().child(body).with_animation(
                 "arrive",
                 Animation::new(arrive),
-                |root, t| root.opacity(motion::curve(t)),
+                move |root, t| root.opacity(if fade { motion::curve(t) } else { 1.0 }),
             ))
-            .children(self.confirm.as_ref().map(|confirm| confirm.render(&th, cx)))
+            .children(toast_card)
+            .children(
+                self.confirm
+                    .as_ref()
+                    .map(|confirm| confirm.render(self.confirm_seq, &th, cx)),
+            )
             .into_any_element()
     }
 }
@@ -2629,13 +2785,35 @@ fn hide_app(name: &str) -> Result<bool, String> {
     Ok(true)
 }
 
+/// Which regions may be frosted this frame: each group once its entrance
+/// has landed.
+#[derive(Clone, Copy, Default)]
+struct Frost {
+    cards: bool,
+    tiles: bool,
+}
+
 thread_local! {
     /// Card bounds gathered during one prepaint pass; the root hands them to
     /// the compositor once every card is placed.
     static BLUR_FRAME: RefCell<Vec<BlurRect>> = const { RefCell::new(Vec::new()) };
+    static FROST: Cell<Frost> = const { Cell::new(Frost { cards: false, tiles: false }) };
+}
+
+/// The launchpad tiles' regions, once the cascade has landed.
+fn mark_tiles(cards: &[Bounds<Pixels>], radius: f32) {
+    if FROST.get().tiles {
+        mark_region(cards, radius);
+    }
 }
 
 fn mark_cards(cards: &[Bounds<Pixels>], radius: f32) {
+    if FROST.get().cards {
+        mark_region(cards, radius);
+    }
+}
+
+fn mark_region(cards: &[Bounds<Pixels>], radius: f32) {
     BLUR_FRAME.with_borrow_mut(|frame| {
         for b in cards {
             frame.extend(BlurRect::rounded(
@@ -2663,6 +2841,85 @@ thread_local! {
 }
 
 impl Launcher {
+    /// The compositor frosts a region the moment it is set, so a card would
+    /// sit frosted before it has faded in. The cards' regions wait for the
+    /// bar's spawn, the tiles' for the end of the cascade; frames are asked
+    /// for until both have landed.
+    fn arm_frost(&self, window: &mut Window, cx: &App) {
+        let elapsed = self.shown_at.elapsed();
+        let landed = |ms: u64| cx.reduce_motion() || elapsed >= motion::dur(ms);
+        let frost = Frost {
+            cards: landed(motion::SPAWN_MS),
+            tiles: landed(motion::TILE_MAX_STAGGER_MS + motion::TILE_MS),
+        };
+        if !(frost.cards && frost.tiles) {
+            window.request_animation_frame();
+        }
+        FROST.set(frost);
+    }
+
+    /// The pill under the selected row: its top glides on a `Transition`
+    /// when the selection moves and jumps when the rows are new, and the
+    /// paint reads the list's scroll offset so it stays on its row.
+    fn selection_pill(
+        &mut self,
+        th: &Theme,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let transition =
+            Transition::new(self.pill.clone(), motion::transition(motion::GLIDE_MS, cx))
+                .with_easing(motion::curve);
+        let goal = self.selected as f32 * theme::ROW_HEIGHT;
+        let fresh = !std::ptr::eq(self.pill_rows, Arc::as_ptr(&self.rows));
+        if self.selected != self.last_selected {
+            // New rows land without a slide, so no row is leaving.
+            self.prev_selected = (!fresh).then_some(self.last_selected);
+            self.shift_epoch += 1;
+            self.last_selected = self.selected;
+        }
+        if fresh {
+            self.pill_rows = Arc::as_ptr(&self.rows);
+            transition.jump_to(goal, cx);
+        } else {
+            // A held key moves the selection faster than a glide can
+            // follow, and a wrap crosses the whole list: the pill never
+            // starts more than one row from where it is going.
+            let current = *transition.evaluate(window, cx);
+            let gap = goal - current;
+            if gap.abs() > theme::ROW_HEIGHT {
+                transition.jump_to(goal - theme::ROW_HEIGHT * gap.signum(), cx);
+            }
+            transition.update(cx, |top, _| *top = goal);
+        }
+        let scroll = self.scroll.clone();
+        let colour = theme::hsla_of(th.selection_fill);
+        let radius = th.control_radius();
+        let shown = !self.rows.is_empty();
+        canvas(
+            |_, _, _| (),
+            move |bounds: Bounds<Pixels>, _, window, cx| {
+                if !shown {
+                    return;
+                }
+                let top = *transition.evaluate(window, cx);
+                let offset = scroll.0.borrow().base_handle.offset().y;
+                let y = (f32::from(bounds.origin.y + offset) + top).round();
+                let mut quad = fill(
+                    Bounds::new(
+                        point(bounds.origin.x, px(y)),
+                        size(bounds.size.width, px(theme::ROW_HEIGHT)),
+                    ),
+                    colour,
+                );
+                quad.corner_radii = gpui::Corners::all(px(radius));
+                window.paint_quad(quad);
+            },
+        )
+        .absolute()
+        .inset_0()
+    }
+
     /// The picture the cards slice this frame: the cached one, with the
     /// exact one decoded off the UI thread when the theme asks for another.
     fn prepare_backdrop(&mut self, th: &Theme, window: &Window, cx: &mut Context<Self>) {
@@ -2736,7 +2993,23 @@ fn muted_text(text: impl Into<SharedString>, th: &Theme) -> Div {
 
 /// The glyph a row wears until its picture lands, in the accent like the
 /// webview's kind glyphs.
-fn glyph_icon(path: &'static str, th: &Theme) -> impl IntoElement {
+/// A picture icon at its size, zooming in and back when its row lands
+/// selected. The picture resizes inside its fixed chip, so no text moves;
+/// a glyph scales through its svg transformation instead.
+fn gain(i: usize, selected: bool, picture: gpui::Img) -> AnyElement {
+    if !selected {
+        return picture.size(px(ROW_ICON)).into_any_element();
+    }
+    picture
+        .with_animation(
+            ("gain", i),
+            Animation::new(motion::dur(motion::ZOOM_MS)),
+            |picture, t| picture.size(px(ROW_ICON * motion::zoom(t))),
+        )
+        .into_any_element()
+}
+
+fn glyph_icon(path: &'static str, th: &Theme) -> gpui::Svg {
     svg()
         .path(path)
         .size(px(theme::SEARCH_ICON + 2.0))

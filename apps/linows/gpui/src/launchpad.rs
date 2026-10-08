@@ -8,12 +8,13 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{Datelike, Local, NaiveDate, Offset, Timelike};
 use gpui::{
-    Animation, AnimationExt, AnyElement, Context, Div, EventEmitter, FontWeight, HighlightStyle,
-    Image, Rgba, SharedString, Stateful, StyledText, Task, div, img, prelude::*, px, svg,
+    Animation, AnimationExt, AnyElement, Context, Div, Entity, EventEmitter, FontWeight,
+    HighlightStyle, Image, Rgba, SharedString, Stateful, StyledText, Task, Transformation,
+    Transition, TransitionState, Window, div, img, prelude::*, px, size, svg,
 };
 use linows_backend::look_engine::launchpad::{LayoutPayload, TileValue};
 use linows_backend::look_lunar::LunarDate;
@@ -161,6 +162,18 @@ enum Slot {
     Clock,
 }
 
+impl Slot {
+    /// The element id its body carries, so a change of source restarts
+    /// the fade.
+    fn key(self) -> usize {
+        match self {
+            Slot::Pomo => 0,
+            Slot::Todo => 1,
+            Slot::Clock => 2,
+        }
+    }
+}
+
 /// The Pomo body's own lines.
 const POMO_BAR_H: f32 = 3.0;
 const POMO_BAR_MARGIN: f32 = 10.0;
@@ -209,6 +222,11 @@ pub struct Launchpad {
     token: u64,
     shown: bool,
     minute: u32,
+    /// The tile last activated and when: it dips for a moment.
+    pressed: Option<(String, Instant)>,
+    /// The Pomo bar's fill, gliding to each tick's progress.
+    bar: Entity<TransitionState<f32>>,
+    bar_fill: f32,
     _ticker: Task<()>,
 }
 
@@ -243,6 +261,9 @@ impl Launchpad {
             applying: false,
             token: 0,
             shown: true,
+            pressed: None,
+            bar: cx.new(|_| TransitionState::new(0.0)),
+            bar_fill: 0.0,
             minute: Local::now().minute(),
             _ticker: ticker,
         };
@@ -582,6 +603,7 @@ impl Launchpad {
         let Some(tile) = self.tile(id).cloned() else {
             return false;
         };
+        self.pressed = Some((id.to_string(), Instant::now()));
         if self.confirm.as_deref().is_some_and(|armed| armed != id) {
             self.clear_confirm(cx);
         }
@@ -779,7 +801,24 @@ impl Launchpad {
     /// The grid's height and its tiles, each placed and animated in. The
     /// caller owns the container, so the blur region is marked where every
     /// other card is.
-    pub fn tiles_in(&mut self, th: &Theme, cx: &mut Context<Self>) -> (f32, Vec<AnyElement>) {
+    pub fn tiles_in(
+        &mut self,
+        th: &Theme,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (f32, Vec<AnyElement>) {
+        // A pressed tile dips for a moment; frames are asked for while it does.
+        if self.press_elapsed().is_some() {
+            window.request_animation_frame();
+        }
+        // The Pomo bar's fill glides between ticks on a `Transition`.
+        let goal = pomo::snapshot().map_or(0.0, |s| s.progress);
+        let bar = Transition::new(
+            self.bar.clone(),
+            motion::transition(motion::BAR_GLIDE_MS, cx),
+        );
+        bar.update(cx, |fill, _| *fill = goal);
+        self.bar_fill = *bar.evaluate(window, cx);
         let Some(layout) = self.layout.clone() else {
             return (0.0, Vec::new());
         };
@@ -804,8 +843,10 @@ impl Launchpad {
             let h = span_h * ROW_H + (span_h - 1.0) * gap;
 
             let delay = motion::tile_delay(i);
-            let duration = Duration::from_millis(motion::TILE_MS);
+            let duration = motion::dur(motion::TILE_MS);
             let total = delay + duration;
+            let press = self.press_dip(&tile.action_id);
+            let fade = crate::blur::surfaces_fade(th.frosted());
 
             tiles.push(
                 self.tile_face(i, tile, th, cx)
@@ -813,7 +854,8 @@ impl Launchpad {
                     // the text every frame and the labels would shimmer.
                     .with_animation(("tile", i), Animation::new(total), move |tile, progress| {
                         let t = motion::curve(motion::staggered(progress, total, delay, duration));
-                        tile.opacity(t.min(1.0))
+                        let face = if fade { t.min(1.0) } else { 1.0 };
+                        tile.opacity(face * press)
                             .left(px(x))
                             .top(px(motion::rise(y, motion::TILE_RISE, t)))
                             .w(px(w))
@@ -823,6 +865,25 @@ impl Launchpad {
             );
         }
         (grid_h, tiles)
+    }
+
+    /// Seconds since the last press, while its dip is still running.
+    fn press_elapsed(&self) -> Option<(&str, f32)> {
+        let (id, at) = self.pressed.as_ref()?;
+        let elapsed = at.elapsed().as_secs_f32();
+        (elapsed < motion::secs(motion::PRESS_MS)).then_some((id.as_str(), elapsed))
+    }
+
+    /// The pressed tile's opacity factor: a dip to the pressed face and back,
+    /// the webview's `ctl-press`; 1 for every other tile.
+    fn press_dip(&self, id: &str) -> f32 {
+        match self.press_elapsed() {
+            Some((pressed, elapsed)) if pressed == id => {
+                let t = elapsed / (motion::secs(motion::PRESS_MS));
+                1.0 - (1.0 - PRESSED_OPACITY) * motion::hump(t, motion::PRESS_PEAK)
+            }
+            _ => 1.0,
+        }
     }
 
     /// A user tile whose command printed nothing has nothing to show.
@@ -880,12 +941,12 @@ impl Launchpad {
 
         let content = match tile.role {
             TileRole::Slot => self.slot_tile(th),
-            TileRole::Toggle => self.toggle_tile(tile, on, th),
-            TileRole::Info => self.info_tile(tile, th),
-            TileRole::Weather => self.weather_tile(tile, th),
-            TileRole::Action => self.action_tile(tile, confirming, th),
+            TileRole::Toggle => self.toggle_tile(index, tile, on, th),
+            TileRole::Info => self.info_tile(index, tile, th),
+            TileRole::Weather => self.weather_tile(index, tile, th),
+            TileRole::Action => self.action_tile(index, tile, confirming, th),
             TileRole::Media => self.media_tile(index, th, cx),
-            TileRole::Custom => self.custom_tile(tile, confirming, th),
+            TileRole::Custom => self.custom_tile(index, tile, confirming, th),
         };
 
         let pressable = tile.pressable && tile.role != TileRole::Media;
@@ -974,13 +1035,12 @@ impl Launchpad {
         let body = match slot {
             Slot::Pomo => {
                 let snap = pomo::snapshot();
-                let (time, sub, progress) = match snap {
+                let (time, sub) = match snap {
                     Some(s) => (
                         pomo::format_time(s.seconds_left),
                         format!("{} - session {}/{}", s.kind.label(), s.index + 1, s.count),
-                        s.progress,
                     ),
-                    None => (pomo::format_time(0), String::new(), 0.0),
+                    None => (pomo::format_time(0), String::new()),
                 };
                 let cols = self
                     .layout
@@ -1013,7 +1073,7 @@ impl Launchpad {
                             .overflow_hidden()
                             .child(
                                 div()
-                                    .w(px(bar_w * progress))
+                                    .w(px(bar_w * self.bar_fill))
                                     .h_full()
                                     .rounded(px(POMO_BAR_H / 2.0))
                                     .bg(th.accent),
@@ -1101,10 +1161,15 @@ impl Launchpad {
                     .child(div().flex_1())
                     .child(corner),
             )
-            .child(body)
+            // A new source fades in, the webview's `ctl-slot-fade`.
+            .child(body.with_animation(
+                ("slot", slot.key()),
+                Animation::new(motion::dur(motion::SLOT_FADE_MS)),
+                |body, t| body.opacity(t),
+            ))
     }
 
-    fn toggle_tile(&self, tile: &LaunchpadTile, on: bool, th: &Theme) -> Div {
+    fn toggle_tile(&self, index: usize, tile: &LaunchpadTile, on: bool, th: &Theme) -> Div {
         let icon = match tile.action_id.as_str() {
             action_id::THEME if !on => glyphs::SUN,
             id => glyph_for(id),
@@ -1122,10 +1187,13 @@ impl Launchpad {
             .flex()
             .items_center()
             .gap(px(TILE_GAP))
-            .child(glyph(
-                icon,
-                ICON_TOGGLE,
-                if on { th.accent } else { th.text_secondary },
+            .child(bouncing(
+                index,
+                glyph(
+                    icon,
+                    ICON_TOGGLE,
+                    if on { th.accent } else { th.text_secondary },
+                ),
             ))
             .child(
                 div()
@@ -1148,7 +1216,7 @@ impl Launchpad {
     }
 
     /// Battery, or uptime on a machine without one.
-    fn info_tile(&self, tile: &LaunchpadTile, th: &Theme) -> Div {
+    fn info_tile(&self, index: usize, tile: &LaunchpadTile, th: &Theme) -> Div {
         let control = self.control(&tile.action_id);
         let (caption, value, icon) = match control.and_then(|c| c.value.clone()) {
             Some(value) => (
@@ -1176,7 +1244,7 @@ impl Launchpad {
             .flex()
             .items_center()
             .gap(px(TILE_GAP))
-            .child(glyph(icon, ICON_INFO, th.text_secondary))
+            .child(bouncing(index, glyph(icon, ICON_INFO, th.text_secondary)))
             .child(
                 div()
                     .flex()
@@ -1188,7 +1256,7 @@ impl Launchpad {
             )
     }
 
-    fn weather_tile(&self, tile: &LaunchpadTile, th: &Theme) -> Div {
+    fn weather_tile(&self, index: usize, tile: &LaunchpadTile, th: &Theme) -> Div {
         let w = self.weather.as_ref();
         let icon = w.map_or(glyphs::CLOUD_SUN, |w| weather_glyph(&w.symbol));
         let temp = w.map_or(TEMP_PLACEHOLDER.to_string(), |w| w.temperature.clone());
@@ -1208,7 +1276,10 @@ impl Launchpad {
             .flex_col()
             .justify_center()
             .gap(px(WEATHER_GAP))
-            .child(glyph(icon, ICON_WEATHER, th.text_secondary))
+            .child(bouncing(
+                index,
+                glyph(icon, ICON_WEATHER, th.text_secondary),
+            ))
             .child(mono(temp, WEATHER_TEMP_SIZE, th).text_color(th.text))
             .child(caps(condition, th))
             .child(small(range, STATE_SIZE, th.text_muted))
@@ -1227,7 +1298,7 @@ impl Launchpad {
     /// Mic, Screensaver, Restart, Shut Down: a glyph over a name. Mic's
     /// glyph says muted in amber; the destructive two wear the danger colour
     /// and swap their name for the question while armed.
-    fn action_tile(&self, tile: &LaunchpadTile, confirming: bool, th: &Theme) -> Div {
+    fn action_tile(&self, index: usize, tile: &LaunchpadTile, confirming: bool, th: &Theme) -> Div {
         let control = self.control(&tile.action_id);
         let flips = tile.off_label.is_some();
         let muted = flips && control.is_some_and(|c| c.wired && !c.on);
@@ -1254,7 +1325,7 @@ impl Launchpad {
             mnemonic_text(&tile.title, tile.mnemonic, th)
         };
         action_body(
-            glyph(icon, ICON_ACTION, tint).into_any_element(),
+            bouncing(index, glyph(icon, ICON_ACTION, tint)),
             label,
             confirming,
             th,
@@ -1354,7 +1425,13 @@ impl Launchpad {
 
     /// A tile from `~/.look/super-actions.toml`: Battery's anatomy when it has a
     /// reading, Mic's when it only acts. How much shows is how big it was drawn.
-    fn custom_tile(&mut self, tile: &LaunchpadTile, confirming: bool, th: &Theme) -> Div {
+    fn custom_tile(
+        &mut self,
+        index: usize,
+        tile: &LaunchpadTile,
+        confirming: bool,
+        th: &Theme,
+    ) -> Div {
         let value = self
             .custom
             .as_ref()
@@ -1367,9 +1444,9 @@ impl Launchpad {
 
         if !tile.has_value {
             let icon = self
-                .custom_icon(icon_name.as_deref(), ICON_ACTION, th.text_secondary)
+                .custom_icon(index, icon_name.as_deref(), ICON_ACTION, th.text_secondary)
                 .unwrap_or_else(|| {
-                    glyph(glyphs::POWER, ICON_ACTION, th.text_secondary).into_any_element()
+                    bouncing(index, glyph(glyphs::POWER, ICON_ACTION, th.text_secondary))
                 });
             let label = if confirming {
                 StyledText::new(SharedString::from(
@@ -1416,7 +1493,7 @@ impl Launchpad {
         )
         .text_color(th.text);
         let icon_size = if roomy { ICON_CUSTOM_HEAD } else { ICON_INFO };
-        let mut icon = self.custom_icon(icon_name.as_deref(), icon_size, th.text_secondary);
+        let mut icon = self.custom_icon(index, icon_name.as_deref(), icon_size, th.text_secondary);
 
         let mut text = div().flex().flex_col().min_w_0().gap(px(TEXT_GAP));
         if roomy {
@@ -1467,10 +1544,16 @@ impl Launchpad {
     /// A user icon: one of the shell's glyph names, or a file the backend
     /// inlined as a data URL. An SVG goes through the asset source so it takes
     /// the tile's colour like the glyphs beside it; a raster draws as it is.
-    fn custom_icon(&mut self, name: Option<&str>, size: f32, colour: Rgba) -> Option<AnyElement> {
+    fn custom_icon(
+        &mut self,
+        index: usize,
+        name: Option<&str>,
+        size: f32,
+        colour: Rgba,
+    ) -> Option<AnyElement> {
         let name = name?;
         if let Some(path) = named_glyph(name) {
-            return Some(glyph(path, size, colour).into_any_element());
+            return Some(bouncing(index, glyph(path, size, colour)));
         }
         if name.starts_with(glyphs::INLINE_SVG_PREFIX) {
             return Some(
@@ -1514,6 +1597,25 @@ fn action_body(icon: AnyElement, label: StyledText, confirming: bool, th: &Theme
                 .truncate()
                 .child(label),
         )
+}
+
+/// The glyph bounces as its tile lands, the stand-in for
+/// symbolEffect(.bounce): an `svg` scales through its transformation, so
+/// no box resizes and no text relays out.
+fn bouncing(index: usize, icon: gpui::Svg) -> AnyElement {
+    let delay = motion::tile_delay(index);
+    let duration = motion::dur(motion::BOUNCE_MS);
+    let total = delay + duration;
+    icon.with_animation(
+        ("glyph", index),
+        Animation::new(total),
+        move |icon, progress| {
+            let t = motion::staggered(progress, total, delay, duration);
+            let scale = 1.0 + (motion::BOUNCE_SCALE - 1.0) * motion::hump(t, motion::BOUNCE_PEAK);
+            icon.with_transformation(Transformation::scale(size(scale, scale)))
+        },
+    )
+    .into_any_element()
 }
 
 fn glyph(path: &'static str, size: f32, colour: Rgba) -> gpui::Svg {
