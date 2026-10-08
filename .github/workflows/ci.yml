@@ -11,7 +11,9 @@ on:
 # commit's lane busy after you've already force-pushed an update.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # PRs: supersede the stale run. Pushes to main: never cancel, or a quick
+  # second merge leaves the first commit with no CI result at all.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Least privilege by default. Jobs that need more ask for it themselves.
 permissions:
@@ -29,6 +31,7 @@ jobs:
     outputs:
       swift: ${{ steps.filter.outputs.swift }}
       rust: ${{ steps.filter.outputs.rust }}
+      release_macos: ${{ steps.filter.outputs.release_macos }}
       linows: ${{ steps.filter.outputs.linows }}
       linows_linux: ${{ steps.filter.outputs.linows_linux }}
       linows_windows: ${{ steps.filter.outputs.linows_windows }}
@@ -49,10 +52,20 @@ jobs:
               - 'core/**'
               - 'bridge/ffi/**'
               - '.github/workflows/ci.yml'
+            # The release path, not the app source. CI otherwise only ever
+            # builds Debug, so ARCHS pinning and release stripping would be
+            # unexercised until a real tag.
+            release_macos:
+              - 'scripts/release-arch.sh'
+              - 'scripts/release-macos-app.sh'
+              - 'scripts/build-release.sh'
+              - 'apps/macos/LauncherApp/build-rust-ffi.sh'
+              - 'apps/macos/LauncherApp/look-app.xcodeproj/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/reusable-release-macos.yml'
             linows:
               - 'apps/linows/**'
               - 'core/**'
-              - '.github/workflows/ci.yml'
             # NOTE: dorny/paths-filter matches each changed file against the rule
             # list with OR semantics, and a leading "!" is a picomatch negation
             # that matches every file *outside* that path - so an excluded-subdir
@@ -63,11 +76,9 @@ jobs:
             linows_linux:
               - 'apps/linows/**'
               - 'core/**'
-              - '.github/workflows/ci.yml'
             linows_windows:
               - 'apps/linows/**'
               - 'core/**'
-              - '.github/workflows/ci.yml'
 
   lint:
     name: lint
@@ -86,6 +97,12 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          # There is no root Cargo.toml, so the default `workspaces: "."` caches
+          # nothing and every run recompiles from scratch.
+          workspaces: |
+            core
+            bridge/ffi
 
       - name: Check formatting (core workspace)
         run: cargo fmt --all --manifest-path core/Cargo.toml -- --check
@@ -170,6 +187,12 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          # There is no root Cargo.toml, so the default `workspaces: "."` caches
+          # nothing and every run recompiles from scratch.
+          workspaces: |
+            core
+            bridge/ffi
 
       - name: Run tests (core workspace)
         run: cargo test --workspace --manifest-path core/Cargo.toml
@@ -196,26 +219,29 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-
-      - name: Build (core workspace)
-        run: cargo build --workspace --manifest-path core/Cargo.toml
+        with:
+          # There is no root Cargo.toml, so the default `workspaces: "."` caches
+          # nothing and every run recompiles from scratch.
+          workspaces: |
+            core
+            bridge/ffi
 
       - name: Test (core workspace)
         run: cargo test --workspace --manifest-path core/Cargo.toml
 
-      - name: Build (ffi crate)
-        run: cargo build --manifest-path bridge/ffi/Cargo.toml
-
       - name: Test (ffi crate)
         run: cargo test --manifest-path bridge/ffi/Cargo.toml
 
-      - name: Build x86_64-apple-darwin slice (cross)
+      # cargo check is enough: Release smoke does the real cross build and links
+      # an app from it. This only has to catch source that cannot compile for
+      # the Intel slice.
+      - name: Check x86_64-apple-darwin slice (cross)
         if: runner.os == 'macOS'
         run: |
           rustup toolchain install nightly --profile minimal
           rustup target add x86_64-apple-darwin --toolchain nightly
-          cargo +nightly build --target x86_64-apple-darwin --workspace --manifest-path core/Cargo.toml
-          cargo +nightly build --target x86_64-apple-darwin --manifest-path bridge/ffi/Cargo.toml
+          cargo +nightly check --target x86_64-apple-darwin --workspace --manifest-path core/Cargo.toml
+          cargo +nightly check --target x86_64-apple-darwin --manifest-path bridge/ffi/Cargo.toml
 
   build:
     name: build
@@ -236,21 +262,18 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          # There is no root Cargo.toml, so the default `workspaces: "."` caches
+          # nothing and every run recompiles from scratch.
+          workspaces: |
+            core
+            bridge/ffi
 
       - name: Build (core workspace)
         run: cargo build --release --workspace --manifest-path core/Cargo.toml
 
       - name: Build (ffi crate)
         run: cargo build --release --manifest-path bridge/ffi/Cargo.toml
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: look-rust-artifacts
-          path: |
-            core/target/release
-            bridge/ffi/target/release
-          retention-days: 7
 
   macos-build:
     name: Build macOS App
@@ -269,6 +292,73 @@ jobs:
 
       - name: Build Look app (Debug)
         run: xcodebuild -project "apps/macos/LauncherApp/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build
+
+  macos-release-smoke:
+    name: Release smoke (${{ matrix.arch }})
+    runs-on: macos-latest
+    needs: changes
+    if: needs.changes.outputs.release_macos == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            suffix: ""
+          - arch: x86_64
+            suffix: "-x86_64"
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust (nightly, ${{ matrix.arch }} slice)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.arch == 'x86_64' && 'x86_64-apple-darwin' || 'aarch64-apple-darwin' }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          # There is no root Cargo.toml, so the default `workspaces: "."` caches
+          # nothing and every run recompiles from scratch.
+          workspaces: |
+            core
+            bridge/ffi
+
+      # Ad-hoc signed (CODE_SIGN_IDENTITY = -), so this needs no secrets. The
+      # release workflow re-signs with the Developer ID on top.
+      - name: Build release artifact
+        run: ARCHS=${{ matrix.arch }} ./scripts/build-release.sh 0.0.0-ci
+
+      - name: Assert one slice, stripped, packaged
+        run: |
+          APP=".build/release-macos/DerivedData/Build/Products/Release/Look.app/Contents/MacOS/Look"
+          ZIP="dist/Look-0.0.0-ci-macOS${{ matrix.suffix }}.zip"
+
+          archs="$(lipo -archs "$APP")"
+          if [[ "$archs" != "${{ matrix.arch }}" ]]; then
+            echo "expected a ${{ matrix.arch }} binary, got: $archs" >&2
+            exit 1
+          fi
+
+          # Unstripped this carries ~147k symbols from the Rust staticlib, and
+          # STRIP_STYLE = all takes it to a couple of thousand.
+          symbols="$(nm -a "$APP" 2>/dev/null | wc -l | tr -d ' ')"
+          if [[ "$symbols" -gt 20000 ]]; then
+            echo "binary looks unstripped: $symbols symbols" >&2
+            exit 1
+          fi
+
+          if [[ ! -f "$ZIP" ]]; then
+            echo "missing artifact: $ZIP" >&2
+            ls -la dist/ >&2
+            exit 1
+          fi
+
+          codesign --verify --deep "$APP"
+          echo "$archs, $symbols symbols, $(stat -f%z "$ZIP") byte zip"
 
   linows-js-test:
     name: Test linows (JS)
