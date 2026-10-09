@@ -256,8 +256,8 @@ fn open(shell: &Shell, cx: &mut App) {
     host::probe_opaque();
     state().request_index_refresh();
     let for_launcher = shell.clone();
-    if let Some(display) = cx.primary_display() {
-        theme::fit_window(f32::from(display.bounds().size.height));
+    if let Some(screen_h) = host::screen_height(cx) {
+        theme::fit_window(screen_h);
     }
     // Bare X11 cannot show the split window's unused part as nothing, so
     // the window is the panel itself there.
@@ -513,8 +513,13 @@ fn main() {
     // the poll thread.
     linows_backend::clipboard::start_monitor();
 
-    if let Err(err) = serve_commands(shell.tx.clone()) {
-        eprintln!("control socket: {err}");
+    match serve_commands(shell.tx.clone()) {
+        Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
+            eprintln!("lookapp-gpui: already running, toggled it");
+            return;
+        }
+        Err(err) => eprintln!("control socket: {err}"),
+        Ok(()) => {}
     }
     #[cfg(target_os = "linux")]
     {
