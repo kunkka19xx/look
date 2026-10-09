@@ -78,7 +78,10 @@ fn api() -> Option<&'static Api> {
     API.get_or_init(|| unsafe {
         let path = option_env!("LOOK_GTK_LAYER_SHELL").unwrap_or(LIB);
         let lib = libloading::Library::new(path)
-            .inspect_err(|e| eprintln!("[look:layer-shell] {path} not loadable: {e}"))
+            .inspect_err(|e| match std::error::Error::source(e) {
+                Some(cause) => eprintln!("[look:layer-shell] {path} not loadable: {cause}"),
+                None => eprintln!("[look:layer-shell] {path} not loadable: {e}"),
+            })
             .ok()?;
         let is_supported = *lib.get(b"gtk_layer_is_supported\0").ok()?;
         let init_for_window = *lib.get(b"gtk_layer_init_for_window\0").ok()?;
