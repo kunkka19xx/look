@@ -560,6 +560,13 @@ fn launcher_hotkey_config_section() -> String {
 # (a letter, digit, space, enter, tab, esc, f1-f20, or a symbol like `), or none\n\
 # to bind `lookapp --toggle` elsewhere. Examples: ctrl+space, alt+shift+space, f13.\n\
 {LAUNCHER_HOTKEY_CONFIG_KEY}={}\n\
+\n\
+# In-app shortcuts, same grammar. Only the ones you rebind are written here;\n\
+# everything else keeps its default. Rebind them in Settings > Shortcuts, or by\n\
+# hand: shortcut_<group>_<action>, as listed in that tab. Separate several\n\
+# chords for one action with |. Examples:\n\
+# shortcut_main_copy=cmd+c\n\
+# shortcut_main_reveal=cmd+shift+f\n\
 \n",
         crate::hotkey::DEFAULT_LAUNCHER_HOTKEY
     )

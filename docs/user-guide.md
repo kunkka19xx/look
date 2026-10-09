@@ -663,6 +663,7 @@ These keys have no control in the Settings screens. Edit `~/.look/config` direct
 
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
 - `launcher_hotkey` (global shortcut that shows and hides Look; modifiers `cmd`/`win`, `ctrl`, `alt`/`option`, `shift` plus one key: a letter, digit, `space`, `enter`, `tab`, `esc`, `f1`-`f20`, or a symbol like `` ` ``. Examples: `ctrl+space`, `alt+shift+space`, `f13`. Default `cmd+space` on macOS, `alt+space` on Windows and Linux. `none` stops Look registering any key, so you can bind `lookapp --toggle` in your desktop or a tool like skhd/AutoHotkey instead; Linux accepts only `none` and applies it on restart. An invalid value falls back to the default and the reload banner says why)
+- `shortcut_<group>_<action>` (macOS; an in-app shortcut, same grammar as `launcher_hotkey` plus Shift-only chords on keys that type nothing, like `shift+enter`. The name follows the row in `Settings > Shortcuts`: `shortcut_main_copy`, `shortcut_view_zoom_in`. Several chords for one action are separated by `|`. Only rebound shortcuts appear in the file; a chord Look cannot parse is ignored and the shortcut keeps its default)
 - `query_retention_seconds` (how long the main query survives while Look is hidden, in seconds; the first open past it returns to the empty home screen; default 5, `0` clears on every hide, and any negative value keeps the query indefinitely)
 - `translate_languages` (comma-separated language codes for the `t"` translation panel, shown in this order; default `vi,en,ja`. Use codes from Look's built-in set - `vi`, `en`, `ja`, `fr`, `de`, `es`, `ko`, `zh-cn`, and about 60 more. A code that isn't recognized is a typo or an unsupported language, so it is dropped from both the labels and the result sections; an empty or all-invalid list falls back to the default)
 - `text_editor`, `code_editor`, `terminal`, `file_manager` (the tools `Cmd+E` / `Cmd+T` / `Cmd+F` act through, see [Preferred tools](#preferred-tools); undeclared means the system default)
@@ -718,6 +719,13 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 
 ## Keyboard shortcuts (quick reference)
 
+Every modifier chord below is the default. On macOS you can rebind them in
+`Settings > Shortcuts`: click a key capsule, press the chord you want, then Save
+Config (or set `shortcut_<group>_<action>` in `~/.look/config`). The keys that
+structure navigation - `Enter`, `Tab`, `Escape`, the arrows, the `Y`/`N`
+confirmations - stay fixed, since each means something different in the main
+bar, AI mode, command mode and a confirmation.
+
 - `Enter`: open selected result / run command
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
 - `Up` / `Down`: move selection (and in `kill`, move process selection)
@@ -747,6 +755,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
 - `Cmd+I` (`Ctrl+I` on Linux, Windows): paste the selected clipboard history item into the app you came from
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
+- `Cmd+O`: flip the selected row's toggle (Bluetooth, Wi-Fi, Do Not Disturb)
 - `Cmd+Shift+,`: toggle settings panel
 - `Cmd+Shift+;` (macOS) / `Ctrl+Shift+;` (Linux, Windows): reload config, re-read your declared sources, and re-read `~/.look/super-actions.toml` so the strip can be arranged while you look at it
 - `Cmd+Shift+H`: hide the selected app from Look

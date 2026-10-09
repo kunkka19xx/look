@@ -780,6 +780,9 @@ enum AppConstants {
 
     enum ThemeUI {
         static let labelWidth: CGFloat = 150
+        /// The column every control sits in, so the hints beside them start at
+        /// one x down the whole screen however wide the control itself is.
+        static let controlWidth: CGFloat = 150
         static let pickerWidth: CGFloat = 140
         /// Bounds shared by the slider, the config parser and the reload check,
         /// so a value the slider cannot reach is reported rather than clamped.

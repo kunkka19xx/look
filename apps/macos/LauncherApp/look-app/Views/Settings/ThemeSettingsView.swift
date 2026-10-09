@@ -16,6 +16,8 @@ struct ThemeSettingsView: View {
 
     static let activeTabFillOpacity = 0.16
     static let inactiveTabFillOpacity = 0.06
+    /// The floating Save button's distance from the panel's bottom right.
+    static let saveFloatInset: CGFloat = 10
 
     @EnvironmentObject var appUIState: AppUIState
     @EnvironmentObject var themeStore: ThemeStore
@@ -37,46 +39,9 @@ struct ThemeSettingsView: View {
     @FocusState var focusedField: Field?
 
     var body: some View {
+        // No title and no close hint: the tabs say where you are, and the row
+        // they replace is a row of settings the panel can show instead.
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Settings")
-                    .font(themeStore.uiFont(size: CGFloat(settings.fontSize + 2), weight: .semibold))
-                Spacer()
-
-                if let saveMessage {
-                    Text(saveMessage.text)
-                        .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
-                        .foregroundStyle(saveMessage.succeeded ? themeStore.onSuccessColor() : themeStore.onDangerColor())
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(
-                            saveMessage.succeeded ? themeStore.successColor() : themeStore.dangerColor(),
-                            in: Capsule()
-                        )
-                }
-
-                Button("Save Config") {
-                    applyFileScanDepthInput()
-                    applyFileScanLimitInput()
-                    let ok = themeStore.saveCurrentConfigToFile()
-                    saveMessage = SaveMessage(text: ok ? "Saved" : "Save failed", succeeded: ok)
-                    if ok {
-                        NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
-                        saveMessage = nil
-                    }
-                    NotificationCenter.default.post(name: .lookFocusSettingsInputRequested, object: nil)
-                }
-                .disabled(hasIndexingError)
-                .opacity(hasIndexingError ? 0.5 : 1)
-                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
-
-                Text("Esc or Cmd+Shift+, to close")
-                    .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
-                    .foregroundStyle(themeStore.mutedTextColor())
-            }
-
             HStack(spacing: 8) {
                 tabButton(title: "Appearance", index: 0)
                 tabButton(title: "Advanced", index: 1)
@@ -93,7 +58,9 @@ struct ThemeSettingsView: View {
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
-
+        }
+        .overlay(alignment: .bottomTrailing) {
+            saveControls
         }
         .onExitCommand {
             closeSettingsPanel()
@@ -116,6 +83,73 @@ struct ThemeSettingsView: View {
             }
         } message: {
             Text("This will replace your current config file with default values.")
+        }
+    }
+
+    /// Save floats at the bottom right rather than taking a row of its own:
+    /// the button sits where the eye ends, and the screen keeps the space.
+    private var saveControls: some View {
+        HStack(spacing: 10) {
+            if let saveMessage {
+                Text(saveMessage.text)
+                    .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
+                    .foregroundStyle(saveMessage.succeeded ? themeStore.onSuccessColor() : themeStore.onDangerColor())
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        saveMessage.succeeded ? themeStore.successColor() : themeStore.dangerColor(),
+                        in: Capsule()
+                    )
+            }
+
+            Button("Save Config") {
+                applyFileScanDepthInput()
+                applyFileScanLimitInput()
+                let ok = themeStore.saveCurrentConfigToFile()
+                saveMessage = SaveMessage(text: ok ? "Saved" : "Save failed", succeeded: ok)
+                if ok {
+                    NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                    saveMessage = nil
+                }
+                NotificationCenter.default.post(name: .lookFocusSettingsInputRequested, object: nil)
+            }
+            .disabled(hasIndexingError)
+            .opacity(hasIndexingError ? 0.5 : 1)
+            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+        }
+        .padding(Self.saveFloatInset)
+    }
+
+    /// One settings row: label column, control column, then the hint. The two
+    /// fixed columns are what keep every control and every hint on one x.
+    func settingRow<Control: View, Trailing: View>(
+        _ label: String?,
+        hint: String? = nil,
+        alignment: VerticalAlignment = .center,
+        @ViewBuilder control: () -> Control,
+        @ViewBuilder trailing: () -> Trailing = { EmptyView() }
+    ) -> some View {
+        HStack(alignment: alignment, spacing: 10) {
+            Text(label ?? "")
+                .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
+                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+                .foregroundStyle(themeStore.secondaryTextColor())
+
+            control()
+                .frame(width: AppConstants.ThemeUI.controlWidth, alignment: .leading)
+
+            if let hint {
+                Text(hint)
+                    .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+                    .foregroundStyle(themeStore.mutedTextColor())
+                    .lineLimit(1)
+            }
+
+            trailing()
+
+            Spacer(minLength: 0)
         }
     }
 

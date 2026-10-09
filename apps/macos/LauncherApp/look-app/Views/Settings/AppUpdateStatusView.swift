@@ -25,12 +25,12 @@ struct AppUpdateStatusView: View {
                         .lineLimit(1)
                 }
 
-                Spacer(minLength: 0)
-
                 pill(updateChecker.isChecking ? "Checking…" : "Check for Updates") {
                     updateChecker.checkForUpdates(force: true)
                 }
                 .disabled(updateChecker.isChecking)
+
+                Spacer(minLength: 0)
             }
 
             if let update = updateChecker.availableUpdate {
