@@ -222,7 +222,7 @@ final class GlobalHotKeyManager {
         guard hotKeyRef != nil || !appHotKeys.isEmpty else { return }
         let hotkey = hotkey
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
+            guard let self, !ShortcutCapture.isActive else { return event }
             if self.hotKeyRef != nil && hotkey.matches(event) {
                 hotkeyLog.notice("LOCAL monitor fired (app active=\(NSApp.isActive))")
                 NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
