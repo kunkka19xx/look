@@ -402,13 +402,14 @@ mod tests {
             Hotkey::parse_local("opt+up").unwrap(),
             Hotkey::parse_local("option+arrowup").unwrap()
         );
+        // That key is Option on macOS and Alt everywhere else, so the
+        // expectation follows the platform instead of pinning one spelling.
+        let (spec_name, display_name, _) = Modifier::Option.names();
+        let arrow = HotkeyCheck::local("option+up");
+        assert_eq!(arrow.spec, format!("{spec_name}+arrowup"));
+        assert_eq!(arrow.display, Some(format!("{display_name}+Up")));
         assert_eq!(
-            HotkeyCheck::local("option+up").display.as_deref(),
-            Some("Option+Up")
-        );
-        assert_eq!(HotkeyCheck::local("option+up").spec, "option+arrowup");
-        assert_eq!(
-            HotkeyCheck::local("option+up").hotkey,
+            arrow.hotkey,
             Some(Hotkey::parse_local("option+up").unwrap())
         );
         assert_eq!(HotkeyCheck::local("shift+k").display, None);
