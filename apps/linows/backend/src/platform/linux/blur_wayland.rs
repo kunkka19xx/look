@@ -18,6 +18,9 @@ use wayland_protocols::ext::background_effect::v1::client::{
     ext_background_effect_manager_v1::{self, ExtBackgroundEffectManagerV1},
     ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1,
 };
+use wayland_protocols::wp::alpha_modifier::v1::client::{
+    wp_alpha_modifier_surface_v1::WpAlphaModifierSurfaceV1, wp_alpha_modifier_v1::WpAlphaModifierV1,
+};
 use wayland_protocols_plasma::blur::client::{
     org_kde_kwin_blur::OrgKdeKwinBlur, org_kde_kwin_blur_manager::OrgKdeKwinBlurManager,
 };
@@ -32,8 +35,15 @@ struct Blur {
     compositor: WlCompositor,
     effect_manager: Option<ExtBackgroundEffectManagerV1>,
     kde_manager: Option<OrgKdeKwinBlurManager>,
+    alpha_manager: Option<WpAlphaModifierV1>,
     attached: Mutex<Attached>,
 }
+
+/// KWin 6.7 lifts a surface that commits over 20 fps onto an overlay plane
+/// without seeing its blur (`isCandidate` in workspacescene.cpp), so the frost
+/// lags the content. An item opacity under one keeps it composited; this one
+/// is invisible.
+const NOT_QUITE_OPAQUE: u32 = u32::MAX - 1024;
 
 /// Per-surface state. GTK3 destroys its `wl_surface` on every hide and makes a
 /// new one on show, and `ext` raises `surface_destroyed` (a fatal protocol
@@ -47,6 +57,8 @@ struct Attached {
     surface: Option<WlSurface>,
     effect: Option<ExtBackgroundEffectSurfaceV1>,
     kde: Option<OrgKdeKwinBlur>,
+    /// Held while a region is set, KWin only, see `NOT_QUITE_OPAQUE`.
+    alpha: Option<WpAlphaModifierSurfaceV1>,
     rects: Vec<BlurRect>,
 }
 
@@ -55,6 +67,7 @@ struct Globals {
     compositor: Option<WlCompositor>,
     effect_manager: Option<ExtBackgroundEffectManagerV1>,
     kde_manager: Option<OrgKdeKwinBlurManager>,
+    alpha_manager: Option<WpAlphaModifierV1>,
     /// `ext` advertises what it can do; a manager that never claims blur is
     /// not support.
     blur_capable: bool,
@@ -135,6 +148,9 @@ fn release(attached: &mut Attached) {
     if let Some(kde) = attached.kde.take() {
         kde.release();
     }
+    if let Some(alpha) = attached.alpha.take() {
+        alpha.destroy();
+    }
 }
 
 /// Both protocols copy the region, so it is built, handed over and destroyed
@@ -149,6 +165,17 @@ fn release(attached: &mut Attached) {
 /// nothing to blur is said there by unsetting, and the object is created again
 /// when a region returns. `ext`'s empty region already means no blur.
 fn apply(blur: &Blur, attached: &mut Attached) {
+    if let (Some(manager), Some(surface)) = (&blur.alpha_manager, &attached.surface) {
+        if attached.rects.is_empty() {
+            if let Some(alpha) = attached.alpha.take() {
+                alpha.destroy();
+            }
+        } else if attached.alpha.is_none() {
+            let alpha = manager.get_surface(surface, &blur.queue_handle, ());
+            alpha.set_multiplier(NOT_QUITE_OPAQUE);
+            attached.alpha = Some(alpha);
+        }
+    }
     if let (Some(manager), Some(surface)) = (&blur.kde_manager, &attached.surface) {
         if attached.rects.is_empty() {
             if let Some(kde) = attached.kde.take() {
@@ -218,6 +245,7 @@ fn bind(display: *mut std::ffi::c_void) -> Option<Blur> {
         compositor,
         effect_manager,
         kde_manager,
+        alpha_manager: globals.alpha_manager.filter(|_| super::wm::is_kde()),
         attached: Mutex::default(),
     })
 }
@@ -248,6 +276,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Globals {
             }
             "org_kde_kwin_blur_manager" => {
                 state.kde_manager = Some(registry.bind(name, 1, qh, ()));
+            }
+            "wp_alpha_modifier_v1" => {
+                state.alpha_manager = Some(registry.bind(name, 1, qh, ()));
             }
             _ => {}
         }
@@ -297,4 +328,6 @@ ignore_events!(
     ExtBackgroundEffectSurfaceV1,
     OrgKdeKwinBlurManager,
     OrgKdeKwinBlur,
+    WpAlphaModifierV1,
+    WpAlphaModifierSurfaceV1,
 );

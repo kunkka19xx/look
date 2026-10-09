@@ -52,9 +52,11 @@ wayland-protocols-wlr = { version = "0.3", features = ["client"], default-featur
 wl-clipboard-rs = "0.9"
 # Behind-window blur: the cross-desktop staging protocol (KWin 6.7+, Hyprland
 # 0.56+, Niri; Mutter in review) plus KDE's own, which Plasma used until 6.7.
+# Unstable for xdg-output, the monitor's logical size.
 wayland-protocols = { version = "0.32", features = [
     "client",
     "staging",
+    "unstable",
 ], default-features = false }
 wayland-protocols-plasma = { version = "0.3", features = [
     "client",

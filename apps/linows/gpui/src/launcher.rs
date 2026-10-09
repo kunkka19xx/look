@@ -185,6 +185,8 @@ pub struct Launcher {
     todo_hovered: bool,
     /// Bumped per keystroke; a search that comes back for an older one is dropped.
     version: u64,
+    /// A search for the current text is out; "No results" waits for it.
+    searching: bool,
     /// The background picture being decoded, so a frame does not ask twice.
     backdrop_loading: Option<bgimage::Key>,
     /// The selection pill's top, in list pixels, gliding between rows.
@@ -282,6 +284,7 @@ impl Launcher {
             grid_since: None,
             todo_hovered: false,
             version: 0,
+            searching: false,
             _search: None,
         };
         // Issues reported before this window existed.
@@ -377,6 +380,7 @@ impl Launcher {
 
     fn search(&mut self, cx: &mut Context<Self>) {
         self.version += 1;
+        self.searching = false;
         let version = self.version;
         let query = self.input.read(cx).text().to_string();
         // A level owns the list: its rows are produced live and are not in
@@ -418,29 +422,34 @@ impl Launcher {
             cx.notify();
             return;
         }
+        // From an empty list there is nothing to spare by waiting.
+        let debounce = !self.rows.is_empty();
+        self.searching = true;
         self._search = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(DEBOUNCE).await;
+            if debounce {
+                cx.background_executor().timer(DEBOUNCE).await;
+            }
             let typed = query.clone();
-            let rows = cx
-                .background_executor()
-                .spawn(async move {
-                    let query = typed;
-                    let started = std::time::Instant::now();
-                    let rows = query::run(&query, refresh);
-                    if crate::probe_wanted() {
-                        eprintln!(
-                            "search {:.1} ms rows={} query={query:?}",
-                            started.elapsed().as_secs_f64() * 1000.0,
-                            rows.len()
-                        );
-                    }
-                    rows
-                })
-                .await;
+            let rows = bg::blocking(move || {
+                let query = typed;
+                let started = std::time::Instant::now();
+                let rows = query::run(&query, refresh);
+                if crate::probe_wanted() {
+                    eprintln!(
+                        "search {:.1} ms rows={} query={query:?}",
+                        started.elapsed().as_secs_f64() * 1000.0,
+                        rows.len()
+                    );
+                }
+                rows
+            })
+            .get()
+            .await;
             let _ = this.update(cx, |this, cx| {
                 if this.version != version {
                     return;
                 }
+                this.searching = false;
                 let local = rows.len();
                 this.publish(rows, &query, 0);
                 if let Some((for_query, id)) = this.pending_restore.take()
@@ -1899,7 +1908,7 @@ impl Launcher {
             .when(classic(), |root| root.bg(th.backdrop()))
             .track_focus(&focus_handle)
             .on_key_down(cx.listener(Self::on_key_down))
-            .on_children_prepainted(move |_, _, _| commit_blur_region(frosted))
+            .child(blur_commit(frosted))
             .flex()
             .flex_col()
             .children(banner)
@@ -2387,7 +2396,7 @@ impl Launcher {
 
         let hint = if self.levels.is_active() {
             &HINT_LEVEL
-        } else if self.rows.is_empty() && self.mode == Mode::Search {
+        } else if self.rows.is_empty() && !self.searching && self.mode == Mode::Search {
             &HINT_EMPTY
         } else {
             self.mode.hint()
@@ -2413,7 +2422,9 @@ impl Launcher {
                     .map(|card| card.mx(px(theme::ROW_PADDING_X))),
             )
             .map(|card| {
-                if self.rows.is_empty() {
+                if self.rows.is_empty() && self.searching {
+                    card.child(div().flex_1())
+                } else if self.rows.is_empty() {
                     card.child(self.empty_state(th)).child(div().flex_1())
                 } else {
                     card.child(list)
@@ -2852,7 +2863,7 @@ impl Launcher {
             .when(classic(), |root| root.bg(th.backdrop()))
             .track_focus(&focus_handle)
             .on_key_down(cx.listener(Self::on_key_down))
-            .on_children_prepainted(move |_, _, _| commit_blur_region(frosted))
+            .child(blur_commit(frosted))
             .child(div().size_full().child(body).with_animation(
                 "arrive",
                 Animation::new(arrive),
@@ -2952,6 +2963,16 @@ fn mark_region(cards: &[Bounds<Pixels>], radius: f32) {
             ));
         }
     });
+}
+
+/// Sends the region as the last deferred draw, after deferred cards (the
+/// toast) have marked themselves.
+fn blur_commit(frosted: bool) -> impl IntoElement {
+    deferred(canvas(
+        move |_, _, _| commit_blur_region(frosted),
+        |_, _, _, _| {},
+    ))
+    .with_priority(usize::MAX)
 }
 
 /// The frame's cards to the compositor; none when the frost is off, so the
