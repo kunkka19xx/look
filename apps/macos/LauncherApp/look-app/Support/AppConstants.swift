@@ -487,6 +487,88 @@ enum AppConstants {
             static let never = -1
         }
 
+        /// Target languages for the `t"` translation panel, from
+        /// `translate_languages` in ~/.look/config. `defaultLanguages` is the
+        /// fallback when the key is absent or empty; `languageLabels` names the
+        /// built-in codes, and an unknown code renders as its uppercased form.
+        enum Translate {
+            static let languagesConfigKey = "translate_languages"
+            static let defaultLanguages = ["vi", "en", "ja"]
+            static let languageLabels = [
+                "af": "Afrikaans",
+                "ar": "العربية",
+                "az": "Azərbaycan",
+                "be": "Беларуская",
+                "bg": "Български",
+                "bn": "বাংলা",
+                "ca": "Català",
+                "cs": "Čeština",
+                "da": "Dansk",
+                "de": "Deutsch",
+                "el": "Ελληνικά",
+                "en": "English",
+                "es": "Español",
+                "et": "Eesti",
+                "eu": "Euskara",
+                "fa": "فارسی",
+                "fi": "Suomi",
+                "fil": "Filipino",
+                "fr": "Français",
+                "gl": "Galego",
+                "gu": "ગુજરાતી",
+                "he": "עברית",
+                "hi": "हिन्दी",
+                "hr": "Hrvatski",
+                "hu": "Magyar",
+                "hy": "Հայերեն",
+                "id": "Bahasa Indonesia",
+                "is": "Íslenska",
+                "it": "Italiano",
+                "ja": "日本語",
+                "ka": "ქართული",
+                "kk": "Қазақ",
+                "km": "ខ្មែរ",
+                "kn": "ಕನ್ನಡ",
+                "ko": "한국어",
+                "lo": "ລາວ",
+                "lt": "Lietuvių",
+                "lv": "Latviešu",
+                "mk": "Македонски",
+                "ml": "മലയാളം",
+                "mn": "Монгол",
+                "mr": "मराठी",
+                "ms": "Bahasa Melayu",
+                "my": "မြန်မာ",
+                "ne": "नेपाली",
+                "nl": "Nederlands",
+                "no": "Norsk",
+                "pa": "ਪੰਜਾਬੀ",
+                "pl": "Polski",
+                "pt": "Português",
+                "pt-br": "Português (Brasil)",
+                "ro": "Română",
+                "ru": "Русский",
+                "si": "සිංහල",
+                "sk": "Slovenčina",
+                "sl": "Slovenščina",
+                "sq": "Shqip",
+                "sr": "Српски",
+                "sv": "Svenska",
+                "sw": "Kiswahili",
+                "ta": "தமிழ்",
+                "te": "తెలుగు",
+                "th": "ไทย",
+                "tr": "Türkçe",
+                "uk": "Українська",
+                "ur": "اردو",
+                "uz": "Oʻzbek",
+                "vi": "Tiếng Việt",
+                "zh": "中文",
+                "zh-cn": "中文（简体）",
+                "zh-tw": "中文（繁體）",
+            ]
+        }
+
         /// Virtual key codes (`NSEvent.keyCode`). These are physical positions on a
         /// US layout, not characters, so a handler that must follow the printed
         /// letter on other layouts matches `charactersIgnoringModifiers` as well.
