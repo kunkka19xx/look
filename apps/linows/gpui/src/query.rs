@@ -31,8 +31,15 @@ fn quick_folders() -> &'static [(String, String)] {
 /// `refresh_processes`: walk `/proc` again rather than score the snapshot,
 /// on entering `ps"` and after a kill.
 pub fn run(query: &str, refresh_processes: bool) -> Vec<Row> {
+    // Only asked where the empty query lists the index: the engine's ranking
+    // of everything, as the webview's `performSearch('')`.
     if query.trim().is_empty() {
-        return Vec::new();
+        return search::search(state(), "", SEARCH_LIMIT)
+            .results
+            .into_iter()
+            .map(Row::from_engine)
+            .map(dress)
+            .collect();
     }
     let (mode, term) = Mode::of(query);
     match mode {

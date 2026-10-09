@@ -176,6 +176,8 @@ pub struct Launcher {
     /// A selection to put back once the rows it names are on screen, and
     /// the query it was captured under: a level was just left.
     pending_restore: Option<(String, String)>,
+    /// The query the user last moved the cursor under.
+    navigated: Option<String>,
     /// Bumped on every menu open and close, so a list still resolving when
     /// the user moved on cannot open behind them.
     menu_token: u64,
@@ -265,6 +267,7 @@ impl Launcher {
             update: Update::new(),
             levels: Levels::default(),
             pending_restore: None,
+            navigated: None,
             menu_token: 0,
             backdrop_loading: None,
             pill: cx.new(|_| TransitionState::new(0.0)),
@@ -337,6 +340,8 @@ impl Launcher {
                 input.set_text(&retained.query, cx);
                 input.select_all(cx);
             });
+        } else if home_lists() {
+            self.search(cx);
         }
     }
 
@@ -403,10 +408,10 @@ impl Launcher {
         }
         self.mode = mode;
         self.close_menu();
-        let bento = home && !self.command_mode;
+        let bento = home && !self.command_mode && launchpad_shown(&theme::get());
         self.launchpad
             .update(cx, |launchpad, cx| launchpad.set_shown(bento, cx));
-        if home {
+        if home && !home_lists() {
             self.rows = Arc::new(Vec::new());
             self.selected = 0;
             self.sync_preview(cx);
@@ -437,8 +442,7 @@ impl Launcher {
                     return;
                 }
                 let local = rows.len();
-                this.rows = Arc::new(rows);
-                this.selected = 0;
+                this.publish(rows, &query, 0);
                 if let Some((for_query, id)) = this.pending_restore.take()
                     && for_query == query
                     && let Some(at) = this.rows.iter().position(|r| r.id == id)
@@ -448,7 +452,7 @@ impl Launcher {
                 this.scroll
                     .scroll_to_item(this.selected, ScrollStrategy::Top);
                 this.sync_preview(cx);
-                if mode == Mode::Search && !query.trim_start().contains('"') {
+                if mode == Mode::Search && !home && !query.trim_start().contains('"') {
                     this.ai.update(&query, local, cx);
                     this.fetch_web_suggestions(query, version, cx);
                 } else {
@@ -485,10 +489,21 @@ impl Launcher {
                         .enumerate()
                         .map(|(i, text)| Row::web_suggestion(text, i)),
                 );
-                this.rows = Arc::new(rows);
+                this.publish(rows, &query, this.selected);
                 this.sync_preview(cx);
             },
         );
+    }
+
+    /// New rows for `query`: the selection stays on the row the user moved
+    /// to under it, else lands on `fallback`.
+    fn publish(&mut self, rows: Vec<Row>, query: &str, fallback: usize) {
+        let kept = (self.navigated.as_deref() == Some(query))
+            .then(|| self.rows.get(self.selected))
+            .flatten()
+            .and_then(|old| rows.iter().position(|r| r.id == old.id));
+        self.selected = kept.unwrap_or(fallback).min(rows.len().saturating_sub(1));
+        self.rows = Arc::new(rows);
     }
 
     // --- Levels ----------------------------------------------------------------
@@ -638,7 +653,7 @@ impl Launcher {
             return;
         }
         // Alt+<letter> on the home screen is a launchpad mnemonic.
-        if ks.modifiers.alt && !ctrl && self.on_home(cx) && theme::get().shows_launchpad() {
+        if ks.modifiers.alt && !ctrl && self.on_home(cx) && launchpad_shown(&theme::get()) {
             let mut chars = ks.key.chars();
             if let (Some(ch), None) = (chars.next(), chars.next())
                 && self
@@ -980,6 +995,7 @@ impl Launcher {
         if !self.rows.is_empty() {
             let len = self.rows.len() as isize;
             self.selected = (self.selected as isize + delta).rem_euclid(len) as usize;
+            self.navigated = Some(self.input.read(cx).text().to_string());
             self.scroll
                 .scroll_to_item(self.selected, ScrollStrategy::Nearest);
             self.sync_preview(cx);
@@ -1880,6 +1896,7 @@ impl Launcher {
             .font_family(th.font_family.clone())
             .text_size(px(th.font_size))
             .text_color(th.text)
+            .when(classic(), |root| root.bg(th.backdrop()))
             .track_focus(&focus_handle)
             .on_key_down(cx.listener(Self::on_key_down))
             .on_children_prepainted(move |_, _, _| commit_blur_region(frosted))
@@ -1890,11 +1907,18 @@ impl Launcher {
                 div()
                     .flex_1()
                     .min_h_0()
-                    .m(px(theme::CONTENT_PADDING))
+                    .when(!classic(), |el| el.m(px(theme::CONTENT_PADDING)))
                     .flex()
                     .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
                     .child(
-                        card(div(), th, radius)
+                        div()
+                            .map(|el| {
+                                if classic() {
+                                    panel(el, th, 0.0)
+                                } else {
+                                    card(el, th, radius)
+                                }
+                            })
                             .flex_1()
                             .min_w_0()
                             .min_h_0()
@@ -2679,6 +2703,7 @@ impl Render for Launcher {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let th = theme::get();
         let frame = th.frame_size();
+        crate::host::fit(window, frame, cx);
         let content = self.content(th, window, cx);
         div().size_full().flex().justify_center().child(
             div()
@@ -2723,15 +2748,18 @@ impl Launcher {
             return self.command_screen(&th, cx).into_any_element();
         }
         // Gap 0 with a query: the classic framed panel. The resting home
-        // keeps the frosted bar in both modes.
-        let seated = !th.floating() && !home;
-        // The launchpad is a setting; off, the empty query is the bar alone.
-        let below = match (home, th.shows_launchpad(), self.mode) {
+        // keeps the frosted bar in both modes. Without a compositor neither
+        // floats nor rests: always the panel (layout.js `apply`).
+        let seated = classic() || (!th.floating() && !home);
+        // The launchpad is a setting; off, the empty query is the bar alone,
+        // or the panel listing the index where the bar cannot rest.
+        let below = match (home, launchpad_shown(&th), self.mode) {
             (true, true, _) => {
                 self.grid_since = Some(grid_since.unwrap_or_else(Instant::now));
                 self.bento(&th, window, cx).into_any_element()
             }
-            (true, false, _) => div().into_any_element(),
+            (true, false, _) if !home_lists() => div().into_any_element(),
+            (true, false, _) => self.results(seated, &th, window, cx).into_any_element(),
             (false, _, Mode::Translate) => self.translate_panel(seated, &th, cx).into_any_element(),
             (false, _, _) => self.results(seated, &th, window, cx).into_any_element(),
         };
@@ -2781,15 +2809,18 @@ impl Launcher {
         let radius = th.tile_radius();
         let body = div().size_full().flex().flex_col().map(|body| {
             if seated {
+                // Classic, the panel is the window: no inset, square corners
+                // (`--corner-radius: 0` until a compositor).
+                let edge = if classic() { 0.0 } else { radius };
                 body.child(
                     div()
                         .flex_1()
                         .min_h_0()
-                        .m(px(theme::CONTENT_PADDING))
+                        .when(!classic(), |el| el.m(px(theme::CONTENT_PADDING)))
                         .flex()
                         .on_children_prepainted(move |cards, _, _| mark_cards(&cards, radius))
                         .child(
-                            panel(div(), &th, radius)
+                            panel(div(), &th, edge)
                                 .flex_1()
                                 .min_w_0()
                                 .min_h_0()
@@ -2818,6 +2849,7 @@ impl Launcher {
             .font_family(th.font_family.clone())
             .text_size(px(th.font_size))
             .text_color(th.text)
+            .when(classic(), |root| root.bg(th.backdrop()))
             .track_focus(&focus_handle)
             .on_key_down(cx.listener(Self::on_key_down))
             .on_children_prepainted(move |_, _, _| commit_blur_region(frosted))
@@ -2834,6 +2866,28 @@ impl Launcher {
             )
             .into_any_element()
     }
+}
+
+/// No compositor (bare X11): nothing blends a transparent pixel, so the
+/// Tauri shell's `floatingSupported` is false and it draws the classic framed
+/// panel, flush with the window, in every state.
+fn classic() -> bool {
+    crate::host::opaque()
+}
+
+/// Whether the empty query lists the index under the bar. The bar resting
+/// alone needs real transparency; without a compositor the Tauri shell keeps
+/// its framed panel and searches the empty query (`hidesResultsForEmptyQuery`).
+fn home_lists() -> bool {
+    classic()
+}
+
+/// The launchpad setting, where the stack can show it. Like the Tauri shell's
+/// (`superactions.applyEnabled`), the classic panel has no launchpad and lists
+/// the index instead; the config value is left alone, so it comes back by
+/// itself under a compositor.
+fn launchpad_shown(th: &Theme) -> bool {
+    th.shows_launchpad() && !classic()
 }
 
 /// Add `name` to `app_exclude_names` and reload. `Ok(false)` when it was

@@ -393,7 +393,7 @@ impl Menu {
                 .justify_end()
                 .child(menu.w(px(COMPACT_W)).bg(theme::opaque(th.card_face())));
         }
-        let column_w = (theme::WINDOW_W - 2.0 * theme::CONTENT_PADDING - th.inner_gap) / 2.0;
+        let column_w = (theme::window_w() - 2.0 * theme::CONTENT_PADDING - th.inner_gap) / 2.0;
         menu.absolute()
             .top(px(MENU_TOP))
             .right(px(theme::CONTENT_PADDING))

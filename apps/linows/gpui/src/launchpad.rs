@@ -825,7 +825,7 @@ impl Launchpad {
         let gap = GAP;
         let cols = f32::from(layout.columns.max(1));
         let rows = f32::from(layout.rows.max(1));
-        let inner_w = theme::WINDOW_W - 2.0 * theme::CONTENT_PADDING;
+        let inner_w = theme::window_w() - 2.0 * theme::CONTENT_PADDING;
         let cell_w = (inner_w - gap * (cols - 1.0)) / cols;
         let grid_h = ROW_H * rows + gap * (rows - 1.0);
 
@@ -1047,7 +1047,7 @@ impl Launchpad {
                     .as_ref()
                     .map_or(1.0, |l| f32::from(l.columns.max(1)));
                 let gap = GAP;
-                let inner_w = theme::WINDOW_W - 2.0 * theme::CONTENT_PADDING;
+                let inner_w = theme::window_w() - 2.0 * theme::CONTENT_PADDING;
                 let cell_w = (inner_w - gap * (cols - 1.0)) / cols;
                 let bar_w = 2.0 * cell_w + gap - 2.0 * SLOT_PADDING;
                 div()

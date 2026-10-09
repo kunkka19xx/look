@@ -26,6 +26,18 @@ pub fn bounds(size: Size<Pixels>, cx: &App) -> Bounds<Pixels> {
     Bounds::centered(None, size, cx)
 }
 
+/// The frame sits inside the split window; nothing to fit.
+pub fn fitted(_: Size<Pixels>) {}
+
+pub fn fit(_: &mut Window, _: Size<Pixels>, _: &App) {}
+
+/// DWM always composites.
+pub fn probe_opaque() {}
+
+pub fn opaque() -> bool {
+    false
+}
+
 pub fn kind() -> WindowKind {
     WindowKind::PopUp
 }
@@ -42,7 +54,7 @@ pub fn hwnd(window: &Window) -> Option<HWND> {
 /// overlapped window: DWM then paints frame, shadow and theme backdrop behind
 /// the transparent pixels. A bare WS_POPUP gets none of that; the window
 /// shrinks to its old client rect so the content does not move.
-pub fn decorate(window: &Window) {
+pub fn decorate(window: &Window, _: Bounds<Pixels>) {
     let Some(hwnd) = hwnd(window) else {
         return;
     };
