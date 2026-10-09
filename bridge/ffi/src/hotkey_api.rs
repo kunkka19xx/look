@@ -11,11 +11,19 @@ pub(crate) fn look_launcher_hotkey_json_impl() -> *mut c_char {
 }
 
 pub(crate) fn look_hotkey_check_json_impl(spec: *const c_char) -> *mut c_char {
+    check(spec, HotkeyCheck::new)
+}
+
+pub(crate) fn look_hotkey_check_local_json_impl(spec: *const c_char) -> *mut c_char {
+    check(spec, HotkeyCheck::local)
+}
+
+fn check(spec: *const c_char, check: impl Fn(&str) -> HotkeyCheck) -> *mut c_char {
     if spec.is_null() {
         return allocate(None);
     }
     let spec = unsafe { CStr::from_ptr(spec) }.to_str().ok();
-    allocate(spec.and_then(|spec| serde_json::to_string(&HotkeyCheck::new(spec)).ok()))
+    allocate(spec.and_then(|spec| serde_json::to_string(&check(spec)).ok()))
 }
 
 fn allocate(json: Option<String>) -> *mut c_char {

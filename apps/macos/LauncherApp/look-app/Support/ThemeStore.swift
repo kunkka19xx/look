@@ -250,9 +250,15 @@ final class ThemeStore: ObservableObject {
         ConfigFileLines.upsert(&lines, key: "backend_log_level", value: settings.backendLogLevel.rawValue)
         ConfigFileLines.upsert(&lines, key: "launch_at_login", value: settings.launchAtLogin ? "true" : "false")
 
+        // In-app chords are written only when they differ from the default, so a
+        // config that rebinds nothing stays as short as it was, and a Reset
+        // takes its line back out.
         for shortcut in ConfigurableShortcut.all {
-            if let spec = settings.shortcutBindings[shortcut.configKey], !spec.isEmpty {
-                ConfigFileLines.upsert(&lines, key: shortcut.configKey, value: spec)
+            let value = settings.shortcutBindings[shortcut.configKey] ?? ""
+            if !value.isEmpty, !shortcut.isDefaultValue(value) {
+                ConfigFileLines.upsert(&lines, key: shortcut.configKey, value: value)
+            } else if shortcut.local != nil {
+                ConfigFileLines.remove(&lines, key: shortcut.configKey)
             }
         }
 
@@ -672,12 +678,16 @@ final class ThemeStore: ObservableObject {
                 } else {
                     settings.runningAppsPlacement = .none
                 }
-            case _ where ConfigurableShortcut.forConfigKey(key) != nil:
+            case _
+            where key == LauncherHotkeyConfig.key
+                || ShortcutBindingTable.definition(configKey: key) != nil:
                 settings.shortcutBindings[key] = value
             default:
                 continue
             }
         }
+
+        ShortcutBindings.shared.apply(settings.shortcutBindings)
 
         // Keeps the Settings picker in step when the config file is what changed.
         settings.uiTheme = detectBuiltinTheme(for: settings)
