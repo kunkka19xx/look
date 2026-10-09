@@ -33,6 +33,8 @@ nonisolated struct HotkeyCheck: Decodable {
     let spec: String
     let display: String?
     let error: String?
+    /// The parsed chord, which an in-app binding needs to match keys itself.
+    let hotkey: LauncherHotkeySpec.Hotkey?
 }
 
 /// Carbon values for the global registration, `NSEvent` ones for the in-app monitor.
@@ -75,17 +77,21 @@ struct CarbonHotkey: Equatable {
 
 extension CarbonHotkey {
     init?(spec: LauncherHotkeySpec) {
-        guard let keyCode = HotkeyKeyCodes.resolve(spec.hotkey.key) else { return nil }
+        self.init(hotkey: spec.hotkey, display: spec.display)
+    }
+
+    init?(hotkey: LauncherHotkeySpec.Hotkey, display: String) {
+        guard let keyCode = HotkeyKeyCodes.resolve(hotkey.key) else { return nil }
         var carbon = 0
         var flags: NSEvent.ModifierFlags = []
-        for name in spec.hotkey.modifiers {
+        for name in hotkey.modifiers {
             guard let modifier = Self.modifiers[name] else { return nil }
             carbon |= modifier.carbon
             flags.insert(modifier.flag)
         }
         self.init(
             keyCode: UInt32(keyCode), carbonModifiers: UInt32(carbon), eventModifiers: flags,
-            display: spec.display)
+            display: display)
     }
 }
 
@@ -97,6 +103,8 @@ enum HotkeyKeyCodes {
 
     private static let fixedKeys: [String: Int] = [
         "Space": kVK_Space, "Enter": kVK_Return, "Tab": kVK_Tab, "Escape": kVK_Escape,
+        "ArrowUp": kVK_UpArrow, "ArrowDown": kVK_DownArrow,
+        "ArrowLeft": kVK_LeftArrow, "ArrowRight": kVK_RightArrow,
         "F1": kVK_F1, "F2": kVK_F2, "F3": kVK_F3, "F4": kVK_F4, "F5": kVK_F5,
         "F6": kVK_F6, "F7": kVK_F7, "F8": kVK_F8, "F9": kVK_F9, "F10": kVK_F10,
         "F11": kVK_F11, "F12": kVK_F12, "F13": kVK_F13, "F14": kVK_F14, "F15": kVK_F15,

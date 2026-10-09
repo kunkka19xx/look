@@ -618,52 +618,8 @@ struct RecentEmptyStateView: View {
     }
 }
 
-/// Which slice of the help the screen is showing. `all` keeps the original one
-/// scroll; the rest narrow it, so arriving from a mode lands on that mode's keys
-/// instead of a page the reader has to search.
-/// The help screen's capsules: every `ShortcutTopic`, plus an "All" that shows
-/// the whole catalog. Only the screen needs `all`, so it lives here rather than
-/// in the catalog Settings also reads.
-enum LauncherHelpTopic: CaseIterable, Identifiable {
-    case all
-    case topic(ShortcutTopic)
-
-    static var allCases: [LauncherHelpTopic] { [.all] + ShortcutTopic.allCases.map(Self.topic) }
-
-    var id: String {
-        switch self {
-        case .all: return "all"
-        case .topic(let topic): return topic.id
-        }
-    }
-
-    var label: String {
-        switch self {
-        case .all: return "All"
-        case .topic(let topic): return topic.label
-        }
-    }
-
-    var groups: [ShortcutGroup] {
-        switch self {
-        case .all: return ShortcutCatalog.groups
-        case .topic(let topic): return ShortcutCatalog.groups(for: topic)
-        }
-    }
-
-    static let ai = LauncherHelpTopic.topic(.ai)
-}
-
-extension LauncherHelpTopic: Equatable {
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
-}
-
 struct LauncherHelpScreenView: View {
     private enum Metrics {
-        static let selectedCapsuleOpacity = 0.22
-        static let capsuleSpacing: CGFloat = 6
-        static let capsuleHorizontalPadding: CGFloat = 10
-        static let capsuleVerticalPadding: CGFloat = 4
         /// Wider than the gap between capsules, so the group reads as one unit
         /// next to the title rather than a sixth capsule.
         static let titleRowSpacing: CGFloat = 12
@@ -672,11 +628,11 @@ struct LauncherHelpScreenView: View {
     let themeStore: ThemeStore
     /// Where the screen opens. ⌘H from AI mode passes `.ai` so the assistant's
     /// keys are the first thing on screen.
-    var initialTopic: LauncherHelpTopic = .all
+    var initialTopic: ShortcutTopicFilter = .all
 
-    @State private var topic: LauncherHelpTopic
+    @State private var topic: ShortcutTopicFilter
 
-    init(themeStore: ThemeStore, initialTopic: LauncherHelpTopic = .all) {
+    init(themeStore: ThemeStore, initialTopic: ShortcutTopicFilter = .all) {
         self.themeStore = themeStore
         self.initialTopic = initialTopic
         _topic = State(initialValue: initialTopic)
@@ -718,30 +674,7 @@ struct LauncherHelpScreenView: View {
     }
 
     private var topicPicker: some View {
-        HStack(spacing: Metrics.capsuleSpacing) {
-            ForEach(LauncherHelpTopic.allCases) { candidate in
-                let isSelected = candidate == topic
-                Button { topic = candidate } label: {
-                    Text(candidate.label)
-                        .font(themeStore.uiFont(
-                            size: CGFloat(themeStore.settings.fontSize - 1),
-                            weight: isSelected ? .semibold : .regular))
-                        .foregroundStyle(isSelected ? themeStore.fontColor() : themeStore.mutedTextColor())
-                        .padding(.horizontal, Metrics.capsuleHorizontalPadding)
-                        .padding(.vertical, Metrics.capsuleVerticalPadding)
-                        .background(
-                            isSelected
-                                ? themeStore.accentColor().opacity(Metrics.selectedCapsuleOpacity)
-                                : themeStore.controlFillColor(),
-                            in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .help("Show \(candidate.label) shortcuts")
-            }
-        }
-        // Sits between the title and the close hint, so the capsules keep their
-        // own width instead of being squeezed by the row.
-        .fixedSize()
+        ShortcutTopicPicker(themeStore: themeStore, topic: $topic)
     }
 }
 

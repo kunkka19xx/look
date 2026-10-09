@@ -94,14 +94,14 @@ struct look_appApp: App {
                         NotificationCenter.default.post(name: .lookToggleSettingsRequested, object: nil)
                     }
                 }
-                .keyboardShortcut(",", modifiers: [.command, .shift])
+                .configuredShortcut(.viewSettings)
 
                 Button("Reload Config") {
                     DispatchQueue.main.async {
                         NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
                     }
                 }
-                .keyboardShortcut(";", modifiers: [.command, .shift])
+                .configuredShortcut(.viewReloadConfig)
 
                 Divider()
 
@@ -110,21 +110,21 @@ struct look_appApp: App {
                         themeStore.zoomIn()
                     }
                 }
-                .keyboardShortcut("=", modifiers: [.command])
+                .configuredShortcut(.viewZoomIn)
 
                 Button("Zoom Out") {
                     DispatchQueue.main.async {
                         themeStore.zoomOut()
                     }
                 }
-                .keyboardShortcut("-", modifiers: [.command])
+                .configuredShortcut(.viewZoomOut)
 
                 Button("Actual Size") {
                     DispatchQueue.main.async {
                         themeStore.resetZoom()
                     }
                 }
-                .keyboardShortcut("0", modifiers: [.command])
+                .configuredShortcut(.viewZoomReset)
             }
         }
     }
