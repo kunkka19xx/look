@@ -190,6 +190,12 @@ pub extern "C" fn look_launcher_hotkey_json() -> *mut c_char {
         .unwrap_or(std::ptr::null_mut())
 }
 
+/// The configured `app_hotkeys`. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_app_hotkeys_json() -> *mut c_char {
+    std::panic::catch_unwind(hotkey_api::look_app_hotkeys_json_impl).unwrap_or(std::ptr::null_mut())
+}
+
 /// `spec` checked against the hotkey grammar. Free with `look_free_cstring`.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_hotkey_check_json(spec: *const c_char) -> *mut c_char {

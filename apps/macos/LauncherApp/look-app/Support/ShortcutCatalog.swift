@@ -101,7 +101,7 @@ struct ShortcutGroup: Identifiable {
 /// the AI keys existed only in help, and the `Cmd+N` command list in Settings
 /// had gone stale enough to name the wrong command.
 enum ShortcutCatalog {
-    static let groups: [ShortcutGroup] = [
+    private static let staticGroups: [ShortcutGroup] = [
         ShortcutGroup(title: "Global", topic: .main, entries: [
             ShortcutEntry("global.toggleLauncher", "Cmd+Space", "Show or hide Look from any app"),
         ]),
@@ -205,6 +205,23 @@ enum ShortcutCatalog {
             ShortcutEntry("speed.revealAddress", "E", "Show or hide the public address inside /speed"),
         ]),
     ]
+
+    static var groups: [ShortcutGroup] {
+        var all = staticGroups
+        let appHotkeys = EngineBridge.shared.appHotkeys()
+        if !appHotkeys.isEmpty {
+            let entries = appHotkeys.map { spec in
+                ShortcutEntry(
+                    "app.\(spec.name)",
+                    spec.display,
+                    "Launch \(spec.target.isEmpty ? spec.name : spec.target)",
+                    remappable: false
+                )
+            }
+            all.insert(ShortcutGroup(title: "Applications", topic: .main, entries: entries), at: 1)
+        }
+        return all
+    }
 
     /// Groups for one topic, in reading order.
     static func groups(for topic: ShortcutTopic) -> [ShortcutGroup] {

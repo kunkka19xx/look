@@ -13,6 +13,10 @@ enum AppBundleLocator {
     ]
 
     static func bundlePath(forAppNamed name: String) -> String? {
+        let expanded = (name as NSString).expandingTildeInPath
+        if FileManager.default.fileExists(atPath: expanded) {
+            return expanded
+        }
         let bundleName = name.hasSuffix(".app") ? name : name + ".app"
         for root in roots {
             let candidate = root + "/" + bundleName

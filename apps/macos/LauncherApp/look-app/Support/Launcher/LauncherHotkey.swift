@@ -29,6 +29,14 @@ nonisolated struct LauncherHotkeySpec: Decodable {
     }
 }
 
+nonisolated struct AppHotkeySpec: Decodable {
+    let name: String
+    let target: String
+    let hotkey: LauncherHotkeySpec.Hotkey
+    let display: String
+    let spec: String
+}
+
 nonisolated struct HotkeyCheck: Decodable {
     let spec: String
     let display: String?
@@ -76,10 +84,6 @@ struct CarbonHotkey: Equatable {
 }
 
 extension CarbonHotkey {
-    init?(spec: LauncherHotkeySpec) {
-        self.init(hotkey: spec.hotkey, display: spec.display)
-    }
-
     init?(hotkey: LauncherHotkeySpec.Hotkey, display: String) {
         guard let keyCode = HotkeyKeyCodes.resolve(hotkey.key) else { return nil }
         var carbon = 0
@@ -92,6 +96,14 @@ extension CarbonHotkey {
         self.init(
             keyCode: UInt32(keyCode), carbonModifiers: UInt32(carbon), eventModifiers: flags,
             display: display)
+    }
+
+    init?(spec: LauncherHotkeySpec) {
+        self.init(hotkey: spec.hotkey, display: spec.display)
+    }
+
+    init?(appSpec: AppHotkeySpec) {
+        self.init(hotkey: appSpec.hotkey, display: appSpec.display)
     }
 }
 
@@ -175,6 +187,13 @@ final class LauncherHotkeyController: ObservableObject, ShortcutRegistration {
     }
 
     private func apply() -> String? {
+        let appSpecs = EngineBridge.shared.appHotkeys()
+        let appHotkeys = appSpecs.compactMap { spec -> (CarbonHotkey, String)? in
+            guard let hotkey = CarbonHotkey(appSpec: spec) else { return nil }
+            return (hotkey, spec.target)
+        }
+        manager.registerAppHotKeys(appHotkeys)
+
         guard let spec = EngineBridge.shared.launcherHotkey() else {
             return register(.fallback)
         }
