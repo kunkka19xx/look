@@ -206,20 +206,59 @@ enum ShortcutCatalog {
         ]),
     ]
 
+    struct AppShortcutItem {
+        let name: String
+        let display: String
+        let target: String
+
+        init(name: String, display: String, target: String) {
+            self.name = name
+            self.display = display
+            self.target = target
+        }
+    }
+
+    nonisolated(unsafe) private static var configuredAppShortcuts: [AppShortcutItem] = []
+    nonisolated(unsafe) private static var cachedGroups: [ShortcutGroup]?
+
+    static func setAppShortcuts(_ items: [AppShortcutItem]) {
+        configuredAppShortcuts = items
+        invalidate()
+    }
+
+    static func invalidate() {
+        cachedGroups = nil
+    }
+
     static var groups: [ShortcutGroup] {
+        if let cached = cachedGroups { return cached }
         var all = staticGroups
-        let appHotkeys = EngineBridge.shared.appHotkeys()
-        if !appHotkeys.isEmpty {
-            let entries = appHotkeys.map { spec in
-                ShortcutEntry(
+        if !configuredAppShortcuts.isEmpty {
+            let entries = configuredAppShortcuts.map { spec in
+                let targetName: String
+                if spec.target.isEmpty {
+                    targetName = spec.name
+                } else if spec.target.contains("/") {
+                    targetName = URL(fileURLWithPath: spec.target).deletingPathExtension().lastPathComponent
+                } else if spec.target.hasSuffix(".app") {
+                    targetName = String(spec.target.dropLast(4))
+                } else {
+                    targetName = spec.target
+                }
+                return ShortcutEntry(
                     "app.\(spec.name)",
                     spec.display,
-                    "Launch \(spec.target.isEmpty ? spec.name : spec.target)",
+                    "Launch \(targetName)",
                     remappable: false
                 )
             }
-            all.insert(ShortcutGroup(title: "Applications", topic: .main, entries: entries), at: 1)
+            if all.count > 1 {
+                all.insert(ShortcutGroup(title: "Applications", topic: .main, entries: entries), at: 1)
+            } else {
+                all.append(ShortcutGroup(title: "Applications", topic: .main, entries: entries))
+            }
         }
+        cachedGroups = all
         return all
     }
 

@@ -179,6 +179,7 @@ final class LauncherHotkeyController: ObservableObject, ShortcutRegistration {
     func reload() -> String? {
         // A listening recorder reloads when it stops.
         guard !ShortcutCapture.isActive else { return nil }
+        ShortcutCatalog.invalidate()
         let warning = apply()
         if let warning {
             launcherHotkeyLog.error("\(warning, privacy: .public)")
@@ -192,6 +193,9 @@ final class LauncherHotkeyController: ObservableObject, ShortcutRegistration {
             guard let hotkey = CarbonHotkey(appSpec: spec) else { return nil }
             return (hotkey, spec.target)
         }
+        ShortcutCatalog.setAppShortcuts(appSpecs.map {
+            ShortcutCatalog.AppShortcutItem(name: $0.name, display: $0.display, target: $0.target)
+        })
         manager.registerAppHotKeys(appHotkeys)
 
         guard let spec = EngineBridge.shared.launcherHotkey() else {
@@ -199,7 +203,7 @@ final class LauncherHotkeyController: ObservableObject, ShortcutRegistration {
         }
         defaultSpec = spec.defaultSpec
         guard spec.enabled else {
-            manager.suspend()
+            manager.unregisterToggleHotKey()
             display = spec.display
             return nil
         }

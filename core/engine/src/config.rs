@@ -367,20 +367,29 @@ impl RuntimeConfig {
                         apply_alias_override(alias_key, value, &mut self.search_aliases);
                     }
                 }
-                _ if key.strip_prefix("app_hotkey_").is_some() => {
-                    if let Some(name) = key.strip_prefix("app_hotkey_") {
+                _ if key.starts_with("app_hotkey_") => {
+                    let name = &key["app_hotkey_".len()..];
+                    if !name.is_empty() {
                         let (spec, target) = match value.split_once('|') {
-                            Some((s, t)) => (s.trim(), t.trim()),
+                            Some((s, t)) => {
+                                let t_trimmed = t.trim();
+                                (s.trim(), if t_trimmed.is_empty() { name } else { t_trimmed })
+                            }
                             None => (value.trim(), name),
                         };
                         if let Ok(hotkey) = crate::hotkey::Hotkey::parse(spec) {
-                            self.app_hotkeys.push(AppHotkey {
+                            let entry = AppHotkey {
                                 name: name.to_string(),
                                 target: target.to_string(),
                                 display: hotkey.display(),
                                 spec: hotkey.spec(),
                                 hotkey,
-                            });
+                            };
+                            if let Some(existing) = self.app_hotkeys.iter_mut().find(|h| h.name == name) {
+                                *existing = entry;
+                            } else {
+                                self.app_hotkeys.push(entry);
+                            }
                         }
                     }
                 }
@@ -935,20 +944,25 @@ mod tests {
         config.apply_from_str(
             "app_hotkey_terminal = cmd+shift+t | Ghostty\n\
              app_hotkey_slack=ctrl+alt+s\n\
+             app_hotkey_terminal = cmd+alt+t | WezTerm\n\
+             app_hotkey_editor = cmd+shift+e |\n\
+             app_hotkey_ = cmd+shift+x\n\
              app_hotkey_bad=invalid+key\n\
              app_hotkey_empty=\n",
         );
-        assert_eq!(config.app_hotkeys.len(), 2);
+        assert_eq!(config.app_hotkeys.len(), 3);
         assert_eq!(config.app_hotkeys[0].name, "terminal");
-        assert_eq!(config.app_hotkeys[0].target, "Ghostty");
-        assert_eq!(config.app_hotkeys[0].spec, "shift+cmd+t");
-        assert_eq!(config.app_hotkeys[0].display, "Shift+Cmd+T");
+        assert_eq!(config.app_hotkeys[0].target, "WezTerm");
         assert_eq!(config.app_hotkeys[1].name, "slack");
         assert_eq!(config.app_hotkeys[1].target, "slack");
+        assert_eq!(config.app_hotkeys[2].name, "editor");
+        assert_eq!(config.app_hotkeys[2].target, "editor");
         if cfg!(target_os = "macos") {
+            assert_eq!(config.app_hotkeys[0].spec, "option+cmd+t");
             assert_eq!(config.app_hotkeys[1].spec, "ctrl+option+s");
             assert_eq!(config.app_hotkeys[1].display, "Ctrl+Option+S");
         } else {
+            assert_eq!(config.app_hotkeys[0].spec, "alt+cmd+t");
             assert_eq!(config.app_hotkeys[1].spec, "ctrl+alt+s");
             assert_eq!(config.app_hotkeys[1].display, "Ctrl+Alt+S");
         }

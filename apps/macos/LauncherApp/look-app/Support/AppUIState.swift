@@ -32,5 +32,4 @@ extension Notification.Name {
     static let lookToggleSettingsRequested = Notification.Name("look.toggleSettingsRequested")
     static let lookActivateLauncherRequested = Notification.Name("look.activateLauncherRequested")
     static let lookHideLauncherRequested = Notification.Name("look.hideLauncherRequested")
-    static let lookAppHotKeyTriggered = Notification.Name("look.appHotKeyTriggered")
 }

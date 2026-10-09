@@ -65,6 +65,7 @@ final class GlobalHotKeyManager {
 
     func registerAppHotKeys(_ items: [(hotkey: CarbonHotkey, target: String)]) {
         unregisterAppHotKeys()
+        guard !items.isEmpty else { return }
         ensureEventHandlerInstalled()
         var nextId: UInt32 = 2
         for item in items {
@@ -100,6 +101,8 @@ final class GlobalHotKeyManager {
         }
         appHotKeyRefs.removeAll()
         appHotKeys.removeAll()
+        cleanUpEventHandlerIfEmpty()
+        installLocalMonitor()
     }
 
     func handleAppHotKey(id: UInt32) {
@@ -122,11 +125,19 @@ final class GlobalHotKeyManager {
                     hotkeyLog.error("openApplication failed for \(bundlePath): \(error.localizedDescription)")
                 }
             }
+        } else if target.hasPrefix("/") || target.hasPrefix("~") {
+            let expanded = (target as NSString).expandingTildeInPath
+            let url = URL(fileURLWithPath: expanded)
+            NSWorkspace.shared.open(url)
         } else {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
             process.arguments = ["-a", target]
-            try? process.run()
+            do {
+                try process.run()
+            } catch {
+                hotkeyLog.error("open -a failed for \(target): \(error.localizedDescription)")
+            }
         }
     }
 
@@ -208,10 +219,11 @@ final class GlobalHotKeyManager {
             NSEvent.removeMonitor(localMonitor)
             self.localMonitor = nil
         }
+        guard hotKeyRef != nil || !appHotKeys.isEmpty else { return }
         let hotkey = hotkey
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            if hotkey.matches(event) {
+            if self.hotKeyRef != nil && hotkey.matches(event) {
                 hotkeyLog.notice("LOCAL monitor fired (app active=\(NSApp.isActive))")
                 NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
                 return nil   // consume - don't let any field eat the space
@@ -242,28 +254,39 @@ final class GlobalHotKeyManager {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    func suspend() {
-        retryWorkItem?.cancel()
-        retryWorkItem = nil
-        unregister()
-        unregisterAppHotKeys()
+    private func cleanUpEventHandlerIfEmpty() {
+        if hotKeyRef == nil && appHotKeyRefs.isEmpty {
+            if let eventHandler {
+                RemoveEventHandler(eventHandler)
+                self.eventHandler = nil
+            }
+        }
     }
 
-    func unregister() {
+    func unregisterToggleHotKey() {
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
         if let hotKeyRef {
             UnregisterEventHotKey(hotKeyRef)
             self.hotKeyRef = nil
         }
+        cleanUpEventHandlerIfEmpty()
+        installLocalMonitor()
+    }
 
-        if let eventHandler {
-            RemoveEventHandler(eventHandler)
-            self.eventHandler = nil
-        }
-
+    func suspend() {
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        unregisterToggleHotKey()
+        unregisterAppHotKeys()
         if let localMonitor {
             NSEvent.removeMonitor(localMonitor)
             self.localMonitor = nil
         }
+    }
+
+    func unregister() {
+        unregisterToggleHotKey()
     }
 }
 
