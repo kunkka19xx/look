@@ -253,9 +253,21 @@ fn open(shell: &Shell, cx: &mut App) {
     // may the files.
     theme::load();
     fonts::ensure_family(cx, &theme::get().font_family);
+    host::probe_opaque();
     state().request_index_refresh();
     let for_launcher = shell.clone();
-    let bounds = host::bounds(size(px(theme::WINDOW_W), px(theme::WINDOW_H)), cx);
+    if let Some(display) = cx.primary_display() {
+        theme::fit_window(f32::from(display.bounds().size.height));
+    }
+    // Bare X11 cannot show the split window's unused part as nothing, so
+    // the window is the panel itself there.
+    let window_size = if host::opaque() {
+        theme::get().frame_size()
+    } else {
+        size(px(theme::window_w()), px(theme::window_h()))
+    };
+    host::fitted(window_size);
+    let bounds = host::bounds(window_size, cx);
     let result = cx.open_window(
         WindowOptions {
             titlebar: None,
@@ -270,7 +282,7 @@ fn open(shell: &Shell, cx: &mut App) {
             ..Default::default()
         },
         move |window, cx| {
-            host::decorate(window);
+            host::decorate(window, bounds);
             cx.new(|cx| Launcher::new(for_launcher, window, cx))
         },
     );

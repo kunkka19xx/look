@@ -39,3 +39,5 @@ gpui_platform = { package = "gpui_ce_platform", version = "0.1.0", features = ["
 # The same build gpui's Linux platform already links; only the folder dialog
 # calls it here, with no parent window (see pick.rs).
 ashpd = { version = "0.13", default-features = false, features = ["async-io", "file_chooser"] }
+# The same build gpui's X11 client links; only the compositor probe uses it.
+x11rb = "0.13"

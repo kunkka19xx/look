@@ -11,7 +11,8 @@ use std::time::Duration;
 
 use gpui::{
     AnyElement, Context, Div, Entity, EventEmitter, FontWeight, HighlightStyle, Image, ObjectFit,
-    ScrollHandle, SharedString, Stateful, StyledText, Task, div, img, prelude::*, px, svg,
+    ScrollHandle, SharedString, Stateful, StyledText, Task, div, img, prelude::*, px, relative,
+    svg,
 };
 use linows_backend::highlight::{self, TokenType};
 use linows_backend::process::ProcDetail;
@@ -36,8 +37,9 @@ const HEADER_GAP: f32 = 10.0;
 const HEADER_MARGIN: f32 = 14.0;
 const BADGE_PADDING_X: f32 = 8.0;
 const BADGE_PADDING_Y: f32 = 2.0;
-const LABEL_COLUMN: f32 = 96.0;
 const INFO_GAP: f32 = 12.0;
+const INFO_ROW_GAP: f32 = 12.0;
+const INFO_LINE_HEIGHT: f32 = 1.2;
 const INFO_PADDING_Y: f32 = 5.0;
 const BODY_MARGIN: f32 = 12.0;
 const CODE_PADDING: f32 = 10.0;
@@ -52,10 +54,10 @@ const CARD_GAP: f32 = 14.0;
 const CARD_PADDING: f32 = 20.0;
 const CARD_ICON: f32 = 40.0;
 const TRUNCATED_NOTE: &str = "File truncated at 64 KB";
-/// The body scrolls inside itself past this, so the rows under it stay in
-/// view: the webview's `calc(100vh - 280px)`, and 260 for a picture.
-const BODY_MAX_H: f32 = theme::WINDOW_H - 280.0;
-const IMAGE_MAX_H: f32 = theme::WINDOW_H - 260.0;
+/// The webview's cap for a picture; text bodies fill the column instead.
+fn image_max_h() -> f32 {
+    theme::window_h() - 260.0
+}
 /// A clip's text card and a copied image, the webview's caps.
 const CLIP_CARD_MAX_H: f32 = 200.0;
 const CLIP_IMAGE_MAX_H: f32 = 300.0;
@@ -537,7 +539,8 @@ impl Preview {
                 panel
                     .child(header(picture, glyph, title, badge, aside.as_deref(), th))
                     .child(self.body(body, th, shell))
-                    .child(info_rows(info, th))
+                    // Under a body the rows sit at the foot, as macOS files do.
+                    .child(info_rows(info, th).when(!matches!(body, Body::None), |r| r.mt_auto()))
             }
         }
     }
@@ -640,7 +643,7 @@ impl Preview {
                 .child(
                     img(path.clone())
                         .max_w_full()
-                        .max_h(px(IMAGE_MAX_H))
+                        .max_h(px(image_max_h()))
                         .object_fit(ObjectFit::Contain)
                         .rounded(px(th.chip_radius())),
                 )
@@ -664,7 +667,6 @@ impl Preview {
                     .collect::<Vec<_>>();
                 div()
                     .mt(px(BODY_MARGIN))
-                    .max_h(px(BODY_MAX_H))
                     .min_h_0()
                     .rounded(px(th.control_radius()))
                     .bg(th.control_fill)
@@ -716,7 +718,6 @@ impl Preview {
                 let mut list = div()
                     .id("folder-list")
                     .mt(px(BODY_MARGIN))
-                    .max_h(px(BODY_MAX_H))
                     .min_h_0()
                     .overflow_y_scroll()
                     .track_scroll(&self.body_scroll)
@@ -1105,19 +1106,23 @@ fn header(
 }
 
 fn info_rows(info: &[(&'static str, String)], th: &Theme) -> Div {
-    let mut rows_el = div().mt(px(HEADER_MARGIN)).flex().flex_col();
+    let mut rows_el = div()
+        .pt(px(HEADER_MARGIN))
+        .flex_shrink_0()
+        .flex()
+        .flex_col()
+        .gap(px(INFO_ROW_GAP))
+        .text_size(px(th.font_size - 2.0))
+        .line_height(relative(INFO_LINE_HEIGHT));
     for (label, value) in info {
         rows_el = rows_el.child(
             div()
                 .flex()
                 .items_baseline()
                 .gap(px(INFO_GAP))
-                .py(px(INFO_PADDING_Y))
                 .child(
                     div()
-                        .w(px(LABEL_COLUMN))
                         .flex_shrink_0()
-                        .text_size(px(th.font_size - 1.0))
                         .text_color(th.text_muted)
                         .child(*label),
                 )
@@ -1125,7 +1130,7 @@ fn info_rows(info: &[(&'static str, String)], th: &Theme) -> Div {
                     div()
                         .flex_1()
                         .min_w_0()
-                        .text_size(px(th.font_size - 1.0))
+                        .text_right()
                         .text_color(th.text_secondary)
                         .child(middle_elided(value.clone())),
                 ),

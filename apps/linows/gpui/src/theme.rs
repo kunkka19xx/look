@@ -17,14 +17,40 @@ pub const FONT_SIZE_DEFAULT: f32 = 14.0;
 pub const CAPTION_SIZE: f32 = 11.0;
 pub const TILE_VALUE_SIZE: f32 = 20.0;
 
-pub const WINDOW_W: f32 = 1008.0;
-pub const WINDOW_H: f32 = 672.0;
+/// The launcher's logical size, refitted on every summon (`fit_window`).
+/// Starts at the 1440p rung, the size before the first fit.
+static WINDOW_SIZE: RwLock<(f32, f32)> = RwLock::new((1008.0, 672.0));
+
+/// The split size on the shared geometry ladder, so the panel is the one the
+/// Tauri shell opens on the same screen: 840x560 up to 1080 logical rows,
+/// growing to 1.3x past 1440.
+pub fn fit_window(screen_h: f32) {
+    let ratio = geometry::screen_ratio(screen_h.round() as u32, 1.0);
+    let size = (
+        (geometry::BASE_W * ratio).round() as f32,
+        (geometry::BASE_H * ratio).round() as f32,
+    );
+    *WINDOW_SIZE.write().unwrap_or_else(|p| p.into_inner()) = size;
+}
+
+pub fn window_w() -> f32 {
+    WINDOW_SIZE.read().unwrap_or_else(|p| p.into_inner()).0
+}
+
+pub fn window_h() -> f32 {
+    WINDOW_SIZE.read().unwrap_or_else(|p| p.into_inner()).1
+}
+
 /// The compact panel at the window's rung. It is drawn inside the split
 /// window, top-aligned, so the bar keeps its place across layouts and a
 /// switch needs no new surface.
-const WINDOW_SCALE: f32 = WINDOW_W / geometry::BASE_W as f32;
-pub const COMPACT_W: f32 = geometry::COMPACT_W as f32 * WINDOW_SCALE;
-pub const COMPACT_H: f32 = geometry::COMPACT_H as f32 * WINDOW_SCALE;
+fn compact_size() -> Size<Pixels> {
+    let scale = window_w() / geometry::BASE_W as f32;
+    size(
+        px((geometry::COMPACT_W as f32 * scale).round()),
+        px((geometry::COMPACT_H as f32 * scale).round()),
+    )
+}
 
 // Every themed radius is the macOS base times the surface scale.
 const TILE_RADIUS_BASE: f32 = 12.0;
@@ -645,8 +671,8 @@ impl Theme {
     /// otherwise.
     pub fn frame_size(&self) -> Size<Pixels> {
         match self.layout {
-            LauncherLayout::Split => size(px(WINDOW_W), px(WINDOW_H)),
-            LauncherLayout::Compact => size(px(COMPACT_W), px(COMPACT_H)),
+            LauncherLayout::Split => size(px(window_w()), px(window_h())),
+            LauncherLayout::Compact => compact_size(),
         }
     }
 
@@ -676,6 +702,14 @@ impl Theme {
     /// The top bar and results card: control fill over the tint (`.pane-tile`).
     pub fn card_face(&self) -> Rgba {
         over(self.control_fill, self.tint)
+    }
+
+    /// Behind everything where nothing composites the window: the tint, solid.
+    pub fn backdrop(&self) -> Rgba {
+        Rgba {
+            alpha: 1.0,
+            ..self.tint
+        }
     }
 
     /// Launchpad tiles stack the tint twice so desktop text cannot read through

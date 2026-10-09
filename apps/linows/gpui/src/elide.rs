@@ -4,7 +4,7 @@
 
 use gpui::{
     App, Bounds, Element, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels,
-    ShapedLine, SharedString, TextAlign, TextRun, Window, relative,
+    ShapedLine, SharedString, TextRun, Window, relative,
 };
 
 const ELLIPSIS: char = '\u{2026}';
@@ -119,11 +119,12 @@ impl Element for MiddleElided {
         cx: &mut App,
     ) {
         let line_height = window.line_height();
+        let align = window.text_style().text_align;
         line.paint(
             bounds.origin,
             line_height,
-            TextAlign::Left,
-            None,
+            align,
+            Some(bounds.size.width),
             window,
             cx,
         )
