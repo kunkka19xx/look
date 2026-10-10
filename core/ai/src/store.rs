@@ -70,6 +70,7 @@ pub(crate) fn write_atomic(path: &Path, data: &[u8]) -> bool {
     false
 }
 
+/// Appends a suffix to the file name of the given path.
 fn suffixed(path: &Path, suffix: &str) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(suffix);

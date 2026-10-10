@@ -87,9 +87,11 @@ const LANGUAGE_LABELS = {
 };
 
 // The target languages come from `translate_languages` in the config, in order.
-// Codes that are empty, duplicated, or not in LANGUAGE_LABELS are dropped from
-// both the label list and the result sections; an absent, empty, or all-invalid
-// list falls back to the defaults, so a typo never blanks the panel.
+/**
+ * Reads configured translation target languages from runtime config,
+ * filtering out invalid or duplicate codes and falling back to defaults.
+ * @returns {Promise<Array<{code: string, label: string}>>}
+ */
 async function configuredLanguages() {
     try {
         const cfg = await getConfig();
@@ -112,21 +114,35 @@ async function configuredLanguages() {
 let container = null;
 let active = false;
 
+/**
+ * Initializes the translation component with a parent container DOM element.
+ * @param {HTMLElement} containerEl
+ */
 export function init(containerEl) {
     container = containerEl;
 }
 
+/**
+ * Checks whether the translation panel is currently active.
+ * @returns {boolean}
+ */
 export function isActive() {
     return active;
 }
 
-// Floating, layout.js parks the hint text here; collapsed otherwise.
+/**
+ * Creates the footer slot for keyboard hint placement.
+ * @returns {HTMLElement}
+ */
 function hintSlot() {
     const slot = document.createElement('div');
     slot.className = 'pane-footer';
     return slot;
 }
 
+/**
+ * Displays the placeholder panel before translation is triggered.
+ */
 export function showPlaceholder() {
     hide();
     active = true;
@@ -145,6 +161,9 @@ export function showPlaceholder() {
     layout.refresh();
 }
 
+/**
+ * Hides and cleans up the active translation panel.
+ */
 export function hide() {
     active = false;
     const panel = container.querySelector('.translate-panel');
@@ -155,6 +174,10 @@ export function hide() {
     }
 }
 
+/**
+ * Translates input text into all configured target languages and displays the result panel.
+ * @param {string} text
+ */
 export async function perform(text) {
     if (!text.trim()) return;
     active = true;

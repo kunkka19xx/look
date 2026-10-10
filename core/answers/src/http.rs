@@ -27,10 +27,12 @@ pub struct Response {
 }
 
 impl Response {
+    /// Returns true if the HTTP response status code indicates success (2xx).
     pub fn is_success(&self) -> bool {
         (HTTP_OK..HTTP_MULTIPLE_CHOICES).contains(&self.status)
     }
 
+    /// Returns true if the HTTP response status code is 429 Too Many Requests.
     pub fn is_rate_limited(&self) -> bool {
         self.status == HTTP_TOO_MANY_REQUESTS
     }

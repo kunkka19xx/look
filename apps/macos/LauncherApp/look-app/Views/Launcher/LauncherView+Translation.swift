@@ -75,6 +75,7 @@ extension LauncherView {
         AppConstants.Launcher.Translate.languageLabels[code] ?? code.uppercased()
     }
 
+    /// Builds the translation sections for the given language codes and lookup results.
     private func lookupSections(
         for codes: [String],
         results: [String: TranslationResult]
@@ -89,6 +90,7 @@ extension LauncherView {
         }
     }
 
+    /// Handles a translation lookup command trigger for the given input text.
     func handleLookupTranslation(text: String) {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
@@ -96,8 +98,8 @@ extension LauncherView {
             return
         }
 
-        let codes = configuredTranslateLanguages()
         Task {
+            let codes = configuredTranslateLanguages()
             let results = await fetchAllTranslations(for: normalized, codes: codes)
             await MainActor.run {
                 lookupDefinition = LookupDefinition(
@@ -109,6 +111,7 @@ extension LauncherView {
         }
     }
 
+    /// Debounces and previews dictionary and translation lookup definitions as the query changes.
     func previewLookupDefinition(for input: String) {
         lookupPreviewTask?.cancel()
 
@@ -145,6 +148,7 @@ extension LauncherView {
         }
     }
 
+    /// Concurrently fetches translations for all specified language codes using the engine bridge.
     func fetchAllTranslations(
         for text: String,
         codes: [String]
@@ -179,6 +183,7 @@ extension LauncherView {
         return raw.isEmpty ? nil : raw
     }
 
+    /// Performs an on-demand network translation lookup across all configured languages.
     func handleNetworkTranslation(text: String) {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
@@ -226,6 +231,7 @@ extension LauncherView {
         }
     }
 
+    /// Concurrently fetches network translation results for each specified language code.
     func fetchNetworkTranslations(
         for text: String,
         codes: [String]

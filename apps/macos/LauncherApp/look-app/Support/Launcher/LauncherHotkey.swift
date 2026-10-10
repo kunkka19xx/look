@@ -98,10 +98,12 @@ extension CarbonHotkey {
             display: display)
     }
 
+    /// Resolves a carbon hotkey from a launcher hotkey spec.
     init?(spec: LauncherHotkeySpec) {
         self.init(hotkey: spec.hotkey, display: spec.display)
     }
 
+    /// Resolves a carbon hotkey from an application hotkey spec.
     init?(appSpec: AppHotkeySpec) {
         self.init(hotkey: appSpec.hotkey, display: appSpec.display)
     }
@@ -187,6 +189,7 @@ final class LauncherHotkeyController: ObservableObject, ShortcutRegistration {
         return warning
     }
 
+    /// Applies all hotkey configurations (toggle and application hotkeys).
     private func apply() -> String? {
         // Release app chords before the toggle claims its configured or fallback chord.
         manager.unregisterAppHotKeys()
@@ -202,6 +205,7 @@ final class LauncherHotkeyController: ObservableObject, ShortcutRegistration {
         return warning
     }
 
+    /// Applies and registers the main launcher toggle hotkey.
     private func applyToggle() -> String? {
         guard let spec = EngineBridge.shared.launcherHotkey() else {
             return register(.fallback)

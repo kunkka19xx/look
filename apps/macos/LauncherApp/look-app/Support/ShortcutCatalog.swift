@@ -206,11 +206,13 @@ enum ShortcutCatalog {
         ]),
     ]
 
+    /// Representation of a configured application shortcut in the catalog.
     struct AppShortcutItem {
         let name: String
         let display: String
         let target: String
 
+        /// Initializes an application shortcut item.
         init(name: String, display: String, target: String) {
             self.name = name
             self.display = display
@@ -221,11 +223,13 @@ enum ShortcutCatalog {
     nonisolated(unsafe) private static var configuredAppShortcuts: [AppShortcutItem] = []
     nonisolated(unsafe) private static var cachedGroups: [ShortcutGroup]?
 
+    /// Updates the configured application shortcuts and invalidates the cached shortcut groups.
     static func setAppShortcuts(_ items: [AppShortcutItem]) {
         configuredAppShortcuts = items
         invalidate()
     }
 
+    /// Invalidates the cached shortcut groups, forcing recomputation on next access.
     static func invalidate() {
         cachedGroups = nil
     }

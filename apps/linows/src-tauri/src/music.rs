@@ -9,6 +9,7 @@ static SINK: Mutex<Option<Player>> = Mutex::new(None);
 /// Kept alive so the audio thread (and its device sink) persists.
 static _KEEPALIVE: Mutex<Option<std::sync::mpsc::Sender<()>>> = Mutex::new(None);
 
+/// Ensures the audio output device and sink thread are initialized.
 fn ensure_init() {
     let mut sink_lock = SINK.lock().unwrap();
     if sink_lock.is_some() {
@@ -31,6 +32,7 @@ fn ensure_init() {
     *_KEEPALIVE.lock().unwrap() = Some(keep_tx);
 }
 
+/// Executes a closure against the active audio player sink.
 fn with_sink<F, R>(f: F) -> R
 where
     F: FnOnce(&Player) -> R,
@@ -44,6 +46,7 @@ where
     }
 }
 
+/// Loads and begins playback of an audio file at the specified path.
 #[tauri::command]
 pub fn music_play(path: String) -> Result<(), String> {
     ensure_init();
@@ -69,21 +72,25 @@ pub fn music_play(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Pauses current music playback.
 #[tauri::command]
 pub fn music_pause() {
     with_sink(|sink| sink.pause());
 }
 
+/// Resumes current music playback.
 #[tauri::command]
 pub fn music_resume() {
     with_sink(|sink| sink.play());
 }
 
+/// Stops music playback.
 #[tauri::command]
 pub fn music_stop() {
     with_sink(|sink| sink.stop());
 }
 
+/// Returns true if music playback has ended.
 #[tauri::command]
 pub fn music_is_finished() -> bool {
     with_sink(|sink| sink.empty())

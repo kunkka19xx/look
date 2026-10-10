@@ -12,6 +12,7 @@ enum AppBundleLocator {
         NSHomeDirectory() + "/Applications",
     ]
 
+    /// Finds the absolute bundle path for an application name, path, or bundle identifier.
     static func bundlePath(forAppNamed name: String) -> String? {
         if name.hasPrefix("/") || name.hasPrefix("~") {
             let expanded = (name as NSString).expandingTildeInPath

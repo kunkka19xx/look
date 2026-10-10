@@ -65,6 +65,7 @@ pub struct Translation {
 }
 
 impl Translation {
+    /// Creates a failed Translation result carrying the specified error.
     fn failed(original: String, error: TranslateError) -> Self {
         Translation {
             original,

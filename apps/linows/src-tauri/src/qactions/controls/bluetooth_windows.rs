@@ -163,6 +163,7 @@ enum Transport {
     LowEnergy,
 }
 
+/// Enumerates paired devices for the given transport and appends them to out.
 fn collect_paired(out: &mut Vec<Device>, transport: Transport) {
     let selector = match transport {
         Transport::Classic => BluetoothDevice::GetDeviceSelectorFromPairingState(true),

@@ -240,6 +240,7 @@ impl RuntimeConfig {
         self.apply_from_str(&contents);
     }
 
+    /// Parses configuration key-value lines from a string and applies them to this runtime configuration.
     pub fn apply_from_str(&mut self, contents: &str) {
         let home = user_home_dir();
         for raw_line in contents.lines() {

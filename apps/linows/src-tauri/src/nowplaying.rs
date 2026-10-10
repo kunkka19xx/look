@@ -255,6 +255,7 @@ mod imp {
         manager.GetCurrentSession().ok()
     }
 
+    /// Captures the current media playback snapshot from Windows SMTC.
     pub fn current() -> Option<NowPlayingSnapshot> {
         let session = active_session()?;
 
@@ -294,6 +295,7 @@ mod imp {
         })
     }
 
+    /// Dispatches a media transport command (playpause, next, previous) to the active session.
     pub fn run_command(command: &str, _target: Option<&str>) -> bool {
         let Some(session) = active_session() else {
             return false;

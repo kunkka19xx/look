@@ -66,6 +66,7 @@ final class GlobalHotKeyManager {
         return registerCurrentHotKey()
     }
 
+    /// Registers application-launching hotkeys and returns the successfully bound specs.
     func registerAppHotKeys(_ items: [(hotkey: CarbonHotkey, spec: AppHotkeySpec)]) -> [AppHotkeySpec] {
         unregisterAppHotKeys()
         guard !items.isEmpty else { return [] }
@@ -108,6 +109,7 @@ final class GlobalHotKeyManager {
         return registered
     }
 
+    /// Unregisters all registered application hotkeys.
     func unregisterAppHotKeys() {
         for ref in appHotKeyRefs {
             UnregisterEventHotKey(ref)
@@ -118,6 +120,7 @@ final class GlobalHotKeyManager {
         installLocalMonitor()
     }
 
+    /// Handles a Carbon event for an application hotkey by triggering the target app launch.
     func handleAppHotKey(id: UInt32) {
         guard let item = appHotKeys[id] else {
             hotkeyLog.error("No registered app hotkey for id=\(id)")
@@ -127,6 +130,7 @@ final class GlobalHotKeyManager {
         launchTargetApp(item.target)
     }
 
+    /// Launches the given application target name or bundle path.
     private func launchTargetApp(_ target: String) {
         NotificationCenter.default.post(name: .lookHideLauncherRequested, object: nil)
         if let bundlePath = AppBundleLocator.bundlePath(forAppNamed: target) {
@@ -154,6 +158,7 @@ final class GlobalHotKeyManager {
         }
     }
 
+    /// Installs the Carbon hotkey event handler on the dispatcher target if not already installed.
     private func ensureEventHandlerInstalled() {
         guard eventHandler == nil else { return }
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -267,6 +272,7 @@ final class GlobalHotKeyManager {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
+    /// Removes the event handler when neither toggle nor application hotkeys are active.
     private func cleanUpEventHandlerIfEmpty() {
         if hotKeyRef == nil && appHotKeyRefs.isEmpty {
             if let eventHandler {
@@ -276,6 +282,7 @@ final class GlobalHotKeyManager {
         }
     }
 
+    /// Unregisters the launcher toggle hotkey and its retry work.
     func unregisterToggleHotKey() {
         toggleReserved = false
         retryWorkItem?.cancel()
@@ -288,6 +295,7 @@ final class GlobalHotKeyManager {
         installLocalMonitor()
     }
 
+    /// Suspends all hotkeys and local monitors, cancelling any scheduled retries.
     func suspend() {
         retryWorkItem?.cancel()
         retryWorkItem = nil
@@ -299,6 +307,7 @@ final class GlobalHotKeyManager {
         }
     }
 
+    /// Unregisters the primary hotkey.
     func unregister() {
         unregisterToggleHotKey()
     }

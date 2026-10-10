@@ -22,6 +22,7 @@ pub fn of_kind(kind: RadioKind) -> Option<Radio> {
     radios.into_iter().find(|r| r.Kind() == Ok(kind))
 }
 
+/// Returns true if the radio state is currently On.
 pub fn is_on(radio: &Radio) -> bool {
     radio.State() == Ok(RadioState::On)
 }
