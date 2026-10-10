@@ -96,7 +96,7 @@ async function configuredLanguages() {
         const raw = cfg?.entries?.find((e) => e.key === 'translate_languages')?.value ?? '';
         const seen = new Set();
         const languages = [];
-        for (const entry of raw.split(',')) {
+        for (const entry of (typeof raw === 'string' ? raw : '').split(',')) {
             const code = entry.trim().toLowerCase();
             const label = LANGUAGE_LABELS[code];
             if (!code || seen.has(code) || typeof label !== 'string') continue;

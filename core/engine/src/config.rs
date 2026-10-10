@@ -549,7 +549,7 @@ clipboard_history_limit=10\n\
 # it on every hide; a negative value keeps it indefinitely.\n\
 query_retention_seconds=5\n\
 \n\
-# Target languages for the t\" translation panel, comma-separated BCP-47 codes,\n\
+# Target languages for the translation panel, comma-separated BCP-47 codes,\n\
 # shown in this order. Unknown or duplicate codes are dropped; an empty list\n\
 # falls back to vi,en,ja.\n\
 translate_languages=vi,en,ja\n\

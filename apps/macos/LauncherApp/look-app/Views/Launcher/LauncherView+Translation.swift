@@ -125,11 +125,11 @@ extension LauncherView {
         }
 
         let expectedQuery = trimmed
-        let codes = configuredTranslateLanguages()
         lookupPreviewTask = Task {
             try? await Task.sleep(nanoseconds: 220_000_000)
             guard !Task.isCancelled else { return }
 
+            let codes = configuredTranslateLanguages()
             let results = await fetchAllTranslations(for: normalizedText, codes: codes)
 
             guard !Task.isCancelled else { return }

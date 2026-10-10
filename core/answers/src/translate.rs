@@ -12,6 +12,8 @@ use crate::http;
 const URL_PREFIX: &str = "https://api.mymemory.translated.net/get?langpair=Autodetect%7C";
 const URL_MIDDLE: &str = "&q=";
 const TIMEOUT_SECS: u32 = 5;
+/// MyMemory's free public endpoint enforces a 500-byte limit on the `q` parameter.
+const MAX_QUERY_BYTES: usize = 500;
 // MyMemory does not inspect the User-Agent, but a browser string keeps it in
 // line with the other sources and avoids any bot filtering.
 const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -21,6 +23,7 @@ const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleW
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TranslateError {
     EmptyText,
+    TextTooLong,
     InvalidTargetLang,
     RequestFailed,
     RateLimited,
@@ -32,6 +35,7 @@ impl TranslateError {
     pub fn code(self) -> &'static str {
         match self {
             Self::EmptyText => "empty_text",
+            Self::TextTooLong => "text_too_long",
             Self::InvalidTargetLang => "invalid_target_lang",
             Self::RequestFailed => "translate_request_failed",
             Self::RateLimited => "translate_rate_limited",
@@ -43,6 +47,7 @@ impl TranslateError {
     pub fn message(self) -> &'static str {
         match self {
             Self::EmptyText => "Type text after t\" to translate",
+            Self::TextTooLong => "Text exceeds 500-byte limit",
             Self::InvalidTargetLang => "Invalid target language code",
             Self::RequestFailed => "Translation request failed",
             Self::RateLimited => "Translation is rate limited, try again later",
@@ -74,6 +79,9 @@ pub fn translate(text: &str, target_lang: &str) -> Translation {
     let text = text.trim().to_string();
     if text.is_empty() {
         return Translation::failed(text, TranslateError::EmptyText);
+    }
+    if text.len() > MAX_QUERY_BYTES {
+        return Translation::failed(text, TranslateError::TextTooLong);
     }
     if !is_valid_lang_code(target_lang) {
         return Translation::failed(text, TranslateError::InvalidTargetLang);
@@ -195,6 +203,15 @@ mod tests {
         assert_eq!(
             translate("hello", "e n").error,
             Some(TranslateError::InvalidTargetLang)
+        );
+    }
+
+    #[test]
+    fn rejects_oversized_text() {
+        let long_text = "a".repeat(501);
+        assert_eq!(
+            translate(&long_text, "en").error,
+            Some(TranslateError::TextTooLong)
         );
     }
 
