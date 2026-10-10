@@ -152,7 +152,9 @@ jobs:
           retention-days: 14
 
       - name: Attach to GitHub release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ startsWith(steps.version.outputs.version, 'v') && steps.version.outputs.version || format('v{0}', steps.version.outputs.version) }}
+          name: ${{ startsWith(steps.version.outputs.version, 'v') && steps.version.outputs.version || format('v{0}', steps.version.outputs.version) }}
+          generate_release_notes: true
           files: dist/*

@@ -13,6 +13,11 @@ on:
         description: "Release version (example: 1.0.0)"
         required: true
         type: string
+      attach_release:
+        description: "Attach and publish to GitHub Release"
+        required: false
+        type: boolean
+        default: true
   push:
     tags:
       - "v*"
@@ -23,6 +28,6 @@ jobs:
     with:
       release_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
       trigger_event: ${{ github.event_name }}
-      attach_release: ${{ github.event_name == 'push' }}
+      attach_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.attach_release) }}
       concurrency_ref: ${{ github.ref }}
     secrets: inherit
