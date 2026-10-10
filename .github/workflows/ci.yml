@@ -49,6 +49,7 @@ jobs:
             swift:
               - 'apps/macos/**'
               - 'bridge/ffi/**'
+              - '.github/workflows/ci.yml'
             rust:
               - 'core/**'
               - 'bridge/ffi/**'
@@ -112,10 +113,10 @@ jobs:
         run: cargo fmt --all --manifest-path bridge/ffi/Cargo.toml -- --check
 
       - name: Run clippy (core workspace)
-        run: cargo clippy --workspace --manifest-path core/Cargo.toml -- -D warnings
+        run: cargo clippy --workspace --all-targets --manifest-path core/Cargo.toml -- -D warnings
 
       - name: Run clippy (ffi crate)
-        run: cargo clippy --manifest-path bridge/ffi/Cargo.toml -- -D warnings
+        run: cargo clippy --all-targets --manifest-path bridge/ffi/Cargo.toml -- -D warnings
 
   security:
     name: security
@@ -287,6 +288,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Run Swift unit tests
+        run: swift test --package-path apps/macos/LauncherApp
+
       - name: Build Look app (Debug)
         run: xcodebuild -project "apps/macos/LauncherApp/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build
 
@@ -370,6 +374,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+
+      - name: Validate JavaScript syntax
+        run: find apps/linows/src/js apps/linows/tests -name "*.js" -exec node --check {} +
 
       - name: Run tests
         run: node --test apps/linows/tests/*.test.js

@@ -373,7 +373,14 @@ impl RuntimeConfig {
                         let (spec, target) = match value.split_once('|') {
                             Some((s, t)) => {
                                 let t_trimmed = t.trim();
-                                (s.trim(), if t_trimmed.is_empty() { name } else { t_trimmed })
+                                (
+                                    s.trim(),
+                                    if t_trimmed.is_empty() {
+                                        name
+                                    } else {
+                                        t_trimmed
+                                    },
+                                )
                             }
                             None => (value.trim(), name),
                         };
@@ -385,7 +392,9 @@ impl RuntimeConfig {
                                 spec: hotkey.spec(),
                                 hotkey,
                             };
-                            if let Some(existing) = self.app_hotkeys.iter_mut().find(|h| h.name == name) {
+                            if let Some(existing) =
+                                self.app_hotkeys.iter_mut().find(|h| h.name == name)
+                            {
                                 *existing = entry;
                             } else {
                                 self.app_hotkeys.push(entry);

@@ -70,6 +70,12 @@ pub(crate) fn write_atomic(path: &Path, data: &[u8]) -> bool {
     false
 }
 
+fn suffixed(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(suffix);
+    path.with_file_name(name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,10 +106,4 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
     }
-}
-
-fn suffixed(path: &Path, suffix: &str) -> PathBuf {
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(suffix);
-    path.with_file_name(name)
 }

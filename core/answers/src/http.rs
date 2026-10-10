@@ -93,6 +93,21 @@ fn split_status(stdout: &str) -> Option<Response> {
     })
 }
 
+/// Percent-encodes `value` for use in a URL query component (RFC 3986
+/// unreserved set passes through; everything else is `%XX`).
+pub fn encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for &b in value.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,19 +127,4 @@ mod tests {
         assert!(split_status("no status written out").is_none());
         assert!(split_status("body\nnot-a-status").is_none());
     }
-}
-
-/// Percent-encodes `value` for use in a URL query component (RFC 3986
-/// unreserved set passes through; everything else is `%XX`).
-pub fn encode(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for &b in value.as_bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
-            _ => out.push_str(&format!("%{:02X}", b)),
-        }
-    }
-    out
 }
