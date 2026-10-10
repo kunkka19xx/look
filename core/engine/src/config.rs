@@ -540,6 +540,11 @@ clipboard_history_limit=10\n\
 # it on every hide; a negative value keeps it indefinitely.\n\
 query_retention_seconds=5\n\
 \n\
+# Target languages for the t\" translation panel, comma-separated BCP-47 codes,\n\
+# shown in this order. Unknown or duplicate codes are dropped; an empty list\n\
+# falls back to vi,en,ja.\n\
+translate_languages=vi,en,ja\n\
+\n\
 {launcher_hotkey_section}\
 # Preferred tools. Name the tool, not a command: Look knows how to drive it,\n\
 # including running a terminal editor inside your terminal. Declare nothing and\n\

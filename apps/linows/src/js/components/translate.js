@@ -1,12 +1,113 @@
 import * as layout from '../layout.js';
-import { translate, copyToClipboard } from '../ipc.js';
+import { translate, copyToClipboard, getConfig } from '../ipc.js';
 import { globeLg, copy as copyIcon, link as linkIcon, externalLink } from '../icons.js';
 
-const LANGUAGES = [
+const DEFAULT_LANGUAGES = [
     { code: 'vi', label: 'TIẾNG VIỆT' },
     { code: 'en', label: 'ENGLISH' },
     { code: 'ja', label: '日本語' },
 ];
+
+// Display names for the supported codes. Keys are lowercase because the config
+// value is lowercased before lookup (so `zh-CN` reads as `zh-cn`). This doubles
+// as the allowlist: a code with no entry is a typo or an unsupported language,
+// so it is dropped rather than shown with a placeholder label.
+const LANGUAGE_LABELS = {
+    af: 'Afrikaans',
+    ar: 'العربية',
+    az: 'Azərbaycan',
+    be: 'Беларуская',
+    bg: 'Български',
+    bn: 'বাংলা',
+    ca: 'Català',
+    cs: 'Čeština',
+    da: 'Dansk',
+    de: 'Deutsch',
+    el: 'Ελληνικά',
+    en: 'English',
+    es: 'Español',
+    et: 'Eesti',
+    eu: 'Euskara',
+    fa: 'فارسی',
+    fi: 'Suomi',
+    fil: 'Filipino',
+    fr: 'Français',
+    gl: 'Galego',
+    gu: 'ગુજરાતી',
+    he: 'עברית',
+    hi: 'हिन्दी',
+    hr: 'Hrvatski',
+    hu: 'Magyar',
+    hy: 'Հայերեն',
+    id: 'Bahasa Indonesia',
+    is: 'Íslenska',
+    it: 'Italiano',
+    ja: '日本語',
+    ka: 'ქართული',
+    kk: 'Қазақ',
+    km: 'ខ្មែរ',
+    kn: 'ಕನ್ನಡ',
+    ko: '한국어',
+    lo: 'ລາວ',
+    lt: 'Lietuvių',
+    lv: 'Latviešu',
+    mk: 'Македонски',
+    ml: 'മലയാളം',
+    mn: 'Монгол',
+    mr: 'मराठी',
+    ms: 'Bahasa Melayu',
+    my: 'မြန်မာ',
+    ne: 'नेपाली',
+    nl: 'Nederlands',
+    no: 'Norsk',
+    pa: 'ਪੰਜਾਬੀ',
+    pl: 'Polski',
+    pt: 'Português',
+    'pt-br': 'Português (Brasil)',
+    ro: 'Română',
+    ru: 'Русский',
+    si: 'සිංහල',
+    sk: 'Slovenčina',
+    sl: 'Slovenščina',
+    sq: 'Shqip',
+    sr: 'Српски',
+    sv: 'Svenska',
+    sw: 'Kiswahili',
+    ta: 'தமிழ்',
+    te: 'తెలుగు',
+    th: 'ไทย',
+    tr: 'Türkçe',
+    uk: 'Українська',
+    ur: 'اردو',
+    uz: 'Oʻzbek',
+    vi: 'Tiếng Việt',
+    zh: '中文',
+    'zh-cn': '中文（简体）',
+    'zh-tw': '中文（繁體）',
+};
+
+// The target languages come from `translate_languages` in the config, in order.
+// Codes that are empty, duplicated, or not in LANGUAGE_LABELS are dropped from
+// both the label list and the result sections; an absent, empty, or all-invalid
+// list falls back to the defaults, so a typo never blanks the panel.
+async function configuredLanguages() {
+    try {
+        const cfg = await getConfig();
+        const raw = cfg?.entries?.find((e) => e.key === 'translate_languages')?.value ?? '';
+        const seen = new Set();
+        const languages = [];
+        for (const entry of raw.split(',')) {
+            const code = entry.trim().toLowerCase();
+            const label = LANGUAGE_LABELS[code];
+            if (!code || seen.has(code) || typeof label !== 'string') continue;
+            seen.add(code);
+            languages.push({ code, label: label.toUpperCase() });
+        }
+        return languages.length ? languages : DEFAULT_LANGUAGES;
+    } catch {
+        return DEFAULT_LANGUAGES;
+    }
+}
 
 let container = null;
 let active = false;
@@ -58,6 +159,8 @@ export async function perform(text) {
     if (!text.trim()) return;
     active = true;
 
+    const languages = await configuredLanguages();
+
     // Remove old panel
     let panel = container.querySelector('.translate-panel');
     if (panel) {
@@ -85,7 +188,7 @@ export async function perform(text) {
     panel.appendChild(sourceHeader);
 
     // Language sections (show loading state)
-    const sections = LANGUAGES.map((lang) => {
+    const sections = languages.map((lang) => {
         const section = document.createElement('div');
         section.className = 'translate-section';
 
@@ -123,7 +226,7 @@ export async function perform(text) {
     const footer = document.createElement('div');
     footer.className = 'translate-footer';
     footer.addEventListener('click', () => {
-        const url = `https://translate.google.com/?text=${encodeURIComponent(text)}&sl=auto&tl=en`;
+        const url = `https://translate.google.com/?text=${encodeURIComponent(text)}&sl=auto&tl=${encodeURIComponent(languages[0].code)}`;
         window.__TAURI__.core.invoke('open_path', { path: url, kind: 'browser', id: '' });
     });
     footer.innerHTML =
@@ -138,8 +241,8 @@ export async function perform(text) {
     panel.appendChild(hintSlot());
     layout.refresh();
 
-    // Translate all 3 in parallel
-    const results = await Promise.allSettled(LANGUAGES.map((lang) => translate(text, lang.code)));
+    // Translate every configured language in parallel
+    const results = await Promise.allSettled(languages.map((lang) => translate(text, lang.code)));
 
     results.forEach((res, i) => {
         const { body, copyBtn } = sections[i];
