@@ -15,10 +15,15 @@ OUT_FILE="${5:-Casks/look.rb}"
 
 # If checksums not provided, try reading from local dist/ manifests
 if [[ -z "$ARM64_SHA" && -f "dist/Look-${VERSION}-manifest.txt" ]]; then
-  ARM64_SHA="$(grep '^sha256=' "dist/Look-${VERSION}-manifest.txt" | cut -d= -f2)"
+  ARM64_SHA="$(grep '^sha256=' "dist/Look-${VERSION}-manifest.txt" | cut -d= -f2 || true)"
 fi
 if [[ -z "$INTEL_SHA" && -f "dist/Look-${VERSION}-manifest-x86_64.txt" ]]; then
-  INTEL_SHA="$(grep '^sha256=' "dist/Look-${VERSION}-manifest-x86_64.txt" | cut -d= -f2)"
+  INTEL_SHA="$(grep '^sha256=' "dist/Look-${VERSION}-manifest-x86_64.txt" | cut -d= -f2 || true)"
+fi
+
+if [[ -z "$ARM64_SHA" || -z "$INTEL_SHA" ]]; then
+  echo "Error: both ARM64 and Intel SHA256 checksums are required (arguments or dist manifests)." >&2
+  exit 1
 fi
 
 mkdir -p "$(dirname "$OUT_FILE")"

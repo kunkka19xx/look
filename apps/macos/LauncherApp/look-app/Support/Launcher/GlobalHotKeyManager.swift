@@ -30,6 +30,8 @@ final class GlobalHotKeyManager {
     private static let maxRetryAttempts = 5
     private var retryWorkItem: DispatchWorkItem?
     private var hotkey = CarbonHotkey.fallback
+    // Reserve the toggle chord even while Carbon registration is being retried.
+    private var toggleReserved = false
 
     static weak var current: GlobalHotKeyManager?
 
@@ -59,16 +61,25 @@ final class GlobalHotKeyManager {
     @discardableResult
     func registerToggleHotKey(_ hotkey: CarbonHotkey) -> OSStatus {
         self.hotkey = hotkey
+        toggleReserved = true
         retryAttempts = 0
         return registerCurrentHotKey()
     }
 
-    func registerAppHotKeys(_ items: [(hotkey: CarbonHotkey, target: String)]) {
+    func registerAppHotKeys(_ items: [(hotkey: CarbonHotkey, spec: AppHotkeySpec)]) -> [AppHotkeySpec] {
         unregisterAppHotKeys()
-        guard !items.isEmpty else { return }
+        guard !items.isEmpty else { return [] }
+        var registered: [AppHotkeySpec] = []
         ensureEventHandlerInstalled()
         var nextId: UInt32 = 2
         for item in items {
+            if toggleReserved,
+                item.hotkey.keyCode == hotkey.keyCode,
+                item.hotkey.carbonModifiers == hotkey.carbonModifiers
+            {
+                hotkeyLog.error("Skipping app hotkey for \(item.spec.target): chord reserved for launcher toggle")
+                continue
+            }
             var ref: EventHotKeyRef?
             let hotKeyId = EventHotKeyID(signature: fourCharCode("LOOK"), id: nextId)
             let status = RegisterEventHotKey(
@@ -80,19 +91,21 @@ final class GlobalHotKeyManager {
                 &ref
             )
             if status == noErr, let ref {
+                registered.append(item.spec)
                 appHotKeyRefs.append(ref)
                 appHotKeys[nextId] = AppHotKeyRegistration(
                     id: nextId,
                     hotkey: item.hotkey,
-                    target: item.target
+                    target: item.spec.target
                 )
-                hotkeyLog.notice("Registered app hotkey id=\(nextId) for \(item.target)")
+                hotkeyLog.notice("Registered app hotkey id=\(nextId) for \(item.spec.target)")
             } else {
-                hotkeyLog.error("RegisterEventHotKey for \(item.target) failed status=\(status)")
+                hotkeyLog.error("RegisterEventHotKey for \(item.spec.target) failed status=\(status)")
             }
             nextId += 1
         }
         installLocalMonitor()
+        return registered
     }
 
     func unregisterAppHotKeys() {
@@ -264,6 +277,7 @@ final class GlobalHotKeyManager {
     }
 
     func unregisterToggleHotKey() {
+        toggleReserved = false
         retryWorkItem?.cancel()
         retryWorkItem = nil
         if let hotKeyRef {

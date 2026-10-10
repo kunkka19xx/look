@@ -188,16 +188,21 @@ final class LauncherHotkeyController: ObservableObject, ShortcutRegistration {
     }
 
     private func apply() -> String? {
-        let appSpecs = EngineBridge.shared.appHotkeys()
-        let appHotkeys = appSpecs.compactMap { spec -> (CarbonHotkey, String)? in
+        // Release app chords before the toggle claims its configured or fallback chord.
+        manager.unregisterAppHotKeys()
+        let warning = applyToggle()
+        let appHotkeys = EngineBridge.shared.appHotkeys().compactMap { spec -> (hotkey: CarbonHotkey, spec: AppHotkeySpec)? in
             guard let hotkey = CarbonHotkey(appSpec: spec) else { return nil }
-            return (hotkey, spec.target)
+            return (hotkey, spec)
         }
-        ShortcutCatalog.setAppShortcuts(appSpecs.map {
+        let registered = manager.registerAppHotKeys(appHotkeys)
+        ShortcutCatalog.setAppShortcuts(registered.map {
             ShortcutCatalog.AppShortcutItem(name: $0.name, display: $0.display, target: $0.target)
         })
-        manager.registerAppHotKeys(appHotkeys)
+        return warning
+    }
 
+    private func applyToggle() -> String? {
         guard let spec = EngineBridge.shared.launcherHotkey() else {
             return register(.fallback)
         }

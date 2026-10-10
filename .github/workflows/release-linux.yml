@@ -123,42 +123,50 @@ jobs:
   nix-build:
     name: Build and push Nix package to Cachix
     runs-on: ubuntu-latest
-    if: env.CACHIX_AUTH_TOKEN != ''
     env:
       CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
     steps:
       - uses: actions/checkout@v7
+        if: env.CACHIX_AUTH_TOKEN != ''
 
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        if: env.CACHIX_AUTH_TOKEN != ''
 
       - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        if: env.CACHIX_AUTH_TOKEN != ''
 
       - uses: cachix/cachix-action@v17
+        if: env.CACHIX_AUTH_TOKEN != ''
         with:
           name: look
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Build
+        if: env.CACHIX_AUTH_TOKEN != ''
         run: nix build ./apps/linows#default
 
       - name: Verify version
+        if: env.CACHIX_AUTH_TOKEN != ''
         run: ./result/bin/lookapp --version
 
   publish-aur:
     name: Publish look-bin to AUR
     needs: build-release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && env.AUR_SSH_KEY != ''
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     env:
       AUR_SSH_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
     runs-on: ubuntu-latest
     container: archlinux:base
     steps:
       - name: Install dependencies
+        if: env.AUR_SSH_KEY != ''
         run: pacman -Syu --noconfirm git openssh pacman-contrib
 
       - uses: actions/checkout@v7
+        if: env.AUR_SSH_KEY != ''
 
       - name: Resolve version
+        if: env.AUR_SSH_KEY != ''
         id: version
         run: |
           VERSION="${{ github.ref_name }}"
@@ -166,6 +174,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Download .deb and compute checksum
+        if: env.AUR_SSH_KEY != ''
         id: artifact
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -175,6 +184,7 @@ jobs:
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
 
       - name: Template PKGBUILD
+        if: env.AUR_SSH_KEY != ''
         run: |
           mkdir -p aur-staging
           sed \
@@ -183,6 +193,7 @@ jobs:
             packaging/aur/PKGBUILD > aur-staging/PKGBUILD
 
       - name: Publish to AUR
+        if: env.AUR_SSH_KEY != ''
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
           AUR_USERNAME: ${{ secrets.AUR_USERNAME }}
