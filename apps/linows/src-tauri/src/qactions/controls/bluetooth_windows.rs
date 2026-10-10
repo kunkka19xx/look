@@ -163,6 +163,7 @@ enum Transport {
     LowEnergy,
 }
 
+/// Enumerates paired devices for the given transport and appends them to out.
 fn collect_paired(out: &mut Vec<Device>, transport: Transport) {
     let selector = match transport {
         Transport::Classic => BluetoothDevice::GetDeviceSelectorFromPairingState(true),
@@ -170,7 +171,7 @@ fn collect_paired(out: &mut Vec<Device>, transport: Transport) {
     };
     let Ok(selector) = selector else { return };
     let Ok(collection) =
-        DeviceInformation::FindAllAsyncAqsFilter(&selector).and_then(|op| op.get())
+        DeviceInformation::FindAllAsyncAqsFilter(&selector).and_then(|op| op.join())
     else {
         return;
     };
@@ -195,14 +196,14 @@ fn collect_paired(out: &mut Vec<Device>, transport: Transport) {
 fn device_facts(id: &HSTRING, transport: Transport) -> (bool, Option<u64>) {
     match transport {
         Transport::Classic => {
-            let Ok(dev) = BluetoothDevice::FromIdAsync(id).and_then(|op| op.get()) else {
+            let Ok(dev) = BluetoothDevice::FromIdAsync(id).and_then(|op| op.join()) else {
                 return (false, None);
             };
             let connected = dev.ConnectionStatus() == Ok(BluetoothConnectionStatus::Connected);
             (connected, dev.BluetoothAddress().ok())
         }
         Transport::LowEnergy => {
-            let Ok(dev) = BluetoothLEDevice::FromIdAsync(id).and_then(|op| op.get()) else {
+            let Ok(dev) = BluetoothLEDevice::FromIdAsync(id).and_then(|op| op.join()) else {
                 return (false, None);
             };
             let connected = dev.ConnectionStatus() == Ok(BluetoothConnectionStatus::Connected);

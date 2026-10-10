@@ -101,7 +101,7 @@ struct ShortcutGroup: Identifiable {
 /// the AI keys existed only in help, and the `Cmd+N` command list in Settings
 /// had gone stale enough to name the wrong command.
 enum ShortcutCatalog {
-    static let groups: [ShortcutGroup] = [
+    private static let staticGroups: [ShortcutGroup] = [
         ShortcutGroup(title: "Global", topic: .main, entries: [
             ShortcutEntry("global.toggleLauncher", "Cmd+Space", "Show or hide Look from any app"),
         ]),
@@ -205,6 +205,66 @@ enum ShortcutCatalog {
             ShortcutEntry("speed.revealAddress", "E", "Show or hide the public address inside /speed"),
         ]),
     ]
+
+    /// Representation of a configured application shortcut in the catalog.
+    struct AppShortcutItem {
+        let name: String
+        let display: String
+        let target: String
+
+        /// Initializes an application shortcut item.
+        init(name: String, display: String, target: String) {
+            self.name = name
+            self.display = display
+            self.target = target
+        }
+    }
+
+    nonisolated(unsafe) private static var configuredAppShortcuts: [AppShortcutItem] = []
+    nonisolated(unsafe) private static var cachedGroups: [ShortcutGroup]?
+
+    /// Updates the configured application shortcuts and invalidates the cached shortcut groups.
+    static func setAppShortcuts(_ items: [AppShortcutItem]) {
+        configuredAppShortcuts = items
+        invalidate()
+    }
+
+    /// Invalidates the cached shortcut groups, forcing recomputation on next access.
+    static func invalidate() {
+        cachedGroups = nil
+    }
+
+    static var groups: [ShortcutGroup] {
+        if let cached = cachedGroups { return cached }
+        var all = staticGroups
+        if !configuredAppShortcuts.isEmpty {
+            let entries = configuredAppShortcuts.map { spec in
+                let targetName: String
+                if spec.target.isEmpty {
+                    targetName = spec.name
+                } else if spec.target.contains("/") {
+                    targetName = URL(fileURLWithPath: spec.target).deletingPathExtension().lastPathComponent
+                } else if spec.target.hasSuffix(".app") {
+                    targetName = String(spec.target.dropLast(4))
+                } else {
+                    targetName = spec.target
+                }
+                return ShortcutEntry(
+                    "app.\(spec.name)",
+                    spec.display,
+                    "Launch \(targetName)",
+                    remappable: false
+                )
+            }
+            if all.count > 1 {
+                all.insert(ShortcutGroup(title: "Applications", topic: .main, entries: entries), at: 1)
+            } else {
+                all.append(ShortcutGroup(title: "Applications", topic: .main, entries: entries))
+            }
+        }
+        cachedGroups = all
+        return all
+    }
 
     /// Groups for one topic, in reading order.
     static func groups(for topic: ShortcutTopic) -> [ShortcutGroup] {

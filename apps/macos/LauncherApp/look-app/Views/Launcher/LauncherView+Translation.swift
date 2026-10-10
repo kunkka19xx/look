@@ -44,6 +44,53 @@ extension LauncherView {
         }
     }
 
+    /// The target language codes from `translate_languages`, in order and
+    /// deduplicated. A code that is empty, duplicated, or absent from
+    /// `languageLabels` is a typo or an unsupported language and is dropped from
+    /// both the label list and the result sections. An absent, empty, or
+    /// all-invalid list falls back to the built-in list, so a typo never blanks
+    /// the panel.
+    func configuredTranslateLanguages() -> [String] {
+        let fallback = AppConstants.Launcher.Translate.defaultLanguages
+        let labels = AppConstants.Launcher.Translate.languageLabels
+        let path = URL(fileURLWithPath: ConfigPathResolver.resolvedPath())
+        guard let raw = try? String(contentsOf: path, encoding: .utf8) else {
+            return fallback
+        }
+        let value = ConfigFileLines.keyValues(raw)[AppConstants.Launcher.Translate.languagesConfigKey] ?? ""
+        var seen = Set<String>()
+        var codes: [String] = []
+        for entry in ConfigFileLines.parseList(value) {
+            let code = entry.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !code.isEmpty, !seen.contains(code), labels[code] != nil else { continue }
+            seen.insert(code)
+            codes.append(code)
+        }
+        return codes.isEmpty ? fallback : codes
+    }
+
+    /// The built-in label for a supported code, or the uppercased code as a
+    /// last resort (callers only pass codes from `configuredTranslateLanguages`).
+    func translateLanguageLabel(for code: String) -> String {
+        AppConstants.Launcher.Translate.languageLabels[code] ?? code.uppercased()
+    }
+
+    /// Builds the translation sections for the given language codes and lookup results.
+    private func lookupSections(
+        for codes: [String],
+        results: [String: TranslationResult]
+    ) -> [LookupTranslationSection] {
+        codes.map { code in
+            LookupTranslationSection(
+                label: translateLanguageLabel(for: code),
+                translated: results[code]?.translated,
+                dictionaryDefinition: results[code]?.dictionaryDefinition,
+                failed: results[code]?.translated == nil
+            )
+        }
+    }
+
+    /// Handles a translation lookup command trigger for the given input text.
     func handleLookupTranslation(text: String) {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
@@ -52,21 +99,19 @@ extension LauncherView {
         }
 
         Task {
-            let results = await fetchAllTranslations(for: normalized)
+            let codes = configuredTranslateLanguages()
+            let results = await fetchAllTranslations(for: normalized, codes: codes)
             await MainActor.run {
                 lookupDefinition = LookupDefinition(
                     query: normalized,
                     sourceLabel: "Input",
-                    sections: [
-                        LookupTranslationSection(label: "English", translated: results.en.translated, dictionaryDefinition: results.en.dictionaryDefinition, failed: results.en.translated == nil),
-                        LookupTranslationSection(label: "Tiếng Việt", translated: results.vi.translated, dictionaryDefinition: results.vi.dictionaryDefinition, failed: results.vi.translated == nil),
-                        LookupTranslationSection(label: "日本語", translated: results.ja.translated, dictionaryDefinition: results.ja.dictionaryDefinition, failed: results.ja.translated == nil),
-                    ]
+                    sections: lookupSections(for: codes, results: results)
                 )
             }
         }
     }
 
+    /// Debounces and previews dictionary and translation lookup definitions as the query changes.
     func previewLookupDefinition(for input: String) {
         lookupPreviewTask?.cancel()
 
@@ -87,7 +132,8 @@ extension LauncherView {
             try? await Task.sleep(nanoseconds: 220_000_000)
             guard !Task.isCancelled else { return }
 
-            let results = await fetchAllTranslations(for: normalizedText)
+            let codes = configuredTranslateLanguages()
+            let results = await fetchAllTranslations(for: normalizedText, codes: codes)
 
             guard !Task.isCancelled else { return }
             await MainActor.run {
@@ -96,52 +142,33 @@ extension LauncherView {
                 lookupDefinition = LookupDefinition(
                     query: normalizedText,
                     sourceLabel: "Input",
-                    sections: [
-                        LookupTranslationSection(label: "English", translated: results.en.translated, dictionaryDefinition: results.en.dictionaryDefinition, failed: results.en.translated == nil),
-                        LookupTranslationSection(label: "Tiếng Việt", translated: results.vi.translated, dictionaryDefinition: results.vi.dictionaryDefinition, failed: results.vi.translated == nil),
-                        LookupTranslationSection(label: "日本語", translated: results.ja.translated, dictionaryDefinition: results.ja.dictionaryDefinition, failed: results.ja.translated == nil),
-                    ]
+                    sections: lookupSections(for: codes, results: results)
                 )
             }
         }
     }
 
-    func fetchAllTranslations(for text: String) async -> (en: TranslationResult, vi: TranslationResult, ja: TranslationResult) {
+    /// Concurrently fetches translations for all specified language codes using the engine bridge.
+    func fetchAllTranslations(
+        for text: String,
+        codes: [String]
+    ) async -> [String: TranslationResult] {
         await withTaskGroup(of: (String, TranslationResult).self) { group in
-            group.addTask {
-                let translated = self.bridge.translate(text: text, targetLang: "en")?.translated
-                let definition = await MainActor.run {
-                    translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+            for code in codes {
+                group.addTask {
+                    let translated = self.bridge.translate(text: text, targetLang: code)?.translated
+                    let definition = await MainActor.run {
+                        translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+                    }
+                    return (code, TranslationResult(translated: translated, dictionaryDefinition: definition))
                 }
-                return ("en", TranslationResult(translated: translated, dictionaryDefinition: definition))
-            }
-            group.addTask {
-                let translated = self.bridge.translate(text: text, targetLang: "vi")?.translated
-                let definition = await MainActor.run {
-                    translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
-                }
-                return ("vi", TranslationResult(translated: translated, dictionaryDefinition: definition))
-            }
-            group.addTask {
-                let translated = self.bridge.translate(text: text, targetLang: "ja")?.translated
-                let definition = await MainActor.run {
-                    translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
-                }
-                return ("ja", TranslationResult(translated: translated, dictionaryDefinition: definition))
             }
 
-            var en = TranslationResult(translated: nil, dictionaryDefinition: nil)
-            var vi = TranslationResult(translated: nil, dictionaryDefinition: nil)
-            var ja = TranslationResult(translated: nil, dictionaryDefinition: nil)
-            for await (lang, result) in group {
-                switch lang {
-                case "en": en = result
-                case "vi": vi = result
-                case "ja": ja = result
-                default: break
-                }
+            var results: [String: TranslationResult] = [:]
+            for await (code, result) in group {
+                results[code] = result
             }
-            return (en, vi, ja)
+            return results
         }
     }
 
@@ -156,6 +183,7 @@ extension LauncherView {
         return raw.isEmpty ? nil : raw
     }
 
+    /// Performs an on-demand network translation lookup across all configured languages.
     func handleNetworkTranslation(text: String) {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
@@ -163,92 +191,71 @@ extension LauncherView {
             return
         }
 
+        let codes = configuredTranslateLanguages()
         lookupDefinition = LookupDefinition(
             query: normalized,
             sourceLabel: "Web",
-            sections: [
-                LookupTranslationSection(label: "Tiếng Việt", translated: nil, dictionaryDefinition: nil, failed: false),
-                LookupTranslationSection(label: "English", translated: nil, dictionaryDefinition: nil, failed: false),
-                LookupTranslationSection(label: "日本語", translated: nil, dictionaryDefinition: nil, failed: false),
-            ]
+            sections: codes.map { code in
+                LookupTranslationSection(
+                    label: translateLanguageLabel(for: code),
+                    translated: nil,
+                    dictionaryDefinition: nil,
+                    failed: false
+                )
+            }
         )
 
         Task {
-            let results = await fetchNetworkTranslations(for: normalized)
+            let results = await fetchNetworkTranslations(for: normalized, codes: codes)
             await MainActor.run {
-                let hasAnyResult = results.en.translated != nil
-                    || results.vi.translated != nil
-                    || results.ja.translated != nil
+                let hasAnyResult = codes.contains { results[$0]?.translated != nil }
 
                 lookupDefinition = LookupDefinition(
                     query: normalized,
                     sourceLabel: "Web",
-                    sections: [
-                        LookupTranslationSection(label: "Tiếng Việt", translated: results.vi.translated, dictionaryDefinition: nil, failed: results.vi.translated == nil),
-                        LookupTranslationSection(label: "English", translated: results.en.translated, dictionaryDefinition: nil, failed: results.en.translated == nil),
-                        LookupTranslationSection(label: "日本語", translated: results.ja.translated, dictionaryDefinition: nil, failed: results.ja.translated == nil),
-                    ]
+                    sections: codes.map { code in
+                        LookupTranslationSection(
+                            label: translateLanguageLabel(for: code),
+                            translated: results[code]?.translated,
+                            dictionaryDefinition: nil,
+                            failed: results[code]?.translated == nil
+                        )
+                    }
                 )
 
                 if !hasAnyResult {
-                    let message = results.en.errorMessage
-                        ?? results.vi.errorMessage
-                        ?? results.ja.errorMessage
-                        ?? "Translation failed"
-                    showBanner(message, style: .error, duration: 3.2)
+                    let firstError = codes.compactMap { results[$0]?.errorMessage }.first
+                    showBanner(firstError ?? "Translation failed", style: .error, duration: 3.2)
                 }
             }
         }
     }
 
-    func fetchNetworkTranslations(for text: String) async -> (en: NetworkTranslationResult, vi: NetworkTranslationResult, ja: NetworkTranslationResult) {
+    /// Concurrently fetches network translation results for each specified language code.
+    func fetchNetworkTranslations(
+        for text: String,
+        codes: [String]
+    ) async -> [String: NetworkTranslationResult] {
         await withTaskGroup(of: (String, NetworkTranslationResult).self) { group in
-            group.addTask {
-                let result = self.bridge.translate(text: text, targetLang: "en")
-                let translated = result?.translated.trimmingCharacters(in: .whitespacesAndNewlines)
-                return (
-                    "en",
-                    NetworkTranslationResult(
-                        translated: (translated?.isEmpty == false) ? translated : nil,
-                        errorMessage: result?.error?.userFacingMessage
+            for code in codes {
+                group.addTask {
+                    let result = self.bridge.translate(text: text, targetLang: code)
+                    let translated = result?.translated.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return (
+                        code,
+                        NetworkTranslationResult(
+                            translated: (translated?.isEmpty == false) ? translated : nil,
+                            errorMessage: result?.error?.userFacingMessage
+                        )
                     )
-                )
-            }
-            group.addTask {
-                let result = self.bridge.translate(text: text, targetLang: "vi")
-                let translated = result?.translated.trimmingCharacters(in: .whitespacesAndNewlines)
-                return (
-                    "vi",
-                    NetworkTranslationResult(
-                        translated: (translated?.isEmpty == false) ? translated : nil,
-                        errorMessage: result?.error?.userFacingMessage
-                    )
-                )
-            }
-            group.addTask {
-                let result = self.bridge.translate(text: text, targetLang: "ja")
-                let translated = result?.translated.trimmingCharacters(in: .whitespacesAndNewlines)
-                return (
-                    "ja",
-                    NetworkTranslationResult(
-                        translated: (translated?.isEmpty == false) ? translated : nil,
-                        errorMessage: result?.error?.userFacingMessage
-                    )
-                )
-            }
-
-            var en = NetworkTranslationResult(translated: nil, errorMessage: nil)
-            var vi = NetworkTranslationResult(translated: nil, errorMessage: nil)
-            var ja = NetworkTranslationResult(translated: nil, errorMessage: nil)
-            for await (lang, result) in group {
-                switch lang {
-                case "en": en = result
-                case "vi": vi = result
-                case "ja": ja = result
-                default: break
                 }
             }
-            return (en, vi, ja)
+
+            var results: [String: NetworkTranslationResult] = [:]
+            for await (code, result) in group {
+                results[code] = result
+            }
+            return results
         }
     }
 }

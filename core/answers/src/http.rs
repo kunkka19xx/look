@@ -27,10 +27,12 @@ pub struct Response {
 }
 
 impl Response {
+    /// Returns true if the HTTP response status code indicates success (2xx).
     pub fn is_success(&self) -> bool {
         (HTTP_OK..HTTP_MULTIPLE_CHOICES).contains(&self.status)
     }
 
+    /// Returns true if the HTTP response status code is 429 Too Many Requests.
     pub fn is_rate_limited(&self) -> bool {
         self.status == HTTP_TOO_MANY_REQUESTS
     }
@@ -93,6 +95,21 @@ fn split_status(stdout: &str) -> Option<Response> {
     })
 }
 
+/// Percent-encodes `value` for use in a URL query component (RFC 3986
+/// unreserved set passes through; everything else is `%XX`).
+pub fn encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for &b in value.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,19 +129,4 @@ mod tests {
         assert!(split_status("no status written out").is_none());
         assert!(split_status("body\nnot-a-status").is_none());
     }
-}
-
-/// Percent-encodes `value` for use in a URL query component (RFC 3986
-/// unreserved set passes through; everything else is `%XX`).
-pub fn encode(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for &b in value.as_bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
-            _ => out.push_str(&format!("%{:02X}", b)),
-        }
-    }
-    out
 }

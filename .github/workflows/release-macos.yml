@@ -13,16 +13,54 @@ on:
         description: "Release version (example: 1.0.0)"
         required: true
         type: string
+      attach_release:
+        description: "Attach and publish to GitHub Release"
+        required: false
+        type: boolean
+        default: true
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
 jobs:
+  resolve-version:
+    name: Resolve Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Calculate release version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            LATEST_TAG=$(git tag -l "v*" --sort=-v:refname | head -n 1)
+            if [[ -z "$LATEST_TAG" ]]; then
+              LATEST_TAG="v0.7.2"
+            fi
+            PLAIN_VER="${LATEST_TAG#v}"
+            IFS='.' read -r MAJOR MINOR PATCH EXTRA <<< "$PLAIN_VER"
+            PATCH=$((PATCH + 1))
+            VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          fi
+          echo "Resolved version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
   build-release:
+    name: Build & Release macOS
+    needs: resolve-version
     uses: ./.github/workflows/reusable-release-macos.yml
     with:
-      release_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+      release_ref: ${{ needs.resolve-version.outputs.version }}
       trigger_event: ${{ github.event_name }}
-      attach_release: ${{ github.event_name == 'push' }}
+      attach_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.attach_release) }}
       concurrency_ref: ${{ github.ref }}
     secrets: inherit

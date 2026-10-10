@@ -1,7 +1,7 @@
-//! Google Translate lookup, shared by macOS (FFI bridge) and Linux/Windows
+//! MyMemory translation lookup, shared by macOS (FFI bridge) and Linux/Windows
 //! (Tauri command). Auto-detects the source language and translates to a target
-//! BCP-47-ish code via Google's keyless `gtx` endpoint. Best-effort: every
-//! failure path returns a `Translation` with `error` set rather than panicking.
+//! BCP-47-ish code via MyMemory's keyless public API. Best-effort: every failure
+//! path returns a `Translation` with `error` set rather than panicking.
 //!
 //! Each shell formats the result for its own wire shape (macOS surfaces a
 //! `{code, message}` object; linows surfaces just the message), so the error
@@ -9,20 +9,21 @@
 
 use crate::http;
 
-const URL_PREFIX: &str =
-    "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=";
-const URL_MIDDLE: &str = "&dt=t&q=";
-const TIMEOUT_SECS: u32 = 3;
-// Google rejects an empty/odd User-Agent; present as a browser like the
-// originals did. Accept-Language keeps responses ASCII-stable.
+const URL_PREFIX: &str = "https://api.mymemory.translated.net/get?langpair=Autodetect%7C";
+const URL_MIDDLE: &str = "&q=";
+const TIMEOUT_SECS: u32 = 5;
+/// MyMemory's free public endpoint enforces a 500-byte limit on the `q` parameter.
+const MAX_QUERY_BYTES: usize = 500;
+// MyMemory does not inspect the User-Agent, but a browser string keeps it in
+// line with the other sources and avoids any bot filtering.
 const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-const ACCEPT_LANGUAGE: &str = "Accept-Language: en-US,en;q=0.9";
 
 /// Why a translation didn't produce text. `code` is a stable identifier; the
 /// `message` is user-facing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TranslateError {
     EmptyText,
+    TextTooLong,
     InvalidTargetLang,
     RequestFailed,
     RateLimited,
@@ -34,6 +35,7 @@ impl TranslateError {
     pub fn code(self) -> &'static str {
         match self {
             Self::EmptyText => "empty_text",
+            Self::TextTooLong => "text_too_long",
             Self::InvalidTargetLang => "invalid_target_lang",
             Self::RequestFailed => "translate_request_failed",
             Self::RateLimited => "translate_rate_limited",
@@ -45,9 +47,10 @@ impl TranslateError {
     pub fn message(self) -> &'static str {
         match self {
             Self::EmptyText => "Type text after t\" to translate",
+            Self::TextTooLong => "Text exceeds 500-byte limit",
             Self::InvalidTargetLang => "Invalid target language code",
             Self::RequestFailed => "Translation request failed",
-            Self::RateLimited => "Translation is rate limited, try again shortly",
+            Self::RateLimited => "Translation is rate limited, try again later",
             Self::ParseFailed => "Translation response parse failed",
             Self::EmptyResult => "Translation returned empty result",
         }
@@ -62,6 +65,7 @@ pub struct Translation {
 }
 
 impl Translation {
+    /// Creates a failed Translation result carrying the specified error.
     fn failed(original: String, error: TranslateError) -> Self {
         Translation {
             original,
@@ -77,6 +81,9 @@ pub fn translate(text: &str, target_lang: &str) -> Translation {
     if text.is_empty() {
         return Translation::failed(text, TranslateError::EmptyText);
     }
+    if text.len() > MAX_QUERY_BYTES {
+        return Translation::failed(text, TranslateError::TextTooLong);
+    }
     if !is_valid_lang_code(target_lang) {
         return Translation::failed(text, TranslateError::InvalidTargetLang);
     }
@@ -86,11 +93,11 @@ pub fn translate(text: &str, target_lang: &str) -> Translation {
         target_lang.trim(),
         http::encode(&text)
     );
-    let Some(response) = http::get(&url, TIMEOUT_SECS, USER_AGENT, &[ACCEPT_LANGUAGE]) else {
+    let Some(response) = http::get(&url, TIMEOUT_SECS, USER_AGENT, &[]) else {
         return Translation::failed(text, TranslateError::RequestFailed);
     };
-    // Google answers a throttled caller with an HTML apology page, which would
-    // otherwise read as an unparseable response from a healthy service.
+    // A throttled host answers 429; MyMemory also keeps HTTP 200 while flagging
+    // a spent daily quota in the body, which the parse below catches.
     if response.is_rate_limited() {
         return Translation::failed(text, TranslateError::RateLimited);
     }
@@ -100,6 +107,19 @@ pub fn translate(text: &str, target_lang: &str) -> Translation {
     let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&response.body) else {
         return Translation::failed(text, TranslateError::ParseFailed);
     };
+    // MyMemory refuses to translate a language into itself. The input already
+    // reads in the target language, so echoing it is the honest result rather
+    // than a failure for a section that is working as intended.
+    if is_same_language(&parsed) {
+        return Translation {
+            original: text.clone(),
+            translated: text,
+            error: None,
+        };
+    }
+    if let Some(error) = body_error(&parsed) {
+        return Translation::failed(text, error);
+    }
     let translated = extract_translation(&parsed);
     if translated.trim().is_empty() {
         return Translation::failed(text, TranslateError::EmptyResult);
@@ -111,7 +131,7 @@ pub fn translate(text: &str, target_lang: &str) -> Translation {
     }
 }
 
-/// A BCP-47-ish tag accepted by Google Translate (e.g. "en", "vi", "zh-CN").
+/// A BCP-47-ish tag accepted by MyMemory (e.g. "en", "vi", "zh-CN").
 fn is_valid_lang_code(code: &str) -> bool {
     let code = code.trim();
     !code.is_empty()
@@ -119,27 +139,55 @@ fn is_valid_lang_code(code: &str) -> bool {
         && code.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
-/// Pulls the concatenated translated segments out of the gtx response shape
-/// `[[[translated, original, ...], ...], ...]`.
+/// Pulls `responseData.translatedText` out of the MyMemory response shape.
 fn extract_translation(value: &serde_json::Value) -> String {
-    let Some(segments) = value
-        .as_array()
-        .and_then(|a| a.first())
-        .and_then(|v| v.as_array())
-    else {
-        return String::new();
-    };
-    let mut result = String::new();
-    for group in segments {
-        if let Some(s) = group
-            .as_array()
-            .and_then(|parts| parts.first())
-            .and_then(|v| v.as_str())
-        {
-            result.push_str(s);
-        }
+    value
+        .get("responseData")
+        .and_then(|data| data.get("translatedText"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// True when MyMemory refused because the detected source and the target are
+/// the same language. It reports this as HTTP 200/403 with the detail
+/// "PLEASE SELECT TWO DISTINCT LANGUAGES".
+fn is_same_language(value: &serde_json::Value) -> bool {
+    const DETAIL: &str = "PLEASE SELECT TWO DISTINCT LANGUAGES";
+    value
+        .get("responseDetails")
+        .and_then(|v| v.as_str())
+        .map(|detail| detail.contains(DETAIL))
+        .unwrap_or(false)
+}
+
+/// Classifies MyMemory's in-body status: `None` when the body looks usable,
+/// otherwise the error to report. The API keeps HTTP 200 while flagging a spent
+/// quota or a rejected request in the body, so the transport status alone would
+/// read as success.
+fn body_error(value: &serde_json::Value) -> Option<TranslateError> {
+    if value
+        .get("quotaFinished")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return Some(TranslateError::RateLimited);
     }
-    result
+    match response_status(value) {
+        Some(429) => Some(TranslateError::RateLimited),
+        Some(200) | None => None,
+        Some(_) => Some(TranslateError::RequestFailed),
+    }
+}
+
+/// `responseStatus` as a number, whether MyMemory sent it as a JSON number or a
+/// numeric string.
+fn response_status(value: &serde_json::Value) -> Option<u16> {
+    match value.get("responseStatus") {
+        Some(serde_json::Value::Number(n)) => n.as_u64().and_then(|v| u16::try_from(v).ok()),
+        Some(serde_json::Value::String(s)) => s.parse().ok(),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -157,5 +205,58 @@ mod tests {
             translate("hello", "e n").error,
             Some(TranslateError::InvalidTargetLang)
         );
+    }
+
+    #[test]
+    fn rejects_oversized_text() {
+        let long_text = "a".repeat(501);
+        assert_eq!(
+            translate(&long_text, "en").error,
+            Some(TranslateError::TextTooLong)
+        );
+    }
+
+    #[test]
+    fn reads_mymemory_body() {
+        let ok = serde_json::json!({
+            "responseData": {"translatedText": "Xin chào"},
+            "responseStatus": 200,
+            "quotaFinished": false,
+        });
+        assert_eq!(extract_translation(&ok), "Xin chào");
+        assert_eq!(response_status(&ok), Some(200));
+        assert_eq!(body_error(&ok), None);
+
+        let spent = serde_json::json!({
+            "responseData": {"translatedText": "MYMEMORY WARNING"},
+            "responseStatus": 200,
+            "quotaFinished": true,
+        });
+        assert_eq!(body_error(&spent), Some(TranslateError::RateLimited));
+
+        let throttled = serde_json::json!({ "responseStatus": "429" });
+        assert_eq!(body_error(&throttled), Some(TranslateError::RateLimited));
+
+        let rejected = serde_json::json!({
+            "responseData": {"translatedText": ""},
+            "responseStatus": "403",
+        });
+        assert_eq!(body_error(&rejected), Some(TranslateError::RequestFailed));
+    }
+
+    #[test]
+    fn detects_same_language_refusal() {
+        let same = serde_json::json!({
+            "responseData": {"translatedText": "PLEASE SELECT TWO DISTINCT LANGUAGES"},
+            "responseStatus": 403,
+            "responseDetails": "PLEASE SELECT TWO DISTINCT LANGUAGES",
+        });
+        assert!(is_same_language(&same));
+
+        let other = serde_json::json!({
+            "responseData": {"translatedText": "xin chào"},
+            "responseStatus": 200,
+        });
+        assert!(!is_same_language(&other));
     }
 }

@@ -6,10 +6,18 @@ nonisolated private let hotkeyLog = Logger(subsystem: "noah-code.Look", category
 
 @MainActor
 final class GlobalHotKeyManager {
+    private struct AppHotKeyRegistration {
+        let id: UInt32
+        let hotkey: CarbonHotkey
+        let target: String
+    }
+
     // nonisolated(unsafe) so the nonisolated deinit can release these
     // (they're Carbon/AppKit handles - not actually Sendable, but they're
     // only mutated from MainActor anyway).
     nonisolated(unsafe) private var hotKeyRef: EventHotKeyRef?
+    nonisolated(unsafe) private var appHotKeyRefs: [EventHotKeyRef] = []
+    nonisolated(unsafe) private var appHotKeys: [UInt32: AppHotKeyRegistration] = [:]
     nonisolated(unsafe) private var eventHandler: EventHandlerRef?
     // Carbon's RegisterEventHotKey only fires when the registering app is
     // NOT the currently-active app. When Look is in the foreground (e.g.
@@ -18,28 +26,27 @@ final class GlobalHotKeyManager {
     // NSEvent monitor so the toggle works regardless of focus state.
     nonisolated(unsafe) private var localMonitor: Any?
 
-    // Defense-in-depth for one specific, rare failure: another app already
-    // owns Cmd+Space when Look launches, so RegisterEventHotKey returns -9878
-    // ("hotkey already in use") and the global toggle silently never works.
-    // Retry with backoff so a transient login-time conflict resolves on its own.
-    //
-    // NOTE: this is NOT what fixed "the launcher is invisible after a macOS
-    // restart." That bug was the WindowGroup window never being created at a
-    // background login launch (so LauncherView and its hotkey observer never
-    // mounted); registration actually succeeds (status=0) in that case. The
-    // real fix lives in AppDelegate (`handleToggleHotKey` materializes the
-    // launcher window when the hotkey fires and no window exists yet).
-    // This retry only matters if registration genuinely fails, which is uncommon.
     private var retryAttempts = 0
     private static let maxRetryAttempts = 5
     private var retryWorkItem: DispatchWorkItem?
     private var hotkey = CarbonHotkey.fallback
+    // Reserve the toggle chord even while Carbon registration is being retried.
+    private var toggleReserved = false
+
+    static weak var current: GlobalHotKeyManager?
+
+    init() {
+        Self.current = self
+    }
 
     // deinit is nonisolated; unregister is MainActor. Inline the cleanup
     // here using nonisolated-safe API only.
     deinit {
         if let hotKeyRef {
             UnregisterEventHotKey(hotKeyRef)
+        }
+        for ref in appHotKeyRefs {
+            UnregisterEventHotKey(ref)
         }
         if let eventHandler {
             RemoveEventHandler(eventHandler)
@@ -54,15 +61,154 @@ final class GlobalHotKeyManager {
     @discardableResult
     func registerToggleHotKey(_ hotkey: CarbonHotkey) -> OSStatus {
         self.hotkey = hotkey
+        toggleReserved = true
         retryAttempts = 0
         return registerCurrentHotKey()
+    }
+
+    /// Registers application-launching hotkeys and returns the successfully bound specs.
+    func registerAppHotKeys(_ items: [(hotkey: CarbonHotkey, spec: AppHotkeySpec)]) -> [AppHotkeySpec] {
+        unregisterAppHotKeys()
+        guard !items.isEmpty else { return [] }
+        var registered: [AppHotkeySpec] = []
+        ensureEventHandlerInstalled()
+        var nextId: UInt32 = 2
+        for item in items {
+            if toggleReserved,
+                item.hotkey.keyCode == hotkey.keyCode,
+                item.hotkey.carbonModifiers == hotkey.carbonModifiers
+            {
+                hotkeyLog.error("Skipping app hotkey for \(item.spec.target): chord reserved for launcher toggle")
+                continue
+            }
+            var ref: EventHotKeyRef?
+            let hotKeyId = EventHotKeyID(signature: fourCharCode("LOOK"), id: nextId)
+            let status = RegisterEventHotKey(
+                item.hotkey.keyCode,
+                item.hotkey.carbonModifiers,
+                hotKeyId,
+                GetEventDispatcherTarget(),
+                0,
+                &ref
+            )
+            if status == noErr, let ref {
+                registered.append(item.spec)
+                appHotKeyRefs.append(ref)
+                appHotKeys[nextId] = AppHotKeyRegistration(
+                    id: nextId,
+                    hotkey: item.hotkey,
+                    target: item.spec.target
+                )
+                hotkeyLog.notice("Registered app hotkey id=\(nextId) for \(item.spec.target)")
+            } else {
+                hotkeyLog.error("RegisterEventHotKey for \(item.spec.target) failed status=\(status)")
+            }
+            nextId += 1
+        }
+        installLocalMonitor()
+        return registered
+    }
+
+    /// Unregisters all registered application hotkeys.
+    func unregisterAppHotKeys() {
+        for ref in appHotKeyRefs {
+            UnregisterEventHotKey(ref)
+        }
+        appHotKeyRefs.removeAll()
+        appHotKeys.removeAll()
+        cleanUpEventHandlerIfEmpty()
+        installLocalMonitor()
+    }
+
+    /// Handles a Carbon event for an application hotkey by triggering the target app launch.
+    func handleAppHotKey(id: UInt32) {
+        guard let item = appHotKeys[id] else {
+            hotkeyLog.error("No registered app hotkey for id=\(id)")
+            return
+        }
+        hotkeyLog.notice("Firing app hotkey for \(item.target)")
+        launchTargetApp(item.target)
+    }
+
+    /// Launches the given application target name or bundle path.
+    private func launchTargetApp(_ target: String) {
+        NotificationCenter.default.post(name: .lookHideLauncherRequested, object: nil)
+        if let bundlePath = AppBundleLocator.bundlePath(forAppNamed: target) {
+            let url = URL(fileURLWithPath: bundlePath)
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
+                if let error {
+                    hotkeyLog.error("openApplication failed for \(bundlePath): \(error.localizedDescription)")
+                }
+            }
+        } else if target.hasPrefix("/") || target.hasPrefix("~") {
+            let expanded = (target as NSString).expandingTildeInPath
+            let url = URL(fileURLWithPath: expanded)
+            NSWorkspace.shared.open(url)
+        } else {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            process.arguments = ["-a", target]
+            do {
+                try process.run()
+            } catch {
+                hotkeyLog.error("open -a failed for \(target): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Installs the Carbon hotkey event handler on the dispatcher target if not already installed.
+    private func ensureEventHandlerInstalled() {
+        guard eventHandler == nil else { return }
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        let status = InstallEventHandler(
+            GetEventDispatcherTarget(),
+            { _, event, _ in
+                var hotKeyId = EventHotKeyID()
+                let status = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyId
+                )
+                guard status == noErr else { return noErr }
+
+                if hotKeyId.signature == fourCharCode("LOOK") {
+                    let id = hotKeyId.id
+                    if id == 1 {
+                        hotkeyLog.notice("CARBON hotkey fired: toggle (app active=\(NSApp.isActive))")
+                        DispatchQueue.main.async {
+                            NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
+                        }
+                    } else {
+                        hotkeyLog.notice("CARBON app hotkey fired: id=\(id) (app active=\(NSApp.isActive))")
+                        DispatchQueue.main.async {
+                            GlobalHotKeyManager.current?.handleAppHotKey(id: id)
+                        }
+                    }
+                }
+                return noErr
+            },
+            1,
+            &eventType,
+            nil,
+            &eventHandler
+        )
+        hotkeyLog.notice("InstallEventHandler status=\(status)")
     }
 
     @discardableResult
     private func registerCurrentHotKey() -> OSStatus {
         retryWorkItem?.cancel()
         retryWorkItem = nil
-        unregister()
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+        }
 
         let hotKeyId = EventHotKeyID(signature: fourCharCode("LOOK"), id: 1)
         let registerStatus = RegisterEventHotKey(
@@ -75,62 +221,37 @@ final class GlobalHotKeyManager {
         )
         hotkeyLog.notice("RegisterEventHotKey status=\(registerStatus) (noErr=0; -9878=hotkey already in use)")
 
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        var status = registerStatus
-        if status == noErr {
-            // Without this handler the hotkey is dead outside Look.
-            status = InstallEventHandler(
-                GetEventDispatcherTarget(),
-                { _, event, _ in
-                    var hotKeyId = EventHotKeyID()
-                    let status = GetEventParameter(
-                        event,
-                        EventParamName(kEventParamDirectObject),
-                        EventParamType(typeEventHotKeyID),
-                        nil,
-                        MemoryLayout<EventHotKeyID>.size,
-                        nil,
-                        &hotKeyId
-                    )
-                    guard status == noErr else { return noErr }
-
-                    if hotKeyId.signature == fourCharCode("LOOK"), hotKeyId.id == 1 {
-                        hotkeyLog.notice("CARBON hotkey fired (app active=\(NSApp.isActive))")
-                        DispatchQueue.main.async {
-                            NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
-                        }
-                    }
-                    return noErr
-                },
-                1,
-                &eventType,
-                nil,
-                &eventHandler
-            )
-            hotkeyLog.notice("InstallEventHandler status=\(status)")
-        }
-
-        if status == noErr {
+        if registerStatus == noErr {
+            ensureEventHandlerInstalled()
             retryAttempts = 0
         } else {
-            unregister()
             scheduleRetry()
         }
 
         installLocalMonitor()
-        return status
+        return registerStatus
     }
 
     private func installLocalMonitor() {
-        // Local monitor: foreground-focused complement to the global
-        // Carbon hotkey. Posts the same notification so the rest of the
-        // app doesn't need to know which path delivered the event.
+        if let localMonitor {
+            NSEvent.removeMonitor(localMonitor)
+            self.localMonitor = nil
+        }
+        guard hotKeyRef != nil || !appHotKeys.isEmpty else { return }
         let hotkey = hotkey
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            if hotkey.matches(event) {
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, !ShortcutCapture.isActive else { return event }
+            if self.hotKeyRef != nil && hotkey.matches(event) {
                 hotkeyLog.notice("LOCAL monitor fired (app active=\(NSApp.isActive))")
                 NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
                 return nil   // consume - don't let any field eat the space
+            }
+            for item in self.appHotKeys.values {
+                if item.hotkey.matches(event) {
+                    hotkeyLog.notice("LOCAL monitor fired for app: \(item.target)")
+                    self.launchTargetApp(item.target)
+                    return nil
+                }
             }
             return event
         }
@@ -142,8 +263,6 @@ final class GlobalHotKeyManager {
             return
         }
         retryAttempts += 1
-        // Ramp the delay so we react quickly to a brief login-time conflict
-        // but back off if it persists: 0.5s, 1.0s, ... capped at 3s.
         let delay = min(3.0, 0.5 * Double(retryAttempts))
         hotkeyLog.notice("scheduling hotkey re-registration attempt \(self.retryAttempts) in \(delay)s")
         let work = DispatchWorkItem { [weak self] in
@@ -153,27 +272,44 @@ final class GlobalHotKeyManager {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    func suspend() {
-        retryWorkItem?.cancel()
-        retryWorkItem = nil
-        unregister()
+    /// Removes the event handler when neither toggle nor application hotkeys are active.
+    private func cleanUpEventHandlerIfEmpty() {
+        if hotKeyRef == nil && appHotKeyRefs.isEmpty {
+            if let eventHandler {
+                RemoveEventHandler(eventHandler)
+                self.eventHandler = nil
+            }
+        }
     }
 
-    func unregister() {
+    /// Unregisters the launcher toggle hotkey and its retry work.
+    func unregisterToggleHotKey() {
+        toggleReserved = false
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
         if let hotKeyRef {
             UnregisterEventHotKey(hotKeyRef)
             self.hotKeyRef = nil
         }
+        cleanUpEventHandlerIfEmpty()
+        installLocalMonitor()
+    }
 
-        if let eventHandler {
-            RemoveEventHandler(eventHandler)
-            self.eventHandler = nil
-        }
-
+    /// Suspends all hotkeys and local monitors, cancelling any scheduled retries.
+    func suspend() {
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        unregisterToggleHotKey()
+        unregisterAppHotKeys()
         if let localMonitor {
             NSEvent.removeMonitor(localMonitor)
             self.localMonitor = nil
         }
+    }
+
+    /// Unregisters the primary hotkey.
+    func unregister() {
+        unregisterToggleHotKey()
     }
 }
 

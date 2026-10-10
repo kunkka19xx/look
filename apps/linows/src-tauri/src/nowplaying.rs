@@ -250,11 +250,12 @@ mod imp {
     fn active_session() -> Option<Session> {
         ensure_mta();
         let manager = SessionManager::RequestAsync()
-            .and_then(|op| op.get())
+            .and_then(|op| op.join())
             .ok()?;
         manager.GetCurrentSession().ok()
     }
 
+    /// Captures the current media playback snapshot from Windows SMTC.
     pub fn current() -> Option<NowPlayingSnapshot> {
         let session = active_session()?;
 
@@ -266,7 +267,7 @@ mod imp {
 
         let props = session
             .TryGetMediaPropertiesAsync()
-            .and_then(|op| op.get())
+            .and_then(|op| op.join())
             .ok()?;
 
         let title = props.Title().ok()?.to_string();
@@ -294,6 +295,7 @@ mod imp {
         })
     }
 
+    /// Dispatches a media transport command (playpause, next, previous) to the active session.
     pub fn run_command(command: &str, _target: Option<&str>) -> bool {
         let Some(session) = active_session() else {
             return false;
@@ -304,7 +306,7 @@ mod imp {
             "previous" => session.TrySkipPreviousAsync(),
             _ => return false,
         };
-        op.and_then(|op| op.get()).unwrap_or(false)
+        op.and_then(|op| op.join()).unwrap_or(false)
     }
 
     /// Turn a SourceAppUserModelId into something readable. Win32 owners report

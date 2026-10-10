@@ -3,12 +3,13 @@ use std::io::BufReader;
 use std::sync::Mutex;
 use std::thread;
 
-use rodio::{Decoder, OutputStream, Sink};
+use rodio::{Decoder, DeviceSinkBuilder, Player};
 
-static SINK: Mutex<Option<Sink>> = Mutex::new(None);
-/// Kept alive so the audio thread (and OutputStream) persists.
+static SINK: Mutex<Option<Player>> = Mutex::new(None);
+/// Kept alive so the audio thread (and its device sink) persists.
 static _KEEPALIVE: Mutex<Option<std::sync::mpsc::Sender<()>>> = Mutex::new(None);
 
+/// Ensures the audio output device and sink thread are initialized.
 fn ensure_init() {
     let mut sink_lock = SINK.lock().unwrap();
     if sink_lock.is_some() {
@@ -16,11 +17,12 @@ fn ensure_init() {
     }
 
     let (keep_tx, keep_rx) = std::sync::mpsc::channel::<()>();
-    let (sink_tx, sink_rx) = std::sync::mpsc::channel::<Sink>();
+    let (sink_tx, sink_rx) = std::sync::mpsc::channel::<Player>();
 
     thread::spawn(move || {
-        let (_stream, handle) = OutputStream::try_default().expect("audio output");
-        let sink = Sink::try_new(&handle).expect("audio sink");
+        let mut device = DeviceSinkBuilder::open_default_sink().expect("audio output");
+        device.log_on_drop(false);
+        let sink = Player::connect_new(device.mixer());
         sink.pause();
         let _ = sink_tx.send(sink);
         let _ = keep_rx.recv();
@@ -30,9 +32,10 @@ fn ensure_init() {
     *_KEEPALIVE.lock().unwrap() = Some(keep_tx);
 }
 
+/// Executes a closure against the active audio player sink.
 fn with_sink<F, R>(f: F) -> R
 where
-    F: FnOnce(&Sink) -> R,
+    F: FnOnce(&Player) -> R,
     R: Default,
 {
     ensure_init();
@@ -43,6 +46,7 @@ where
     }
 }
 
+/// Loads and begins playback of an audio file at the specified path.
 #[tauri::command]
 pub fn music_play(path: String) -> Result<(), String> {
     ensure_init();
@@ -68,21 +72,25 @@ pub fn music_play(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Pauses current music playback.
 #[tauri::command]
 pub fn music_pause() {
     with_sink(|sink| sink.pause());
 }
 
+/// Resumes current music playback.
 #[tauri::command]
 pub fn music_resume() {
     with_sink(|sink| sink.play());
 }
 
+/// Stops music playback.
 #[tauri::command]
 pub fn music_stop() {
     with_sink(|sink| sink.stop());
 }
 
+/// Returns true if music playback has ended.
 #[tauri::command]
 pub fn music_is_finished() -> bool {
     with_sink(|sink| sink.empty())

@@ -1,4 +1,4 @@
-use crate::hotkey::{LAUNCHER_HOTKEY_CONFIG_KEY, LauncherHotkey};
+use crate::hotkey::{AppHotkey, LAUNCHER_HOTKEY_CONFIG_KEY, LauncherHotkey};
 use crate::normalize::normalize_for_search;
 use crate::platform;
 #[cfg(test)]
@@ -99,6 +99,7 @@ pub struct RuntimeConfig {
     pub lazy_indexing_enabled: bool,
     pub localized_app_names: bool,
     pub launcher_hotkey: LauncherHotkey,
+    pub app_hotkeys: Vec<AppHotkey>,
     pub search_aliases: HashMap<String, Vec<String>>,
     pub tools: Tools,
 }
@@ -132,6 +133,7 @@ impl Default for RuntimeConfig {
             lazy_indexing_enabled: LAZY_INDEXING_ENABLED,
             localized_app_names: false,
             launcher_hotkey: LauncherHotkey::default(),
+            app_hotkeys: Vec::new(),
             search_aliases: default_search_aliases(),
             tools: Tools::default(),
         }
@@ -235,7 +237,11 @@ impl RuntimeConfig {
         let Ok(contents) = std::fs::read_to_string(path) else {
             return;
         };
+        self.apply_from_str(&contents);
+    }
 
+    /// Parses configuration key-value lines from a string and applies them to this runtime configuration.
+    pub fn apply_from_str(&mut self, contents: &str) {
         let home = user_home_dir();
         for raw_line in contents.lines() {
             let line = strip_comments(raw_line).trim();
@@ -360,6 +366,41 @@ impl RuntimeConfig {
                 _ if key.strip_prefix("alias_").is_some() => {
                     if let Some(alias_key) = key.strip_prefix("alias_") {
                         apply_alias_override(alias_key, value, &mut self.search_aliases);
+                    }
+                }
+                _ if key.starts_with("app_hotkey_") => {
+                    let name = &key["app_hotkey_".len()..];
+                    if !name.is_empty() {
+                        let (spec, target) = match value.split_once('|') {
+                            Some((s, t)) => {
+                                let t_trimmed = t.trim();
+                                (
+                                    s.trim(),
+                                    if t_trimmed.is_empty() {
+                                        name
+                                    } else {
+                                        t_trimmed
+                                    },
+                                )
+                            }
+                            None => (value.trim(), name),
+                        };
+                        if let Ok(hotkey) = crate::hotkey::Hotkey::parse(spec) {
+                            let entry = AppHotkey {
+                                name: name.to_string(),
+                                target: target.to_string(),
+                                display: hotkey.display(),
+                                spec: hotkey.spec(),
+                                hotkey,
+                            };
+                            if let Some(existing) =
+                                self.app_hotkeys.iter_mut().find(|h| h.name == name)
+                            {
+                                *existing = entry;
+                            } else {
+                                self.app_hotkeys.push(entry);
+                            }
+                        }
                     }
                 }
                 _ if look_tools::key::ALL.contains(&key) => self.tools.set(key, value),
@@ -509,6 +550,11 @@ clipboard_history_limit=10\n\
 # it on every hide; a negative value keeps it indefinitely.\n\
 query_retention_seconds=5\n\
 \n\
+# Target languages for the translation panel, comma-separated BCP-47 codes,\n\
+# shown in this order. Unknown or duplicate codes are dropped; an empty list\n\
+# falls back to vi,en,ja.\n\
+translate_languages=vi,en,ja\n\
+\n\
 {launcher_hotkey_section}\
 # Preferred tools. Name the tool, not a command: Look knows how to drive it,\n\
 # including running a terminal editor inside your terminal. Declare nothing and\n\
@@ -562,6 +608,12 @@ fn launcher_hotkey_config_section() -> String {
 # chords for one action with |. Examples:\n\
 # shortcut_main_copy=cmd+c\n\
 # shortcut_main_reveal=cmd+shift+f\n\
+\n\
+# Global shortcuts to launch applications directly:\n\
+# app_hotkey_<name>=<shortcut>|<target_app_or_path>\n\
+# Examples:\n\
+# app_hotkey_terminal=cmd+shift+t|Ghostty\n\
+# app_hotkey_slack=cmd+alt+s\n\
 \n",
         crate::hotkey::DEFAULT_LAUNCHER_HOTKEY
     )
@@ -900,6 +952,36 @@ fn normalize_app_name(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_app_hotkeys() {
+        let mut config = RuntimeConfig::default();
+        config.apply_from_str(
+            "app_hotkey_terminal = cmd+shift+t | Ghostty\n\
+             app_hotkey_slack=ctrl+alt+s\n\
+             app_hotkey_terminal = cmd+alt+t | WezTerm\n\
+             app_hotkey_editor = cmd+shift+e |\n\
+             app_hotkey_ = cmd+shift+x\n\
+             app_hotkey_bad=invalid+key\n\
+             app_hotkey_empty=\n",
+        );
+        assert_eq!(config.app_hotkeys.len(), 3);
+        assert_eq!(config.app_hotkeys[0].name, "terminal");
+        assert_eq!(config.app_hotkeys[0].target, "WezTerm");
+        assert_eq!(config.app_hotkeys[1].name, "slack");
+        assert_eq!(config.app_hotkeys[1].target, "slack");
+        assert_eq!(config.app_hotkeys[2].name, "editor");
+        assert_eq!(config.app_hotkeys[2].target, "editor");
+        if cfg!(target_os = "macos") {
+            assert_eq!(config.app_hotkeys[0].spec, "option+cmd+t");
+            assert_eq!(config.app_hotkeys[1].spec, "ctrl+option+s");
+            assert_eq!(config.app_hotkeys[1].display, "Ctrl+Option+S");
+        } else {
+            assert_eq!(config.app_hotkeys[0].spec, "alt+cmd+t");
+            assert_eq!(config.app_hotkeys[1].spec, "ctrl+alt+s");
+            assert_eq!(config.app_hotkeys[1].display, "Ctrl+Alt+S");
+        }
+    }
 
     #[test]
     fn parse_csv_skips_empty_tokens() {

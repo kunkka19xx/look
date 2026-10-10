@@ -397,4 +397,7 @@ jobs:
       - name: Attach assets to GitHub release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ startsWith(inputs.release_ref, 'v') && inputs.release_ref || format('v{0}', inputs.release_ref) }}
+          name: ${{ startsWith(inputs.release_ref, 'v') && inputs.release_ref || format('v{0}', inputs.release_ref) }}
+          generate_release_notes: true
           files: dist/*

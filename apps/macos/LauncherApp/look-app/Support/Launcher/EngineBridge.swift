@@ -252,6 +252,10 @@ private func look_launcher_hotkey_json() -> UnsafeMutablePointer<CChar>?
 nonisolated
 private func look_hotkey_check_local_json(_ spec: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_app_hotkeys_json")
+nonisolated
+private func look_app_hotkeys_json() -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_hotkey_check_json")
 nonisolated
 private func look_hotkey_check_json(_ spec: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -619,6 +623,11 @@ final class EngineBridge: @unchecked Sendable {
     /// `launcher_hotkey` resolved by core, already defaulted when unset or invalid.
     nonisolated func launcherHotkey() -> LauncherHotkeySpec? {
         Self.decodeOwnedJSON(look_launcher_hotkey_json())
+    }
+
+    /// Configured `app_hotkeys` resolved by core.
+    nonisolated func appHotkeys() -> [AppHotkeySpec] {
+        Self.decodeOwnedJSON(look_app_hotkeys_json()) ?? []
     }
 
     nonisolated func hotkeyCheck(_ spec: String) -> HotkeyCheck? {

@@ -29,6 +29,14 @@ nonisolated struct LauncherHotkeySpec: Decodable {
     }
 }
 
+nonisolated struct AppHotkeySpec: Decodable {
+    let name: String
+    let target: String
+    let hotkey: LauncherHotkeySpec.Hotkey
+    let display: String
+    let spec: String
+}
+
 nonisolated struct HotkeyCheck: Decodable {
     let spec: String
     let display: String?
@@ -76,10 +84,6 @@ struct CarbonHotkey: Equatable {
 }
 
 extension CarbonHotkey {
-    init?(spec: LauncherHotkeySpec) {
-        self.init(hotkey: spec.hotkey, display: spec.display)
-    }
-
     init?(hotkey: LauncherHotkeySpec.Hotkey, display: String) {
         guard let keyCode = HotkeyKeyCodes.resolve(hotkey.key) else { return nil }
         var carbon = 0
@@ -92,6 +96,16 @@ extension CarbonHotkey {
         self.init(
             keyCode: UInt32(keyCode), carbonModifiers: UInt32(carbon), eventModifiers: flags,
             display: display)
+    }
+
+    /// Resolves a carbon hotkey from a launcher hotkey spec.
+    init?(spec: LauncherHotkeySpec) {
+        self.init(hotkey: spec.hotkey, display: spec.display)
+    }
+
+    /// Resolves a carbon hotkey from an application hotkey spec.
+    init?(appSpec: AppHotkeySpec) {
+        self.init(hotkey: appSpec.hotkey, display: appSpec.display)
     }
 }
 
@@ -167,6 +181,7 @@ final class LauncherHotkeyController: ObservableObject, ShortcutRegistration {
     func reload() -> String? {
         // A listening recorder reloads when it stops.
         guard !ShortcutCapture.isActive else { return nil }
+        ShortcutCatalog.invalidate()
         let warning = apply()
         if let warning {
             launcherHotkeyLog.error("\(warning, privacy: .public)")
@@ -174,13 +189,30 @@ final class LauncherHotkeyController: ObservableObject, ShortcutRegistration {
         return warning
     }
 
+    /// Applies all hotkey configurations (toggle and application hotkeys).
     private func apply() -> String? {
+        // Release app chords before the toggle claims its configured or fallback chord.
+        manager.unregisterAppHotKeys()
+        let warning = applyToggle()
+        let appHotkeys = EngineBridge.shared.appHotkeys().compactMap { spec -> (hotkey: CarbonHotkey, spec: AppHotkeySpec)? in
+            guard let hotkey = CarbonHotkey(appSpec: spec) else { return nil }
+            return (hotkey, spec)
+        }
+        let registered = manager.registerAppHotKeys(appHotkeys)
+        ShortcutCatalog.setAppShortcuts(registered.map {
+            ShortcutCatalog.AppShortcutItem(name: $0.name, display: $0.display, target: $0.target)
+        })
+        return warning
+    }
+
+    /// Applies and registers the main launcher toggle hotkey.
+    private func applyToggle() -> String? {
         guard let spec = EngineBridge.shared.launcherHotkey() else {
             return register(.fallback)
         }
         defaultSpec = spec.defaultSpec
         guard spec.enabled else {
-            manager.suspend()
+            manager.unregisterToggleHotKey()
             display = spec.display
             return nil
         }

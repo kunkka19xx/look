@@ -340,6 +340,16 @@ impl Default for LauncherHotkey {
     }
 }
 
+/// A custom shortcut configured to launch a specific application.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct AppHotkey {
+    pub name: String,
+    pub target: String,
+    pub hotkey: Hotkey,
+    pub display: String,
+    pub spec: String,
+}
+
 fn is_disabled(spec: &str) -> bool {
     spec.trim().eq_ignore_ascii_case(DISABLED_SPEC)
 }

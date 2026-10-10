@@ -2,9 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feat/**"]
   pull_request:
-    branches: [main]
+    branches: [main, "feat/**"]
+  workflow_dispatch:
 
 # Cancel any prior in-progress run for the same branch / PR when a new
 # push comes in. Stops the slow linows build from keeping a stale
@@ -29,12 +30,12 @@ jobs:
     name: Detect Changes
     runs-on: ubuntu-latest
     outputs:
-      swift: ${{ steps.filter.outputs.swift }}
-      rust: ${{ steps.filter.outputs.rust }}
-      release_macos: ${{ steps.filter.outputs.release_macos }}
-      linows: ${{ steps.filter.outputs.linows }}
-      linows_linux: ${{ steps.filter.outputs.linows_linux }}
-      linows_windows: ${{ steps.filter.outputs.linows_windows }}
+      swift: ${{ steps.filter.outputs.swift == 'true' || github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.ref == 'refs/heads/main' }}
+      rust: ${{ steps.filter.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.ref == 'refs/heads/main' }}
+      release_macos: ${{ steps.filter.outputs.release_macos == 'true' || github.event_name == 'workflow_dispatch' }}
+      linows: ${{ steps.filter.outputs.linows == 'true' || github.event_name == 'workflow_dispatch' }}
+      linows_linux: ${{ steps.filter.outputs.linows_linux == 'true' || github.event_name == 'workflow_dispatch' }}
+      linows_windows: ${{ steps.filter.outputs.linows_windows == 'true' || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -48,6 +49,7 @@ jobs:
             swift:
               - 'apps/macos/**'
               - 'bridge/ffi/**'
+              - '.github/workflows/ci.yml'
             rust:
               - 'core/**'
               - 'bridge/ffi/**'
@@ -111,10 +113,10 @@ jobs:
         run: cargo fmt --all --manifest-path bridge/ffi/Cargo.toml -- --check
 
       - name: Run clippy (core workspace)
-        run: cargo clippy --workspace --manifest-path core/Cargo.toml -- -D warnings
+        run: cargo clippy --workspace --all-targets --manifest-path core/Cargo.toml -- -D warnings
 
       - name: Run clippy (ffi crate)
-        run: cargo clippy --manifest-path bridge/ffi/Cargo.toml -- -D warnings
+        run: cargo clippy --all-targets --manifest-path bridge/ffi/Cargo.toml -- -D warnings
 
   security:
     name: security
@@ -247,11 +249,7 @@ jobs:
     name: build
     runs-on: ubuntu-latest
     needs: changes
-    if: |
-      needs.changes.outputs.rust == 'true' && (
-        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-        (github.event_name == 'pull_request' && github.base_ref == 'main')
-      )
+    if: needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -279,7 +277,7 @@ jobs:
     name: Build macOS App
     runs-on: macos-latest
     needs: changes
-    if: github.event_name == 'pull_request' && github.base_ref == 'main' && needs.changes.outputs.swift == 'true'
+    if: needs.changes.outputs.swift == 'true'
     env:
       # Pin to Xcode 26.3 - the runner default is 16.4, whose Swift 6
       # diagnostics are stricter than current dev machines and produce
@@ -289,6 +287,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - name: Run Swift unit tests
+        run: swift test --package-path apps/macos/LauncherApp
 
       - name: Build Look app (Debug)
         run: xcodebuild -project "apps/macos/LauncherApp/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build
@@ -373,6 +374,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+
+      - name: Validate JavaScript syntax
+        run: find apps/linows/src/js apps/linows/tests -name "*.js" -exec node --check {} +
 
       - name: Run tests
         run: node --test apps/linows/tests/*.test.js
