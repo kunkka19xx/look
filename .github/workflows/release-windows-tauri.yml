@@ -156,3 +156,21 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: dist/*
+
+  publish-winget:
+    name: Submit winget manifest
+    needs: build-release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to vedantmgoyal9/winget-releaser v2 (commit 4ffc7888).
+      # This action gets WINGET_TOKEN (public_repo), so never track a branch.
+      # It also refuses to run until noah-code.Look already exists in
+      # winget-pkgs; the first manifest is submitted by hand (spec step 5), so
+      # this job stays red until that PR merges.
+      - uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e
+        with:
+          identifier: noah-code.Look
+          installers-regex: '_x64-setup\.exe$'
+          fork-user: dont-wait
+          token: ${{ secrets.WINGET_TOKEN }}

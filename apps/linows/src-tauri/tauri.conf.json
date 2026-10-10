@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicoverbruggen/tauri-v2-schema/main/schema.json",
   "productName": "Look",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "identifier": "com.look.desktop",
   "build": {
     "frontendDist": "../src",
@@ -38,6 +38,7 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "Noah Code",
     "targets": ["deb", "appimage", "nsis"],
     "icon": [
       "icons/32x32.png",
