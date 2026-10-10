@@ -30,8 +30,8 @@ jobs:
     name: Detect Changes
     runs-on: ubuntu-latest
     outputs:
-      swift: ${{ steps.filter.outputs.swift == 'true' || github.event_name == 'workflow_dispatch' }}
-      rust: ${{ steps.filter.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' }}
+      swift: ${{ steps.filter.outputs.swift == 'true' || github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.ref == 'refs/heads/main' }}
+      rust: ${{ steps.filter.outputs.rust == 'true' || github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.ref == 'refs/heads/main' }}
       release_macos: ${{ steps.filter.outputs.release_macos == 'true' || github.event_name == 'workflow_dispatch' }}
       linows: ${{ steps.filter.outputs.linows == 'true' || github.event_name == 'workflow_dispatch' }}
       linows_linux: ${{ steps.filter.outputs.linows_linux == 'true' || github.event_name == 'workflow_dispatch' }}
