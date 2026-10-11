@@ -20,6 +20,7 @@ mod help;
 #[cfg_attr(target_os = "linux", path = "host/linux.rs")]
 #[cfg_attr(windows, path = "host/windows.rs")]
 mod host;
+mod hotkey;
 mod icons;
 mod launcher;
 mod launchpad;
@@ -44,7 +45,6 @@ mod update;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
 
 use gpui::{
     App, AppContext, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
@@ -52,7 +52,9 @@ use gpui::{
     WindowOptions, point, px, size,
 };
 use linows_backend::health::HealthIssue;
-use linows_backend::host::{ClipForm, Host, LauncherWindow};
+#[cfg(target_os = "linux")]
+use linows_backend::host::ClipForm;
+use linows_backend::host::{Host, LauncherWindow};
 use linows_backend::look_engine::modes as engine_modes;
 use linows_backend::platform::IconCache;
 use linows_backend::query_retention;
@@ -84,14 +86,17 @@ pub enum Command {
     Health(Vec<HealthIssue>),
     /// The backend wants the clipboard owned for these forms; the reply says
     /// whether the shell took it.
+    #[cfg(target_os = "linux")]
     OwnClipboard(Vec<ClipForm>, std::sync::mpsc::SyncSender<bool>),
     Quit,
 }
 
 /// How long the backend waits for the main loop's clipboard answer before it
 /// shells out instead.
-const CLIPBOARD_REPLY_TIMEOUT: Duration = Duration::from_secs(2);
+#[cfg(target_os = "linux")]
+const CLIPBOARD_REPLY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 /// The spelling a text form carries first, see the backend's TEXT_TARGETS.
+#[cfg(target_os = "linux")]
 const TEXT_TARGET: &str = "text/plain;charset=utf-8";
 
 /// `LOOK_PACE_PROBE=1`: a measurement instance. Logs a timestamp per frame
@@ -246,7 +251,7 @@ fn serve_commands(tx: async_channel::Sender<Command>) -> std::io::Result<()> {
 }
 
 fn open(shell: &Shell, cx: &mut App) {
-    if !cx.windows().is_empty() {
+    if shown(cx) {
         return;
     }
     // What a summon does on every shell: the config may have changed, and so
@@ -268,6 +273,16 @@ fn open(shell: &Shell, cx: &mut App) {
     };
     host::fitted(window_size);
     let bounds = host::bounds(window_size, cx);
+    if let Some(kept) = cx.windows().first().copied().filter(|_| host::KEEP_WINDOW) {
+        let reused = kept.update(cx, |_, window, cx| {
+            window.replace_root(cx, |window, cx| Launcher::new(for_launcher, window, cx));
+            host::reshow(window, bounds);
+        });
+        if reused.is_ok() {
+            summoned(shell, cx);
+        }
+        return;
+    }
     let result = cx.open_window(
         WindowOptions {
             titlebar: None,
@@ -287,20 +302,34 @@ fn open(shell: &Shell, cx: &mut App) {
         },
     );
     match result {
-        Ok(_) => {
-            shell_visible(cx, true);
-            // A command screen stays up until Esc leaves it, however long the
-            // launcher was away; the query alone is subject to the retention
-            // window.
-            let expired = query_retention::query_clear_decision_after_show(true) != Some(false);
-            let mut kept =
-                std::mem::take(&mut *shell.retained.lock().unwrap_or_else(|p| p.into_inner()));
-            if expired {
-                kept.query.clear();
-            }
-            with_launcher(cx, |launcher, cx| launcher.restore(&kept, cx));
-        }
+        Ok(_) => summoned(shell, cx),
         Err(err) => eprintln!("open window: {err:#}"),
+    }
+}
+
+fn summoned(shell: &Shell, cx: &mut App) {
+    shell_visible(cx, true);
+    // A command screen stays up until Esc leaves it, however long the
+    // launcher was away; the query alone is subject to the retention
+    // window.
+    let expired = query_retention::query_clear_decision_after_show(true) != Some(false);
+    let mut kept = std::mem::take(&mut *shell.retained.lock().unwrap_or_else(|p| p.into_inner()));
+    if expired {
+        kept.query.clear();
+    }
+    with_launcher(cx, |launcher, cx| launcher.restore(&kept, cx));
+}
+
+/// What a kept window holds while hidden, so the launcher and its tasks go.
+struct Parked;
+
+impl gpui::Render for Parked {
+    fn render(
+        &mut self,
+        _: &mut gpui::Window,
+        _: &mut gpui::Context<Self>,
+    ) -> impl gpui::IntoElement {
+        gpui::Empty
     }
 }
 
@@ -312,11 +341,30 @@ fn hide(cx: &mut App) {
                 *shell.retained.lock().unwrap_or_else(|p| p.into_inner()) =
                     launcher.read(cx).retained(cx);
             }
-            window.remove_window();
+            if host::KEEP_WINDOW {
+                // The swap chain shows its last frame on the next summon, so
+                // the empty one is presented before the window goes.
+                window.replace_root(cx, |_, _| Parked);
+                window.on_next_frame(|window, _| {
+                    window.on_next_frame(|window, cx| {
+                        if !shown(cx) {
+                            host::conceal(window);
+                        }
+                    })
+                });
+            } else {
+                window.remove_window();
+            }
         });
     }
     query_retention::mark_hidden_now();
     shell_visible(cx, false);
+}
+
+/// Up on screen. A window closed behind the shell's back (Alt+F4) counts as
+/// down, so the next summon opens a new one.
+fn shown(cx: &App) -> bool {
+    cx.global::<Shell>().visible.load(Ordering::Relaxed) && !cx.windows().is_empty()
 }
 
 fn shell_visible(cx: &mut App, visible: bool) {
@@ -420,6 +468,7 @@ fn apply(command: Command, cx: &mut App) {
         Command::Health(issues) => {
             with_launcher(cx, |launcher, cx| launcher.set_health(issues.clone(), cx))
         }
+        #[cfg(target_os = "linux")]
         Command::OwnClipboard(forms, reply) => {
             let text = forms
                 .into_iter()
@@ -434,7 +483,7 @@ fn apply(command: Command, cx: &mut App) {
             };
             let _ = reply.send(taken);
         }
-        Command::Toggle if cx.windows().is_empty() => {
+        Command::Toggle if !shown(cx) => {
             let shell = cx.global::<Shell>().clone();
             open(&shell, cx);
         }
@@ -543,6 +592,14 @@ fn main() {
                 }
             })
             .detach();
+            #[cfg(windows)]
+            if !probe_wanted() {
+                let (toggle, quit) = (shell.clone(), shell.clone());
+                hotkey::start(
+                    move || toggle.send(Command::Toggle),
+                    move || quit.send(Command::Quit),
+                );
+            }
             if !start_hidden {
                 launch_query::park_launch(&launch);
                 open(&shell, cx);

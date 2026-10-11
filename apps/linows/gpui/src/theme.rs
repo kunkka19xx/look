@@ -209,6 +209,13 @@ fn luminance(c: Rgba) -> f32 {
     0.2126 * c.color.red + 0.7152 * c.color.green + 0.0722 * c.color.blue
 }
 
+/// The pole a scrim under `text` leans to: black under light text, white
+/// under dark, so the ink keeps its contrast in light themes.
+pub fn scrim_for(text: Rgba) -> Rgba {
+    let pole = if luminance(text) > 0.5 { 0.0 } else { 1.0 };
+    Rgba::new(pole, pole, pole, 1.0)
+}
+
 /// The font colour dimmed towards black, or lightened towards white when
 /// the text is dark (ThemeStore.dimmableColor).
 fn dimmed(text: Rgba, factor: f32) -> Rgba {

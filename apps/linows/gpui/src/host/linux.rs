@@ -18,6 +18,13 @@ use linows_backend::platform::linux::wm;
 /// Blur behind comes from the compositor over its own protocol, see blur/wayland.rs.
 pub const BACKGROUND: WindowBackgroundAppearance = WindowBackgroundAppearance::Transparent;
 
+/// A hide drops the surface; a layer surface cannot be unmapped and kept.
+pub const KEEP_WINDOW: bool = false;
+
+pub fn conceal(_: &Window) {}
+
+pub fn reshow(_: &Window, _: Bounds<Pixels>) {}
+
 const SOCKET_NAME: &str = "look-gpui.sock";
 /// A second instance beside the real one (tools/pace.sh) answers on its own
 /// socket so the two do not trade commands.
