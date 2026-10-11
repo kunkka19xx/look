@@ -22,7 +22,8 @@ below under Findings, since the numbers still describe this code.
 | `src/theme.rs` | The look, resolved from `~/.look/config` the way the webview resolves it |
 | `src/motion.rs` | The motion numbers, copied from the CSS |
 | `src/host/{linux,windows}.rs` | Window kind, bounds, decoration, the control socket per OS |
-| `src/blur.rs`, `src/blur/windows.rs` | Blur regions: the backend's Wayland protocols on gpui's surface, or a window region on Windows |
+| `src/blur.rs`, `src/blur/windows.rs` | Blur regions: the backend's Wayland protocols on gpui's surface; none on Windows |
+| `src/hotkey.rs` | Windows global keys: the launcher toggle and Alt+Shift+Q |
 | `tools/capture.sh`, `tools/dips.py` | The one frame glitch detector from `docs/webkit-254-flicker/` |
 | `tools/pace.sh` | Steady-state frame pacing from the `LOOK_PACE_PROBE=1` log |
 
@@ -47,6 +48,15 @@ over the `com.look.Desktop` D-Bus call. That name is shared with the Tauri
 shell, so only one of the two owns Alt+Space at a time: quit the installed
 Look to hand the key to this one.
 
+On Windows, from the repo root (wraps cargo in the VS 2022 Build Tools env):
+
+```sh
+make gpui-run            # debug
+make gpui-run-release    # release-gpui profile
+```
+
+Commands go to `127.0.0.1:47811`.
+
 Commands on the socket: `toggle`, `show`, `hide`, `query <text>`,
 `key <keystroke>`, `click <x> <y>`, `drag <x1> <y1> <x2> <y2>`, `quit`.
 `query` fills the field directly so a results screenshot needs no typing;
@@ -59,12 +69,14 @@ row, Ctrl+C copies its path (or the field's selection), Ctrl+V pastes,
 Ctrl+A selects all, Shift with the arrows extends a selection, Ctrl with
 Left/Right jumps words, Ctrl+Backspace or Ctrl+W deletes one, Ctrl+U clears.
 Ctrl+Shift+, opens and closes Settings, Ctrl+Shift+; reads the config again.
+Alt+Shift+Q quits.
 
 Capture eight summon cycles and score them, or measure steady-state pacing.
 Both start a measurement instance beside the launcher in use: with
 `LOOK_PACE_PROBE=1` it logs a timestamp per frame and each search's time,
 takes no hotkey or D-Bus name, and answers on the socket
-`LOOK_CONTROL_SOCKET` names instead of the default one.
+`LOOK_CONTROL_SOCKET` names instead of the default one (on Windows, the
+port `LOOK_CONTROL_PORT` names).
 
 ```sh
 tools/capture.sh gpui 8
@@ -95,7 +107,7 @@ Not yet: the launchpad tiles (the bento is still placeholder tiles), the
 clipboard, image and process previews),
 file and image copies (the backend shells out to wl-copy or xclip for
 those), the clipboard monitor, autostart registration, hide on focus loss
-on Windows, a Windows hotkey. Each is a milestone in the plan.
+on Windows. Each is a milestone in the plan.
 
 ## Findings, 2026-10-05, swayfx 0.6 on NixOS, RADV
 
@@ -170,6 +182,24 @@ Checked by running the binary on the live session, screenshots with grim,
   so the corner staircase is not anti-aliased.
 - Blur not verified: the VM's QXL adapter has no D3D, so DWM disables blur
   for every app. Needs a GPU machine.
+
+## Findings, 2026-10-11, Windows 11 26200 VM
+
+- Blur dropped. `SetWindowRgn` edges are binary, so the rounded corners
+  stair-step, and DWM cannot shape its backdrop any other way (nor round a
+  per-pixel-alpha window). Clear glass keeps gpui's anti-aliased corners.
+- Hotkey through `global-hotkey` 0.8 (the crate under the Tauri plugin):
+  rebound on save and config reload, released while the recorder listens.
+- Focus: a popup shown from a background process stays behind the
+  foreground lock. `window_focus::bring_to_front` attaches to the foreground
+  thread's input queue for the call.
+- Window kept across hides (`host::KEEP_WINDOW`): a new window per summon
+  left ~100 MB private behind under WARP. The hide parks an empty root,
+  presents it, then `SW_HIDE`s, so the next show starts on a clear frame.
+- Cost, release-gpui, 20 summons with searches: 60 MB private, 89 MB working
+  set, 1 process, 0 CPU hidden (was 165 MB private). Summon to first frame
+  p50 6 ms. Tauri 0.7.2 on the same VM: 144 MB private, 396 MB working set,
+  7 processes. Search 1.7 to 3.2 ms.
 
 ## Notes
 

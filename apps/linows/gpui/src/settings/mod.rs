@@ -824,6 +824,7 @@ impl Settings {
                     );
                 }
                 this.ai.enabled = ai_on;
+                crate::hotkey::set_active(true);
                 this.settings.recorder.state = Some(hotkey::launcher_hotkey_state());
                 this.settings.show_saved(ok, cx);
             },

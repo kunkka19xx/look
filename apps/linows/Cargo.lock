@@ -4353,6 +4353,7 @@ dependencies = [
  "async-channel",
  "base64 0.22.1",
  "chrono",
+ "global-hotkey",
  "gpui-ce",
  "gpui_ce_platform",
  "image",
