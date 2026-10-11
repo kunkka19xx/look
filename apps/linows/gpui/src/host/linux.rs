@@ -1,7 +1,9 @@
-//! Linux host: a centred layer shell surface on Wayland, a borderless floating
-//! dialog on X11 (as the Tauri shell's window), commands over a Unix socket.
+//! Linux host: a centred layer shell surface on Wayland (a plain toplevel where
+//! the compositor has none, as on GNOME), a borderless floating dialog on X11
+//! (as the Tauri shell's window), commands over a Unix socket.
 
-use std::os::unix::net::UnixListener;
+use std::io::Write;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,7 +15,7 @@ use gpui::{
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-use linows_backend::platform::linux::wm;
+use linows_backend::platform::linux::{outputs, wm};
 
 /// Blur behind comes from the compositor over its own protocol, see blur/wayland.rs.
 pub const BACKGROUND: WindowBackgroundAppearance = WindowBackgroundAppearance::Transparent;
@@ -33,6 +35,11 @@ pub fn bind() -> std::io::Result<UnixListener> {
                 .unwrap_or_else(std::env::temp_dir)
                 .join(SOCKET_NAME)
         });
+    // A launcher already answers: hand it the summon and let the caller exit.
+    if let Ok(mut running) = UnixStream::connect(&path) {
+        let _ = running.write_all(b"toggle");
+        return Err(std::io::ErrorKind::AddrInUse.into());
+    }
     let _ = std::fs::remove_file(&path);
     UnixListener::bind(&path)
 }
@@ -73,6 +80,30 @@ fn x11_composited() -> bool {
         .and_then(|c| c.reply().ok());
     let _ = conn.flush();
     owner.is_some_and(|o| o.owner != x11rb::NONE)
+}
+
+/// Hand freed heap pages back to the kernel. glibc keeps a malloc arena per
+/// thread and returns little on its own, so a hidden launcher would sit on
+/// the peak of every summon before it.
+pub fn trim_heap() {
+    #[cfg(target_env = "gnu")]
+    {
+        unsafe extern "C" {
+            fn malloc_trim(pad: usize) -> std::ffi::c_int;
+        }
+        // SAFETY: plain glibc call with no pointers; safe from any thread.
+        unsafe { malloc_trim(0) };
+    }
+}
+
+/// Logical height of the screen the launcher opens on. gpui has no primary
+/// display on Wayland and rounds fractional scales, so xdg-output comes first.
+pub fn screen_height(cx: &App) -> Option<f32> {
+    outputs::logical_height().map(|h| h as f32).or_else(|| {
+        cx.primary_display()
+            .or_else(|| cx.displays().into_iter().next())
+            .map(|d| f32::from(d.bounds().size.height))
+    })
 }
 
 /// Wayland: no anchor, so the compositor centres it, as the GTK port does.
@@ -220,9 +251,15 @@ fn x11_undecorate_and_place(wid: u32, x: i32, y: i32) {
 /// WM such as i3 tiles. A dialog stays managed (focus, stacking) but floats:
 /// the role min == max size hints play for the Tauri window, which gpui does
 /// not let a caller set.
+///
+/// Mutter has no layer shell, and gpui fails the open rather than fall back,
+/// so a normal toplevel stands in; GNOME places it.
 pub fn kind() -> WindowKind {
     if is_x11() {
         return WindowKind::Dialog;
+    }
+    if !wm::has_layer_shell() {
+        return WindowKind::Normal;
     }
     WindowKind::LayerShell(LayerShellOptions {
         namespace: "lookapp".into(),

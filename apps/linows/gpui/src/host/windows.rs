@@ -22,6 +22,12 @@ pub fn bind() -> std::io::Result<TcpListener> {
     TcpListener::bind(("127.0.0.1", PORT))
 }
 
+/// Logical height of the primary monitor, which the popup centres on.
+pub fn screen_height(cx: &App) -> Option<f32> {
+    cx.primary_display()
+        .map(|d| f32::from(d.bounds().size.height))
+}
+
 pub fn bounds(size: Size<Pixels>, cx: &App) -> Bounds<Pixels> {
     Bounds::centered(None, size, cx)
 }
@@ -33,6 +39,9 @@ pub fn fit(_: &mut Window, _: Size<Pixels>, _: &App) {}
 
 /// DWM always composites.
 pub fn probe_opaque() {}
+
+/// The Windows heap decommits on its own.
+pub fn trim_heap() {}
 
 pub fn opaque() -> bool {
     false

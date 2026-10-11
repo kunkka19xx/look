@@ -174,10 +174,10 @@ impl AiAnswer {
             };
             let mut tasks = Vec::new();
             for fetch in fetches {
-                tasks.push(cx.background_executor().spawn(async move { fetch() }));
+                tasks.push(bg::blocking(fetch));
             }
             for task in tasks {
-                let answer = task.await;
+                let answer = task.get().await;
                 let _ = this.update(cx, |this, cx| {
                     if this.ai.version == version {
                         this.ai.land(answer);
@@ -195,14 +195,10 @@ impl AiAnswer {
             if instant && empty {
                 let q1 = query.clone();
                 let q2 = query.clone();
-                let ddg = cx
-                    .background_executor()
-                    .spawn(async move { answers::duckduckgo_answer(&q1) });
-                let wiki = cx
-                    .background_executor()
-                    .spawn(async move { answers::wikipedia_answer(&q2) });
+                let ddg = bg::blocking(move || answers::duckduckgo_answer(&q1));
+                let wiki = bg::blocking(move || answers::wikipedia_answer(&q2));
                 for task in [ddg, wiki] {
-                    let answer = task.await;
+                    let answer = task.get().await;
                     let _ = this.update(cx, |this, cx| {
                         if this.ai.version == version {
                             this.ai.land(answer);

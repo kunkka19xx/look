@@ -91,6 +91,8 @@ pub enum Command {
 /// How long the backend waits for the main loop's clipboard answer before it
 /// shells out instead.
 const CLIPBOARD_REPLY_TIMEOUT: Duration = Duration::from_secs(2);
+/// Long enough for the closed window's renderer to be dropped.
+const TRIM_AFTER_HIDE: Duration = Duration::from_secs(1);
 /// The spelling a text form carries first, see the backend's TEXT_TARGETS.
 const TEXT_TARGET: &str = "text/plain;charset=utf-8";
 
@@ -256,8 +258,8 @@ fn open(shell: &Shell, cx: &mut App) {
     host::probe_opaque();
     state().request_index_refresh();
     let for_launcher = shell.clone();
-    if let Some(display) = cx.primary_display() {
-        theme::fit_window(f32::from(display.bounds().size.height));
+    if let Some(screen_h) = host::screen_height(cx) {
+        theme::fit_window(screen_h);
     }
     // Bare X11 cannot show the split window's unused part as nothing, so
     // the window is the panel itself there.
@@ -317,6 +319,16 @@ fn hide(cx: &mut App) {
     }
     query_retention::mark_hidden_now();
     shell_visible(cx, false);
+    let executor = cx.background_executor().clone();
+    executor
+        .spawn({
+            let executor = executor.clone();
+            async move {
+                executor.timer(TRIM_AFTER_HIDE).await;
+                host::trim_heap();
+            }
+        })
+        .detach();
 }
 
 fn shell_visible(cx: &mut App, visible: bool) {
@@ -513,8 +525,13 @@ fn main() {
     // the poll thread.
     linows_backend::clipboard::start_monitor();
 
-    if let Err(err) = serve_commands(shell.tx.clone()) {
-        eprintln!("control socket: {err}");
+    match serve_commands(shell.tx.clone()) {
+        Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
+            eprintln!("lookapp-gpui: already running, toggled it");
+            return;
+        }
+        Err(err) => eprintln!("control socket: {err}"),
+        Ok(()) => {}
     }
     #[cfg(target_os = "linux")]
     {

@@ -162,18 +162,6 @@ enum Slot {
     Clock,
 }
 
-impl Slot {
-    /// The element id its body carries, so a change of source restarts
-    /// the fade.
-    fn key(self) -> usize {
-        match self {
-            Slot::Pomo => 0,
-            Slot::Todo => 1,
-            Slot::Clock => 2,
-        }
-    }
-}
-
 /// The Pomo body's own lines.
 const POMO_BAR_H: f32 = 3.0;
 const POMO_BAR_MARGIN: f32 = 10.0;
@@ -226,6 +214,10 @@ pub struct Launchpad {
     pressed: Option<(String, Instant)>,
     /// The Pomo bar's fill, gliding to each tick's progress.
     bar: Entity<TransitionState<f32>>,
+    /// The slot's source and when it took over. Not an element animation:
+    /// the grid remounts after every query, which would replay it.
+    slot_since: Option<(Slot, Instant)>,
+    slot_opacity: f32,
     bar_fill: f32,
     _ticker: Task<()>,
 }
@@ -264,6 +256,8 @@ impl Launchpad {
             pressed: None,
             bar: cx.new(|_| TransitionState::new(0.0)),
             bar_fill: 0.0,
+            slot_since: None,
+            slot_opacity: 1.0,
             minute: Local::now().minute(),
             _ticker: ticker,
         };
@@ -344,7 +338,7 @@ impl Launchpad {
     ) {
         let token = self.token;
         cx.spawn(async move |this, cx| {
-            let value = cx.background_executor().spawn(async move { work() }).await;
+            let value = crate::bg::blocking(work).get().await;
             let _ = this.update(cx, |this, cx| {
                 if this.token == token {
                     apply(this, value, cx);
@@ -819,6 +813,19 @@ impl Launchpad {
         );
         bar.update(cx, |fill, _| *fill = goal);
         self.bar_fill = *bar.evaluate(window, cx);
+        // A new source fades in; the first arrives with the cascade.
+        let slot = self.slot();
+        let fade = motion::transition(motion::SLOT_FADE_MS, cx);
+        let since = match self.slot_since {
+            Some((shown, since)) if shown == slot => since,
+            Some(_) => Instant::now(),
+            None => Instant::now() - fade,
+        };
+        self.slot_since = Some((slot, since));
+        self.slot_opacity = (since.elapsed().as_secs_f32() / fade.as_secs_f32()).min(1.0);
+        if self.slot_opacity < 1.0 {
+            window.request_animation_frame();
+        }
         let Some(layout) = self.layout.clone() else {
             return (0.0, Vec::new());
         };
@@ -1161,12 +1168,7 @@ impl Launchpad {
                     .child(div().flex_1())
                     .child(corner),
             )
-            // A new source fades in, the webview's `ctl-slot-fade`.
-            .child(body.with_animation(
-                ("slot", slot.key()),
-                Animation::new(motion::dur(motion::SLOT_FADE_MS)),
-                |body, t| body.opacity(t),
-            ))
+            .child(body.opacity(self.slot_opacity))
     }
 
     fn toggle_tile(&self, index: usize, tile: &LaunchpadTile, on: bool, th: &Theme) -> Div {
