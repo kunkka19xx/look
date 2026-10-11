@@ -25,6 +25,43 @@ pub fn is_swayfx() -> bool {
     })
 }
 
+/// Whether the compositor offers `zwlr_layer_shell_v1`; Mutter does not.
+/// `false` off Wayland. Asked once.
+pub fn has_layer_shell() -> bool {
+    static LAYER_SHELL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *LAYER_SHELL.get_or_init(|| has_wayland_global("zwlr_layer_shell_v1"))
+}
+
+fn has_wayland_global(interface: &str) -> bool {
+    use wayland_client::{
+        Connection, Dispatch, QueueHandle,
+        globals::{GlobalListContents, registry_queue_init},
+        protocol::wl_registry::{self, WlRegistry},
+    };
+
+    struct Globals;
+    impl Dispatch<WlRegistry, GlobalListContents> for Globals {
+        fn event(
+            _: &mut Self,
+            _: &WlRegistry,
+            _: wl_registry::Event,
+            _: &GlobalListContents,
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+        }
+    }
+
+    let Ok(conn) = Connection::connect_to_env() else {
+        return false;
+    };
+    registry_queue_init::<Globals>(&conn).is_ok_and(|(globals, _)| {
+        globals
+            .contents()
+            .with_list(|list| list.iter().any(|g| g.interface == interface))
+    })
+}
+
 /// Returns true if niri is actually running (its IPC socket exists).
 pub fn is_niri() -> bool {
     std::env::var("NIRI_SOCKET")

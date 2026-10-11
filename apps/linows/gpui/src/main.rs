@@ -91,6 +91,8 @@ pub enum Command {
 /// How long the backend waits for the main loop's clipboard answer before it
 /// shells out instead.
 const CLIPBOARD_REPLY_TIMEOUT: Duration = Duration::from_secs(2);
+/// Long enough for the closed window's renderer to be dropped.
+const TRIM_AFTER_HIDE: Duration = Duration::from_secs(1);
 /// The spelling a text form carries first, see the backend's TEXT_TARGETS.
 const TEXT_TARGET: &str = "text/plain;charset=utf-8";
 
@@ -317,6 +319,16 @@ fn hide(cx: &mut App) {
     }
     query_retention::mark_hidden_now();
     shell_visible(cx, false);
+    let executor = cx.background_executor().clone();
+    executor
+        .spawn({
+            let executor = executor.clone();
+            async move {
+                executor.timer(TRIM_AFTER_HIDE).await;
+                host::trim_heap();
+            }
+        })
+        .detach();
 }
 
 fn shell_visible(cx: &mut App, visible: bool) {

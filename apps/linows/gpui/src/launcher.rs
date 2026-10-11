@@ -207,6 +207,11 @@ pub struct Launcher {
     confirm_seq: u64,
     /// When this window came up: the frost waits for the entrances.
     shown_at: Instant,
+    /// The key last pressed in this window. gpui-ce's Wayland repeat timer
+    /// outlives the window it started in: Enter hides the launcher, the
+    /// release goes to the app it focused, and the next summon gets the
+    /// repeats. A held key only counts once its press landed here.
+    pressed: Option<String>,
     /// When the launchpad grid last mounted, `None` while it is off screen.
     /// Every mount replays the cascade, so the tiles' frost waits from here.
     grid_since: Option<Instant>,
@@ -281,6 +286,7 @@ impl Launcher {
             was_home: true,
             confirm_seq: 0,
             shown_at: Instant::now(),
+            pressed: None,
             grid_since: None,
             todo_hovered: false,
             version: 0,
@@ -587,6 +593,21 @@ impl Launcher {
 
     fn on_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         self.handle_key(&event.keystroke, cx);
+    }
+
+    /// Ahead of the field's text input, so a stale repeat types nothing either.
+    fn drop_stale_repeat(
+        &mut self,
+        event: &KeyDownEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let key = &event.keystroke.key;
+        if !event.is_held {
+            self.pressed = Some(key.clone());
+        } else if self.pressed.as_ref() != Some(key) {
+            cx.stop_propagation();
+        }
     }
 
     fn handle_key(&mut self, ks: &gpui::Keystroke, cx: &mut Context<Self>) {
@@ -1907,6 +1928,7 @@ impl Launcher {
             .text_color(th.text)
             .when(classic(), |root| root.bg(th.backdrop()))
             .track_focus(&focus_handle)
+            .capture_key_down(cx.listener(Self::drop_stale_repeat))
             .on_key_down(cx.listener(Self::on_key_down))
             .child(blur_commit(frosted))
             .flex()
@@ -2862,6 +2884,7 @@ impl Launcher {
             .text_color(th.text)
             .when(classic(), |root| root.bg(th.backdrop()))
             .track_focus(&focus_handle)
+            .capture_key_down(cx.listener(Self::drop_stale_repeat))
             .on_key_down(cx.listener(Self::on_key_down))
             .child(blur_commit(frosted))
             .child(div().size_full().child(body).with_animation(
