@@ -717,6 +717,9 @@ impl Settings {
                 "Clear glass; card shadows on"
             };
         }
+        if cfg!(windows) {
+            return "Windows blur cannot follow rounded corners; Look stays clear glass";
+        }
         if !crate::blur::is_supported() {
             return "Your compositor does not offer it; Look stays clear glass";
         }

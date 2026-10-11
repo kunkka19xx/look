@@ -6,11 +6,14 @@
 //! renderer while `fc-match` finds it fine. Asking `fc-list` for that family's
 //! files and feeding them in closes the gap for exactly the fonts asked for.
 
+#[cfg(target_os = "linux")]
 use std::collections::HashSet;
+#[cfg(target_os = "linux")]
 use std::sync::Mutex;
 
 use gpui::App;
 
+#[cfg(target_os = "linux")]
 static LOADED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 /// Make `family` renderable if fontconfig has it. A no-op for the platform
