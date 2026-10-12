@@ -3172,8 +3172,7 @@ dependencies = [
 [[package]]
 name = "gpui_ce_wgpu"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d986e05a9106ac0ecf048f9b5a4a6b030d6b538836dc3ad0a0686da01d4a830"
+source = "git+https://github.com/kunkka19xx/gpui-ce?branch=wgpu-pipeline-cache-crates-io#e42e12e2e570e14c825912db9be5b39a55c26ed5"
 dependencies = [
  "anyhow",
  "bytemuck",

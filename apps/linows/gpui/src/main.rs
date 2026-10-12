@@ -111,6 +111,9 @@ pub fn probe_wanted() -> bool {
 
 static STATE: OnceLock<AppState> = OnceLock::new();
 static ICONS: OnceLock<IconCache> = OnceLock::new();
+/// Set once a window has opened. A failure before that is fatal; after it the
+/// shell has shown it can open one, so a failed summon is only logged.
+static WINDOW_OPENED: AtomicBool = AtomicBool::new(false);
 
 /// The engine and its watchers, one per process.
 pub fn state() -> &'static AppState {
@@ -306,8 +309,21 @@ fn open(shell: &Shell, cx: &mut App) {
         },
     );
     match result {
-        Ok(_) => summoned(shell, cx),
-        Err(err) => eprintln!("open window: {err:#}"),
+        Ok(_) => {
+            WINDOW_OPENED.store(true, Ordering::Relaxed);
+            summoned(shell, cx);
+        }
+        Err(err) if WINDOW_OPENED.load(Ordering::Relaxed) => {
+            eprintln!("open window: {err:#}");
+        }
+        Err(err) => {
+            // Without a window the shell is an invisible no-show, and a menu
+            // launch has no terminal for the error, so say why and quit.
+            let message = format!("Look could not open its window: {err:#}");
+            eprintln!("{message}");
+            crash::report_fatal(&message);
+            cx.quit();
+        }
     }
 }
 

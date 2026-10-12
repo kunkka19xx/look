@@ -36,6 +36,25 @@ pub fn install_panic_hook() {
     }));
 }
 
+/// Report a fatal failure that never reaches the panic hook. A window that
+/// will not open (no layer-shell compositor, no usable GPU) returns an error
+/// rather than panicking, which would otherwise leave the app running as an
+/// invisible no-show - the same failure this module guards against for panics.
+/// Logs the message and, on the main thread, shows the native dialog.
+pub fn report_fatal(message: &str) {
+    let log_path = append_crash_log(message);
+    if std::thread::current().name() == Some("main") {
+        let text = match log_path {
+            Some(path) => format!(
+                "{message}\n\nDetails were written to:\n{}",
+                path.display()
+            ),
+            None => message.to_string(),
+        };
+        native_error_dialog(&text);
+    }
+}
+
 fn panic_message(info: &std::panic::PanicHookInfo) -> String {
     let payload = info
         .payload()
