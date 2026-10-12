@@ -2,8 +2,7 @@
 
 The launcher shell drawn by gpui-ce instead of WebKitGTK. It grows screen by
 screen beside the Tauri shell in `../src-tauri`, which keeps shipping until
-this one reaches parity; the plan and the milestones are in
-`../PLAN-GPUI-PORT.md`. Everything that is not drawing comes from
+this one reaches parity. Everything that is not drawing comes from
 `../backend` (`linows_backend`), the same crate the Tauri commands call.
 
 It started as a two day spike. What that spike measured (60 fps with no
