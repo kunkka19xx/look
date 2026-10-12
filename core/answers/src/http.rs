@@ -28,7 +28,7 @@ pub struct Response {
 
 impl Response {
     pub fn is_success(&self) -> bool {
-        (HTTP_OK..HTTP_MULTIPLE_CHOICES).contains(&self.status)
+        is_success(self.status)
     }
 
     pub fn is_rate_limited(&self) -> bool {
@@ -53,6 +53,28 @@ pub fn get_json(url: &str, timeout_secs: u32) -> Option<serde_json::Value> {
 /// "unreadable". Lets callers that need a specific UA or `Accept-Language`
 /// (e.g. translation) share one curl path.
 pub fn get(url: &str, timeout_secs: u32, user_agent: &str, headers: &[&str]) -> Option<Response> {
+    let stdout = curl(url, timeout_secs, user_agent, headers)?;
+    let (body, status) = split_status(&stdout)?;
+    Some(Response {
+        status,
+        body: String::from_utf8(body.to_vec()).ok()?,
+    })
+}
+
+/// GETs `url` and returns the body of a 2xx reply as is, for binary payloads
+/// such as an answer's thumbnail.
+pub fn get_bytes(url: &str, timeout_secs: u32) -> Option<Vec<u8>> {
+    let stdout = curl(url, timeout_secs, USER_AGENT, &[])?;
+    let (body, status) = split_status(&stdout)?;
+    is_success(status).then(|| body.to_vec())
+}
+
+fn is_success(status: u16) -> bool {
+    (HTTP_OK..HTTP_MULTIPLE_CHOICES).contains(&status)
+}
+
+/// curl's stdout: the body followed by `WRITE_OUT_STATUS`.
+fn curl(url: &str, timeout_secs: u32, user_agent: &str, headers: &[&str]) -> Option<Vec<u8>> {
     let mut command = Command::new("curl");
     // The AppImage points LD_LIBRARY_PATH at bundled Ubuntu libs; the system
     // curl resolves libcurl's deps against them and dies with a symbol
@@ -77,41 +99,19 @@ pub fn get(url: &str, timeout_secs: u32, user_agent: &str, headers: &[&str]) -> 
     command.creation_flags(CREATE_NO_WINDOW);
 
     let output = command.output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    split_status(&String::from_utf8(output.stdout).ok()?)
+    output.status.success().then_some(output.stdout)
 }
 
-/// Splits curl's stdout, which is the body followed by `WRITE_OUT_STATUS`, at
-/// the last newline. The body keeps its own newlines, trailing one included.
-fn split_status(stdout: &str) -> Option<Response> {
-    let (body, status) = stdout.rsplit_once('\n')?;
-    Some(Response {
-        status: status.trim().parse().ok()?,
-        body: body.to_string(),
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn splits_body_from_written_out_status() {
-        let ok = split_status("{\"a\":1}\n200").expect("parsed");
-        assert_eq!(ok.body, "{\"a\":1}");
-        assert!(ok.is_success());
-        assert!(!ok.is_rate_limited());
-
-        let multiline = split_status("line1\nline2\n\n429").expect("parsed");
-        assert_eq!(multiline.body, "line1\nline2\n");
-        assert!(!multiline.is_success());
-        assert!(multiline.is_rate_limited());
-
-        assert!(split_status("no status written out").is_none());
-        assert!(split_status("body\nnot-a-status").is_none());
-    }
+/// Splits curl's stdout at the last newline into the body and the status.
+/// The body keeps its own newlines, trailing one included.
+fn split_status(stdout: &[u8]) -> Option<(&[u8], u16)> {
+    let at = stdout.iter().rposition(|&b| b == b'\n')?;
+    let status = std::str::from_utf8(&stdout[at + 1..])
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
+    Some((&stdout[..at], status))
 }
 
 /// Percent-encodes `value` for use in a URL query component (RFC 3986
@@ -127,4 +127,26 @@ pub fn encode(value: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn splits_body_from_written_out_status() {
+        assert_eq!(
+            split_status(b"{\"a\":1}\n200"),
+            Some((&b"{\"a\":1}"[..], 200))
+        );
+        assert!(is_success(200));
+
+        let (body, status) = split_status(b"line1\nline2\n\n429").expect("parsed");
+        assert_eq!(body, b"line1\nline2\n");
+        assert!(!is_success(status));
+        assert_eq!(status, HTTP_TOO_MANY_REQUESTS);
+
+        assert!(split_status(b"no status written out").is_none());
+        assert!(split_status(b"body\nnot-a-status").is_none());
+    }
 }

@@ -5,6 +5,8 @@ on:
     paths:
       - "core/**"
       - "apps/linows/src-tauri/**"
+      - "apps/linows/backend/**"
+      - "apps/linows/Cargo.*"
       - "apps/linows/src/**"
       - "apps/linows/nix/**"
       - "apps/linows/flake.nix"
@@ -14,6 +16,8 @@ on:
     paths:
       - "core/**"
       - "apps/linows/src-tauri/**"
+      - "apps/linows/backend/**"
+      - "apps/linows/Cargo.*"
       - "apps/linows/src/**"
       - "apps/linows/nix/**"
       - "apps/linows/flake.nix"
