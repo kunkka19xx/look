@@ -3263,13 +3263,20 @@ impl Launcher {
 /// The classic panel's face: the tint alone under a border, as
 /// `.launcher-window` draws it, with the background picture over the tint.
 fn panel(el: Div, th: &Theme, radius: f32) -> Div {
-    let backdrop = BACKDROP.with_borrow(|b| b.clone());
     el.bg(th.tint)
         .border(px(th.border_thickness))
         .border_color(th.border)
         .rounded(px(radius))
         .shadow(th.card_shadow())
-        .children(backdrop.map(|b| bgimage::layer(b, radius, th)))
+        .children(backdrop_layer(radius, th))
+}
+
+/// This frame's slice of the background picture for a surface with corner
+/// `radius`, when there is a picture.
+pub(crate) fn backdrop_layer(radius: f32, th: &Theme) -> Option<impl IntoElement> {
+    BACKDROP
+        .with_borrow(|b| b.clone())
+        .map(|b| bgimage::layer(b, radius, th))
 }
 
 /// The band's leading at the hint's size.
@@ -3293,13 +3300,12 @@ fn copyright(th: &Theme, cx: &mut Context<Launcher>) -> Stateful<Div> {
 /// The frosted card face shared by the bar, the tiles and the results card,
 /// with its slice of the background picture under whatever the caller adds.
 fn card(el: Div, th: &Theme, radius: f32) -> Div {
-    let backdrop = BACKDROP.with_borrow(|b| b.clone());
     el.bg(th.card_face())
         .border(px(th.border_thickness))
         .border_color(th.border)
         .rounded(px(radius))
         .shadow(th.card_shadow())
-        .children(backdrop.map(|b| bgimage::layer(b, radius, th)))
+        .children(backdrop_layer(radius, th))
 }
 
 fn muted_text(text: impl Into<SharedString>, th: &Theme) -> Div {

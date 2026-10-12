@@ -225,11 +225,10 @@ fn drawn_rect(layout: BgLayout, viewport: Size<Pixels>, natural: Size<Pixels>) -
 }
 
 /// The card's layer: its own slice of the picture, under its content.
-/// `radius` is the card's outer corner; the layer sits inside the border,
-/// so its own corner is that much tighter, or the corner shows a gap.
+/// `radius` is the card's outer corner.
 pub fn layer(backdrop: Arc<Backdrop>, radius: f32, th: &Theme) -> impl IntoElement {
     let opacity = th.bg_opacity.clamp(0.0, 1.0);
-    let radius = (radius - th.border_thickness).max(0.0);
+    let radius = th.inner_radius(radius);
     let frame_size = th.frame_size();
     div().absolute().inset_0().opacity(opacity).child(
         canvas(

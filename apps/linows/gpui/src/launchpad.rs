@@ -926,20 +926,22 @@ impl Launchpad {
         };
         let danger = tile.confirm.is_some();
 
-        let face = th.tile_face();
-        let (bg, border) = if confirming {
+        // The state wash is a layer over the background picture, so an
+        // on or confirming tile stays tinted where the picture shows.
+        let (wash, border) = if confirming {
             (
-                theme::wash(face, th.danger, CONFIRM_WASH),
+                Some(theme::veil(th.danger, CONFIRM_WASH)),
                 theme::mix(th.danger, th.border, CONFIRM_BORDER_MIX),
             )
         } else if on {
             (
-                theme::wash(face, th.accent, ACTIVE_WASH),
+                Some(theme::veil(th.accent, ACTIVE_WASH)),
                 theme::mix(th.accent, th.border, ACTIVE_BORDER_MIX),
             )
         } else {
-            (face, th.border)
+            (None, th.border)
         };
+        let radius = th.tile_radius();
         let hover_border = if danger {
             theme::mix(th.danger, th.border, DANGER_HOVER_MIX)
         } else {
@@ -962,11 +964,19 @@ impl Launchpad {
             .absolute()
             .flex()
             .overflow_hidden()
-            .bg(bg)
+            .bg(th.tile_face())
             .border(px(th.border_thickness))
             .border_color(border)
             .shadow(th.card_shadow())
-            .rounded(px(th.tile_radius()))
+            .rounded(px(radius))
+            .children(crate::launcher::backdrop_layer(radius, th))
+            .children(wash.map(|wash| {
+                div()
+                    .absolute()
+                    .inset_0()
+                    .rounded(px(th.inner_radius(radius)))
+                    .bg(wash)
+            }))
             .when(pressable, |el| {
                 el.hover(|s| s.border_color(hover_border))
                     .active(|s| s.opacity(PRESSED_OPACITY))
