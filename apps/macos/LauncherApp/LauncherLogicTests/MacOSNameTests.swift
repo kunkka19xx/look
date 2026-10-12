@@ -4,7 +4,8 @@ import XCTest
 /// The macOS codename mapping is the fix for issue #519: getMacOSName returned
 /// "Sequoia" for every major >= 15, so macOS 26 Tahoe and anything newer were
 /// mislabeled. The mapping must name the known majors explicitly and fall back
-/// to "macOS <major>" for any unknown future major rather than guessing.
+/// to plain "macOS" for any unknown future major rather than guessing; the
+/// caller appends the version number.
 final class MacOSNameTests: XCTestCase {
     func testSectionKnownNames() {
         XCTAssertEqual(MacOSName.forMajor(15), "Sequoia")
@@ -23,10 +24,10 @@ final class MacOSNameTests: XCTestCase {
         XCTAssertEqual(MacOSName.forMajor(0), "macOS")
     }
 
-    func testUnknownNewerMajorShowsRealNumberNotACodename() {
+    func testUnknownNewerMajorFallsBackToBareMacOS() {
         // macOS 27 and the skipped 16-25 range have no codename yet.
-        XCTAssertEqual(MacOSName.forMajor(27), "macOS 27")
-        XCTAssertEqual(MacOSName.forMajor(16), "macOS 16")
-        XCTAssertEqual(MacOSName.forMajor(20), "macOS 20")
+        XCTAssertEqual(MacOSName.forMajor(27), "macOS")
+        XCTAssertEqual(MacOSName.forMajor(16), "macOS")
+        XCTAssertEqual(MacOSName.forMajor(20), "macOS")
     }
 }

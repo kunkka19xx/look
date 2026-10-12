@@ -4,8 +4,8 @@ import Foundation
 ///
 /// Apple jumped the macOS version number from 15 (Sequoia) straight to 26
 /// (Tahoe). Known names are mapped explicitly. Anything not yet known (a
-/// future major) must fall back to "macOS <major>" instead of a guessed
-/// codename, so the panel never shows a wrong OS name.
+/// future major) falls back to plain "macOS", and the caller appends the
+/// version number, so the panel never shows a wrong OS name.
 enum MacOSName {
     static let legacyFallback = "macOS"
 
@@ -23,10 +23,10 @@ enum MacOSName {
             return "Monterey"
         case 11:
             return "Big Sur"
-        case ..<11:
-            return legacyFallback
         default:
-            return "\(legacyFallback) \(major)"
+            // The caller appends the full version number, so an unknown
+            // major shows as "macOS 27.0.1" rather than a guessed name.
+            return legacyFallback
         }
     }
 }
