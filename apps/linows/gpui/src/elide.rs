@@ -3,8 +3,8 @@
 //! file name survive, the directories between give way to an ellipsis.
 
 use gpui::{
-    App, Bounds, Element, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels,
-    ShapedLine, SharedString, TextRun, Window, relative,
+    App, AvailableSpace, Bounds, Element, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, ShapedLine, SharedString, TextRun, Window, size,
 };
 
 const ELLIPSIS: char = '\u{2026}';
@@ -42,12 +42,27 @@ impl Element for MiddleElided {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
-        cx: &mut App,
+        _cx: &mut App,
     ) -> (LayoutId, ()) {
+        // As wide as the text where there is room, as narrow as it is given
+        // where there is not: a chip sized by its content gets the whole
+        // path, a fixed column gets it elided.
+        let natural = shape(&self.text, window).width;
+        let height = window.line_height();
         let mut style = gpui::Style::default();
-        style.size.width = relative(1.0).into();
-        style.size.height = window.line_height().into();
-        (window.request_layout(style, [], cx), ())
+        style.size.height = height.into();
+        let measure = move |known: gpui::Size<Option<Pixels>>,
+                            available: gpui::Size<AvailableSpace>,
+                            _: &mut Window,
+                            _: &mut App| {
+            let width = known.width.unwrap_or(match available.width {
+                AvailableSpace::Definite(room) => natural.min(room),
+                AvailableSpace::MinContent => Pixels::ZERO,
+                AvailableSpace::MaxContent => natural,
+            });
+            size(width, height)
+        };
+        (window.request_measured_layout(style, measure), ())
     }
 
     fn prepaint(
@@ -59,23 +74,7 @@ impl Element for MiddleElided {
         window: &mut Window,
         _cx: &mut App,
     ) -> ShapedLine {
-        let style = window.text_style();
-        let font_size = style.font_size.to_pixels(window.rem_size());
-        let shape = |text: SharedString| {
-            let run = TextRun {
-                len: text.len(),
-                font: style.font(),
-                color: style.color,
-                background_color: None,
-                underline: None,
-                strikethrough: None,
-                letter_spacing: None,
-            };
-            window
-                .text_system()
-                .shape_line(text, font_size, &[run], None)
-        };
-        let whole = shape(self.text.clone());
+        let whole = shape(&self.text, window);
         if whole.width <= bounds.size.width {
             return whole;
         }
@@ -90,7 +89,7 @@ impl Element for MiddleElided {
                 .chain(std::iter::once(&ELLIPSIS))
                 .chain(chars[chars.len() - tail..].iter())
                 .collect();
-            let line = shape(text.into());
+            let line = shape(&text.into(), window);
             (line.width <= bounds.size.width).then_some(line)
         };
         let (mut low, mut high) = (0, chars.len());
@@ -130,4 +129,24 @@ impl Element for MiddleElided {
         )
         .ok();
     }
+}
+
+/// `text` as one line in the current text style.
+fn shape(text: &SharedString, window: &Window) -> ShapedLine {
+    let style = window.text_style();
+    let run = TextRun {
+        len: text.len(),
+        font: style.font(),
+        color: style.color,
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+        letter_spacing: None,
+    };
+    window.text_system().shape_line(
+        text.clone(),
+        style.font_size.to_pixels(window.rem_size()),
+        &[run],
+        None,
+    )
 }

@@ -404,6 +404,9 @@ pub struct Settings {
     focus: FocusHandle,
     save_message: Option<SaveMessage>,
     save_seq: u64,
+    /// Why the last extra scan dir was refused, under that list until the
+    /// next add or remove, as macOS's `extraScanDirectoryMessage`.
+    extra_dir_message: Option<String>,
 }
 
 impl Settings {
@@ -421,6 +424,7 @@ impl Settings {
             focus: cx.focus_handle(),
             save_message: None,
             save_seq: 0,
+            extra_dir_message: None,
         }
     }
 
@@ -439,6 +443,7 @@ impl Settings {
         self.field = None;
         self.select = None;
         self.drag = None;
+        self.extra_dir_message = None;
         self.recorder.discard();
     }
 

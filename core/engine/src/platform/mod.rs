@@ -69,6 +69,10 @@ pub(crate) fn file_scan_root_suffixes() -> &'static [&'static str] {
     platform_impl::FILE_SCAN_ROOT_SUFFIXES
 }
 
+pub(crate) fn risky_scan_roots() -> &'static [&'static str] {
+    platform_impl::RISKY_SCAN_ROOTS
+}
+
 pub(crate) fn settings_url_scheme_prefix() -> &'static str {
     platform_impl::SETTINGS_URL_SCHEME_PREFIX
 }
