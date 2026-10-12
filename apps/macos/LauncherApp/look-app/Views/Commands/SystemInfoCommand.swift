@@ -143,20 +143,7 @@ nonisolated enum SystemInfoCommand {
     }
 
     private static func getMacOSName(osVersion: OperatingSystemVersion) -> String {
-        let major = osVersion.majorVersion
-        if major >= 15 {
-            return "Sequoia"
-        } else if major >= 14 {
-            return "Sonoma"
-        } else if major >= 13 {
-            return "Ventura"
-        } else if major >= 12 {
-            return "Monterey"
-        } else if major >= 11 {
-            return "Big Sur"
-        } else {
-            return "macOS"
-        }
+        MacOSName.forMajor(osVersion.majorVersion)
     }
 
     private static func getMemoryItems() -> [SystemInfoItem] {
