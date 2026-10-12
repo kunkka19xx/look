@@ -26,6 +26,9 @@ pub(crate) const REQUIRED_APP_SCAN_ROOTS: &[&str] = &[
 
 pub(crate) const FILE_SCAN_ROOT_SUFFIXES: &[&str] = &["Desktop", "Documents", "Downloads"];
 
+/// Too big or too live to walk as an extra scan root.
+pub(crate) const RISKY_SCAN_ROOTS: &[&str] = &["/", "/System", "/Library", "/private"];
+
 pub(crate) const SETTINGS_URL_SCHEME_PREFIX: &str = "x-apple.systempreferences:";
 pub(crate) const SETTINGS_SUBTITLE_PREFIX: &str = "System Settings ";
 pub(crate) const APP_BUNDLE_EXTENSION: &str = ".app";
