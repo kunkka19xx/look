@@ -34,6 +34,7 @@ dirs = "6"
 # for Windows icon conversion.
 png = "0.17"
 trash = "5"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1.52.3", features = ["rt", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
