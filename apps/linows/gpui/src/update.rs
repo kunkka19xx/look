@@ -14,7 +14,7 @@ use crate::controls;
 use crate::launcher::Launcher;
 use crate::theme::Theme;
 
-const VERSION: &str = env!("LOOK_VERSION");
+const VERSION: &str = linows_backend::APP_VERSION;
 const DEV_SUFFIX: &str = " - dev";
 const CHECK: &str = "Check for Updates";
 const CHECKING: &str = "Checking\u{2026}";

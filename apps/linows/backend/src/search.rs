@@ -114,14 +114,20 @@ pub fn record_usage(state: &AppState, candidate_id: &str, action: &str) -> Usage
 ///
 /// A user's `run` block is a process, so the shell keeps this off its request
 /// thread. Returns what the blocks did, so a script that broke says so rather
-/// than quietly producing no rows. The shell re-binds its hotkey afterwards,
-/// since the config may have changed it.
-pub fn reload_config(state: &AppState) -> look_engine::sources::RefreshOutcome {
+/// than quietly producing no rows. `rebind` re-binds the shell's hotkey, in
+/// case the config moved it: it runs as soon as the fresh config is readable,
+/// not after the blocks, which can take seconds. A shell whose binding must
+/// happen on its UI thread passes a no-op and re-binds when this returns.
+pub fn reload_config(
+    state: &AppState,
+    rebind: impl FnOnce(),
+) -> look_engine::sources::RefreshOutcome {
     // The engine caches the parsed `~/.look/config` across calls (skips a disk
     // read on every refresh). When the user explicitly reloads, drop the cache
     // so the next bootstrap picks up their edits.
     RuntimeConfig::invalidate_cache();
     crate::clipboard::reload_from_config();
+    rebind();
     // Before the index pass, never after: the pass reads the rows these blocks
     // write, and the other order indexes the previous run's.
     let sources = look_engine::sources::refresh_run_blocks();

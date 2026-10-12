@@ -218,7 +218,7 @@ pub fn list_fonts() -> Vec<String> {
 }
 /// List the contents of a directory for folder preview.
 /// Returns items (folders first, then files, alphabetically), capped at 30.
-const LIST_FOLDER_CAP: usize = 30;
+pub const LIST_FOLDER_CAP: usize = 30;
 
 #[derive(Serialize)]
 pub struct FolderEntry {

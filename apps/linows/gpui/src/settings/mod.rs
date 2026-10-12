@@ -811,7 +811,7 @@ impl Settings {
             cx,
             move || {
                 config::set_config(updates)?;
-                engine::reload_config(app_state());
+                engine::reload_config(app_state(), || {});
                 autostart::set_autostart(launch)?;
                 if cfg!(windows) {
                     cli_path::set_cli_path(add_to_path)?;
@@ -986,19 +986,14 @@ impl Settings {
             .child(self.slider_row(&SETTINGS_BLUR, th, cx))
             .child(
                 controls::row("Blur Style", th)
-                    .child(controls::select(
+                    .child(self.select_control(
                         "settings-blur-style",
                         BLUR_STYLES,
                         BLUR_STYLES[blur_style].0,
-                        self.select == Some(BLUR_STYLE_KEY),
+                        BLUR_STYLE_KEY,
+                        Settings::pick_blur_style,
                         th,
-                        cx.listener(|this, open: &bool, _, cx| {
-                            this.settings.select = open.then_some(BLUR_STYLE_KEY);
-                            cx.notify();
-                        }),
-                        cx.listener(|this, style: &str, _, cx| {
-                            this.settings.pick_blur_style(style, cx)
-                        }),
+                        cx,
                     ))
                     .child(controls::hint(BLUR_STYLE_HINTS[blur_style], th)),
             )
@@ -1068,22 +1063,46 @@ impl Settings {
                             .text_color(th.text_secondary)
                             .child("Theme"),
                     )
-                    .child(controls::select(
+                    .child(self.select_control(
                         "settings-theme",
                         THEMES,
                         self.theme_id(),
-                        self.select == Some(THEME_KEY),
+                        THEME_KEY,
+                        Settings::pick_theme,
                         th,
-                        cx.listener(|this, open: &bool, _, cx| {
-                            this.settings.select = open.then_some(THEME_KEY);
-                            cx.notify();
-                        }),
-                        cx.listener(|this, id: &str, _, cx| this.settings.pick_theme(id, cx)),
+                        cx,
                     )),
             )
             .when(split, |el| el.child(switch(&RUNNING_APPS)))
             .when(split, |el| el.child(switch(&SUPER_ACTIONS)))
             .child(switch(&ANIMATIONS))
+    }
+
+    /// A dropdown whose open state is `self.select == Some(key)`; `pick`
+    /// takes the chosen value.
+    #[allow(clippy::too_many_arguments)]
+    fn select_control(
+        &self,
+        id: &'static str,
+        options: &'static [Option_],
+        active: &str,
+        key: &'static str,
+        pick: impl Fn(&mut Settings, &str, &mut Context<Launcher>) + 'static,
+        th: &Theme,
+        cx: &Context<Launcher>,
+    ) -> Div {
+        controls::select(
+            id,
+            options,
+            active,
+            self.select == Some(key),
+            th,
+            cx.listener(move |this, open: &bool, _, cx| {
+                this.settings.select = open.then_some(key);
+                cx.notify();
+            }),
+            cx.listener(move |this, value: &str, _, cx| pick(&mut this.settings, value, cx)),
+        )
     }
 
     fn slider_row(&self, spec: &'static Slider, th: &Theme, cx: &mut Context<Launcher>) -> Div {

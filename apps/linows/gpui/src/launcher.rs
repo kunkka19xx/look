@@ -230,8 +230,11 @@ pub struct Launcher {
     backdrop_failed: Option<bgimage::Key>,
     /// The selection pill's top, in list pixels, gliding between rows.
     pill: Entity<TransitionState<f32>>,
-    /// The rows the pill last landed on: a new set lands it without a glide.
-    pill_rows: *const Vec<Row>,
+    /// Bumped each time `rows` is replaced; the pill lands on a new set
+    /// without a glide.
+    rows_epoch: u64,
+    /// The `rows_epoch` the pill last landed on.
+    pill_rows: u64,
     /// Bumped each time the results replace the launchpad, keying their
     /// entrance.
     results_epoch: u64,
@@ -325,7 +328,8 @@ impl Launcher {
             backdrop_loading: None,
             backdrop_failed: None,
             pill: cx.new(|_| TransitionState::new(0.0)),
-            pill_rows: std::ptr::null(),
+            rows_epoch: 1,
+            pill_rows: 0,
             results_epoch: 0,
             prev_selected: None,
             shift_epoch: 0,
@@ -450,7 +454,7 @@ impl Launcher {
         if self.levels.is_active() {
             self.mode = Mode::Search;
             self.close_menu();
-            self.rows = Arc::new(self.levels.rows(&query));
+            self.set_rows(self.levels.rows(&query));
             self.selected = 0;
             self.sync_preview(cx);
             cx.notify();
@@ -478,7 +482,7 @@ impl Launcher {
         self.launchpad
             .update(cx, |launchpad, cx| launchpad.set_shown(bento, cx));
         if home && !home_lists() {
-            self.rows = Arc::new(Vec::new());
+            self.set_rows(Vec::new());
             self.selected = 0;
             self.sync_preview(cx);
             cx.notify();
@@ -592,13 +596,18 @@ impl Launcher {
 
     /// New rows for `query`: the selection stays on the row the user moved
     /// to under it, else lands on `fallback`.
+    fn set_rows(&mut self, rows: Vec<Row>) {
+        self.rows = Arc::new(rows);
+        self.rows_epoch += 1;
+    }
+
     fn publish(&mut self, rows: Vec<Row>, query: &str, fallback: usize) {
         let kept = (self.navigated.as_deref() == Some(query))
             .then(|| self.rows.get(self.selected))
             .flatten()
             .and_then(|old| rows.iter().position(|r| r.id == old.id));
         self.selected = kept.unwrap_or(fallback).min(rows.len().saturating_sub(1));
-        self.rows = Arc::new(rows);
+        self.set_rows(rows);
         self.settle_pick(query);
     }
 
@@ -1018,7 +1027,7 @@ impl Launcher {
         self.running.refresh(cx);
         bg::fetch(
             cx,
-            || engine::reload_config(app_state()),
+            || engine::reload_config(app_state(), || {}),
             |this, _, cx| {
                 crate::hotkey::set_active(true);
                 this.banner.show(
@@ -1040,7 +1049,7 @@ impl Launcher {
                 cx,
                 || {
                     config::reset_config()?;
-                    engine::reload_config(app_state());
+                    engine::reload_config(app_state(), || {});
                     app_state().force_index_refresh();
                     Ok::<(), String>(())
                 },
@@ -1692,7 +1701,7 @@ impl Launcher {
             return true;
         }
         let title = row.title.trim().to_string();
-        let on_yes: OnYes = Box::new(move |this, cx| {
+        let on_yes: OnYes = Box::new(move |_, cx| {
             let name = title.clone();
             bg::fetch(
                 cx,
@@ -1718,7 +1727,6 @@ impl Launcher {
                     ),
                 },
             );
-            let _ = this;
         });
         self.ask(
             Confirm {
@@ -2769,7 +2777,7 @@ impl Launcher {
                                             .text_color(th.text_muted)
                                             .cursor_pointer()
                                             .hover(|s| s.bg(th.control_fill).text_color(th.text))
-                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                            .on_click(cx.listener(move |_, _, _, cx| {
                                                 let text = text.clone();
                                                 bg::fetch(
                                                     cx,
@@ -2787,7 +2795,6 @@ impl Launcher {
                                                         );
                                                     },
                                                 );
-                                                let _ = this;
                                             }))
                                             .child(
                                                 svg()
@@ -2895,7 +2902,12 @@ impl Render for Launcher {
 }
 
 impl Launcher {
-    fn content(&mut self, th: Theme, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn content(
+        &mut self,
+        th: Arc<Theme>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let frosted = th.frosted();
         motion::sync(th.animations, cx);
         self.arm_frost(blur::surfaces_fade(frosted), window, cx);
@@ -3092,7 +3104,7 @@ fn hide_app(name: &str) -> Result<bool, String> {
         key: APP_EXCLUDE_KEY.into(),
         value: config_list::render(&names),
     }])?;
-    engine::reload_config(app_state());
+    engine::reload_config(app_state(), || {});
     Ok(true)
 }
 
@@ -3195,7 +3207,7 @@ impl Launcher {
             Transition::new(self.pill.clone(), motion::transition(motion::GLIDE_MS, cx))
                 .with_easing(motion::curve);
         let goal = self.selected as f32 * theme::ROW_HEIGHT;
-        let fresh = !std::ptr::eq(self.pill_rows, Arc::as_ptr(&self.rows));
+        let fresh = self.pill_rows != self.rows_epoch;
         if self.selected != self.last_selected {
             // New rows land without a slide, so no row is leaving.
             self.prev_selected = (!fresh).then_some(self.last_selected);
@@ -3203,7 +3215,7 @@ impl Launcher {
             self.last_selected = self.selected;
         }
         if fresh {
-            self.pill_rows = Arc::as_ptr(&self.rows);
+            self.pill_rows = self.rows_epoch;
             transition.jump_to(goal, cx);
         } else {
             // A held key moves the selection faster than a glide can

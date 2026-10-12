@@ -630,8 +630,8 @@ impl Pomo {
         }
     }
 
-    /// One thread for the process: when a track ends, the next plays, panel
-    /// open or not.
+    /// One thread while music plays: when a track ends, the next plays, panel
+    /// open or not. Gone once playback stops; resuming arms it again.
     fn ensure_poller(&mut self) {
         if self.poller {
             return;
@@ -643,7 +643,11 @@ impl Pomo {
                 loop {
                     std::thread::sleep(std::time::Duration::from_secs(END_POLL_SECS));
                     let mut pomo = lock();
-                    if pomo.playing && music::music_is_finished() {
+                    if !pomo.playing {
+                        pomo.poller = false;
+                        return;
+                    }
+                    if music::music_is_finished() {
                         pomo.music_next();
                     }
                 }

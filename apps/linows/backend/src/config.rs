@@ -252,12 +252,35 @@ pub fn clipboard_image_limit() -> usize {
     )
 }
 
+/// The keys every window show reads. Parsed again only when the file's
+/// mtime moved, so a show costs one stat rather than two reads of the file.
+struct ShowValues {
+    modified: Option<std::time::SystemTime>,
+    layout: LauncherLayout,
+    retention_secs: i64,
+}
+
+static SHOW_VALUES: std::sync::Mutex<Option<ShowValues>> = std::sync::Mutex::new(None);
+
+fn show_values<T>(pick: impl FnOnce(&ShowValues) -> T) -> T {
+    let path = config_file_path();
+    let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+    let mut slot = SHOW_VALUES.lock().unwrap_or_else(|p| p.into_inner());
+    let stale = slot.as_ref().is_none_or(|v| v.modified != modified);
+    if stale {
+        let contents = std::fs::read_to_string(&path).unwrap_or_default();
+        *slot = Some(ShowValues {
+            modified,
+            layout: parse_launcher_layout(&contents),
+            retention_secs: parse_query_retention_seconds(&contents),
+        });
+    }
+    pick(slot.as_ref().expect("just filled"))
+}
+
 /// `layout` from the config file; split when absent or unknown.
 pub fn launcher_layout() -> LauncherLayout {
-    let Ok(contents) = std::fs::read_to_string(config_file_path()) else {
-        return LauncherLayout::default();
-    };
-    parse_launcher_layout(&contents)
+    show_values(|v| v.layout)
 }
 
 fn parse_launcher_layout(contents: &str) -> LauncherLayout {
@@ -293,11 +316,7 @@ fn limit_from_file(key: &str, range: std::ops::RangeInclusive<usize>, default: u
 /// How long the main query survives while the launcher is hidden. A negative
 /// value keeps it indefinitely.
 pub fn query_retention_seconds() -> i64 {
-    let path = config_file_path();
-    let Ok(contents) = std::fs::read_to_string(&path) else {
-        return QUERY_RETENTION_SECONDS_DEFAULT;
-    };
-    parse_query_retention_seconds(&contents)
+    show_values(|v| v.retention_secs)
 }
 
 /// A count out of range is a typo, not a request, so the default stands rather

@@ -75,12 +75,7 @@ fn append_crash_log(message: &str) -> Option<PathBuf> {
         .append(true)
         .open(&path)
         .ok()?;
-    writeln!(
-        file,
-        "[{unix_s}] lookapp {}: {message}",
-        env!("APP_VERSION")
-    )
-    .ok()?;
+    writeln!(file, "[{unix_s}] lookapp {}: {message}", crate::APP_VERSION).ok()?;
     Some(path)
 }
 

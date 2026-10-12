@@ -16,8 +16,10 @@ const BUTTON_GAP: f32 = 6.0;
 const BUTTON_PADDING_X: f32 = 16.0;
 const BUTTON_PADDING_Y: f32 = 6.0;
 const BORDER_MIX: f32 = 0.85;
-const YES_LABEL: &str = "Y / Yes";
-const NO_LABEL: &str = "N / No";
+pub const YES_LABEL: &str = "Y / Yes";
+pub const NO_LABEL: &str = "N / No";
+/// The question when a tile or action asks for one without wording it.
+pub const CONFIRM_FALLBACK: &str = "Confirm?";
 
 /// What runs on yes; the bar is gone by then.
 pub type OnYes = Box<dyn FnOnce(&mut Launcher, &mut Context<Launcher>)>;

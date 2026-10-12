@@ -27,6 +27,7 @@ use linows_backend::qactions::{
 use linows_backend::weather::{self, WeatherSnapshot};
 use linows_backend::{lunar, sysinfo, todo};
 
+use crate::confirm::CONFIRM_FALLBACK;
 use crate::glyphs;
 use crate::icons;
 use crate::motion;
@@ -107,7 +108,6 @@ const DONE_TODAY: &str = "done today";
 const LUNAR: &str = "Lunar";
 const LUNAR_LEAP: &str = "Lunar leap";
 const UPTIME: &str = "Uptime";
-const CONFIRM_FALLBACK: &str = "Confirm?";
 const PLAYPAUSE: &str = "playpause";
 const NEXT: &str = "next";
 const PREVIOUS: &str = "previous";
@@ -1328,11 +1328,7 @@ impl Launchpad {
             th.text_secondary
         };
         let label = if confirming {
-            StyledText::new(SharedString::from(
-                tile.confirm
-                    .clone()
-                    .unwrap_or_else(|| CONFIRM_FALLBACK.to_string()),
-            ))
+            StyledText::new(confirm_label(tile))
         } else {
             mnemonic_text(&tile.title, tile.mnemonic, th)
         };
@@ -1461,11 +1457,7 @@ impl Launchpad {
                     bouncing(index, glyph(glyphs::POWER, ICON_ACTION, th.text_secondary))
                 });
             let label = if confirming {
-                StyledText::new(SharedString::from(
-                    tile.confirm
-                        .clone()
-                        .unwrap_or_else(|| CONFIRM_FALLBACK.to_string()),
-                ))
+                StyledText::new(confirm_label(tile))
             } else {
                 mnemonic_text(&tile.title, tile.mnemonic, th)
             };
@@ -1477,12 +1469,7 @@ impl Launchpad {
         // The command's caption wins over the name, as Weather shows the
         // condition. Unless the tile has a key: that letter is in the name.
         let name = if confirming {
-            StyledText::new(SharedString::from(
-                tile.confirm
-                    .clone()
-                    .unwrap_or_else(|| CONFIRM_FALLBACK.to_string())
-                    .to_uppercase(),
-            ))
+            StyledText::new(SharedString::from(confirm_label(tile).to_uppercase()))
         } else if tile.mnemonic.is_none() && caption.is_some() {
             StyledText::new(SharedString::from(
                 caption.clone().unwrap_or_default().to_uppercase(),
@@ -1586,6 +1573,14 @@ impl Launchpad {
             .or_insert_with(|| icons::decode_data_url(name).map(Arc::new))
             .clone()?;
         Some(img(image).size(px(size)).into_any_element())
+    }
+}
+
+/// What an armed tile shows in place of its name.
+fn confirm_label(tile: &LaunchpadTile) -> SharedString {
+    match &tile.confirm {
+        Some(question) => question.clone().into(),
+        None => CONFIRM_FALLBACK.into(),
     }
 }
 

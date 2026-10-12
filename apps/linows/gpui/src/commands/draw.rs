@@ -53,6 +53,37 @@ pub fn paint_dashed_circle(
     }
 }
 
+/// A progress ring: the full `track` circle, then the arc for fraction `f`
+/// of a turn in `accent`, clockwise from the top.
+pub fn paint_ring(
+    window: &mut Window,
+    centre: Point<Pixels>,
+    r: f32,
+    width: f32,
+    f: f32,
+    track: Hsla,
+    accent: Hsla,
+) {
+    paint_circle(window, centre, r, width, track);
+    if f <= 0.0 {
+        return;
+    }
+    let (cx, cy) = (f32::from(centre.x), f32::from(centre.y));
+    let angle = std::f32::consts::TAU * f.min(0.9999);
+    let mut arc = PathBuilder::stroke(px(width));
+    arc.move_to(point(px(cx), px(cy - r)));
+    arc.arc_to(
+        point(px(r), px(r)),
+        px(0.0),
+        angle > std::f32::consts::PI,
+        true,
+        point(px(cx + r * angle.sin()), px(cy - r * angle.cos())),
+    );
+    if let Ok(path) = arc.build() {
+        window.paint_path(path, accent);
+    }
+}
+
 pub fn paint_dot(window: &mut Window, centre: Point<Pixels>, r: f32, colour: Hsla) {
     let mut builder = PathBuilder::fill();
     circle_path(&mut builder, centre, r);

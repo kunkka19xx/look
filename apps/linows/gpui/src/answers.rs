@@ -341,7 +341,7 @@ impl AiAnswer {
                 .text_color(th.text_muted)
                 .cursor_pointer()
                 .hover(|s| s.bg(th.control_fill).text_color(th.text))
-                .on_click(cx.listener(move |this, _, _, cx| {
+                .on_click(cx.listener(move |_, _, _, cx| {
                     let text = text.clone();
                     bg::fetch(
                         cx,
@@ -354,7 +354,6 @@ impl AiAnswer {
                             this.banner.show(msg.into(), tone, crate::banner::SHORT, cx);
                         },
                     );
-                    let _ = this;
                 }))
                 .child(
                     svg()

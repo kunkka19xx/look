@@ -7,10 +7,11 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     Animation, AnimationExt, AnyElement, Bounds, Context, Corners, Div, Entity, FontWeight,
-    PathBuilder, Pixels, Rgba, ScrollHandle, SharedString, Stateful, Task, TextAlign, TextRun,
-    Transformation, Window, canvas, div, fill, point, prelude::*, px, radians, svg,
+    PathBuilder, Pixels, Rgba, ScrollHandle, SharedString, Stateful, Task, Transformation, Window,
+    canvas, div, fill, point, prelude::*, px, radians, svg,
 };
 
+use super::draw::{LINE_HEIGHT, Type, paint_dot, paint_ring, paint_text};
 use super::{Commands, KeyOutcome};
 use crate::banner;
 use crate::bg;
@@ -51,7 +52,6 @@ const MINIMAL_TEXT_Y: f32 = 0.42;
 const MINIMAL_BAR_Y: f32 = 0.68;
 const MINIMAL_BAR_W: f32 = 0.8;
 const MINIMAL_BAR_H: f32 = 4.0;
-const LINE_HEIGHT: f32 = 1.2;
 const CARD_PADDING_TOP: f32 = 16.0;
 const CARD_PADDING_BOTTOM: f32 = 8.0;
 const CARD_GAP: f32 = 8.0;
@@ -955,7 +955,7 @@ struct Face {
     progress: f32,
     colour: gpui::Hsla,
     text_colour: gpui::Hsla,
-    mono: String,
+    mono: SharedString,
 }
 
 impl Face {
@@ -964,49 +964,18 @@ impl Face {
         (f32::from(c.x), f32::from(c.y))
     }
 
-    /// A full circle as two half arcs.
-    fn circle(&self, builder: &mut PathBuilder, r: f32) {
-        let (cx, cy) = self.centre();
-        builder.move_to(point(px(cx), px(cy - r)));
-        builder.arc_to(
-            point(px(r), px(r)),
-            px(0.0),
-            false,
-            true,
-            point(px(cx), px(cy + r)),
-        );
-        builder.arc_to(
-            point(px(r), px(r)),
-            px(0.0),
-            false,
-            true,
-            point(px(cx), px(cy - r)),
-        );
-    }
-
     fn ring(&self, time: &str, window: &mut Window, cx: &mut gpui::App) {
-        let (cx_, cy) = self.centre();
+        let (_, cy) = self.centre();
         let r = self.size / 2.0 - RING_INSET;
-        let mut ring_track = PathBuilder::stroke(px(RING_W));
-        self.circle(&mut ring_track, r);
-        if let Ok(path) = ring_track.build() {
-            window.paint_path(path, track(RING_TRACK_ALPHA));
-        }
-        if self.progress > 0.0 {
-            let angle = std::f32::consts::TAU * self.progress.min(0.9999);
-            let mut arc = PathBuilder::stroke(px(RING_W));
-            arc.move_to(point(px(cx_), px(cy - r)));
-            arc.arc_to(
-                point(px(r), px(r)),
-                px(0.0),
-                angle > std::f32::consts::PI,
-                true,
-                point(px(cx_ + r * angle.sin()), px(cy - r * angle.cos())),
-            );
-            if let Ok(path) = arc.build() {
-                window.paint_path(path, self.colour);
-            }
-        }
+        paint_ring(
+            window,
+            self.bounds.center(),
+            r,
+            RING_W,
+            self.progress,
+            track(RING_TRACK_ALPHA),
+            self.colour,
+        );
         self.text(time, self.size * RING_TEXT_SCALE, cy, window, cx);
     }
 
@@ -1035,11 +1004,7 @@ impl Face {
                 window.paint_path(path, track(TICK_TRACK_ALPHA));
             }
         }
-        let mut hub = PathBuilder::fill();
-        self.circle(&mut hub, DIAL_HUB);
-        if let Ok(path) = hub.build() {
-            window.paint_path(path, self.colour);
-        }
+        paint_dot(window, self.bounds.center(), DIAL_HUB, self.colour);
         let angle = -std::f32::consts::FRAC_PI_2 + std::f32::consts::TAU * self.progress;
         let len = r - DIAL_NEEDLE_INSET;
         let mut needle = PathBuilder::stroke(px(DIAL_NEEDLE_W));
@@ -1091,27 +1056,14 @@ impl Face {
 
     /// Bold mono digits centred on `cy`.
     fn text(&self, text: &str, font_size: f32, cy: f32, window: &mut Window, cx: &mut gpui::App) {
-        let mut font = window.text_style().font();
-        font.family = self.mono.clone().into();
-        font.weight = FontWeight::BOLD;
-        let run = TextRun {
-            len: text.len(),
-            font,
-            color: self.text_colour,
-            background_color: None,
-            underline: None,
-            strikethrough: None,
-            letter_spacing: None,
+        let style = Type {
+            size: font_size,
+            family: self.mono.as_ref(),
+            weight: FontWeight::BOLD,
+            colour: self.text_colour,
+            spacing: 0.0,
         };
-        let line = window.text_system().shape_line(
-            SharedString::from(text.to_string()),
-            px(font_size),
-            &[run],
-            None,
-        );
-        let line_height = px(font_size * LINE_HEIGHT);
         let (cx_, _) = self.centre();
-        let origin = point(px(cx_) - line.width() / 2.0, px(cy) - line_height / 2.0);
-        let _ = line.paint(origin, line_height, TextAlign::Left, None, window, cx);
+        paint_text(window, cx, text, &style, cx_, cy);
     }
 }

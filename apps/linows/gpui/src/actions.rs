@@ -12,6 +12,7 @@ use gpui::{Context, Div, FontWeight, div, prelude::*, px};
 use linows_backend::sources::{self, RowArgs};
 use linows_backend::tools;
 
+use crate::confirm::CONFIRM_FALLBACK;
 use crate::launcher::Launcher;
 use crate::rows::Row;
 use crate::theme::{self, Theme};
@@ -28,7 +29,6 @@ pub const BANNER_SECONDS: f32 = 2.4;
 pub const MENU_BANNER_SECONDS: f32 = 1.2;
 pub const EMPTY: &str = "Nothing to do here";
 const CANCEL: &str = "Cancel";
-const CONFIRM_FALLBACK: &str = "Confirm?";
 /// The platform's own file manager, for "Reveal in Files".
 #[cfg(target_os = "linux")]
 const SYSTEM_FILE_MANAGER: &str = "Files";

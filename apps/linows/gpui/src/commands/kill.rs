@@ -10,6 +10,7 @@ use linows_backend::process::{self, KillTarget};
 use super::{Commands, KeyOutcome};
 use crate::banner;
 use crate::bg;
+use crate::confirm::{NO_LABEL, YES_LABEL};
 use crate::icons::{IconRequest, IconStore};
 use crate::launcher::Launcher;
 use crate::launchpad::Tone;
@@ -40,8 +41,6 @@ const SEARCHING: &str = "Searching...";
 const NO_PROCESSES: &str = "No running processes";
 const NO_MATCH: &str = "No matching processes";
 const ENTER_MARK: &str = "\u{2192} Enter";
-const YES: &str = "Y / Yes";
-const NO: &str = "N / No";
 
 #[derive(Default)]
 pub struct Kill {
@@ -339,13 +338,13 @@ pub fn panel(
                                 .bg(th.danger)
                                 .text_color(th.on_accent)
                                 .font_weight(FontWeight::BOLD)
-                                .child(YES),
+                                .child(YES_LABEL),
                         )
                         .child(
                             div()
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(th.text_secondary)
-                                .child(NO),
+                                .child(NO_LABEL),
                         ),
                 )
         });

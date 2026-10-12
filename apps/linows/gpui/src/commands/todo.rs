@@ -9,12 +9,11 @@ use std::time::Duration;
 use chrono::NaiveDate;
 use gpui::{
     Anchor, AnchoredPositionMode, Bounds, ClickEvent, Context, Div, Edges, Entity, FontWeight,
-    HitboxBehavior, Hsla, MouseMoveEvent, PathBuilder, Pixels, Point, ScrollHandle, SharedString,
-    Stateful, Task, Window, anchored, canvas, deferred, div, fill, point, prelude::*, px, size,
-    svg,
+    HitboxBehavior, MouseMoveEvent, PathBuilder, Pixels, Point, ScrollHandle, SharedString,
+    Stateful, Task, anchored, canvas, deferred, div, fill, point, prelude::*, px, size, svg,
 };
 
-use super::draw::{Type, paint_circle, paint_dot, paint_text};
+use super::draw::{Type, paint_circle, paint_dot, paint_ring, paint_text};
 use super::{Commands, KeyOutcome};
 use crate::bg;
 use crate::glyphs;
@@ -728,12 +727,7 @@ fn task_row(
             .px(px(TAG_PADDING_X))
             .py(px(TAG_PADDING_Y))
             .rounded_full()
-            .bg(gpui::Rgba::new(
-                colour.color.red,
-                colour.color.green,
-                colour.color.blue,
-                TAG_WASH,
-            ))
+            .bg(theme::veil(colour, TAG_WASH))
             .font_family(th.mono_family.clone())
             .text_size(px(TAG_SIZE))
             .font_weight(FontWeight::BOLD)
@@ -1336,12 +1330,7 @@ fn heatmap(counts: &todo::Counts, th: &Theme, cx: &mut Context<Launcher>) -> imp
                         continue;
                     }
                     let done = counts.get(&day).map_or(0, |c| c.0);
-                    let colour = gpui::Rgba::new(
-                        accent.color.red,
-                        accent.color.green,
-                        accent.color.blue,
-                        HEAT_OPACITY[todo::heat_level(done)],
-                    );
+                    let colour = theme::veil(accent, HEAT_OPACITY[todo::heat_level(done)]);
                     let mut quad = fill(grid.cell_bounds(col, row), theme::hsla_of(colour));
                     quad.corner_radii = gpui::Corners::all(px(HEAT_RADIUS));
                     window.paint_quad(quad);
@@ -1428,12 +1417,7 @@ fn heat_legend(th: &Theme) -> Div {
         div()
             .size(px(HEAT_CELL))
             .rounded(px(HEAT_RADIUS))
-            .bg(gpui::Rgba::new(
-                th.accent.color.red,
-                th.accent.color.green,
-                th.accent.color.blue,
-                *alpha,
-            ))
+            .bg(theme::veil(th.accent, *alpha))
     });
     div()
         .flex()
@@ -1519,33 +1503,4 @@ fn ring(size_px: f32, r: f32, width: f32, f: f32, th: &Theme) -> impl IntoElemen
     )
     .size(px(size_px))
     .flex_shrink_0()
-}
-
-fn paint_ring(
-    window: &mut Window,
-    centre: Point<Pixels>,
-    r: f32,
-    width: f32,
-    f: f32,
-    track: Hsla,
-    accent: Hsla,
-) {
-    paint_circle(window, centre, r, width, track);
-    if f <= 0.0 {
-        return;
-    }
-    let (cx, cy) = (f32::from(centre.x), f32::from(centre.y));
-    let angle = std::f32::consts::TAU * f.min(0.9999);
-    let mut arc = PathBuilder::stroke(px(width));
-    arc.move_to(point(px(cx), px(cy - r)));
-    arc.arc_to(
-        point(px(r), px(r)),
-        px(0.0),
-        angle > std::f32::consts::PI,
-        true,
-        point(px(cx + r * angle.sin()), px(cy - r * angle.cos())),
-    );
-    if let Ok(path) = arc.build() {
-        window.paint_path(path, accent);
-    }
 }

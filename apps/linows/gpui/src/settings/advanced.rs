@@ -460,19 +460,14 @@ impl Settings {
             .child(controls::section("Privacy & Logs", th))
             .child(
                 controls::row("Backend Log Level", th)
-                    .child(controls::select(
+                    .child(self.select_control(
                         "settings-log-level",
                         LOG_LEVELS,
                         self.log_level(),
-                        self.select == Some(LOG_LEVEL_KEY),
+                        LOG_LEVEL_KEY,
+                        Settings::pick_log_level,
                         th,
-                        cx.listener(|this, open: &bool, _, cx| {
-                            this.settings.select = open.then_some(LOG_LEVEL_KEY);
-                            cx.notify();
-                        }),
-                        cx.listener(|this, level: &str, _, cx| {
-                            this.settings.pick_log_level(level, cx)
-                        }),
+                        cx,
                     ))
                     .child(controls::hint(LOG_HINT, th)),
             )
@@ -550,19 +545,14 @@ impl Settings {
             )
             .child(
                 controls::row("Image Layout", th)
-                    .child(controls::select(
+                    .child(self.select_control(
                         "settings-bg-layout",
                         BG_LAYOUTS,
                         BG_LAYOUTS[layout].0,
-                        self.select == Some(theme::BG_LAYOUT_KEY),
+                        theme::BG_LAYOUT_KEY,
+                        Settings::pick_bg_layout,
                         th,
-                        cx.listener(|this, open: &bool, _, cx| {
-                            this.settings.select = open.then_some(theme::BG_LAYOUT_KEY);
-                            cx.notify();
-                        }),
-                        cx.listener(|this, layout: &str, _, cx| {
-                            this.settings.pick_bg_layout(layout, cx)
-                        }),
+                        cx,
                     ))
                     .child(controls::hint(BG_LAYOUT_HINTS[layout], th)),
             )

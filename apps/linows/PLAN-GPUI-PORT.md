@@ -698,9 +698,9 @@ through `start_windows_update`, the process leaving on success), Release
 Notes and Dismiss, and the hint for the install method (Scoop's command
 with a Copy pill, the installer note, or the README link). It sits under
 the help title row and as About at the foot of the Advanced tab. The
-version is `LOOK_VERSION`, read by `gpui/build.rs` from
-`tauri.conf.json`, the file the release tag is checked against, until the
-Tauri shell retires. Verified on sway: the help header, a live check
+version is `linows_backend::APP_VERSION`, read by the backend's build.rs
+from `tauri.conf.json`, the file the release tag is checked against, until
+the Tauri shell retires. Verified on sway: the help header, a live check
 answering the latest version, and the About section.
 
 Settings header dropped, same day, the user's call ahead of macOS: no

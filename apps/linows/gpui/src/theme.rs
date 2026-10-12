@@ -5,9 +5,9 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
-use gpui::{Bounds, BoxShadow, Hsla, Pixels, Rgba, Size, hsla, point, px, size};
+use gpui::{Bounds, BoxShadow, Hsla, Pixels, Rgba, SharedString, Size, hsla, point, px, size};
 use linows_backend::config::{self, LauncherLayout};
 use linows_backend::geometry;
 use linows_backend::highlight::TokenType;
@@ -128,6 +128,7 @@ const PLATFORM_MONO: &str = "Cascadia Code";
 
 /// One preset's palette, the `:root[data-theme]` block of theme.css plus the
 /// triplets theme-defaults.js seeds the config with.
+#[derive(Clone)]
 struct Preset {
     id: &'static str,
     tint: [f32; 3],
@@ -413,14 +414,15 @@ fn presets() -> Vec<Preset> {
     ]
 }
 
-fn preset(id: &str) -> Preset {
-    let mut all = presets();
-    let at = all
+static PRESETS: LazyLock<Vec<Preset>> = LazyLock::new(presets);
+
+/// `id`'s preset, the default's for an unknown id.
+fn preset(id: &str) -> &'static Preset {
+    PRESETS
         .iter()
-        .position(|p| p.id == id)
-        .or_else(|| all.iter().position(|p| p.id == DEFAULT_THEME))
-        .expect("the default preset exists");
-    all.swap_remove(at)
+        .find(|p| p.id == id)
+        .or_else(|| PRESETS.iter().find(|p| p.id == DEFAULT_THEME))
+        .expect("the default preset exists")
 }
 
 /// How `ui_bg_image` fills the window, the webview's `background-size`.
@@ -475,8 +477,8 @@ pub struct Theme {
     pub warning: Rgba,
     pub danger: Rgba,
     pub on_accent: Rgba,
-    pub font_family: String,
-    pub mono_family: String,
+    pub font_family: SharedString,
+    pub mono_family: SharedString,
     pub font_size: f32,
     pub border_thickness: f32,
     pub radius_scale: f32,
@@ -575,10 +577,10 @@ impl Theme {
         };
         let frost = get(BG_IMAGE_KEY).is_some() || (compositor_blur && crate::blur::can_frost());
 
-        let font_family = match get("ui_font_name").filter(|f| *f != SYSTEM_FONT) {
-            Some(family) => family.to_string(),
-            None if preset.serif => KINDLE_FONT.to_string(),
-            None => PLATFORM_FONT.to_string(),
+        let font_family: SharedString = match get("ui_font_name").filter(|f| *f != SYSTEM_FONT) {
+            Some(family) => family.to_string().into(),
+            None if preset.serif => KINDLE_FONT.into(),
+            None => PLATFORM_FONT.into(),
         };
         let text = rgba(
             triplet("ui_font", preset.font),
@@ -590,7 +592,7 @@ impl Theme {
         let preset = if id == CUSTOM_THEME {
             custom_preset(text)
         } else {
-            preset
+            preset.clone()
         };
 
         Self {
@@ -622,7 +624,7 @@ impl Theme {
             danger: preset.semantic[2],
             on_accent: preset.on_accent,
             font_family,
-            mono_family: PLATFORM_MONO.to_string(),
+            mono_family: PLATFORM_MONO.into(),
             font_size: num("ui_font_size", FONT_SIZE_DEFAULT),
             border_thickness: num("ui_border_thickness", DEFAULT_BORDER_THICKNESS),
             radius_scale: num("ui_surface_radius", DEFAULT_RADIUS_SCALE),
@@ -747,7 +749,7 @@ impl Theme {
     }
 }
 
-static THEME: RwLock<Option<Theme>> = RwLock::new(None);
+static THEME: RwLock<Option<Arc<Theme>>> = RwLock::new(None);
 /// The configured layout the session override was taken against.
 static CONFIGURED: Mutex<Option<LauncherLayout>> = Mutex::new(None);
 
@@ -777,10 +779,10 @@ pub fn toggle_session_layout() {
         .unwrap_or_else(|p| p.into_inner())
         .unwrap_or_default();
     let mut guard = THEME.write().unwrap_or_else(|p| p.into_inner());
-    let theme = guard.get_or_insert_with(Theme::from_config);
+    let theme = guard.get_or_insert_with(|| Arc::new(Theme::from_config()));
     let next = theme.layout.flipped();
     geometry::set_session_layout((next != configured).then_some(next));
-    theme.layout = next;
+    Arc::make_mut(theme).layout = next;
 }
 
 /// The settings picker speaks for the config, so a pick ends the override.
@@ -795,15 +797,16 @@ pub fn load() {
 
 /// Make `theme` the one every render reads, written to the config or not.
 pub fn install(theme: Theme) {
-    *THEME.write().unwrap_or_else(|p| p.into_inner()) = Some(theme);
+    *THEME.write().unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(theme));
 }
 
-/// A snapshot for one render, so every token in a frame agrees.
-pub fn get() -> Theme {
+/// A snapshot for one render, so every token in a frame agrees. A refcount
+/// bump, not a copy: renders and key handlers take one per call.
+pub fn get() -> Arc<Theme> {
     let guard = THEME.read().unwrap_or_else(|p| p.into_inner());
     match guard.as_ref() {
-        Some(theme) => theme.clone(),
-        None => Theme::from_config(),
+        Some(theme) => Arc::clone(theme),
+        None => Arc::new(Theme::from_config()),
     }
 }
 

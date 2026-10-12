@@ -31,8 +31,8 @@ pub fn pickable(row: &Row) -> bool {
     !row.is_hint() && (row.kind == "file" || row.kind == "folder")
 }
 
-fn key(row: &Row) -> String {
-    format!("{}|{}", row.kind, row.path)
+fn same(a: &Row, b: &Row) -> bool {
+    a.kind == b.kind && a.path == b.path
 }
 
 #[derive(Default)]
@@ -54,14 +54,12 @@ impl Picked {
     }
 
     pub fn contains(&self, row: &Row) -> bool {
-        let wanted = key(row);
-        self.items.iter().any(|item| key(item) == wanted)
+        self.items.iter().any(|item| same(item, row))
     }
 
     /// In if it was out, out if it was in.
     pub fn toggle(&mut self, row: &Row) {
-        let wanted = key(row);
-        match self.items.iter().position(|item| key(item) == wanted) {
+        match self.items.iter().position(|item| same(item, row)) {
             Some(at) => {
                 self.items.remove(at);
             }

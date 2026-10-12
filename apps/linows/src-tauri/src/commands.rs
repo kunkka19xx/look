@@ -94,12 +94,9 @@ pub fn reveal_path(path: String) -> Result<(), String> {
     backend::launch::reveal_path(&path)
 }
 
-/// The backend's reload, then the hotkey re-bound in case the config moved it.
 #[tauri::command(async)]
 pub fn reload_config(app: tauri::AppHandle, state: State<'_, AppState>) -> RefreshOutcome {
-    let outcome = backend::search::reload_config(&state);
-    crate::launcher_hotkey::set_active(&app, true);
-    outcome
+    backend::search::reload_config(&state, || crate::launcher_hotkey::set_active(&app, true))
 }
 
 #[tauri::command]
@@ -227,11 +224,11 @@ pub async fn pick_image(app: tauri::AppHandle) -> Option<String> {
 /// Source of truth is `tauri.conf.json`. Debug builds report a fixed `0.1.0`
 /// so the update check can be exercised end-to-end against the latest release.
 #[tauri::command]
-pub fn get_lookapp_version(app: tauri::AppHandle) -> String {
+pub fn get_lookapp_version() -> String {
     if cfg!(debug_assertions) {
         return "0.1.0".to_string();
     }
-    app.package_info().version.to_string()
+    backend::APP_VERSION.to_string()
 }
 
 // --- Shell ---

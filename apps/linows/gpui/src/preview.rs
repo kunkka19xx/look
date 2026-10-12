@@ -594,7 +594,7 @@ impl Preview {
             .gap(px(DELETE_GAP))
             .cursor_pointer()
             .hover(|s| s.opacity(0.9))
-            .on_click(cx.listener(move |this, _, _, cx| {
+            .on_click(cx.listener(move |_, _, _, cx| {
                 let remove = remove.clone();
                 cx.spawn(async move |this, cx| {
                     let removed = cx
@@ -616,7 +616,6 @@ impl Preview {
                     }
                 })
                 .detach();
-                let _ = this;
             }))
             .child(
                 svg()
@@ -696,16 +695,7 @@ impl Preview {
                             .child(StyledText::new(text.clone()).with_highlights(runs)),
                     )
                     .when(*truncated, |el| {
-                        el.child(
-                            div()
-                                .py(px(INFO_PADDING_Y))
-                                .border_t(px(1.0))
-                                .border_color(th.border)
-                                .text_size(px(th.font_size - 2.0))
-                                .text_color(th.text_muted)
-                                .text_center()
-                                .child(TRUNCATED_NOTE),
-                        )
+                        el.child(truncated_note(TRUNCATED_NOTE, th))
                     })
                     .into_any_element()
             }
@@ -798,8 +788,13 @@ impl Preview {
                             }),
                     );
                 }
-                let _ = truncated;
-                list.into_any_element()
+                list.when(*truncated, |el| {
+                    el.child(truncated_note(
+                        format!("First {} entries", files::LIST_FOLDER_CAP),
+                        th,
+                    ))
+                })
+                .into_any_element()
             }
         }
     }
@@ -1225,6 +1220,18 @@ fn plural(count: usize, noun: &str) -> String {
 }
 
 /// Shared with the ci" rows, which say how big a copied image is.
+/// The footer line under a body that stops short of the whole file.
+fn truncated_note(text: impl Into<SharedString>, th: &Theme) -> Div {
+    div()
+        .py(px(INFO_PADDING_Y))
+        .border_t(px(1.0))
+        .border_color(th.border)
+        .text_size(px(th.font_size - 2.0))
+        .text_color(th.text_muted)
+        .text_center()
+        .child(text.into())
+}
+
 pub fn format_size(bytes: u64) -> String {
     const KB: f64 = 1024.0;
     let b = bytes as f64;
