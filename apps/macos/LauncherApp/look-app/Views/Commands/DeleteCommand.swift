@@ -86,6 +86,16 @@ struct EmptyTrashCommand {
         return result.flatMap { Int(exactly: $0.int32Value) }
     }
 
+    @MainActor
+    static func itemCountInBackgroundWithoutPrompt() async -> Int? {
+        guard isAutomationAllowed() else { return nil }
+        return await Task.detached(priority: .utility) {
+            let (result, error) = runFinder("return count of (items of the trash)")
+            if error != nil { return nil }
+            return result.flatMap { Int(exactly: $0.int32Value) }
+        }.value
+    }
+
     /// Empties the Trash via Finder, off the main thread (it can take seconds on
     /// a large Trash). Delivers an error message on failure, nil on success, on
     /// the main queue. Suppresses Finder's own "are you sure" (we show our own

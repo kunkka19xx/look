@@ -59,9 +59,9 @@ struct ResultPreviewView: View {
     /// Activating a row of the Cmd+K menu, which is not the same as running it:
     /// a target with a `confirm` asks first.
     var onActivateActionMenuRow: (QuickActionDescriptor) -> Void = { _ in }
+    var trashItemCount: Int? = nil
 
     @State private var folderListing: FolderListing?
-    @State private var trashItemCount: Int?
     /// Summed in the background: a bundle is a directory, so reading it on
     /// selection would stall the list on a large app.
     /// Tagged with its path so another app's total never shows for a frame.
@@ -510,16 +510,10 @@ struct ResultPreviewView: View {
                 bundleSize = (bundlePath, bytes)
             }
             .task(id: result.kind == .folder ? result.path : "") {
-                guard result.kind == .folder else {
+                // Don't list ~/.Trash (TCC) and don't prompt for Automation
+                // just by previewing - only show a count if already granted.
+                guard result.kind == .folder, !isTrash else {
                     folderListing = nil
-                    trashItemCount = nil
-                    return
-                }
-                if isTrash {
-                    // Don't list ~/.Trash (TCC) and don't prompt for Automation
-                    // just by previewing - only show a count if already granted.
-                    folderListing = nil
-                    trashItemCount = EmptyTrashCommand.itemCount(promptIfNeeded: false)
                     return
                 }
                 folderListing = nil

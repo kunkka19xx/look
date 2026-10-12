@@ -163,6 +163,8 @@ struct LauncherView: View {
     @State var pendingHideAppResult: LauncherResult?
     // True while a trash/empty operation is running, to block re-triggering it.
     @State var isDeleteInFlight = false
+    @State var trashIconRefreshTick: Int = 0
+    @State var trashItemCount: Int?
     @State var killListRefreshTick: Int = 0
     @State var recentlyKilledPIDs: Set<Int32> = []
     @State var showsHelpScreen = false
@@ -585,6 +587,10 @@ struct LauncherView: View {
         return [actionRow] + withCall
     }
 
+    var isTrashPreviewed: Bool {
+        previewResult?.isTrashFolder == true
+    }
+
     var mainBarActionRow: LauncherResult? {
         guard let mainBarAction else { return nil }
         let look = AIActionAppearance.look(forToolID: mainBarAction.toolID)
@@ -933,6 +939,20 @@ struct LauncherView: View {
         }
         .onChange(of: squaresWindowCorners, initial: true) { _, squares in
             appUIState.squaresWindowCorners = squares
+        }
+        .task(id: isTrashPreviewed ? "trash-\(trashIconRefreshTick)" : "not-trash") {
+            guard isTrashPreviewed else {
+                trashItemCount = nil
+                return
+            }
+            while !Task.isCancelled {
+                if launcherWindow()?.isVisible == true, !isDeleteInFlight {
+                    let count = await EmptyTrashCommand.itemCountInBackgroundWithoutPrompt()
+                    if Task.isCancelled { break }
+                    trashItemCount = count
+                }
+                try? await Task.sleep(for: AppConstants.Launcher.trashItemCountPollInterval)
+            }
         }
         // A text op reads the picked file rather than the clipboard, so the
         // controller needs the picks as they change.
@@ -2232,7 +2252,8 @@ struct LauncherView: View {
                     isActionMenuOpen: isActionMenuOpen,
                     actionMenuIndex: actionMenuIndex,
                     actionMenuDescriptors: actionMenuRows,
-                    onActivateActionMenuRow: { activateActionMenuRow($0) }
+                    onActivateActionMenuRow: { activateActionMenuRow($0) },
+                    trashItemCount: trashItemCount
                 )
                 // Arrow-key nav assigns `selectedResultID` inside a global
                 // `withAnimation` so the pill can glide (see LauncherView+

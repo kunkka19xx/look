@@ -109,8 +109,12 @@ struct TrashSummaryView: View {
     let themeStore: ThemeStore
 
     private var trashIcon: NSImage {
-        NSImage(named: NSImage.trashFullName)
-            ?? NSWorkspace.shared.icon(for: .folder)
+        let name: String
+        switch itemCount {
+        case .none, .some(0): name = NSImage.trashEmptyName
+        case .some: name = NSImage.trashFullName
+        }
+        return NSImage(named: name) ?? NSWorkspace.shared.icon(for: .folder)
     }
 
     private var headline: String {

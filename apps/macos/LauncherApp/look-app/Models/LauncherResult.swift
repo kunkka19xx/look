@@ -79,6 +79,10 @@ extension LauncherResult {
     var isClipboardImage: Bool {
         kind == .clipboard && clipboardImagePath != nil
     }
+
+    var isTrashFolder: Bool {
+        kind == .folder && DeleteTargetLogic.isTrashPath(path, homeDirectory: NSHomeDirectory())
+    }
 }
 
 /// Where the synthesized "open this URL" row sits among the local results.

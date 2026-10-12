@@ -79,6 +79,8 @@ enum AppConstants {
         /// card in the two-column knowledge-lookup layout.
         static let aiAnswerSuggestionColumnWidth: CGFloat = 320
 
+        static let trashItemCountPollInterval: Duration = .seconds(2)
+
         enum Command {
             static let shell = "shell"
             static let calc = "calc"
