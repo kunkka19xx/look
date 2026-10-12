@@ -29,7 +29,8 @@ use crate::rows::{self, Clip, ClipImage, Icon, Open, Process, Row};
 use crate::theme::{self, Theme};
 
 /// How long a row stays selected before its file is read; arrowing past it
-/// costs nothing. The webview dwells the same on text files.
+/// costs nothing. The webview dwells the same on text files. Rows that read
+/// no file skip it, see `reads_file`.
 const DWELL: Duration = Duration::from_millis(120);
 /// Previews kept for the session, so bouncing between rows re-reads nothing.
 const CACHE_LIMIT: usize = 64;
@@ -270,9 +271,12 @@ impl Preview {
             return;
         }
         self.wanted = Some(key.clone());
+        let dwell = reads_file(row);
         let row = row.clone();
         self._load = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(DWELL).await;
+            if dwell {
+                cx.background_executor().timer(DWELL).await;
+            }
             let content = cx
                 .background_executor()
                 .spawn(async move { Arc::new(load(&row, &ancestors)) })
@@ -801,6 +805,17 @@ impl Preview {
 }
 
 /// The row's whole description, read on the background executor.
+/// Only a body that reads bytes off disk waits out the dwell: a file's text
+/// or picture, a copied image. Apps, folders, clips and cards describe
+/// themselves from the row and show at once.
+fn reads_file(row: &Row) -> bool {
+    match &row.open {
+        Open::Path { .. } => row.kind == "file",
+        Open::ClipImage(_) => true,
+        _ => false,
+    }
+}
+
 fn load(row: &Row, ancestors: &str) -> Content {
     if crate::actions::is_source_row(&row.id) && row.path.is_empty() {
         let args = crate::actions::row_args(row, ancestors);
