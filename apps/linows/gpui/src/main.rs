@@ -31,6 +31,7 @@ mod pick;
 mod picked;
 mod pomo;
 mod preview;
+mod qactions;
 mod query;
 mod rows;
 mod running;
@@ -316,11 +317,13 @@ fn summoned(shell: &Shell, cx: &mut App) {
     // launcher was away; the query alone is subject to the retention
     // window.
     let expired = query_retention::query_clear_decision_after_show(true) != Some(false);
-    let mut kept = std::mem::take(&mut *shell.retained.lock().unwrap_or_else(|p| p.into_inner()));
-    if expired {
-        kept.query.clear();
-    }
-    with_launcher(cx, |launcher, cx| launcher.restore(&kept, cx));
+    let kept = std::mem::take(&mut *shell.retained.lock().unwrap_or_else(|p| p.into_inner()));
+    let kept = std::cell::Cell::new(Some(if expired { kept.expire() } else { kept }));
+    with_launcher(cx, |launcher, cx| {
+        if let Some(kept) = kept.take() {
+            launcher.restore(kept, cx);
+        }
+    });
 }
 
 /// What a kept window holds while hidden, so the launcher and its tasks go.
@@ -361,6 +364,7 @@ fn hide(cx: &mut App) {
         });
     }
     query_retention::mark_hidden_now();
+    bgimage::drop_base();
     shell_visible(cx, false);
     let executor = cx.background_executor().clone();
     executor

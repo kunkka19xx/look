@@ -706,6 +706,12 @@ impl Theme {
         CHIP_RADIUS_BASE * self.radius_scale
     }
 
+    /// A layer inside a surface's border: its corner is that much tighter,
+    /// or the corner shows a gap.
+    pub fn inner_radius(&self, radius: f32) -> f32 {
+        (radius - self.border_thickness).max(0.0)
+    }
+
     /// The top bar and results card: control fill over the tint (`.pane-tile`).
     pub fn card_face(&self) -> Rgba {
         over(self.control_fill, self.tint)
@@ -813,9 +819,16 @@ pub fn hsla_of(c: Rgba) -> Hsla {
 /// `tint` at `alpha` laid over `face`: the accent wash of an active tile, the
 /// danger wash of an armed one. Still one quad.
 pub fn wash(face: Rgba, tint: Rgba, alpha: f32) -> Rgba {
-    over(
-        Rgba::new(tint.color.red, tint.color.green, tint.color.blue, alpha),
-        face,
+    over(veil(tint, alpha), face)
+}
+
+/// `colour` at `alpha`: what a wash lays over a face, as a layer of its own.
+pub fn veil(colour: Rgba, alpha: f32) -> Rgba {
+    Rgba::new(
+        colour.color.red,
+        colour.color.green,
+        colour.color.blue,
+        alpha,
     )
 }
 

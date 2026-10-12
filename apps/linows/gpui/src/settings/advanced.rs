@@ -20,6 +20,7 @@ use crate::theme::{self, BgLayout, Theme};
 use crate::update::Update;
 use gpui::prelude::*;
 use gpui::{Context, Div, FontWeight, div, px};
+use linows_backend::look_engine::config::{ExtraRootProblem, RuntimeConfig};
 
 const NUMBER_BOX_W: f32 = 80.0;
 const ABOUT_PADDING_BOTTOM: f32 = 6.0;
@@ -165,6 +166,8 @@ pub(super) struct DirList {
     label: &'static str,
     add: &'static str,
     empty: &'static str,
+    /// Joins the scan roots, so it may not nest with them.
+    roots: bool,
 }
 
 static EXTRA_DIRS: DirList = DirList {
@@ -173,6 +176,7 @@ static EXTRA_DIRS: DirList = DirList {
     label: "Extra Scan Dirs",
     add: "Add Directory",
     empty: "No extra scan directories",
+    roots: true,
 };
 static SKIP_DIRS: DirList = DirList {
     key: "file_exclude_paths",
@@ -180,6 +184,7 @@ static SKIP_DIRS: DirList = DirList {
     label: "Skip Folders",
     add: "Add Folder",
     empty: "No excluded folder paths yet",
+    roots: false,
 };
 
 /// The keys this tab owns besides its sliders', for Save Config.
@@ -287,17 +292,33 @@ impl Settings {
         .detach();
     }
 
+    /// macOS's rules: an extra root may not nest with any scan root, and
+    /// both lists stay sorted.
     fn push_dir(&mut self, list: &DirList, folder: PathBuf, cx: &mut Context<Launcher>) {
         let folder = folder.to_string_lossy().into_owned();
         let mut dirs = self.dirs(list);
         if dirs.contains(&folder) {
             return;
         }
+        if list.roots {
+            let refused = RuntimeConfig::load_cached()
+                .check_extra_root(&folder, &dirs)
+                .err();
+            self.extra_dir_message = refused.as_ref().map(ExtraRootProblem::message);
+            if refused.is_some() {
+                cx.notify();
+                return;
+            }
+        }
         dirs.push(folder);
+        dirs.sort_by_key(|d| d.to_lowercase());
         self.set_dirs(list, &dirs, cx);
     }
 
     fn remove_dir(&mut self, list: &DirList, folder: &str, cx: &mut Context<Launcher>) {
+        if list.roots {
+            self.extra_dir_message = None;
+        }
         let dirs: Vec<String> = self
             .dirs(list)
             .into_iter()
@@ -309,19 +330,13 @@ impl Settings {
     /// A drive chip: its root in or out of the extra scan roots, matched
     /// without case as the webview did.
     fn toggle_drive(&mut self, root: &str, cx: &mut Context<Launcher>) {
-        let has = self
+        let added = self
             .dirs(&EXTRA_DIRS)
-            .iter()
-            .any(|d| d.eq_ignore_ascii_case(root));
-        if has {
-            let dirs: Vec<String> = self
-                .dirs(&EXTRA_DIRS)
-                .into_iter()
-                .filter(|d| !d.eq_ignore_ascii_case(root))
-                .collect();
-            self.set_dirs(&EXTRA_DIRS, &dirs, cx);
-        } else {
-            self.push_dir(&EXTRA_DIRS, PathBuf::from(root), cx);
+            .into_iter()
+            .find(|d| d.eq_ignore_ascii_case(root));
+        match added {
+            Some(dir) => self.remove_dir(&EXTRA_DIRS, &dir, cx),
+            None => self.push_dir(&EXTRA_DIRS, PathBuf::from(root), cx),
         }
     }
 
@@ -652,6 +667,19 @@ impl Settings {
                         } else {
                             el.children(chips)
                         }
+                    }),
+            )
+            .children(
+                list.roots
+                    .then(|| self.extra_dir_message.clone())
+                    .flatten()
+                    .map(|message| {
+                        div()
+                            .pl(px(controls::LABEL_W + BUTTON_GAP))
+                            .pb(px(DIR_GAP_Y))
+                            .text_size(px(th.font_size - 2.0))
+                            .text_color(th.danger)
+                            .child(message)
                     }),
             )
     }

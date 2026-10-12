@@ -16,6 +16,8 @@ const PADDING_Y: f32 = 8.0;
 const GAP: f32 = 12.0;
 const WASH: f32 = 0.16;
 const DOT: f32 = 8.0;
+/// Kept off each side of the row it sits in, so it follows the window's width.
+const SIDE_INSET: f32 = 40.0;
 /// Fixed, so a heavy theme border does not turn a toast into a frame.
 const BORDER: f32 = 1.0;
 /// How much of the tone the border takes.
@@ -92,6 +94,8 @@ impl Banner {
         };
         let colour = tone_colour(message.tone, th);
         let banner = div()
+            .flex_1()
+            .mx(px(SIDE_INSET))
             .px(px(theme::INPUT_PADDING_X))
             .py(px(PADDING_Y))
             .rounded(px(th.bar_radius()))

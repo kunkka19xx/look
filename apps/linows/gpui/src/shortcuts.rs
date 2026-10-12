@@ -71,6 +71,7 @@ pub const EDIT: &str = "main.edit";
 pub const TERMINAL: &str = "main.terminal";
 pub const REVEAL: &str = "main.reveal";
 pub const WEB_SEARCH: &str = "main.webSearch";
+pub const QUICK_TOGGLE: &str = "main.quickToggle";
 pub const COMMAND_MODE: &str = "main.commandMode";
 pub const COMMAND_JUMP: &str = "main.commandJump";
 pub const SETTINGS: &str = "main.settings";
@@ -190,6 +191,11 @@ fn build() -> Vec<Group> {
                 ),
                 Entry::new(REVEAL, "Ctrl+F", "Reveal selected item in file manager"),
                 Entry::new(WEB_SEARCH, "Ctrl+Enter", "Search query on Google"),
+                Entry::new(
+                    QUICK_TOGGLE,
+                    "Ctrl+O",
+                    "Flip the selected result's switch (Bluetooth, Wi-Fi, ...)",
+                ),
                 Entry::new(COMMAND_MODE, "Ctrl+/", "Enter command mode"),
                 Entry::new(
                     COMMAND_JUMP,
@@ -506,6 +512,7 @@ mod tests {
             BACK,
             REVEAL,
             WEB_SEARCH,
+            QUICK_TOGGLE,
             MOVE_ARROWS,
             CLIP_COPY_BACK,
             CLIP_PASTE,

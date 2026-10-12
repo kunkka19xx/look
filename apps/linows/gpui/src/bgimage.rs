@@ -7,9 +7,10 @@
 //!
 //! The blur is done once, off the UI thread, into a cached bitmap: gpui has
 //! no image filter, and a filter run every frame was the webview's cost.
-//! The picture is first scaled to the size it is drawn at, so the blur
-//! runs over the pixels that show. Opacity is the element's, applied by
-//! the card's layer.
+//! The picture is first scaled to the size it is drawn at and kept, so a
+//! blur change skips the decode. A blur throws the fine detail away anyway,
+//! so it runs on a copy shrunk in step with its radius and the GPU scales
+//! it back up. Opacity is the element's, applied by the card's layer.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -18,12 +19,16 @@ use gpui::{
     Bounds, Corners, Pixels, RenderImage, Size, Window, canvas, div, point, prelude::*, px, size,
 };
 use image::imageops::FilterType;
+use image::{DynamicImage, RgbaImage};
 
 use crate::theme::{self, BgLayout, Theme};
 
 /// Blur steps on the slider, so a drag does not rebuild the bitmap per
 /// hundredth of a pixel.
 const BLUR_STEPS_PER_PX: f32 = 10.0;
+/// The radius the blur runs at once its copy is shrunk; past it the copy
+/// shrinks instead, so the cost stays flat however far the slider goes.
+const BLUR_WORKING_SIGMA: f32 = 3.0;
 
 /// Everything the bitmap depends on.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -65,6 +70,34 @@ impl Key {
     fn viewport(&self) -> Size<Pixels> {
         size(px(self.viewport.0 as f32), px(self.viewport.1 as f32))
     }
+
+    /// Everything but the blur: what the scaled picture depends on.
+    fn same_base(&self, other: &Key) -> bool {
+        Key {
+            blur_steps: other.blur_steps,
+            ..self.clone()
+        } == *other
+    }
+}
+
+/// The decoded picture scaled to the drawn size, before the blur, BGRA.
+struct Base {
+    key: Key,
+    /// The `DynamicImage` methods are compiled in the image crate, so they
+    /// run optimised in a dev build too; the generic ones took seconds there.
+    pixels: Arc<DynamicImage>,
+    natural: Size<Pixels>,
+}
+
+static BASE: Mutex<Option<Arc<Base>>> = Mutex::new(None);
+
+fn base_cache() -> std::sync::MutexGuard<'static, Option<Arc<Base>>> {
+    BASE.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// The unblurred picture is only worth its memory while the sliders move.
+pub fn drop_base() {
+    *base_cache() = None;
 }
 
 /// A decoded, blurred picture and the size it is drawn at when the layout
@@ -96,40 +129,88 @@ pub fn store(backdrop: Backdrop) {
     *cache() = Some(Arc::new(backdrop));
 }
 
-/// Decode, scale to the drawn size, blur. Blocking: run it on the
-/// background executor.
+/// Decode and scale, unless the last picture was the same one, then blur.
+/// Blocking: run it off the UI thread.
 pub fn load(key: Key) -> Result<Backdrop, String> {
+    let cached = base_cache().clone().filter(|b| b.key.same_base(&key));
+    let base = match cached {
+        Some(base) => base,
+        None => {
+            let base = Arc::new(decode(&key)?);
+            *base_cache() = Some(base.clone());
+            base
+        }
+    };
+    let drawn = drawn_rect(key.layout, key.viewport(), base.natural);
+    // The slider's pixels are logical and on the drawn picture; the bitmap
+    // may be a different size.
+    let sigma = key.blur_px() * base.pixels.width() as f32 / f32::from(drawn.size.width).max(1.0);
+    Ok(Backdrop {
+        image: frame(blurred(&base.pixels, sigma)),
+        natural: base.natural,
+        key,
+    })
+}
+
+/// gpui samples BGRA. Swapped once, before any blur, which treats the
+/// channels alike.
+pub fn to_bgra(pixels: &mut RgbaImage) {
+    for pixel in pixels.chunks_exact_mut(4) {
+        pixel.swap(0, 2);
+    }
+}
+
+/// Pixels already in BGRA, as one frame gpui can draw.
+pub fn frame(pixels: RgbaImage) -> Arc<RenderImage> {
+    Arc::new(RenderImage::new(vec![image::Frame::new(pixels)]))
+}
+
+/// A blur of `sigma` bitmap pixels, on a copy shrunk so it runs at
+/// `BLUR_WORKING_SIGMA`.
+fn blurred(pixels: &DynamicImage, sigma: f32) -> RgbaImage {
+    if sigma <= 0.0 {
+        return pixels.to_rgba8();
+    }
+    let shrink = (sigma / BLUR_WORKING_SIGMA).max(1.0);
+    let side = |v: u32| (v as f32 / shrink).round().max(1.0) as u32;
+    let out = if shrink > 1.0 {
+        pixels
+            .resize_exact(
+                side(pixels.width()),
+                side(pixels.height()),
+                FilterType::Triangle,
+            )
+            .fast_blur(sigma / shrink)
+    } else {
+        pixels.fast_blur(sigma)
+    };
+    out.into_rgba8()
+}
+
+fn decode(key: &Key) -> Result<Base, String> {
     let decoded = image::ImageReader::open(&key.path)
         .and_then(|reader| reader.with_guessed_format())
         .map_err(|err| err.to_string())?
         .decode()
         .map_err(|err| err.to_string())?;
     let natural = size(px(decoded.width() as f32), px(decoded.height() as f32));
-    let mut rgba = decoded.into_rgba8();
-
     let drawn = drawn_rect(key.layout, key.viewport(), natural);
     let device = |v: Pixels| (f32::from(v) * key.scale_factor()).round().max(1.0) as u32;
     let (target_w, target_h) = match key.layout {
         BgLayout::Fill | BgLayout::Stretch => (device(drawn.size.width), device(drawn.size.height)),
         BgLayout::Center | BgLayout::Duplicate => (device(natural.width), device(natural.height)),
     };
-    if rgba.width() > target_w || rgba.height() > target_h {
-        rgba = image::imageops::resize(&rgba, target_w, target_h, FilterType::Triangle);
+    let mut rgba = if decoded.width() > target_w || decoded.height() > target_h {
+        decoded.resize_exact(target_w, target_h, FilterType::Triangle)
+    } else {
+        decoded
     }
-    // The slider's pixels are logical and on the drawn picture; the bitmap
-    // may be a different size.
-    let sigma = key.blur_px() * rgba.width() as f32 / f32::from(drawn.size.width).max(1.0);
-    if sigma > 0.0 {
-        rgba = image::imageops::blur(&rgba, sigma);
-    }
-    // gpui samples BGRA.
-    for pixel in rgba.chunks_exact_mut(4) {
-        pixel.swap(0, 2);
-    }
-    Ok(Backdrop {
-        image: Arc::new(RenderImage::new(vec![image::Frame::new(rgba)])),
+    .into_rgba8();
+    to_bgra(&mut rgba);
+    Ok(Base {
+        key: key.clone(),
+        pixels: Arc::new(DynamicImage::ImageRgba8(rgba)),
         natural,
-        key,
     })
 }
 
@@ -151,11 +232,10 @@ fn drawn_rect(layout: BgLayout, viewport: Size<Pixels>, natural: Size<Pixels>) -
 }
 
 /// The card's layer: its own slice of the picture, under its content.
-/// `radius` is the card's outer corner; the layer sits inside the border,
-/// so its own corner is that much tighter, or the corner shows a gap.
+/// `radius` is the card's outer corner.
 pub fn layer(backdrop: Arc<Backdrop>, radius: f32, th: &Theme) -> impl IntoElement {
     let opacity = th.bg_opacity.clamp(0.0, 1.0);
-    let radius = (radius - th.border_thickness).max(0.0);
+    let radius = th.inner_radius(radius);
     let frame_size = th.frame_size();
     div().absolute().inset_0().opacity(opacity).child(
         canvas(

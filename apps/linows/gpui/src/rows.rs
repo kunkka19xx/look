@@ -174,6 +174,12 @@ fn usage_for(kind: &str) -> &'static str {
 }
 
 impl Row {
+    /// A web suggestion or a URL row: made up from the query, not found
+    /// on the machine.
+    pub fn is_synthetic(&self) -> bool {
+        matches!(self.open, Open::WebSuggestion(_) | Open::Url(_))
+    }
+
     pub fn from_engine(r: SearchResult) -> Self {
         let subtitle = r.subtitle.unwrap_or_default();
         // Before the subtitle, because core writes the kind word into it.

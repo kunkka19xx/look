@@ -22,7 +22,9 @@ use crate::Shell;
 use crate::elide::middle_elided;
 use crate::glyphs;
 use crate::icons::{self, IconRequest, IconStore};
+use crate::launchpad::Notice;
 use crate::modes::Mode;
+use crate::qactions::QuickActions;
 use crate::rows::{self, Clip, ClipImage, Icon, Open, Process, Row};
 use crate::theme::{self, Theme};
 
@@ -82,6 +84,7 @@ const NOT_AVAILABLE: &str = "n/a";
 pub struct ClipDeleted;
 
 impl EventEmitter<ClipDeleted> for Preview {}
+impl EventEmitter<Notice> for Preview {}
 
 /// What the panel knows about one row once the backend has answered.
 pub enum Content {
@@ -158,6 +161,8 @@ pub struct Preview {
     cpu: Option<(u32, String)>,
     _load: Option<Task<()>>,
     _cpu: Option<Task<()>>,
+    /// The Quick Actions of the row on screen, see `qactions`.
+    pub(crate) actions: Option<QuickActions>,
 }
 
 impl Preview {
@@ -172,11 +177,13 @@ impl Preview {
             cpu: None,
             _load: None,
             _cpu: None,
+            actions: None,
         }
     }
 
     /// The tips half of an empty clipboard history.
     pub fn show_help(&mut self, mode: Mode, cx: &mut Context<Self>) {
+        self.actions = None;
         self.wanted = None;
         self._load = None;
         self.current = Some((format!("help:{mode:?}"), Arc::new(Content::Help(mode))));
@@ -234,6 +241,7 @@ impl Preview {
     }
 
     pub fn clear(&mut self, cx: &mut Context<Self>) {
+        self.actions = None;
         self.current = None;
         self.wanted = None;
         self._load = None;
@@ -244,6 +252,7 @@ impl Preview {
     /// backend. The old preview stays up until the new one lands, so the
     /// column does not blink between rows.
     pub fn show(&mut self, row: &Row, ancestors: String, cx: &mut Context<Self>) {
+        self.sync_actions(row, cx);
         // A block row is a different panel at a different depth.
         let key = if crate::actions::is_source_row(&row.id) {
             format!("{}\u{0}{}", row.id, ancestors)
@@ -538,6 +547,7 @@ impl Preview {
                 let shell = self.shell.clone();
                 panel
                     .child(header(picture, glyph, title, badge, aside.as_deref(), th))
+                    .children(self.actions_section(th, cx))
                     .child(self.body(body, th, shell))
                     // Under a body the rows sit at the foot, as macOS files do.
                     .child(info_rows(info, th).when(!matches!(body, Body::None), |r| r.mt_auto()))
@@ -1106,37 +1116,44 @@ fn header(
 }
 
 fn info_rows(info: &[(&'static str, String)], th: &Theme) -> Div {
-    let mut rows_el = div()
+    info_list(th).children(
+        info.iter()
+            .map(|(label, value)| info_row(*label, value.clone(), th)),
+    )
+}
+
+/// The column the label/value rows sit in, at their size and leading.
+pub(crate) fn info_list(th: &Theme) -> Div {
+    div()
         .pt(px(HEADER_MARGIN))
         .flex_shrink_0()
         .flex()
         .flex_col()
         .gap(px(INFO_ROW_GAP))
         .text_size(px(th.font_size - 2.0))
-        .line_height(relative(INFO_LINE_HEIGHT));
-    for (label, value) in info {
-        rows_el = rows_el.child(
+        .line_height(relative(INFO_LINE_HEIGHT))
+}
+
+/// A muted label left, its value right.
+pub(crate) fn info_row(label: impl Into<SharedString>, value: String, th: &Theme) -> Div {
+    div()
+        .flex()
+        .items_baseline()
+        .gap(px(INFO_GAP))
+        .child(
             div()
-                .flex()
-                .items_baseline()
-                .gap(px(INFO_GAP))
-                .child(
-                    div()
-                        .flex_shrink_0()
-                        .text_color(th.text_muted)
-                        .child(*label),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .text_right()
-                        .text_color(th.text_secondary)
-                        .child(middle_elided(value.clone())),
-                ),
-        );
-    }
-    rows_el
+                .flex_shrink_0()
+                .text_color(th.text_muted)
+                .child(label.into()),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_right()
+                .text_color(th.text_secondary)
+                .child(middle_elided(value)),
+        )
 }
 
 /// A centred "what Enter does" card, the web-suggestion layout the webview

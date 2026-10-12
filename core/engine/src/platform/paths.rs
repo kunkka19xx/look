@@ -188,6 +188,13 @@ pub(crate) fn path_is_same_or_child(path: &str, parent: &str) -> bool {
     PathPolicy::current().is_same_or_child(path, parent)
 }
 
+/// One place however it is spelled: trailing slashes, and on Windows the
+/// separator and the case.
+pub(crate) fn same_path(a: &str, b: &str) -> bool {
+    let policy = PathPolicy::current();
+    policy.normalize_for_matching(a) == policy.normalize_for_matching(b)
+}
+
 pub(crate) fn candidate_id_path_component(path: &str) -> String {
     PathPolicy::current().id_component(path)
 }

@@ -44,3 +44,11 @@ pub fn wikipedia_answer(term: &str) -> Option<Answer> {
 pub fn web_suggestions(query: &str, limit: usize) -> Vec<String> {
     look_answers::web_suggestions(query, limit)
 }
+
+/// How long a thumbnail may take before the card goes without it.
+const IMAGE_TIMEOUT_SECS: u32 = 5;
+
+/// The encoded bytes behind an answer's `image_url`, or `None` on any failure.
+pub fn answer_image(url: &str) -> Option<Vec<u8>> {
+    look_answers::http::get_bytes(url, IMAGE_TIMEOUT_SECS)
+}
