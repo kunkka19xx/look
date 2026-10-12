@@ -255,6 +255,11 @@ impl Launcher {
         cx.observe(&icons, |_, _, cx| cx.notify()).detach();
         let preview = cx.new(|_| Preview::new(shell.clone(), icons.clone()));
         cx.observe(&preview, |_, _, cx| cx.notify()).detach();
+        cx.subscribe(&preview, |this, _, notice: &Notice, cx| {
+            this.banner
+                .show(notice.text.clone(), notice.tone, notice.seconds, cx)
+        })
+        .detach();
         cx.subscribe(&preview, |this, _, _: &ClipDeleted, cx| {
             this.clip_removed(cx);
         })
@@ -836,6 +841,9 @@ impl Launcher {
                 self.open_menu(cx);
                 true
             }
+            "o" if ctrl && !shift && !menu => self
+                .preview
+                .update(cx, |preview, cx| preview.toggle_primary(cx)),
             "e" if ctrl && !menu => self.run_tool(actions::EDIT, cx),
             "t" if ctrl && !menu => self.run_tool(actions::TERMINAL, cx),
             "p" if ctrl && shift => {

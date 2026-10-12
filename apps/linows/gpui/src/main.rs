@@ -31,6 +31,7 @@ mod pick;
 mod picked;
 mod pomo;
 mod preview;
+mod qactions;
 mod query;
 mod rows;
 mod running;

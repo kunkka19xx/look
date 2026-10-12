@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Bounds, CursorStyle, Div, FontWeight, HitboxBehavior, MouseButton,
+    AnyElement, App, Bounds, CursorStyle, Div, ElementId, FontWeight, HitboxBehavior, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, SharedString, Stateful, Window, canvas,
     deferred, div, fill, point, px, relative, size,
 };
@@ -108,7 +108,7 @@ pub fn value(text: String, th: &Theme) -> Div {
 }
 
 /// The switch. The caller binds the click.
-pub fn toggle(id: &'static str, on: bool, th: &Theme) -> Stateful<Div> {
+pub fn toggle(id: impl Into<ElementId>, on: bool, th: &Theme) -> Stateful<Div> {
     div()
         .id(id)
         .w(px(TOGGLE_W))
@@ -127,7 +127,11 @@ pub fn toggle(id: &'static str, on: bool, th: &Theme) -> Stateful<Div> {
         }))
 }
 
-pub fn button(id: &'static str, label: &'static str, th: &Theme) -> Stateful<Div> {
+pub fn button(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    th: &Theme,
+) -> Stateful<Div> {
     div()
         .id(id)
         .px(px(BUTTON_PADDING_X))
@@ -141,7 +145,7 @@ pub fn button(id: &'static str, label: &'static str, th: &Theme) -> Stateful<Div
         .text_color(th.text_secondary)
         .cursor_pointer()
         .hover(|s| s.text_color(th.text).bg(th.selection_fill))
-        .child(label)
+        .child(label.into())
 }
 
 /// A value with its label, for selects and segments.
