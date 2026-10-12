@@ -13,6 +13,8 @@ enum MacOSName {
         switch major {
         case 15:
             return "Sequoia"
+        case 27:
+            return "Golden Gate"
         case 26:
             return "Tahoe"
         case 14:

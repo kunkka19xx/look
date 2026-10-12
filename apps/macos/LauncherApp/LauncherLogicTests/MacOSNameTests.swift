@@ -10,6 +10,7 @@ final class MacOSNameTests: XCTestCase {
     func testSectionKnownNames() {
         XCTAssertEqual(MacOSName.forMajor(15), "Sequoia")
         XCTAssertEqual(MacOSName.forMajor(26), "Tahoe")
+        XCTAssertEqual(MacOSName.forMajor(27), "Golden Gate")
     }
 
     func testKeepsOlderNames() {
@@ -25,8 +26,8 @@ final class MacOSNameTests: XCTestCase {
     }
 
     func testUnknownNewerMajorFallsBackToBareMacOS() {
-        // macOS 27 and the skipped 16-25 range have no codename yet.
-        XCTAssertEqual(MacOSName.forMajor(27), "macOS")
+        // The skipped 16-25 range and releases after 27 have no codename here.
+        XCTAssertEqual(MacOSName.forMajor(28), "macOS")
         XCTAssertEqual(MacOSName.forMajor(16), "macOS")
         XCTAssertEqual(MacOSName.forMajor(20), "macOS")
     }
