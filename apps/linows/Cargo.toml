@@ -16,3 +16,15 @@ lto = true
 inherits = "release"
 opt-level = "s"
 codegen-units = 1
+
+# Unoptimised, decoding a background photo took seconds in a dev build.
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.image-webp]
+opt-level = 3

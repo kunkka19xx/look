@@ -215,6 +215,8 @@ pub struct Launcher {
     searching: bool,
     /// The background picture being decoded, so a frame does not ask twice.
     backdrop_loading: Option<bgimage::Key>,
+    /// A picture that would not decode is not tried again every frame.
+    backdrop_failed: Option<bgimage::Key>,
     /// The selection pill's top, in list pixels, gliding between rows.
     pill: Entity<TransitionState<f32>>,
     /// The rows the pill last landed on: a new set lands it without a glide.
@@ -305,6 +307,7 @@ impl Launcher {
             unpicked: false,
             menu_token: 0,
             backdrop_loading: None,
+            backdrop_failed: None,
             pill: cx.new(|_| TransitionState::new(0.0)),
             pill_rows: std::ptr::null(),
             results_epoch: 0,
@@ -3230,7 +3233,13 @@ impl Launcher {
         let Some(key) = key else {
             return;
         };
-        if bgimage::is_exact(&key) || self.backdrop_loading.as_ref() == Some(&key) {
+        // One build at a time: a slider drag would start one per step and
+        // they would fight for the CPU. The finished one asks for a frame,
+        // and that frame starts the build for wherever the slider is then.
+        if bgimage::is_exact(&key)
+            || self.backdrop_loading.is_some()
+            || self.backdrop_failed.as_ref() == Some(&key)
+        {
             return;
         }
         self.backdrop_loading = Some(key.clone());
@@ -3238,10 +3247,13 @@ impl Launcher {
             cx,
             move || bgimage::load(key),
             |this, result, _| {
-                this.backdrop_loading = None;
+                let key = this.backdrop_loading.take();
                 match result {
                     Ok(backdrop) => bgimage::store(backdrop),
-                    Err(err) => eprintln!("background image: {err}"),
+                    Err(err) => {
+                        eprintln!("background image: {err}");
+                        this.backdrop_failed = key;
+                    }
                 }
             },
         );

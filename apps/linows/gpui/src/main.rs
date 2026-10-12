@@ -365,6 +365,7 @@ fn hide(cx: &mut App) {
         });
     }
     query_retention::mark_hidden_now();
+    bgimage::drop_base();
     shell_visible(cx, false);
     let executor = cx.background_executor().clone();
     executor
