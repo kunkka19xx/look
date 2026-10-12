@@ -6,7 +6,7 @@ import Foundation
 /// (Tahoe). Known names are mapped explicitly. Anything not yet known (a
 /// future major) falls back to plain "macOS", and the caller appends the
 /// version number, so the panel never shows a wrong OS name.
-enum MacOSName {
+nonisolated enum MacOSName {
     static let legacyFallback = "macOS"
 
     static func forMajor(_ major: Int) -> String {
