@@ -2,6 +2,7 @@
 //! about it. Binding the key is the shell's job: each one has its own route
 //! (a Tauri plugin, a compositor keybinding, a gpui key handler).
 
+use crate::health;
 use look_engine::config::RuntimeConfig;
 use look_engine::hotkey::{HotkeyCheck, LauncherHotkey};
 use serde::Serialize;
@@ -38,4 +39,31 @@ pub fn launcher_hotkey_state() -> LauncherHotkeyState {
 
 pub fn hotkey_check(spec: &str) -> HotkeyCheck {
     HotkeyCheck::new(spec)
+}
+
+/// A shell's bind attempt, surfaced as a health issue: a launcher with a dead
+/// hotkey is still reachable by relaunching it.
+pub fn report_bind(launcher: &LauncherHotkey, result: Result<(), String>) {
+    match result {
+        Ok(()) => {
+            if let Some(warning) = &launcher.warning {
+                health::report(health::ISSUE_HOTKEY, warning.clone());
+            }
+        }
+        // Carries the config warning too: only the first report per id is kept.
+        Err(e) => health::report(
+            health::ISSUE_HOTKEY,
+            format!(
+                "{}{} could not be registered ({e}). Another app may hold the key - \
+                 {CONFLICT_REMEDY}. Until then, open Look again from the app menu \
+                 to show this window.",
+                launcher
+                    .warning
+                    .as_ref()
+                    .map(|warning| format!("{warning}. "))
+                    .unwrap_or_default(),
+                launcher.display
+            ),
+        ),
+    }
 }

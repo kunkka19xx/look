@@ -156,7 +156,7 @@ impl RunningApps {
                 .rounded(px(BADGE / 2.0))
                 .bg(theme::wash(
                     th.card_face(),
-                    gpui::Rgba::new(0.0, 0.0, 0.0, 1.0),
+                    theme::scrim_for(th.text),
                     SCRIM_ALPHA,
                 ))
                 .border(px(1.0))

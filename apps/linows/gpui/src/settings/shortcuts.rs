@@ -76,6 +76,9 @@ impl Recorder {
     }
 
     pub fn stop(&mut self) {
+        if self.listening {
+            crate::hotkey::set_active(true);
+        }
         self.listening = false;
         self.error = None;
     }
@@ -141,6 +144,7 @@ impl Settings {
         if self.recorder.listening {
             self.recorder.stop();
         } else {
+            crate::hotkey::set_active(false);
             self.recorder.listening = true;
             self.recorder.error = None;
         }

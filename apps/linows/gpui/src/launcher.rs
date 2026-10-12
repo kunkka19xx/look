@@ -625,6 +625,11 @@ impl Launcher {
             cx.stop_propagation();
             return;
         }
+        if ks.modifiers.alt && shift && ks.key == "q" {
+            self.quit();
+            cx.stop_propagation();
+            return;
+        }
         // From any screen, settings too, where the picker follows it.
         if ctrl && shift && ks.key == "c" {
             self.toggle_layout(cx);
@@ -914,6 +919,7 @@ impl Launcher {
             cx,
             || engine::reload_config(app_state()),
             |this, _, cx| {
+                crate::hotkey::set_active(true);
                 this.banner.show(
                     settings::RELOADED.to_string(),
                     Tone::Info,
@@ -941,6 +947,7 @@ impl Launcher {
                     Ok(()) => {
                         theme::load();
                         fonts::ensure_family(cx, &theme::get().font_family);
+                        crate::hotkey::set_active(true);
                         this.settings.reload(cx);
                         this.running.refresh(cx);
                         this.banner.show(

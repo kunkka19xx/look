@@ -33,9 +33,9 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 use windows::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, EnumWindows, GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongW,
-    GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_RESTORE,
-    SetForegroundWindow, ShowWindow, WS_EX_TOOLWINDOW,
+    BringWindowToTop, EnumWindows, GW_OWNER, GWL_EXSTYLE, GetForegroundWindow, GetWindow,
+    GetWindowLongW, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+    SW_RESTORE, SetForegroundWindow, ShowWindow, WS_EX_TOOLWINDOW,
 };
 use windows::core::BOOL;
 use windows::core::{HSTRING, Interface, PWSTR};
@@ -106,6 +106,14 @@ pub(crate) fn focus_hwnd(raw: isize) -> bool {
     }
     activate_window(hwnd);
     true
+}
+
+/// Raise Look's own window over whatever holds the foreground, borrowing that
+/// window's input rights the way `activate_window` borrows its target's.
+pub fn bring_to_front(raw: isize) {
+    raise(HWND(raw as *mut core::ffi::c_void), unsafe {
+        GetForegroundWindow()
+    });
 }
 
 enum Target {
@@ -416,10 +424,15 @@ fn find_main_window_for_pids(pids: &[u32]) -> Option<HWND> {
 }
 
 fn activate_window(hwnd: HWND) {
+    raise(hwnd, hwnd);
+}
+
+/// Bring `hwnd` forward with `lender`'s input queue attached.
+fn raise(hwnd: HWND, lender: HWND) {
     // SetForegroundWindow rejects threads that haven't received the last user
     // input. Tauri commands run on a tokio worker that never sees raw input,
     // so the rule trips even though Look's UI thread is foreground. Attach
-    // our input queue to the target's for the duration to lend us its rights.
+    // our input queue to the lender's for the duration to lend us its rights.
     //
     // SW_RESTORE only when iconic - calling it on a maximized window
     // un-maximizes it (Edge loses F11/fullscreen). Synchronous `ShowWindow`
@@ -428,11 +441,11 @@ fn activate_window(hwnd: HWND) {
     // non-iconic window. Async would race and reduce SFW to a taskbar flash.
     unsafe {
         let cur_thread = GetCurrentThreadId();
-        let target_thread = GetWindowThreadProcessId(hwnd, None);
+        let lender_thread = GetWindowThreadProcessId(lender, None);
 
-        let attached = target_thread != 0
-            && target_thread != cur_thread
-            && AttachThreadInput(cur_thread, target_thread, true).as_bool();
+        let attached = lender_thread != 0
+            && lender_thread != cur_thread
+            && AttachThreadInput(cur_thread, lender_thread, true).as_bool();
 
         if IsIconic(hwnd).as_bool() {
             let _ = ShowWindow(hwnd, SW_RESTORE);
@@ -442,7 +455,7 @@ fn activate_window(hwnd: HWND) {
         let _ = SetFocus(Some(hwnd));
 
         if attached {
-            let _ = AttachThreadInput(cur_thread, target_thread, false);
+            let _ = AttachThreadInput(cur_thread, lender_thread, false);
         }
     }
 }
