@@ -317,15 +317,13 @@ fn summoned(shell: &Shell, cx: &mut App) {
     // launcher was away; the query alone is subject to the retention
     // window.
     let expired = query_retention::query_clear_decision_after_show(true) != Some(false);
-    let mut kept = std::mem::take(&mut *shell.retained.lock().unwrap_or_else(|p| p.into_inner()));
-    if expired {
-        kept = Retained {
-            screen: kept.screen,
-            ai_enabled: kept.ai_enabled,
-            ..Default::default()
-        };
-    }
-    with_launcher(cx, |launcher, cx| launcher.restore(kept.clone(), cx));
+    let kept = std::mem::take(&mut *shell.retained.lock().unwrap_or_else(|p| p.into_inner()));
+    let kept = std::cell::Cell::new(Some(if expired { kept.expire() } else { kept }));
+    with_launcher(cx, |launcher, cx| {
+        if let Some(kept) = kept.take() {
+            launcher.restore(kept, cx);
+        }
+    });
 }
 
 /// What a kept window holds while hidden, so the launcher and its tasks go.

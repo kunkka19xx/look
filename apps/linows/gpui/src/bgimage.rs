@@ -146,13 +146,23 @@ pub fn load(key: Key) -> Result<Backdrop, String> {
     // may be a different size.
     let sigma = key.blur_px() * base.pixels.width() as f32 / f32::from(drawn.size.width).max(1.0);
     Ok(Backdrop {
-        image: Arc::new(RenderImage::new(vec![image::Frame::new(blurred(
-            &base.pixels,
-            sigma,
-        ))])),
+        image: frame(blurred(&base.pixels, sigma)),
         natural: base.natural,
         key,
     })
+}
+
+/// gpui samples BGRA. Swapped once, before any blur, which treats the
+/// channels alike.
+pub fn to_bgra(pixels: &mut RgbaImage) {
+    for pixel in pixels.chunks_exact_mut(4) {
+        pixel.swap(0, 2);
+    }
+}
+
+/// Pixels already in BGRA, as one frame gpui can draw.
+pub fn frame(pixels: RgbaImage) -> Arc<RenderImage> {
+    Arc::new(RenderImage::new(vec![image::Frame::new(pixels)]))
 }
 
 /// A blur of `sigma` bitmap pixels, on a copy shrunk so it runs at
@@ -196,10 +206,7 @@ fn decode(key: &Key) -> Result<Base, String> {
         decoded
     }
     .into_rgba8();
-    // gpui samples BGRA; the blur treats the channels alike.
-    for pixel in rgba.chunks_exact_mut(4) {
-        pixel.swap(0, 2);
-    }
+    to_bgra(&mut rgba);
     Ok(Base {
         key: key.clone(),
         pixels: Arc::new(DynamicImage::ImageRgba8(rgba)),

@@ -1,5 +1,4 @@
 use serde::Serialize;
-use std::time::UNIX_EPOCH;
 
 #[derive(Serialize)]
 pub struct FileMeta {
@@ -24,9 +23,8 @@ pub fn get_file_meta(path: &str) -> FileMeta {
     let size = meta.as_ref().filter(|m| !m.is_dir()).map(|m| m.len());
 
     let modified = meta.as_ref().and_then(|m| {
-        let mod_time = m.modified().ok()?;
-        let secs = mod_time.duration_since(UNIX_EPOCH).ok()?.as_secs();
-        Some(time_from_unix(secs))
+        let local = chrono::DateTime::<chrono::Local>::from(m.modified().ok()?);
+        Some(local.format(MODIFIED_FORMAT).to_string())
     });
 
     let is_image = p
@@ -294,30 +292,5 @@ pub fn list_folder(path: &str) -> Option<FolderListing> {
     })
 }
 
-const SECS_PER_DAY: u64 = 86400;
-const SECS_PER_HOUR: u64 = 3600;
-const SECS_PER_MINUTE: u64 = 60;
-
-fn time_from_unix(secs: u64) -> String {
-    let days = secs / SECS_PER_DAY;
-    let time_secs = secs % SECS_PER_DAY;
-    let hours = time_secs / SECS_PER_HOUR;
-    let minutes = (time_secs % SECS_PER_HOUR) / SECS_PER_MINUTE;
-
-    let (year, month, day) = civil_from_days(days as i64);
-    format!("{year:04}-{month:02}-{day:02} {hours:02}:{minutes:02}")
-}
-
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719468;
-    let era = if z >= 0 { z } else { z - 146096 } / 146097;
-    let doe = (z - era * 146097) as u32;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
-}
+/// The preview's "Modified", in the user's own time zone.
+const MODIFIED_FORMAT: &str = "%Y-%m-%d %H:%M";

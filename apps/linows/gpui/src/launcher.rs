@@ -144,7 +144,7 @@ struct Translation {
 
 /// What the last hide left behind, see `Launcher::retained`. The screen
 /// outlives the retention window, the query does not.
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct Retained {
     pub query: String,
     pub screen: Option<(usize, String)>,
@@ -153,6 +153,17 @@ pub struct Retained {
     /// The new launcher reads the switch off the UI thread, after the
     /// restored search may have run.
     pub ai_enabled: bool,
+}
+
+impl Retained {
+    /// Past the retention window only the screen and the switch stay.
+    pub fn expire(self) -> Self {
+        Self {
+            screen: self.screen,
+            ai_enabled: self.ai_enabled,
+            ..Default::default()
+        }
+    }
 }
 
 /// The Google autocomplete list and the query it came back for.
@@ -501,7 +512,6 @@ impl Launcher {
                     return;
                 }
                 this.searching = false;
-                let local = rows.iter().filter(|r| !r.is_synthetic()).count();
                 this.publish(rows, &query, 0);
                 if let Some((for_query, id)) = this.pending_restore.take()
                     && for_query == query
@@ -512,13 +522,16 @@ impl Launcher {
                 this.scroll
                     .scroll_to_item(this.selected, ScrollStrategy::Top);
                 this.sync_preview(cx);
-                if mode == Mode::Search && !home && !query.trim_start().contains('"') {
-                    this.ai.update(&query, local, cx);
-                    this.settle_pick(&query);
-                    this.fetch_web_suggestions(query, version, cx);
+                let web = mode == Mode::Search && !home && !query.trim_start().contains('"');
+                if web {
+                    let has_local = this.has_local_rows();
+                    this.ai.update(&query, has_local, cx);
                 } else {
                     this.ai.cancel();
-                    this.settle_pick(&query);
+                }
+                this.settle_pick(&query);
+                if web {
+                    this.fetch_web_suggestions(query, version, cx);
                 }
                 cx.notify();
             });
@@ -540,14 +553,11 @@ impl Launcher {
             self.show_web_suggestions(&list, &query, cx);
             return;
         }
+        let asked = trimmed.clone();
         bg::fetch(
             cx,
-            move || {
-                let list =
-                    linows_backend::answers::web_suggestions(&trimmed, WEB_SUGGESTIONS_LIMIT);
-                (trimmed, list)
-            },
-            move |this, (trimmed, list), cx| {
+            move || linows_backend::answers::web_suggestions(&asked, WEB_SUGGESTIONS_LIMIT),
+            move |this, list, cx| {
                 if this.version != version {
                     return;
                 }
@@ -596,7 +606,12 @@ impl Launcher {
     /// a highlighted Google row would read as what Enter does. Down still
     /// reaches the rows.
     fn answer_owns_enter(&self) -> bool {
-        self.ai.is_active() && !self.rows.iter().any(|r| !r.is_synthetic())
+        self.ai.is_active() && !self.has_local_rows()
+    }
+
+    /// Anything found on the machine, rather than made up from the query.
+    fn has_local_rows(&self) -> bool {
+        self.rows.iter().any(|r| !r.is_synthetic())
     }
 
     /// A row the user moved to under `query` stays picked.
@@ -2532,10 +2547,7 @@ impl Launcher {
         // With the answer up and nothing local, the answer takes the left
         // column and the suggestions the right, macOS's knowledge lookup.
         // Otherwise the answer sits capped above the rows.
-        let two_col = self.ai.is_active()
-            && th.split()
-            && !self.mode.is_menu()
-            && !self.rows.iter().any(|r| !r.is_synthetic());
+        let two_col = self.answer_owns_enter() && th.split() && !self.mode.is_menu();
         let ai_card = self.ai.render(th, cx).map(|card| {
             let card = card.mx(px(theme::ROW_PADDING_X));
             if two_col {

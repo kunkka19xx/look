@@ -8,14 +8,15 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Context, Div, FontWeight, RenderImage, ScrollHandle, SharedString, Transformation, div, img,
-    point, prelude::*, px, radians, svg,
+    App, ClickEvent, Context, Div, FontWeight, RenderImage, ScrollHandle, SharedString,
+    Transformation, Window, div, img, point, prelude::*, px, radians, svg,
 };
 use image::imageops::FilterType;
 use linows_backend::answers;
 use linows_backend::look_answers::Answer;
 
 use crate::bg;
+use crate::bgimage;
 use crate::glyphs;
 use crate::launcher::Launcher;
 use crate::motion;
@@ -145,14 +146,14 @@ impl AiAnswer {
     /// Re-evaluate for the query once the local rows are in. `local_count`
     /// is how many the engine found: a multi-word entity with none is a
     /// knowledge lookup. The gates are local, so this runs per keystroke.
-    pub fn update(&mut self, query: &str, local_count: usize, cx: &mut Context<Launcher>) {
+    pub fn update(&mut self, query: &str, has_local: bool, cx: &mut Context<Launcher>) {
         let query = query.trim().to_string();
         if !self.enabled || query.is_empty() {
             self.cancel();
             return;
         }
         let question_like = is_question_like(&query);
-        let orphan = local_count == 0 && is_entity_lookup(&query);
+        let orphan = !has_local && is_entity_lookup(&query);
         // Arithmetic has its own row; a numeric query would read as an
         // orphan entity and send a stray lookup.
         if linows_backend::calc::calc_inline(&query).is_some() {
@@ -301,6 +302,12 @@ impl AiAnswer {
     /// once the caller caps or fills the card's height.
     pub fn render(&self, th: &Theme, cx: &mut Context<Launcher>) -> Option<Div> {
         let state = self.state?;
+        let compact = !th.split();
+        let side = if compact {
+            COMPACT_IMAGE_SIDE
+        } else {
+            IMAGE_SIDE
+        };
         let blocks = self.items.iter().enumerate().map(|(i, item)| {
             let url = item.url.clone();
             let source = div()
@@ -316,11 +323,7 @@ impl AiAnswer {
                     th.text_muted
                 })
                 .when(url.is_some(), |el| el.cursor_pointer())
-                .on_click(cx.listener(move |this, _, _, _| {
-                    if let Some(url) = &url {
-                        this.open_url(url);
-                    }
-                }))
+                .on_click(opener(url, cx))
                 .child(SharedString::from(item.source.to_uppercase()))
                 .when(item.url.is_some(), |el| {
                     el.child(
@@ -359,30 +362,19 @@ impl AiAnswer {
                         .size(px(th.font_size - 2.0))
                         .text_color(th.text_muted),
                 );
-            let compact = !th.split();
-            let side = if compact {
-                COMPACT_IMAGE_SIDE
-            } else {
-                IMAGE_SIDE
-            };
             let thumb = item
                 .image_url
                 .as_ref()
                 .and_then(|key| self.thumbs.get(key))
                 .map(|thumb| {
-                    let url = item.url.clone();
                     div()
                         .id(("ai-thumb", i))
                         .size(px(side))
                         .flex_shrink_0()
                         .rounded(px(th.control_radius()))
                         .overflow_hidden()
-                        .when(url.is_some(), |el| el.cursor_pointer())
-                        .on_click(cx.listener(move |this, _, _, _| {
-                            if let Some(url) = &url {
-                                this.open_url(url);
-                            }
-                        }))
+                        .when(item.url.is_some(), |el| el.cursor_pointer())
+                        .on_click(opener(item.url.clone(), cx))
                         .child(img(thumb.clone()).size(px(side)))
                 });
             let text = div()
@@ -483,6 +475,18 @@ impl AiAnswer {
     }
 }
 
+/// A click that opens the answer's source, when it has one.
+fn opener(
+    url: Option<String>,
+    cx: &mut Context<Launcher>,
+) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
+    cx.listener(move |this, _, _, _| {
+        if let Some(url) = &url {
+            this.open_url(url);
+        }
+    })
+}
+
 /// Fetches and decodes `url`; it lands only if an answer on the card still
 /// shows it.
 fn fetch_thumb(url: String, cx: &mut Context<Launcher>) {
@@ -513,11 +517,8 @@ fn thumbnail(bytes: &[u8]) -> Option<Arc<RenderImage>> {
         .ok()?
         .resize_to_fill(side, side, FilterType::Triangle)
         .into_rgba8();
-    // gpui samples BGRA.
-    for pixel in rgba.chunks_exact_mut(4) {
-        pixel.swap(0, 2);
-    }
-    Some(Arc::new(RenderImage::new(vec![image::Frame::new(rgba)])))
+    bgimage::to_bgra(&mut rgba);
+    Some(bgimage::frame(rgba))
 }
 
 /// The ring that turns while an answer streams. Its angle is the wall

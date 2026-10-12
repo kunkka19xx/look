@@ -4,9 +4,7 @@
 //! device row connects or disconnects it, the outcome goes to the banner,
 //! and the state is read again after every apply.
 
-use std::collections::HashSet;
-
-use gpui::{Context, Div, FontWeight, SharedString, div, prelude::*, px};
+use gpui::{Context, Div, ElementId, FontWeight, SharedString, div, prelude::*, px};
 use linows_backend::look_qactions::{ActionDescriptor, ControlKind};
 use linows_backend::qactions::{
     self, ActionIntent, ActionOutcome, ActionState, InfoValue, ListItem, QuickActionStatus,
@@ -41,10 +39,8 @@ const NONE_CONNECTED: &str = "None connected";
 pub struct QuickActions {
     row_id: String,
     actions: Vec<Action>,
-    /// One apply at a time; the other controls go inert while it runs.
+    /// One apply at a time; every control goes inert while it runs.
     busy: bool,
-    /// Device rows connecting or disconnecting.
-    pending: HashSet<String>,
 }
 
 struct Action {
@@ -85,7 +81,6 @@ impl Preview {
                 })
                 .collect(),
             busy: false,
-            pending: HashSet::new(),
         });
         self.read_actions(cx);
     }
@@ -167,12 +162,7 @@ impl Preview {
         };
         actions.busy = true;
         let id = action.descriptor.action_id.clone();
-        self.apply(
-            index,
-            None,
-            move || qactions::quick_action_apply(&id, intent),
-            cx,
-        );
+        self.apply(index, move || qactions::quick_action_apply(&id, intent), cx);
         cx.notify();
     }
 
@@ -181,15 +171,10 @@ impl Preview {
         let Some(item_id) = item.id.clone() else {
             return;
         };
-        let Some(actions) = self
-            .actions
-            .as_mut()
-            .filter(|a| !a.busy && !a.pending.contains(&item_id))
-        else {
+        let Some(actions) = self.actions.as_mut().filter(|a| !a.busy) else {
             return;
         };
         actions.busy = true;
-        actions.pending.insert(item_id.clone());
         let verb = if item.on == Some(true) {
             "Disconnecting"
         } else {
@@ -201,11 +186,9 @@ impl Preview {
             seconds: DEVICE_PENDING_SECONDS,
         });
         let id = actions.actions[index].descriptor.action_id.clone();
-        let target = item_id.clone();
         self.apply(
             index,
-            Some(item_id),
-            move || qactions::quick_action_apply_item(&id, &target, ActionIntent::Toggle),
+            move || qactions::quick_action_apply_item(&id, &item_id, ActionIntent::Toggle),
             cx,
         );
         cx.notify();
@@ -215,7 +198,6 @@ impl Preview {
     fn apply(
         &mut self,
         index: usize,
-        item: Option<String>,
         work: impl FnOnce() -> ActionOutcome + Send + 'static,
         cx: &mut Context<Self>,
     ) {
@@ -229,9 +211,6 @@ impl Preview {
                 return;
             };
             actions.busy = false;
-            if let Some(item) = &item {
-                actions.pending.remove(item);
-            }
             cx.emit(notice(&title, outcome));
             this.read_action(index, cx);
         });
@@ -292,7 +271,7 @@ impl Preview {
                 .child(SharedString::from(reason.clone()))
                 .into_any_element(),
             _ => {
-                let available = action.available();
+                let live = action.available() && !busy;
                 let press = cx.listener(move |this, _, _, cx| this.run_action(index, cx));
                 let control = match action.descriptor.control {
                     ControlKind::Toggle => {
@@ -310,8 +289,8 @@ impl Preview {
                     .gap(px(CONTROL_GAP))
                     .child(
                         control
-                            .when(available && !busy, |el| el.on_click(press))
-                            .when(!available || busy, |el| el.opacity(INERT_OPACITY)),
+                            .when(live, |el| el.on_click(press))
+                            .when(!live, |el| el.opacity(INERT_OPACITY)),
                     )
                     .when(
                         index == 0 && action.descriptor.control == ControlKind::Toggle,
@@ -357,15 +336,13 @@ impl Preview {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let connected = item.on == Some(true);
-        let pending = item.id.as_ref().is_some_and(|id| {
-            self.actions
-                .as_ref()
-                .is_some_and(|a| a.pending.contains(id))
-        });
-        let actionable = item.id.is_some() && !busy;
+        let clickable = item.id.is_some();
         let clicked = item.clone();
         div()
-            .id(("qaction-device", index * 1000 + position))
+            .id(ElementId::NamedInteger(
+                format!("qaction-device-{index}").into(),
+                position as u64,
+            ))
             .flex()
             .items_center()
             .gap(px(DEVICE_GAP))
@@ -373,14 +350,12 @@ impl Preview {
             .px(px(DEVICE_PADDING_X))
             .py(px(DEVICE_PADDING_Y))
             .rounded(px(th.chip_radius()))
-            .when(actionable, |el| {
+            .when(clickable && !busy, |el| {
                 el.cursor_pointer()
                     .hover(|s| s.bg(th.control_fill))
                     .on_click(cx.listener(move |this, _, _, cx| this.run_item(index, &clicked, cx)))
             })
-            .when(pending || (busy && item.id.is_some()), |el| {
-                el.opacity(INERT_OPACITY)
-            })
+            .when(clickable && busy, |el| el.opacity(INERT_OPACITY))
             .child(
                 div()
                     .size(px(DOT))
