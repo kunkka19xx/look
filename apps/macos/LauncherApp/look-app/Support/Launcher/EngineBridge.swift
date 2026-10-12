@@ -248,6 +248,10 @@ private func look_todo_save_json(_ json: UnsafePointer<CChar>?) -> Bool
 nonisolated
 private func look_launcher_hotkey_json() -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_hotkey_check_local_json")
+nonisolated
+private func look_hotkey_check_local_json(_ spec: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_hotkey_check_json")
 nonisolated
 private func look_hotkey_check_json(_ spec: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -619,6 +623,12 @@ final class EngineBridge: @unchecked Sendable {
 
     nonisolated func hotkeyCheck(_ spec: String) -> HotkeyCheck? {
         Self.decodeOwnedJSON(spec.withCString { look_hotkey_check_json($0) })
+    }
+
+    /// An in-app shortcut, where Shift+Enter and Shift+Esc are chords rather
+    /// than typing.
+    nonisolated func hotkeyCheckLocal(_ spec: String) -> HotkeyCheck? {
+        Self.decodeOwnedJSON(spec.withCString { look_hotkey_check_local_json($0) })
     }
 
     private nonisolated static func decodeOwnedJSON<T: Decodable>(_ ptr: UnsafeMutablePointer<CChar>?) -> T? {

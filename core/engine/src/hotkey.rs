@@ -18,6 +18,7 @@ pub const DISABLED_DISPLAY: &str = "lookapp --toggle";
 const ONLY_DISABLE_IS_CONFIGURABLE: bool = cfg!(target_os = "linux");
 const IS_MAC: bool = cfg!(target_os = "macos");
 const SEPARATOR: &str = "+";
+const ARROW_PREFIX: &str = "Arrow";
 const MAX_FUNCTION_KEY: u8 = 20;
 
 /// Declaration order is the canonical order.
@@ -61,6 +62,10 @@ const NAMED_KEYS: &[(&str, Option<char>)] = &[
     ("Enter", None),
     ("Tab", None),
     ("Escape", None),
+    ("ArrowUp", None),
+    ("ArrowDown", None),
+    ("ArrowLeft", None),
+    ("ArrowRight", None),
     ("Backquote", Some('`')),
     ("Minus", Some('-')),
     ("Equal", Some('=')),
@@ -73,7 +78,14 @@ const NAMED_KEYS: &[(&str, Option<char>)] = &[
     ("Period", Some('.')),
     ("Slash", Some('/')),
 ];
-const KEY_ALIASES: &[(&str, &str)] = &[("esc", "escape"), ("return", "enter")];
+const KEY_ALIASES: &[(&str, &str)] = &[
+    ("esc", "escape"),
+    ("return", "enter"),
+    ("up", "arrowup"),
+    ("down", "arrowdown"),
+    ("left", "arrowleft"),
+    ("right", "arrowright"),
+];
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Key {
@@ -123,9 +135,18 @@ impl Key {
             .map_or_else(|| self.code.to_lowercase(), String::from)
     }
 
+    /// Arrows read as `Up`, not `ArrowUp`: the code is the config spelling, the
+    /// display is what a key capsule shows.
     fn display(&self) -> String {
-        self.character
-            .map_or_else(|| self.code.clone(), |c| c.to_ascii_uppercase().to_string())
+        self.character.map_or_else(
+            || {
+                self.code
+                    .strip_prefix(ARROW_PREFIX)
+                    .unwrap_or(&self.code)
+                    .to_string()
+            },
+            |c| c.to_ascii_uppercase().to_string(),
+        )
     }
 }
 
@@ -140,8 +161,29 @@ pub struct Hotkey {
     pub key: Key,
 }
 
+/// Where a chord fires, which is what decides whether Shift alone is a
+/// modifier. Global chords are typed at the system; local ones only reach Look
+/// while it is focused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scope {
+    Global,
+    Local,
+}
+
 impl Hotkey {
+    /// The global launcher hotkey.
     pub fn parse(spec: &str) -> Result<Self, String> {
+        Self::parse_scoped(spec, Scope::Global)
+    }
+
+    /// An in-app shortcut. Shift+Enter and Shift+Esc are real chords here - the
+    /// keys they hold type nothing - but a chord still needs one modifier, so
+    /// ordinary typing stays ordinary typing.
+    pub fn parse_local(spec: &str) -> Result<Self, String> {
+        Self::parse_scoped(spec, Scope::Local)
+    }
+
+    fn parse_scoped(spec: &str, scope: Scope) -> Result<Self, String> {
         let spec = spec.to_lowercase();
         let mut modifiers = Vec::new();
         let mut key = None;
@@ -164,8 +206,11 @@ impl Hotkey {
         modifiers.dedup();
 
         // Held with nothing but Shift, a printable key is typing every app needs.
+        // A local chord may hold Shift with a key that types nothing.
         let is_function_key = key.character.is_none() && key.code.starts_with('F');
-        if modifiers.iter().all(|m| *m == Modifier::Shift) && !is_function_key {
+        let shift_is_enough =
+            scope == Scope::Local && !modifiers.is_empty() && key.character.is_none();
+        if modifiers.iter().all(|m| *m == Modifier::Shift) && !is_function_key && !shift_is_enough {
             return Err(
                 "it needs a modifier other than Shift (only F-keys work alone)".to_string(),
             );
@@ -198,31 +243,47 @@ impl Hotkey {
 }
 
 /// A spec checked for a settings screen: its canonical spelling and display,
-/// or why it is rejected.
+/// or why it is rejected. `hotkey` carries the parsed chord, which is what a
+/// shell needs to match the key itself.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct HotkeyCheck {
     pub spec: String,
     pub display: Option<String>,
     pub error: Option<String>,
+    pub hotkey: Option<Hotkey>,
 }
 
 impl HotkeyCheck {
     pub fn new(spec: &str) -> Self {
-        let parsed = if is_disabled(spec) {
-            Ok((DISABLED_SPEC.to_string(), DISABLED_DISPLAY.to_string()))
-        } else {
-            Hotkey::parse(spec).map(|hotkey| (hotkey.spec(), hotkey.display()))
-        };
-        match parsed {
-            Ok((spec, display)) => Self {
-                spec,
-                display: Some(display),
+        if is_disabled(spec) {
+            return Self {
+                spec: DISABLED_SPEC.to_string(),
+                display: Some(DISABLED_DISPLAY.to_string()),
                 error: None,
+                hotkey: None,
+            };
+        }
+        Self::checked(spec, Hotkey::parse)
+    }
+
+    /// An in-app shortcut, which accepts the Shift+Enter family `new` rejects.
+    pub fn local(spec: &str) -> Self {
+        Self::checked(spec, Hotkey::parse_local)
+    }
+
+    fn checked(spec: &str, parse: impl Fn(&str) -> Result<Hotkey, String>) -> Self {
+        match parse(spec) {
+            Ok(hotkey) => Self {
+                spec: hotkey.spec(),
+                display: Some(hotkey.display()),
+                error: None,
+                hotkey: Some(hotkey),
             },
             Err(error) => Self {
                 spec: spec.trim().to_string(),
                 display: None,
                 error: Some(error),
+                hotkey: None,
             },
         }
     }
@@ -319,6 +380,39 @@ mod tests {
         ] {
             assert!(Hotkey::parse(spec).is_err(), "{spec} should be rejected");
         }
+    }
+
+    #[test]
+    fn local_chords_accept_shift_on_keys_that_type_nothing() {
+        for spec in ["shift+enter", "shift+esc", "shift+arrowup", "shift+tab"] {
+            assert!(Hotkey::parse_local(spec).is_ok(), "{spec} should be local");
+            assert!(
+                Hotkey::parse(spec).is_err(),
+                "{spec} is not a global hotkey"
+            );
+        }
+        // One modifier is still the floor, and Shift+printable is still typing.
+        for spec in ["enter", "esc", "arrowup", "k", "shift+k", ""] {
+            assert!(
+                Hotkey::parse_local(spec).is_err(),
+                "{spec} should be rejected"
+            );
+        }
+        assert_eq!(
+            Hotkey::parse_local("opt+up").unwrap(),
+            Hotkey::parse_local("option+arrowup").unwrap()
+        );
+        // That key is Option on macOS and Alt everywhere else, so the
+        // expectation follows the platform instead of pinning one spelling.
+        let (spec_name, display_name, _) = Modifier::Option.names();
+        let arrow = HotkeyCheck::local("option+up");
+        assert_eq!(arrow.spec, format!("{spec_name}+arrowup"));
+        assert_eq!(arrow.display, Some(format!("{display_name}+Up")));
+        assert_eq!(
+            arrow.hotkey,
+            Some(Hotkey::parse_local("option+up").unwrap())
+        );
+        assert_eq!(HotkeyCheck::local("shift+k").display, None);
     }
 
     #[test]

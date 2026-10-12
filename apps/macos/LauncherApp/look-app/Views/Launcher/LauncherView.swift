@@ -2602,7 +2602,7 @@ struct LauncherView: View {
                     cardFooter(placement: .singlePanel) {
                         HintBar(hint: panelHint, todo: todoQuickView, themeStore: themeStore)
                         Spacer(minLength: 8)
-                        copyrightLink
+                        if showsCopyright { copyrightLink }
                     }
                 }
             }
@@ -2639,6 +2639,10 @@ struct LauncherView: View {
             .padding(.vertical, 3)
             .background(themeStore.selectionFillColor(), in: Capsule())
     }
+
+    /// Settings ends in a floating Save button; a byline in the same corner is
+    /// one more thing in the space that button already owns.
+    private var showsCopyright: Bool { !appUIState.showsThemeSettings }
 
     private var copyrightLink: some View {
         Link("© 2026 by Kunkka", destination: URL(string: "https://github.com/kunkka19xx")!)
@@ -2686,7 +2690,9 @@ struct LauncherView: View {
         // While floating the copyright moves into a card footer; on the empty-rest
         // screen it's hidden entirely; otherwise it stays in the panel's
         // bottom-right corner. Compact carries it in the search bar.
-        if !showsFloatingCards && !isCompactLayout && !restsAsBareBar && !isHideAppConfirmationVisible {
+        if !showsFloatingCards && !isCompactLayout && !restsAsBareBar && !isHideAppConfirmationVisible
+            && showsCopyright
+        {
             copyrightLink
                 .padding(.trailing, max(10, hintCornerClearance))
                 // Shares the hint line, as it does inside the linows hint bar.

@@ -759,23 +759,21 @@ final class TodoKeyHostView: NSView {
             guard let self, let window = self.window,
                   window.isKeyWindow, event.window === window,
                   !self.isHiddenOrHasHiddenAncestor else { return event }
-            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
-            if chars == "z", mods == [.command, .shift] {
+            let shortcuts = ShortcutBindings.shared
+            if shortcuts.matches(.todoRedo, event) {
                 if self.textEditorOwnsUndo(in: window) { return event }
                 if self.onRedo?() == true { return nil }
                 return event
             }
-            guard mods == .command else { return event }
-            if chars == "n" {
+            if shortcuts.matches(.todoTogglePage, event) {
                 self.onTogglePage?()
                 return nil
             }
-            if chars == "s" {
+            if shortcuts.matches(.todoSave, event) {
                 self.onSave?()
                 return nil
             }
-            if chars == "z" {
+            if shortcuts.matches(.todoUndo, event) {
                 // Let the active text editor undo typing before task changes.
                 if self.textEditorOwnsUndo(in: window) { return event }
                 if self.onUndo?() == true { return nil }

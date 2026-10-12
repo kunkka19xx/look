@@ -48,7 +48,13 @@ if [[ -z "$DOWNLOAD_URL" ]]; then
     fi
     echo "Using latest release version: $VERSION"
   fi
-  DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/Look-${VERSION}-macOS.zip"
+  # Releases ship one asset per architecture; arm64 keeps the historical name.
+  case "$(uname -m)" in
+    arm64) ASSET="Look-${VERSION}-macOS.zip" ;;
+    x86_64) ASSET="Look-${VERSION}-macOS-x86_64.zip" ;;
+    *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
+  DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${ASSET}"
 fi
 
 TMP_DIR="$(mktemp -d)"

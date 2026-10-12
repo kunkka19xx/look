@@ -1,21 +1,19 @@
 import SwiftUI
 
-/// One titled block of shortcuts, rendered identically wherever it appears: the
-/// in-window help screen (`Cmd+H`) and Settings > Shortcuts.
+/// One block of shortcuts, rendered identically on the help screen (`Cmd+H`)
+/// and in Settings > Shortcuts. The two screens used to keep private copies
+/// that drifted apart by four constants.
 ///
-/// Both read the same `ShortcutCatalog`, so the content could not drift, but the
-/// two screens kept private copies of this view that differed in four constants
-/// - a key capsule that was a lighter fill on one screen than the other. Same
-/// data rendered two ways is the shallow end of the same problem, so there is
-/// one view.
-///
-/// The key capsule deliberately uses `liftColor` rather than `controlFillColor`:
-/// the help screen's topic capsules are `controlFillColor` and are *clickable*,
-/// and a static key badge should not look like a button sitting next to one.
+/// The key capsule uses `liftColor`, not the `controlFillColor` of the topic
+/// capsules: a static badge should not look like the button beside it.
 struct ShortcutGroupView: View {
     @EnvironmentObject private var themeStore: ThemeStore
+    /// Redraws the key capsules when a rebind takes effect.
+    @ObservedObject private var shortcuts = ShortcutBindings.shared
 
-    let title: String
+    /// Nil where the surface draws its own heading, as the collapsible sections
+    /// in Settings do.
+    let title: String?
     let entries: [ShortcutEntry]
     /// Given, configurable entries become recorders; the help screen passes nil.
     var bindings: Binding<[String: String]>? = nil
@@ -26,17 +24,23 @@ struct ShortcutGroupView: View {
         static let keyHorizontalPadding: CGFloat = 8
         static let keyVerticalPadding: CGFloat = 3
         static let keyFillOpacity = 0.14
+        /// Keys sit in their own column so the actions line up. A longer chord
+        /// overflows it rather than being truncated.
+        static let keyColumnWidth: CGFloat = 170
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Metrics.rowSpacing) {
-            Text(title)
-                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
-                .foregroundStyle(themeStore.secondaryTextColor())
+            if let title {
+                Text(title)
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
+                    .foregroundStyle(themeStore.secondaryTextColor())
+            }
 
             ForEach(entries) { entry in
                 HStack(alignment: .firstTextBaseline, spacing: Metrics.keyToActionSpacing) {
                     keys(for: entry)
+                        .frame(minWidth: Metrics.keyColumnWidth, alignment: .leading)
                     Text(entry.action)
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                         .foregroundStyle(themeStore.secondaryTextColor())
@@ -52,16 +56,19 @@ struct ShortcutGroupView: View {
             if let bindings {
                 ShortcutRecorderField(shortcut: shortcut, bindings: bindings)
             } else {
-                keyCapsule(shortcut.registration.display)
+                keyCapsule(shortcut.display)
             }
         } else {
-            keyCapsule(entry.keys)
+            // Dimmed only where the column is otherwise editable: on the help
+            // screen nothing is, and the distinction would mean nothing.
+            keyCapsule(entry.keys, dimmed: bindings != nil)
         }
     }
 
-    private func keyCapsule(_ keys: String) -> some View {
+    private func keyCapsule(_ keys: String, dimmed: Bool = false) -> some View {
         Text(keys)
             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+            .foregroundStyle(dimmed ? themeStore.mutedTextColor() : themeStore.fontColor())
             .padding(.horizontal, Metrics.keyHorizontalPadding)
             .padding(.vertical, Metrics.keyVerticalPadding)
             .background(themeStore.liftColor(opacity: Metrics.keyFillOpacity), in: Capsule())

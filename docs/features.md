@@ -138,6 +138,7 @@ This document tracks what `look` supports today and what is planned next.
 - local config file `~/.look/config`
 - runtime reload (`Cmd+Shift+;`)
 - rebindable launcher hotkey: record one in `Settings > Shortcuts` (macOS, Windows) or set `launcher_hotkey` in `~/.look/config`; `none` frees the key for your own binding of `lookapp --toggle`
+- rebindable in-app shortcuts (macOS): every modifier chord in `Settings > Shortcuts`, filtered by topic and grouped - click a key capsule, press a new chord, Save Config. Stored as `shortcut_<group>_<action>` in `~/.look/config`, and only what you changed is written. Structural keys (Enter, Esc, Tab, arrows, Y/N confirmations) stay fixed
 - 9 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, Custom)
 - two window layouts, `layout=split` (results beside a preview) and `layout=compact` (Spotlight-width, results list alone)
 - Behind-window blur requested from the compositor where it exists (macOS material; KDE / Hyprland / Niri on Linux), clear glass everywhere else

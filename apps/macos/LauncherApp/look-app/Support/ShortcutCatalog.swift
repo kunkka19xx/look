@@ -2,18 +2,17 @@ import Foundation
 
 /// One documented shortcut.
 ///
-/// `id` is the stable handle a future user remapping binds an override to: the
-/// displayed `keys` may change, the id must not. Entries carry one even though
-/// nothing overrides them yet, because adding remapping later must not have to
-/// invent identifiers for shortcuts people already learned.
+/// `id` is the stable handle a binding hangs off: `ShortcutBindingTable` names
+/// rows by id, so `keys` is only the default for a row that has one, and both
+/// the help screen and Settings show the chord the user is actually on.
 struct ShortcutEntry: Identifiable {
     let id: String
     let keys: String
     let action: String
     /// False when there is no chord to reassign - a typed prefix, a positional
-    /// `Cmd+N` derived from catalog order, or a pointer affordance. A remapping
-    /// UI offers only the remappable ones, so it never presents a row that
-    /// cannot be honoured.
+    /// `Cmd+N` derived from catalog order, or a pointer affordance. Settings
+    /// offers a recorder only where a binding exists, so it never presents a row
+    /// that cannot be honoured.
     var remappable: Bool = true
 
     init(_ id: String, _ keys: String, _ action: String, remappable: Bool = true) {
@@ -44,6 +43,46 @@ enum ShortcutTopic: String, CaseIterable, Identifiable {
     }
 }
 
+/// Which slice of the catalog a surface is showing. `all` keeps one scroll; the
+/// rest narrow it, so arriving from a mode lands on that mode's keys instead of
+/// a page the reader has to search.
+///
+/// Both the help screen (`Cmd+H`) and Settings > Shortcuts filter by this, which
+/// is why it sits with the catalog rather than with either screen.
+enum ShortcutTopicFilter: CaseIterable, Identifiable {
+    case all
+    case topic(ShortcutTopic)
+
+    static var allCases: [ShortcutTopicFilter] { [.all] + ShortcutTopic.allCases.map(Self.topic) }
+
+    static let ai = ShortcutTopicFilter.topic(.ai)
+
+    var id: String {
+        switch self {
+        case .all: return "all"
+        case .topic(let topic): return topic.id
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .all: return "All"
+        case .topic(let topic): return topic.label
+        }
+    }
+
+    var groups: [ShortcutGroup] {
+        switch self {
+        case .all: return ShortcutCatalog.groups
+        case .topic(let topic): return ShortcutCatalog.groups(for: topic)
+        }
+    }
+}
+
+extension ShortcutTopicFilter: Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+}
+
 /// One titled block. The title is the identity: two groups never share one.
 struct ShortcutGroup: Identifiable {
     let title: String
@@ -52,7 +91,9 @@ struct ShortcutGroup: Identifiable {
     var id: String { title }
 }
 
-/// The single source of truth for keyboard documentation.
+/// The single source of truth for keyboard documentation. Every row carrying a
+/// `ShortcutBindingTable` entry is rebindable in Settings > Shortcuts, where the
+/// `keys` below are what Reset goes back to.
 ///
 /// Both surfaces read this: the in-window help screen (`Cmd+H`, filtered by
 /// topic) and Settings > Shortcuts (flat, every group). They used to be two
@@ -61,8 +102,6 @@ struct ShortcutGroup: Identifiable {
 /// had gone stale enough to name the wrong command.
 enum ShortcutCatalog {
     static let groups: [ShortcutGroup] = [
-        // Rebindable in Settings > Shortcuts (see `ConfigurableShortcut`), so
-        // `keys` here is only the default.
         ShortcutGroup(title: "Global", topic: .main, entries: [
             ShortcutEntry("global.toggleLauncher", "Cmd+Space", "Show or hide Look from any app"),
         ]),
@@ -75,6 +114,7 @@ enum ShortcutCatalog {
             ShortcutEntry("main.clearPicks", "Cmd+Shift+P", "Clear all picked items"),
             ShortcutEntry("main.trash", "Cmd+D", "Trash selected file/folder (Trash pin: empty it) or remove the clipboard item"),
             ShortcutEntry("main.actions", "Cmd+K / Ctrl+K", "Open the action menu for the selected row (Cmd+J/K or Ctrl+J/K move, Enter runs)"),
+            ShortcutEntry("main.quickActionToggle", "Cmd+O", "Flip the selected row's toggle (Bluetooth, Wi-Fi, Do Not Disturb)"),
             ShortcutEntry("main.moveTab", "Tab / Shift+Tab", "Move selection"),
             ShortcutEntry("main.moveArrows", "Up / Down", "Move selection"),
             ShortcutEntry("main.reveal", "Cmd+F", "Reveal selected app/file/folder in Finder"),
@@ -110,7 +150,8 @@ enum ShortcutCatalog {
             ShortcutEntry("view.settings", "Cmd+Shift+,", "Open/close settings panel"),
             ShortcutEntry("view.reloadConfig", "Cmd+Shift+;", "Reload .look/config"),
             ShortcutEntry("view.toggleLayout", "Cmd+Shift+C", "Switch between split and compact until Look quits (config unchanged)"),
-            ShortcutEntry("view.zoom", "Cmd+- / Cmd+=", "Zoom UI scale out / in"),
+            ShortcutEntry("view.zoomOut", "Cmd+-", "Zoom UI scale out"),
+            ShortcutEntry("view.zoomIn", "Cmd+=", "Zoom UI scale in"),
             ShortcutEntry("view.zoomReset", "Cmd+0", "Reset UI scale (opens the tenth session while the AI list is up)"),
         ]),
 
@@ -121,7 +162,8 @@ enum ShortcutCatalog {
             ShortcutEntry("ai.enter", ">", "Enter AI mode (a dead-end Enter on the home screen goes here too)", remappable: false),
             ShortcutEntry("ai.send", "Enter", "Send the message, or open the highlighted conversation"),
             ShortcutEntry("ai.newline", "Shift+Enter", "New line in the message (the box grows to 6 lines)"),
-            ShortcutEntry("ai.history", "Option+Up / Option+Down", "Walk your recent prompts, like a shell history"),
+            ShortcutEntry("ai.historyOlder", "Option+Up", "Walk back through your recent prompts, like a shell history"),
+            ShortcutEntry("ai.historyNewer", "Option+Down", "Walk forward through your recent prompts"),
             ShortcutEntry("ai.selectText", "Shift+Up / Shift+Down", "Select text in the message you are composing"),
             ShortcutEntry("ai.openSession", "Cmd+1..Cmd+9, Cmd+0", "Open the conversation carrying that chip (Cmd+0 is the tenth)"),
             ShortcutEntry("ai.moveList", "Tab / Up / Down", "Move over the conversation list"),
@@ -170,6 +212,10 @@ enum ShortcutCatalog {
     }
 
     static var allEntries: [ShortcutEntry] { groups.flatMap(\.entries) }
+
+    static func entry(_ id: String) -> ShortcutEntry? {
+        allEntries.first { $0.id == id }
+    }
 
     /// Derived from the canonical prefix list so the help screen, the Shortcuts
     /// tab, and the `"` discovery menu cannot drift.

@@ -42,7 +42,7 @@ Results land as fast as you can type. A Rust core under a native SwiftUI app on 
 brew install --cask look
 ```
 
-Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`), or pick another shortcut with `launcher_hotkey` in `~/.look/config`. Release builds are signed and notarized - no Gatekeeper bypass needed.
+Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`), or pick another shortcut with `launcher_hotkey` in `~/.look/config`. Release builds are signed and notarized - no Gatekeeper bypass needed. The app is a universal binary: native on Apple Silicon and Intel Macs.
 
 ### Linux
 
