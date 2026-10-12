@@ -172,20 +172,44 @@ pub struct KillTarget {
 
 const KILL_RESULT_LIMIT: usize = 60;
 
-/// Fuzzy-find kill targets: apps first (matched on display name), then any other
-/// process (matched on `/proc` name), deduped by PID. Empty query lists apps
-/// only, matching the panel's default view. Blocks: it walks `/proc` fresh
-/// each query, so the shell keeps it off the main thread.
-pub fn search_kill_targets(query: &str) -> Vec<KillTarget> {
-    let trimmed = query.trim();
-    if trimmed.is_empty() {
-        return list_processes()
-            .into_iter()
-            .take(KILL_RESULT_LIMIT)
-            .map(app_target)
-            .collect();
+/// Everything the `kill` panel can rank: the desktop apps and every process
+/// with its listening ports. Taking it is the `/proc` walk (socket fds
+/// included), so it blocks; ranking it is in-memory and fast enough to run
+/// per keystroke on the UI thread.
+pub struct KillSnapshot {
+    apps: Vec<RunningApp>,
+    procs: Vec<ProcRow>,
+}
+
+impl KillSnapshot {
+    pub fn take() -> Self {
+        Self {
+            apps: list_processes(),
+            procs: list_all_raw(),
+        }
     }
-    rank_kill_targets(list_processes(), list_all_raw(), trimmed)
+
+    /// Apps first (matched on display name), then any other process (matched
+    /// on `/proc` name, port or PID), deduped by PID. An empty query lists
+    /// the apps alone, the panel's default view.
+    pub fn rank(&self, query: &str) -> Vec<KillTarget> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return self
+                .apps
+                .iter()
+                .take(KILL_RESULT_LIMIT)
+                .map(app_target)
+                .collect();
+        }
+        rank_kill_targets(&self.apps, &self.procs, trimmed)
+    }
+}
+
+/// A fresh snapshot ranked once, for a shell that cannot hold the snapshot
+/// across keystrokes. Blocks like `KillSnapshot::take`.
+pub fn search_kill_targets(query: &str) -> Vec<KillTarget> {
+    KillSnapshot::take().rank(query)
 }
 
 fn kill_hit_order(a: &(i64, KillTarget), b: &(i64, KillTarget)) -> std::cmp::Ordering {
@@ -193,7 +217,7 @@ fn kill_hit_order(a: &(i64, KillTarget), b: &(i64, KillTarget)) -> std::cmp::Ord
         .then_with(|| a.1.name.to_lowercase().cmp(&b.1.name.to_lowercase()))
 }
 
-fn rank_kill_targets(apps: Vec<RunningApp>, procs: Vec<ProcRow>, query: &str) -> Vec<KillTarget> {
+fn rank_kill_targets(apps: &[RunningApp], procs: &[ProcRow], query: &str) -> Vec<KillTarget> {
     // Lowercase both sides: fuzzy_score is case-sensitive and app names are
     // Capitalized ("Firefox") while queries are typed lowercase.
     let lowered = query.to_lowercase();
@@ -205,7 +229,7 @@ fn rank_kill_targets(apps: Vec<RunningApp>, procs: Vec<ProcRow>, query: &str) ->
     // resolves through the process rows below (which own the port data).
     let mut app_pids = std::collections::HashSet::new();
     let mut app_hits: Vec<(i64, KillTarget)> = apps
-        .into_iter()
+        .iter()
         .filter_map(|a| {
             look_matching::fuzzy_score_prepared(&prepared, &a.name.to_lowercase()).map(|s| {
                 app_pids.insert(a.pid);
@@ -217,7 +241,7 @@ fn rank_kill_targets(apps: Vec<RunningApp>, procs: Vec<ProcRow>, query: &str) ->
 
     // Processes already shown as an app (its representative PID) are skipped.
     let mut proc_hits: Vec<(i64, KillTarget)> = procs
-        .into_iter()
+        .iter()
         .filter(|r| !app_pids.contains(&r.pid))
         .filter_map(|r| {
             score_process(
@@ -234,30 +258,30 @@ fn rank_kill_targets(apps: Vec<RunningApp>, procs: Vec<ProcRow>, query: &str) ->
     out
 }
 
-fn app_target(a: RunningApp) -> KillTarget {
+fn app_target(a: &RunningApp) -> KillTarget {
     KillTarget {
-        name: a.name,
+        name: a.name.clone(),
         pid: a.pid,
         is_app: true,
-        desktop_id: a.desktop_id,
-        exec: a.exec,
+        desktop_id: a.desktop_id.clone(),
+        exec: a.exec.clone(),
         ports: Vec::new(),
     }
 }
 
-fn proc_target(r: ProcRow) -> KillTarget {
+fn proc_target(r: &ProcRow) -> KillTarget {
     KillTarget {
-        name: r.name,
+        name: r.name.clone(),
         pid: r.pid,
         is_app: false,
-        ports: r.ports,
+        ports: r.ports.clone(),
         // App-backed processes still carry the app icon via their icon source
         // (a `.desktop` path on Linux, the exe path on Windows). It goes in
         // both fields: `desktop_id` is what Linux resolves from, `exec` is the
         // path Windows' shell resolver takes - and it's also the icon cache key,
         // so leaving it empty would make every process row share one entry.
         desktop_id: r.icon_source.as_ref().map(|p| format!("app:{p}")),
-        exec: r.icon_source,
+        exec: r.icon_source.clone(),
     }
 }
 pub fn process_detail(pid: u32) -> Option<ProcDetail> {
@@ -500,7 +524,7 @@ mod tests {
         let apps = vec![app("Firefox", 100)];
         // pid 100 is the app's own PID (deduped); 200 is a stray "firefox" proc.
         let procs = vec![row("firefox", 100, &[]), row("firefox", 200, &[])];
-        let out = rank_kill_targets(apps, procs, "fire");
+        let out = rank_kill_targets(&apps, &procs, "fire");
         assert_eq!(out.len(), 2, "app + the non-dup process");
         assert!(out[0].is_app, "app ranks first");
         assert_eq!(out[0].pid, 100);
@@ -510,7 +534,7 @@ mod tests {
 
     #[test]
     fn kill_targets_non_match_excluded() {
-        let out = rank_kill_targets(vec![app("Firefox", 1)], vec![row("bash", 2, &[])], "zzq");
+        let out = rank_kill_targets(&[app("Firefox", 1)], &[row("bash", 2, &[])], "zzq");
         assert!(out.is_empty());
     }
 
@@ -519,11 +543,11 @@ mod tests {
         let apps = vec![app("Firefox", 1)];
         let procs = vec![row("node", 4321, &[3000]), row("bash", 900, &[])];
         // A bare port number finds its owner via the process rows (no `:` prefix).
-        let by_port = rank_kill_targets(apps.clone(), procs.clone(), "3000");
+        let by_port = rank_kill_targets(&apps, &procs, "3000");
         assert_eq!(by_port.len(), 1);
         assert_eq!(by_port[0].pid, 4321);
         // A bare PID finds the process directly.
-        let by_pid = rank_kill_targets(apps, procs, "900");
+        let by_pid = rank_kill_targets(&apps, &procs, "900");
         assert_eq!(by_pid.len(), 1);
         assert_eq!(by_pid[0].pid, 900);
     }
