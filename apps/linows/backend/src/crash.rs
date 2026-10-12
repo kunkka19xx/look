@@ -45,10 +45,7 @@ pub fn report_fatal(message: &str) {
     let log_path = append_crash_log(message);
     if std::thread::current().name() == Some("main") {
         let text = match log_path {
-            Some(path) => format!(
-                "{message}\n\nDetails were written to:\n{}",
-                path.display()
-            ),
+            Some(path) => format!("{message}\n\nDetails were written to:\n{}", path.display()),
             None => message.to_string(),
         };
         native_error_dialog(&text);

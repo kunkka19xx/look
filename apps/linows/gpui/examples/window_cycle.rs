@@ -30,7 +30,11 @@ fn mem() -> (f64, f64) {
     let mut pss = 0u64;
     let mut in_heap = false;
     for line in std::fs::read_to_string("/proc/self/smaps").unwrap().lines() {
-        if line.split_whitespace().next().is_some_and(|f| f.contains('-') && f.len() > 8) {
+        if line
+            .split_whitespace()
+            .next()
+            .is_some_and(|f| f.contains('-') && f.len() > 8)
+        {
             in_heap = line.ends_with("[heap]");
         } else if let Some(kb) = line.strip_prefix("Pss:") {
             let kb: u64 = kb.trim().trim_end_matches(" kB").parse().unwrap();
@@ -44,18 +48,26 @@ fn mem() -> (f64, f64) {
 }
 
 fn dim(var: &str, default: f32) -> f32 {
-    std::env::var(var).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(var)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 fn main() {
-    let cycles: usize = std::env::args().nth(1).and_then(|a| a.parse().ok()).unwrap_or(20);
+    let cycles: usize = std::env::args()
+        .nth(1)
+        .and_then(|a| a.parse().ok())
+        .unwrap_or(20);
     application().run(move |cx: &mut App| {
         cx.set_quit_mode(gpui::QuitMode::Explicit);
         cx.spawn(async move |cx| {
             let (h, p) = mem();
             println!("cycle 0  heap {h:.1} MB  pss {p:.1} MB");
             for i in 1..=cycles {
-                let bounds = cx.update(|cx| Bounds::centered(None, size(px(dim("WC_W", 700.)), px(dim("WC_H", 500.))), cx));
+                let bounds = cx.update(|cx| {
+                    Bounds::centered(None, size(px(dim("WC_W", 700.)), px(dim("WC_H", 500.))), cx)
+                });
                 let handle = cx
                     .open_window(
                         WindowOptions {
@@ -77,16 +89,22 @@ fn main() {
                         |_, cx| cx.new(|_| Blank),
                     )
                     .expect("open window");
-                cx.background_executor().timer(Duration::from_millis(dim("WC_WAIT_MS", 1200.) as u64)).await;
+                cx.background_executor()
+                    .timer(Duration::from_millis(dim("WC_WAIT_MS", 1200.) as u64))
+                    .await;
                 let _ = handle.update(cx, |_, window, _| window.remove_window());
-                cx.background_executor().timer(Duration::from_millis(dim("WC_WAIT_MS", 1200.) as u64)).await;
+                cx.background_executor()
+                    .timer(Duration::from_millis(dim("WC_WAIT_MS", 1200.) as u64))
+                    .await;
                 let (h, p) = mem();
                 println!("cycle {i}  heap {h:.1} MB  pss {p:.1} MB");
             }
             // Idle watch: does anything come back on its own, or with a trim?
             let idle = dim("WC_IDLE_S", 0.) as u64;
             for t in (30..=idle).step_by(30) {
-                cx.background_executor().timer(Duration::from_secs(30)).await;
+                cx.background_executor()
+                    .timer(Duration::from_secs(30))
+                    .await;
                 let (h, p) = mem();
                 println!("idle {t}s  heap {h:.1} MB  pss {p:.1} MB");
             }
