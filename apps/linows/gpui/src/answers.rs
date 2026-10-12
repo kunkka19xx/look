@@ -3,13 +3,15 @@
 //! fan-out and dedup. linows has no on-device model, so DuckDuckGo,
 //! Wikipedia and the pattern-gated instant providers are the whole of it.
 
-use std::time::Duration;
-
-use std::time::Instant;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use gpui::{
-    Context, Div, FontWeight, SharedString, Transformation, div, prelude::*, px, radians, svg,
+    Context, Div, FontWeight, RenderImage, ScrollHandle, SharedString, Transformation, div, img,
+    point, prelude::*, px, radians, svg,
 };
+use image::imageops::FilterType;
 use linows_backend::answers;
 use linows_backend::look_answers::Answer;
 
@@ -27,6 +29,12 @@ const PADDING: f32 = 12.0;
 const GAP: f32 = 8.0;
 const BLOCK_GAP: f32 = 14.0;
 const ICON: f32 = 16.0;
+const IMAGE_SIDE: f32 = 96.0;
+/// Smaller beside the text in compact, so the reading measure stays usable.
+const COMPACT_IMAGE_SIDE: f32 = 72.0;
+/// Decoded at twice the drawn side so HiDPI stays sharp.
+const THUMB_SCALE: f32 = 2.0;
+const IMAGE_GAP: f32 = 10.0;
 const LINE_HEIGHT: f32 = 1.5;
 const THINKING: &str = "Thinking\u{2026}";
 const SPINNER: f32 = 12.0;
@@ -42,11 +50,25 @@ pub enum State {
     Failed,
 }
 
+/// A finished answer, kept over a hide so showing the launcher again with
+/// the same question doesn't ask the web again, as macOS's long-lived
+/// controller does.
+#[derive(Clone)]
+pub struct Settled {
+    state: State,
+    question: String,
+    items: Vec<Answer>,
+    thumbs: HashMap<String, Arc<RenderImage>>,
+}
+
 #[derive(Default)]
 pub struct AiAnswer {
     state: Option<State>,
     question: String,
     items: Vec<Answer>,
+    /// Decoded thumbnails by `image_url`, for the answers on the card.
+    thumbs: HashMap<String, Arc<RenderImage>>,
+    scroll: ScrollHandle,
     /// Bumps on every update; a run that comes back for an older one is dropped.
     version: u64,
     pub enabled: bool,
@@ -149,6 +171,8 @@ impl AiAnswer {
         let version = self.version;
         self.question = query.clone();
         self.items.clear();
+        self.thumbs.clear();
+        self.scroll.set_offset(point(px(0.0), px(0.0)));
         self.state = Some(State::Streaming);
 
         cx.spawn(async move |this, cx| {
@@ -180,7 +204,7 @@ impl AiAnswer {
                 let answer = task.get().await;
                 let _ = this.update(cx, |this, cx| {
                     if this.ai.version == version {
-                        this.ai.land(answer);
+                        this.ai.land(answer, cx);
                         cx.notify();
                     }
                 });
@@ -201,7 +225,7 @@ impl AiAnswer {
                     let answer = task.get().await;
                     let _ = this.update(cx, |this, cx| {
                         if this.ai.version == version {
-                            this.ai.land(answer);
+                            this.ai.land(answer, cx);
                             cx.notify();
                         }
                     });
@@ -222,7 +246,7 @@ impl AiAnswer {
         cx.notify();
     }
 
-    fn land(&mut self, answer: Option<Answer>) {
+    fn land(&mut self, answer: Option<Answer>, cx: &mut Context<Launcher>) {
         let Some(answer) = answer else {
             return;
         };
@@ -231,7 +255,36 @@ impl AiAnswer {
         {
             return;
         }
+        if let Some(url) = answer.image_url.clone() {
+            fetch_thumb(url, cx);
+        }
         self.items.push(answer);
+    }
+
+    /// The answer to keep over a hide; one still streaming is asked again.
+    pub fn settled(&self) -> Option<Settled> {
+        let state = self
+            .state
+            .filter(|s| matches!(s, State::Done | State::Failed))?;
+        Some(Settled {
+            state,
+            question: self.question.clone(),
+            items: self.items.clone(),
+            thumbs: self.thumbs.clone(),
+        })
+    }
+
+    /// Back from a hide. A thumbnail still loading then is fetched again.
+    pub fn resume(&mut self, settled: Settled, cx: &mut Context<Launcher>) {
+        for url in settled.items.iter().filter_map(|it| it.image_url.as_ref()) {
+            if !settled.thumbs.contains_key(url) {
+                fetch_thumb(url.clone(), cx);
+            }
+        }
+        self.state = Some(settled.state);
+        self.question = settled.question;
+        self.items = settled.items;
+        self.thumbs = settled.thumbs;
     }
 
     /// Tear the card down: query cleared, mode switched, AI off.
@@ -240,10 +293,12 @@ impl AiAnswer {
         self.state = None;
         self.question.clear();
         self.items.clear();
+        self.thumbs.clear();
     }
 
     /// The card: header with the question, one block per source, a status
-    /// line while nothing has landed.
+    /// line while nothing has landed. The blocks scroll under the header
+    /// once the caller caps or fills the card's height.
     pub fn render(&self, th: &Theme, cx: &mut Context<Launcher>) -> Option<Div> {
         let state = self.state?;
         let blocks = self.items.iter().enumerate().map(|(i, item)| {
@@ -253,7 +308,7 @@ impl AiAnswer {
                 .flex()
                 .items_center()
                 .gap(px(theme::CHIP_PADDING_X / 2.0))
-                .text_size(px(th.font_size - 4.0))
+                .text_size(px(th.font_size - 3.0))
                 .font_weight(FontWeight::BOLD)
                 .text_color(if url.is_some() {
                     th.accent
@@ -271,7 +326,7 @@ impl AiAnswer {
                     el.child(
                         svg()
                             .path(glyphs::ARROW_UP_RIGHT)
-                            .size(px(th.font_size - 3.0))
+                            .size(px(th.font_size - 5.0))
                             .text_color(th.accent),
                     )
                 });
@@ -301,9 +356,41 @@ impl AiAnswer {
                 .child(
                     svg()
                         .path(glyphs::COPY)
-                        .size(px(th.font_size - 1.0))
+                        .size(px(th.font_size - 2.0))
                         .text_color(th.text_muted),
                 );
+            let compact = !th.split();
+            let side = if compact {
+                COMPACT_IMAGE_SIDE
+            } else {
+                IMAGE_SIDE
+            };
+            let thumb = item
+                .image_url
+                .as_ref()
+                .and_then(|key| self.thumbs.get(key))
+                .map(|thumb| {
+                    let url = item.url.clone();
+                    div()
+                        .id(("ai-thumb", i))
+                        .size(px(side))
+                        .flex_shrink_0()
+                        .rounded(px(th.control_radius()))
+                        .overflow_hidden()
+                        .when(url.is_some(), |el| el.cursor_pointer())
+                        .on_click(cx.listener(move |this, _, _, _| {
+                            if let Some(url) = &url {
+                                this.open_url(url);
+                            }
+                        }))
+                        .child(img(thumb.clone()).size(px(side)))
+                });
+            let text = div()
+                .flex_1()
+                .min_w_0()
+                .line_height(px(th.font_size * LINE_HEIGHT))
+                .text_color(th.text_secondary)
+                .child(item.text.clone());
             div()
                 .flex()
                 .flex_col()
@@ -318,10 +405,12 @@ impl AiAnswer {
                 )
                 .child(
                     div()
-                        .text_size(px(th.font_size - 1.0))
-                        .line_height(px((th.font_size - 1.0) * LINE_HEIGHT))
-                        .text_color(th.text_secondary)
-                        .child(item.text.clone()),
+                        .flex()
+                        .when(compact, |el| el.flex_row().items_start())
+                        .when(!compact, |el| el.flex_col())
+                        .gap(px(IMAGE_GAP))
+                        .children(thumb)
+                        .child(text),
                 )
         });
         let status = match (state, self.items.is_empty()) {
@@ -342,11 +431,13 @@ impl AiAnswer {
                 .bg(th.control_fill)
                 .border(px(1.0))
                 .border_color(th.border)
+                .min_h_0()
                 .flex()
                 .flex_col()
                 .gap(px(GAP))
                 .child(
                     div()
+                        .flex_shrink_0()
                         .flex()
                         .items_center()
                         .gap(px(GAP - 2.0))
@@ -367,6 +458,11 @@ impl AiAnswer {
                 )
                 .child(
                     div()
+                        .id("ai-blocks")
+                        .flex_auto()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .track_scroll(&self.scroll)
                         .flex()
                         .flex_col()
                         .gap(px(BLOCK_GAP))
@@ -377,7 +473,6 @@ impl AiAnswer {
                                     .flex()
                                     .items_center()
                                     .gap(px(GAP / 2.0))
-                                    .text_size(px(th.font_size - 1.0))
                                     .text_color(th.text_muted)
                                     .when(state == State::Streaming, |el| el.child(spinner(th)))
                                     .child(status),
@@ -386,6 +481,43 @@ impl AiAnswer {
                 ),
         )
     }
+}
+
+/// Fetches and decodes `url`; it lands only if an answer on the card still
+/// shows it.
+fn fetch_thumb(url: String, cx: &mut Context<Launcher>) {
+    let key = url.clone();
+    bg::fetch(
+        cx,
+        move || answers::answer_image(&url).and_then(|bytes| thumbnail(&bytes)),
+        move |this, thumb, _| {
+            let shown = this
+                .ai
+                .items
+                .iter()
+                .any(|it| it.image_url.as_deref() == Some(key.as_str()));
+            if let Some(thumb) = thumb
+                && shown
+            {
+                this.ai.thumbs.insert(key, thumb);
+            }
+        },
+    );
+}
+
+/// `bytes` cropped to a square and scaled for the card, the way an
+/// `object-fit: cover` thumbnail looks.
+fn thumbnail(bytes: &[u8]) -> Option<Arc<RenderImage>> {
+    let side = (IMAGE_SIDE * THUMB_SCALE) as u32;
+    let mut rgba = image::load_from_memory(bytes)
+        .ok()?
+        .resize_to_fill(side, side, FilterType::Triangle)
+        .into_rgba8();
+    // gpui samples BGRA.
+    for pixel in rgba.chunks_exact_mut(4) {
+        pixel.swap(0, 2);
+    }
+    Some(Arc::new(RenderImage::new(vec![image::Frame::new(rgba)])))
 }
 
 /// The ring that turns while an answer streams. Its angle is the wall

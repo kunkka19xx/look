@@ -885,10 +885,12 @@ impl Settings {
 
     /// Save floats at the card's bottom right, over the footer where there
     /// is one: no row of its own, the user's call ahead of macOS. The frame
-    /// places it, since an absolute child anchors to its own parent.
+    /// places it, since an absolute child anchors to its own parent. It
+    /// occludes, or a click on it also lands on the slider scrolled under it.
     pub fn save_float(&self, th: &Theme, cx: &mut Context<Launcher>) -> AnyElement {
         deferred(
             div()
+                .occlude()
                 .absolute()
                 .bottom(px(SAVE_FLOAT_INSET))
                 .right(px(SAVE_FLOAT_INSET))

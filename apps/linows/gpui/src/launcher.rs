@@ -52,6 +52,13 @@ use crate::update::Update;
 use crate::{Shell, fonts, health, state as app_state};
 
 const PLACEHOLDER: &str = "Search apps, files, actions";
+/// The answer card is the answer: no row is picked, so Enter has no target.
+static HINT_ANSWER: LazyLock<String> = LazyLock::new(|| {
+    shortcuts::hint(&[
+        Piece::Key("Down", "Pick a row"),
+        Piece::Id(shortcuts::WEB_SEARCH, "Web search"),
+    ])
+});
 static HINT_EMPTY: LazyLock<String> = LazyLock::new(|| {
     shortcuts::hint(&[
         Piece::Text("No match"),
@@ -113,6 +120,8 @@ const COPYRIGHT_OPACITY: f32 = 0.6;
 const BREADCRUMB_SEPARATOR: &str = "  \u{203a}  ";
 const WEB_SUGGESTIONS_LIMIT: usize = 6;
 const MIN_WEB_SUGGESTION_QUERY: usize = 2;
+/// The answer card's cap while local rows sit under it.
+const AI_STACKED_MAX_H: f32 = 240.0;
 const TRASH_LABEL: &str = "Trash";
 /// The quick-folder pin for the OS trash: `Trash` here, `Recycle Bin` on
 /// Windows.
@@ -135,10 +144,22 @@ struct Translation {
 
 /// What the last hide left behind, see `Launcher::retained`. The screen
 /// outlives the retention window, the query does not.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Retained {
     pub query: String,
     pub screen: Option<(usize, String)>,
+    pub answer: Option<answers::Settled>,
+    pub suggestions: Option<Suggestions>,
+    /// The new launcher reads the switch off the UI thread, after the
+    /// restored search may have run.
+    pub ai_enabled: bool,
+}
+
+/// The Google autocomplete list and the query it came back for.
+#[derive(Clone)]
+pub struct Suggestions {
+    query: String,
+    list: Vec<String>,
 }
 
 pub struct Launcher {
@@ -162,6 +183,9 @@ pub struct Launcher {
     menu: Option<Menu>,
     pub(crate) running: RunningApps,
     pub(crate) ai: AiAnswer,
+    /// The last autocomplete fetch: a search that re-runs for the same
+    /// query (a keystroke undone, the index refreshing) takes it as is.
+    suggestions: Option<Suggestions>,
     pub(crate) commands: Commands,
     /// The command screen is up: it owns the window and the keys.
     command_mode: bool,
@@ -178,6 +202,8 @@ pub struct Launcher {
     pending_restore: Option<(String, String)>,
     /// The query the user last moved the cursor under.
     navigated: Option<String>,
+    /// No row picked yet, see `answer_owns_enter`.
+    unpicked: bool,
     /// Bumped on every menu open and close, so a list still resolving when
     /// the user moved on cannot open behind them.
     menu_token: u64,
@@ -266,6 +292,7 @@ impl Launcher {
             menu: None,
             running: RunningApps::default(),
             ai: AiAnswer::default(),
+            suggestions: None,
             commands: Commands::new(command_input),
             command_mode: false,
             settings: Settings::new(cx),
@@ -275,6 +302,7 @@ impl Launcher {
             levels: Levels::default(),
             pending_restore: None,
             navigated: None,
+            unpicked: false,
             menu_token: 0,
             backdrop_loading: None,
             pill: cx.new(|_| TransitionState::new(0.0)),
@@ -325,23 +353,32 @@ impl Launcher {
     pub fn retained(&self, cx: &gpui::App) -> Retained {
         if self.command_mode {
             Retained {
-                query: String::new(),
                 screen: Some((
                     self.commands.active_index(),
                     self.commands.input().read(cx).text().to_string(),
                 )),
+                ..Default::default()
             }
         } else {
             Retained {
                 query: self.query(cx),
                 screen: None,
+                answer: self.ai.settled(),
+                suggestions: self.suggestions.clone(),
+                ai_enabled: self.ai.enabled,
             }
         }
     }
 
     /// A short dismissal undone: the screen comes back as left, or the query
     /// selected whole so the next keystroke replaces it and Right edits it.
-    pub fn restore(&mut self, retained: &Retained, cx: &mut Context<Self>) {
+    pub fn restore(&mut self, retained: Retained, cx: &mut Context<Self>) {
+        // Before the query lands, so its search finds them already in hand.
+        self.ai.enabled = retained.ai_enabled;
+        self.suggestions = retained.suggestions;
+        if let Some(answer) = retained.answer {
+            self.ai.resume(answer, cx);
+        }
         if let Some((index, text)) = &retained.screen {
             self.enter_command_mode(*index, text, cx);
         } else if !retained.query.is_empty() {
@@ -456,7 +493,7 @@ impl Launcher {
                     return;
                 }
                 this.searching = false;
-                let local = rows.len();
+                let local = rows.iter().filter(|r| !r.is_synthetic()).count();
                 this.publish(rows, &query, 0);
                 if let Some((for_query, id)) = this.pending_restore.take()
                     && for_query == query
@@ -469,9 +506,11 @@ impl Launcher {
                 this.sync_preview(cx);
                 if mode == Mode::Search && !home && !query.trim_start().contains('"') {
                     this.ai.update(&query, local, cx);
+                    this.settle_pick(&query);
                     this.fetch_web_suggestions(query, version, cx);
                 } else {
                     this.ai.cancel();
+                    this.settle_pick(&query);
                 }
                 cx.notify();
             });
@@ -486,28 +525,51 @@ impl Launcher {
         if !self.ai.enabled || trimmed.len() < MIN_WEB_SUGGESTION_QUERY {
             return;
         }
+        if let Some(kept) = &self.suggestions
+            && kept.query == trimmed
+        {
+            let list = kept.list.clone();
+            self.show_web_suggestions(&list, &query, cx);
+            return;
+        }
         bg::fetch(
             cx,
-            move || linows_backend::answers::web_suggestions(&trimmed, WEB_SUGGESTIONS_LIMIT),
-            move |this, list, cx| {
-                if this.version != version || list.is_empty() || this.levels.is_active() {
+            move || {
+                let list =
+                    linows_backend::answers::web_suggestions(&trimmed, WEB_SUGGESTIONS_LIMIT);
+                (trimmed, list)
+            },
+            move |this, (trimmed, list), cx| {
+                if this.version != version {
                     return;
                 }
-                let mut rows: Vec<Row> = this
-                    .rows
-                    .iter()
-                    .filter(|r| !matches!(r.open, Open::WebSuggestion(_)))
-                    .cloned()
-                    .collect();
-                rows.extend(
-                    list.iter()
-                        .enumerate()
-                        .map(|(i, text)| Row::web_suggestion(text, i)),
-                );
-                this.publish(rows, &query, this.selected);
-                this.sync_preview(cx);
+                this.show_web_suggestions(&list, &query, cx);
+                this.suggestions = Some(Suggestions {
+                    query: trimmed,
+                    list,
+                });
             },
         );
+    }
+
+    /// The autocomplete rows after the local ones, replacing any before.
+    fn show_web_suggestions(&mut self, list: &[String], query: &str, cx: &mut Context<Self>) {
+        if list.is_empty() || self.levels.is_active() {
+            return;
+        }
+        let mut rows: Vec<Row> = self
+            .rows
+            .iter()
+            .filter(|r| !matches!(r.open, Open::WebSuggestion(_)))
+            .cloned()
+            .collect();
+        rows.extend(
+            list.iter()
+                .enumerate()
+                .map(|(i, text)| Row::web_suggestion(text, i)),
+        );
+        self.publish(rows, query, self.selected);
+        self.sync_preview(cx);
     }
 
     /// New rows for `query`: the selection stays on the row the user moved
@@ -519,6 +581,19 @@ impl Launcher {
             .and_then(|old| rows.iter().position(|r| r.id == old.id));
         self.selected = kept.unwrap_or(fallback).min(rows.len().saturating_sub(1));
         self.rows = Arc::new(rows);
+        self.settle_pick(query);
+    }
+
+    /// With the answer up and nothing local, no row is picked, as on macOS:
+    /// a highlighted Google row would read as what Enter does. Down still
+    /// reaches the rows.
+    fn answer_owns_enter(&self) -> bool {
+        self.ai.is_active() && !self.rows.iter().any(|r| !r.is_synthetic())
+    }
+
+    /// A row the user moved to under `query` stays picked.
+    fn settle_pick(&mut self, query: &str) {
+        self.unpicked = self.navigated.as_deref() != Some(query) && self.answer_owns_enter();
     }
 
     // --- Levels ----------------------------------------------------------------
@@ -1031,7 +1106,12 @@ impl Launcher {
         self.close_menu();
         if !self.rows.is_empty() {
             let len = self.rows.len() as isize;
-            self.selected = (self.selected as isize + delta).rem_euclid(len) as usize;
+            self.selected = if self.unpicked {
+                if delta > 0 { 0 } else { (len - 1) as usize }
+            } else {
+                (self.selected as isize + delta).rem_euclid(len) as usize
+            };
+            self.unpicked = false;
             self.navigated = Some(self.input.read(cx).text().to_string());
             self.scroll
                 .scroll_to_item(self.selected, ScrollStrategy::Nearest);
@@ -1046,7 +1126,7 @@ impl Launcher {
     /// Compact still loads a process, whose facts its row carries.
     fn sync_preview(&mut self, cx: &mut Context<Self>) {
         let split = theme::get().split();
-        let row = self.rows.get(self.selected).cloned();
+        let row = self.selected_row().cloned();
         let mode = self.mode;
         let ancestors = self.levels.ancestors();
         self.preview.update(cx, |preview, cx| match row {
@@ -1059,7 +1139,11 @@ impl Launcher {
     }
 
     fn selected_row(&self) -> Option<&Row> {
-        self.rows.get(self.selected)
+        self.picked().map(|i| &self.rows[i])
+    }
+
+    fn picked(&self) -> Option<usize> {
+        (!self.unpicked && self.selected < self.rows.len()).then_some(self.selected)
     }
 
     /// Enter: what the row says. The backend opens paths and hides the
@@ -1915,6 +1999,7 @@ impl Launcher {
             div()
                 .mx(px(theme::CONTENT_PADDING))
                 .mt(px(theme::CONTENT_PADDING))
+                .flex()
                 .on_children_prepainted(move |cards, _, _| mark_cards(&cards, bar_radius))
                 .child(banner)
         });
@@ -2177,7 +2262,7 @@ impl Launcher {
     }
 
     fn row(&self, i: usize, row: &Row, th: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        let selected = i == self.selected;
+        let selected = self.picked() == Some(i);
         // Compact has no panel, so the selected process shows its facts here.
         let facts = match &row.open {
             Open::Process(p) if selected && !th.split() => {
@@ -2425,10 +2510,33 @@ impl Launcher {
 
         let hint = if self.levels.is_active() {
             &HINT_LEVEL
+        } else if self.answer_owns_enter() {
+            &HINT_ANSWER
         } else if self.rows.is_empty() && !self.searching && self.mode == Mode::Search {
             &HINT_EMPTY
         } else {
             self.mode.hint()
+        };
+
+        // With the answer up and nothing local, the answer takes the left
+        // column and the suggestions the right, macOS's knowledge lookup.
+        // Otherwise the answer sits capped above the rows.
+        let two_col = self.ai.is_active()
+            && th.split()
+            && !self.mode.is_menu()
+            && !self.rows.iter().any(|r| !r.is_synthetic());
+        let ai_card = self.ai.render(th, cx).map(|card| {
+            let card = card.mx(px(theme::ROW_PADDING_X));
+            if two_col {
+                card.flex_1()
+            } else {
+                card.flex_shrink_0().max_h(px(AI_STACKED_MAX_H))
+            }
+        });
+        let (list, side_list) = if two_col {
+            (None, Some(list))
+        } else {
+            (Some(list), None)
         };
 
         // One floating card: rows, then the hint as the card's own footer.
@@ -2445,18 +2553,16 @@ impl Launcher {
             .flex()
             .flex_col()
             .gap(px(theme::ROW_SPACING))
-            .children(
-                self.ai
-                    .render(th, cx)
-                    .map(|card| card.mx(px(theme::ROW_PADDING_X))),
-            )
+            .children(ai_card)
             .map(|card| {
-                if self.rows.is_empty() && self.searching {
+                if two_col {
+                    card
+                } else if self.rows.is_empty() && self.searching {
                     card.child(div().flex_1())
                 } else if self.rows.is_empty() {
                     card.child(self.empty_state(th)).child(div().flex_1())
                 } else {
-                    card.child(list)
+                    card.children(list)
                 }
             })
             .when(!seated && th.split(), |card| {
@@ -2477,8 +2583,18 @@ impl Launcher {
         // for the menus, whose rows have nothing to describe.
         let preview_card = (th.split() && !self.mode.is_menu()).then(|| {
             let panel_theme = th.clone();
-            // The picks take the column while there are any.
-            let body = if self.picked.is_empty() {
+            // The suggestions take the column in a knowledge lookup, the
+            // picks while there are any.
+            let body = if let Some(list) = side_list {
+                div()
+                    .size_full()
+                    .flex()
+                    .flex_col()
+                    .px(px(theme::ROW_INSET))
+                    .pt(px(theme::ROW_INSET))
+                    .child(list)
+                    .into_any_element()
+            } else if self.picked.is_empty() {
                 self.preview
                     .update(cx, |preview, cx| preview.render_in(&panel_theme, cx))
                     .into_any_element()
@@ -2824,12 +2940,15 @@ impl Launcher {
                     + theme::TOP_ROW_HEIGHT
                     + 2.0 * theme::INPUT_PADDING_Y
                     + gap;
+                // Occludes, or a click on it would open the row under it.
                 let card = deferred(
                     div()
+                        .occlude()
                         .absolute()
                         .top(px(top))
                         .left(px(theme::CONTENT_PADDING))
                         .right(px(theme::CONTENT_PADDING))
+                        .flex()
                         .child(card),
                 );
                 (Some(card), None)
@@ -2840,6 +2959,7 @@ impl Launcher {
                     div()
                         .mx(px(if seated { 0.0 } else { theme::CONTENT_PADDING }))
                         .mt(px(gap))
+                        .flex()
                         .child(card),
                 ),
             ),
@@ -3076,7 +3196,7 @@ impl Launcher {
         let scroll = self.scroll.clone();
         let colour = theme::hsla_of(th.selection_fill);
         let radius = th.control_radius();
-        let shown = !self.rows.is_empty();
+        let shown = self.picked().is_some();
         canvas(
             |_, _, _| (),
             move |bounds: Bounds<Pixels>, _, window, cx| {
