@@ -813,7 +813,7 @@ impl Settings {
         let launch = self.launch_at_login();
         let add_to_path = self.add_to_path();
         let mut updates = updates;
-        let (shortcut_updates, removals) = self.recorder.take_writes();
+        let (shortcut_updates, removals) = self.recorder.writes();
         updates.extend(shortcut_updates);
         self.recorder.stop();
         bg::fetch(
@@ -841,7 +841,11 @@ impl Settings {
                 crate::hotkey::set_active(true);
                 bindings::load();
                 this.settings.recorder.state = Some(hotkey::launcher_hotkey_state());
-                this.settings.recorder.refresh();
+                if ok {
+                    this.settings.recorder.saved();
+                } else {
+                    this.settings.recorder.refresh();
+                }
                 this.settings.show_saved(ok, cx);
             },
         );

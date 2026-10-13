@@ -172,25 +172,31 @@ impl Recorder {
     }
 
     /// The lines to write and the ones to drop: a default leaves no line.
-    pub fn take_writes(&mut self) -> (Vec<ConfigUpdate>, Vec<String>) {
+    /// `pending` stays until `saved`, so a failed write can be retried.
+    pub fn writes(&self) -> (Vec<ConfigUpdate>, Vec<String>) {
         let mut updates = Vec::new();
         let mut removals = Vec::new();
-        for (id, value) in self.pending.drain() {
+        for (&id, value) in &self.pending {
             if Self::is_hotkey(id) {
                 updates.push(ConfigUpdate {
                     key: LAUNCHER_HOTKEY_CONFIG_KEY.to_string(),
-                    value,
+                    value: value.clone(),
                 });
             } else if self.preview.is_default(id) {
                 removals.push(bindings::config_key(id));
             } else {
                 updates.push(ConfigUpdate {
                     key: bindings::config_key(id),
-                    value,
+                    value: value.clone(),
                 });
             }
         }
         (updates, removals)
+    }
+
+    pub fn saved(&mut self) {
+        self.pending.clear();
+        self.refresh();
     }
 }
 
