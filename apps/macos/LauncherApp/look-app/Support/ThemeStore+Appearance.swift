@@ -290,9 +290,19 @@ extension ThemeStore {
         )
     }
 
+    /// Black or white, whichever actually reads on the fill. sRGB is gamma
+    /// encoded, so the pick is made on linear luminance; 0.179 is where the
+    /// contrast with black overtakes the contrast with white. Averaging the raw
+    /// channels put white on the pastel reds five themes use for danger, at
+    /// 2.5:1 where black would have been 8:1.
     private func contrastingTextColor(for token: ThemeRGB) -> Color {
-        let luminance = (0.2126 * token.red) + (0.7152 * token.green) + (0.0722 * token.blue)
-        return luminance > 0.62 ? .black.opacity(0.90) : .white
+        func linear(_ channel: Double) -> Double {
+            channel <= 0.04045 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        }
+        let luminance =
+            (0.2126 * linear(token.red)) + (0.7152 * linear(token.green))
+            + (0.0722 * linear(token.blue))
+        return luminance > 0.179 ? .black.opacity(0.90) : .white
     }
 
     private func dimmableColor(baseColor: Color, factor: Double) -> Color {
