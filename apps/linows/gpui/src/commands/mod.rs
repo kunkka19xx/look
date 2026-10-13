@@ -13,11 +13,11 @@ mod speed;
 mod sys;
 mod todo;
 
-use std::collections::HashMap;
-use std::sync::LazyLock;
+use gpui::{
+    AnyElement, Context, Div, Entity, FontWeight, SharedString, deferred, div, prelude::*, px, svg,
+};
 
-use crate::shortcuts;
-use gpui::{AnyElement, Context, Div, Entity, FontWeight, deferred, div, prelude::*, px, svg};
+use crate::shortcuts::{self, Hint};
 
 use crate::icons::IconStore;
 use crate::launcher::Launcher;
@@ -62,70 +62,44 @@ const BUBBLE_PADDING_Y: f32 = 9.0;
 const BUBBLE_LINE_HEIGHT: f32 = 1.35;
 
 /// What each panel does on Enter, Tab and Escape, for the footer; the
-/// keys are the catalog's.
-fn hint(id: &str) -> &'static str {
+/// keys are the catalog's, as bound now.
+fn hint(id: &str) -> SharedString {
     use shortcuts::Piece::{Id, Key};
-    static HINTS: LazyLock<HashMap<&'static str, String>> = LazyLock::new(|| {
-        let back = Id(shortcuts::COMMAND_BACK, "Back");
-        HashMap::from([
-            (
-                "pomo",
-                shortcuts::hint(&[
-                    Id(shortcuts::POMO_START_PAUSE, "Start/pause"),
-                    Id(shortcuts::POMO_RESET, "Reset"),
-                    back,
-                ]),
-            ),
-            (
-                "todo",
-                shortcuts::hint(&[
-                    Key("Ctrl+Z/Shift+Z", "Undo/Redo"),
-                    Id(shortcuts::TODO_SAVE, "Save"),
-                    Id(shortcuts::COMMAND_BACK, "Back"),
-                ]),
-            ),
-            (
-                "speed",
-                shortcuts::hint(&[
-                    Id(shortcuts::SPEED_RERUN, "Rerun"),
-                    Id(shortcuts::SPEED_REVEAL, "Show IP"),
-                    Id(shortcuts::COMMAND_BACK, "Back"),
-                ]),
-            ),
-            (
-                "kill",
-                shortcuts::hint(&[
-                    Key("Y", "Confirm"),
-                    Key("N", "Cancel"),
-                    Id(shortcuts::COMMAND_BACK, "Back"),
-                ]),
-            ),
-            (
-                "sys",
-                shortcuts::hint(&[Id(shortcuts::COMMAND_BACK, "Back")]),
-            ),
-            (
-                "calc",
-                shortcuts::hint(&[
-                    Id(shortcuts::CALC_EVALUATE, "Evaluate"),
-                    Key("Tab", "Select"),
-                    Id(shortcuts::COMMAND_BACK, "Back"),
-                ]),
-            ),
-            (
-                "",
-                shortcuts::hint(&[
-                    Key("Enter", "Run"),
-                    Key("Tab", "Select"),
-                    Id(shortcuts::COMMAND_BACK, "Back"),
-                ]),
-            ),
-        ])
-    });
-    HINTS
-        .get(id)
-        .or_else(|| HINTS.get(""))
-        .map_or("", String::as_str)
+    const BACK: shortcuts::Piece = Id(shortcuts::COMMAND_BACK, "Back");
+    static POMO: Hint = Hint::new(&[
+        Id(shortcuts::POMO_START_PAUSE, "Start/pause"),
+        Id(shortcuts::POMO_RESET, "Reset"),
+        BACK,
+    ]);
+    static TODO: Hint = Hint::new(&[
+        Id(shortcuts::TODO_UNDO, "Undo"),
+        Id(shortcuts::TODO_REDO, "Redo"),
+        Id(shortcuts::TODO_SAVE, "Save"),
+        BACK,
+    ]);
+    static SPEED: Hint = Hint::new(&[
+        Id(shortcuts::SPEED_RERUN, "Rerun"),
+        Id(shortcuts::SPEED_REVEAL, "Show IP"),
+        BACK,
+    ]);
+    static KILL: Hint = Hint::new(&[Key("Y", "Confirm"), Key("N", "Cancel"), BACK]);
+    static SYS: Hint = Hint::new(&[BACK]);
+    static CALC: Hint = Hint::new(&[
+        Id(shortcuts::CALC_EVALUATE, "Evaluate"),
+        Key("Tab", "Select"),
+        BACK,
+    ]);
+    static SHELL: Hint = Hint::new(&[Key("Enter", "Run"), Key("Tab", "Select"), BACK]);
+    match id {
+        pomo::ID => &POMO,
+        todo::ID => &TODO,
+        speed::ID => &SPEED,
+        kill::ID => &KILL,
+        sys::ID => &SYS,
+        calc::ID => &CALC,
+        _ => &SHELL,
+    }
+    .text()
 }
 
 /// What the screen did with a key.
@@ -181,7 +155,7 @@ impl Commands {
         self.active
     }
 
-    pub fn hint(&self) -> &'static str {
+    pub fn hint(&self) -> SharedString {
         hint(self.entry().id)
     }
 

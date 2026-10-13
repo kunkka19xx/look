@@ -6,7 +6,7 @@
 //! the inner gap as every seam.
 
 use std::cell::{Cell, RefCell};
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui::{
@@ -27,6 +27,7 @@ use crate::answers::{self, AiAnswer};
 use crate::banner::{self, Banner, Message};
 use crate::bg;
 use crate::bgimage::{self, Backdrop};
+use crate::bindings::{self, Scope};
 use crate::blocks;
 use crate::blur::{self, BlurRect};
 use crate::commands::{self, Commands, KeyOutcome};
@@ -46,25 +47,21 @@ use crate::rows::{Icon, Open, Row};
 use crate::running::RunningApps;
 use crate::search::{Changed, SearchInput, search_field};
 use crate::settings::{self, Settings};
-use crate::shortcuts::{self, Piece};
+use crate::shortcuts::{self, Hint, Piece};
 use crate::theme::{self, Theme};
 use crate::update::Update;
 use crate::{Shell, fonts, health, state as app_state};
 
 const PLACEHOLDER: &str = "Search apps, files, actions";
 /// The answer card is the answer: no row is picked, so Enter has no target.
-static HINT_ANSWER: LazyLock<String> = LazyLock::new(|| {
-    shortcuts::hint(&[
-        Piece::Key("Down", "Pick a row"),
-        Piece::Id(shortcuts::WEB_SEARCH, "Web search"),
-    ])
-});
-static HINT_EMPTY: LazyLock<String> = LazyLock::new(|| {
-    shortcuts::hint(&[
-        Piece::Text("No match"),
-        Piece::Id(shortcuts::WEB_SEARCH, "Search the web"),
-    ])
-});
+static HINT_ANSWER: Hint = Hint::new(&[
+    Piece::Key("Down", "Pick a row"),
+    Piece::Id(shortcuts::WEB_SEARCH, "Web search"),
+]);
+static HINT_EMPTY: Hint = Hint::new(&[
+    Piece::Text("No match"),
+    Piece::Id(shortcuts::WEB_SEARCH, "Search the web"),
+]);
 const WEB_SEARCH_URL: &str = "https://www.google.com/search?q=";
 const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=en&text=";
 /// How long a keystroke waits for the next before the query runs; the
@@ -91,12 +88,10 @@ const OPEN_IN_BROWSER: &str = "Open in Browser";
 const LANGUAGES: [(&str, &str); 3] = [("vi", "TIẾNG VIỆT"), ("en", "ENGLISH"), ("ja", "日本語")];
 const CLIP_DELETED: &str = "Clipboard item deleted";
 const CLIP_IMAGE_DELETED: &str = "Image removed from history";
-static HINT_LEVEL: LazyLock<String> = LazyLock::new(|| {
-    shortcuts::hint(&[
-        Piece::Id(shortcuts::ACTIONS, "Actions"),
-        Piece::Id(shortcuts::BACK, "Back"),
-    ])
-});
+static HINT_LEVEL: Hint = Hint::new(&[
+    Piece::Id(shortcuts::ACTIONS, "Actions"),
+    Piece::Id(shortcuts::BACK, "Back"),
+]);
 const HINT_SEP: &str = shortcuts::HINT_SEP;
 /// macOS `stackedContentGap`: the seam between the bar and what stacks
 /// under it when nothing floats.
@@ -720,32 +715,39 @@ impl Launcher {
     fn handle_key(&mut self, ks: &gpui::Keystroke, cx: &mut Context<Self>) {
         let ctrl = ks.modifiers.control;
         let shift = ks.modifiers.shift;
-        // A shifted symbol reaches here as the symbol with shift dropped
-        // (`<`, `:`); the socket's parser keeps shift on the base key.
-        if ctrl && (ks.key == "<" || (shift && ks.key == ",")) {
-            self.toggle_settings(cx);
+        // A listening recorder takes every key, the app-wide chords too.
+        if self.settings_open && self.settings.is_recording() {
+            self.settings.handle_key(ks, cx);
             cx.stop_propagation();
             return;
         }
-        if ctrl && (ks.key == ":" || (shift && ks.key == ";")) {
-            self.reload_config(cx);
+        let bindings = bindings::get();
+        // Answered on every screen; help excepted, since settings owns its keys.
+        let app_wide = match bindings.hit(ks, Scope::AppWide) {
+            Some(shortcuts::SETTINGS) => {
+                self.toggle_settings(cx);
+                true
+            }
+            Some(shortcuts::RELOAD_CONFIG) => {
+                self.reload_config(cx);
+                true
+            }
+            Some(shortcuts::SWITCH_LAYOUT) => {
+                self.toggle_layout(cx);
+                true
+            }
+            Some(shortcuts::HELP) if !self.settings_open => {
+                self.toggle_help(cx);
+                true
+            }
+            _ => false,
+        };
+        if app_wide {
             cx.stop_propagation();
             return;
         }
         if ks.modifiers.alt && shift && ks.key == "q" {
             self.quit();
-            cx.stop_propagation();
-            return;
-        }
-        // From any screen, settings too, where the picker follows it.
-        if ctrl && shift && ks.key == "c" {
-            self.toggle_layout(cx);
-            cx.stop_propagation();
-            return;
-        }
-        // Ctrl+H from anywhere but settings, which owns its keys.
-        if ctrl && !shift && ks.key == "h" && !self.settings_open {
-            self.toggle_help(cx);
             cx.stop_propagation();
             return;
         }
@@ -848,44 +850,46 @@ impl Launcher {
                 return;
             }
         }
+        // Chords first, so one on Enter or an arrow wins over the fixed key.
         let menu = self.mode.is_menu();
-        let handled = match ks.key.as_str() {
-            "escape" => self.escape(cx),
-            "enter" if ctrl => self.search_web(cx),
-            "enter" if shift && !self.picked.is_empty() => {
+        let handled = match bindings.hit(ks, Scope::Launcher) {
+            Some(shortcuts::WEB_SEARCH) => self.search_web(cx),
+            Some(shortcuts::OPEN_PICKED) if !self.picked.is_empty() => {
                 self.open_all_picked(cx);
                 true
             }
-            "enter" => self.enter(cx),
-            "/" | "?" if ctrl => {
+            Some(shortcuts::COMMAND_MODE) => {
                 self.enter_command_mode(self.commands.active_index(), "", cx);
                 true
             }
-            "j" | "k" if ctrl && !shift && !menu => {
+            Some(shortcuts::ACTIONS) if !menu => {
                 self.open_menu(cx);
                 true
             }
-            "o" if ctrl && !shift && !menu => self
+            Some(shortcuts::QUICK_TOGGLE) if !menu => self
                 .preview
                 .update(cx, |preview, cx| preview.toggle_primary(cx)),
-            "e" if ctrl && !menu => self.run_tool(actions::EDIT, cx),
-            "t" if ctrl && !menu => self.run_tool(actions::TERMINAL, cx),
-            "p" if ctrl && shift => {
+            Some(shortcuts::EDIT) if !menu => self.run_tool(actions::EDIT, cx),
+            Some(shortcuts::TERMINAL) if !menu => self.run_tool(actions::TERMINAL, cx),
+            Some(shortcuts::CLEAR_PICKS) => {
                 self.clear_picked(cx);
                 true
             }
-            "p" if ctrl && !menu => self.toggle_pick(cx),
-            "h" if ctrl && shift => self.hide_selected_app(cx),
-            "down" => self.move_selection(1, cx),
-            "up" => self.move_selection(-1, cx),
-            "tab" => self.move_selection(if shift { -1 } else { 1 }, cx),
-            "n" if ctrl => self.move_selection(1, cx),
-            "c" if ctrl => self.copy(cx),
-            // Side actions have nothing to act on in a menu.
-            "f" if ctrl && !menu => self.reveal_selected(cx),
-            "d" if ctrl && !menu => self.delete(cx),
-            "i" if ctrl && !menu => self.paste_selected_clip(cx),
-            _ => false,
+            Some(shortcuts::PICK) if !menu => self.toggle_pick(cx),
+            Some(shortcuts::HIDE_APP) => self.hide_selected_app(cx),
+            Some(shortcuts::COPY) => self.copy(cx),
+            Some(shortcuts::REVEAL) if !menu => self.reveal_selected(cx),
+            Some(shortcuts::TRASH) if !menu => self.delete(cx),
+            Some(shortcuts::CLIP_PASTE) if !menu => self.paste_selected_clip(cx),
+            _ => match ks.key.as_str() {
+                "escape" => self.escape(cx),
+                "enter" => self.enter(cx),
+                "down" => self.move_selection(1, cx),
+                "up" => self.move_selection(-1, cx),
+                "tab" => self.move_selection(if shift { -1 } else { 1 }, cx),
+                "n" if ctrl => self.move_selection(1, cx),
+                _ => false,
+            },
         };
         if handled || self.field_key(ks, cx) {
             cx.stop_propagation();
@@ -1020,6 +1024,7 @@ impl Launcher {
     /// the engine read it again; the settings screen, if up, too.
     fn reload_config(&mut self, cx: &mut Context<Self>) {
         theme::load();
+        bindings::load();
         fonts::ensure_family(cx, &theme::get().font_family);
         if self.settings_open {
             self.settings.reload(cx);
@@ -1056,6 +1061,7 @@ impl Launcher {
                 |this, result, cx| match result {
                     Ok(()) => {
                         theme::load();
+                        bindings::load();
                         fonts::ensure_family(cx, &theme::get().font_family);
                         crate::hotkey::set_active(true);
                         this.settings.reload(cx);
@@ -2007,7 +2013,7 @@ impl Launcher {
             .into_any_element();
         let hint = self.settings.hint();
         // No copyright on this screen: the footer is the tab's hint alone.
-        let trailing = hint.map(|_| div().into_any_element());
+        let trailing = hint.as_ref().map(|_| div().into_any_element());
         // The question's bar takes the corner while it asks.
         let float = (self.confirm.is_none()).then(|| self.settings.save_float(&th, cx));
         self.screen(body, hint, trailing, float, &th, cx)
@@ -2020,7 +2026,7 @@ impl Launcher {
     fn screen(
         &mut self,
         body: AnyElement,
-        hint: Option<&'static str>,
+        hint: Option<SharedString>,
         trailing: Option<AnyElement>,
         float: Option<AnyElement>,
         th: &Theme,
@@ -2207,7 +2213,7 @@ impl Launcher {
     /// The results card's foot: the hint, and in the home hint context the
     /// Todo tally in its last slot, with the unfinished tasks on hover and
     /// the screen on click. Hidden when today has no tasks.
-    fn footer(&self, hint: &'static str, th: &Theme, cx: &mut Context<Self>) -> Div {
+    fn footer(&self, hint: SharedString, th: &Theme, cx: &mut Context<Self>) -> Div {
         let base = div()
             .px(px(theme::ROW_PADDING_X))
             .pt(px(theme::HINT_INSET))
@@ -2221,7 +2227,7 @@ impl Launcher {
         if !home_context || total == 0 {
             return base.child(muted_text(hint, th));
         }
-        let lead = hint.rfind(HINT_SEP).map_or(hint, |at| &hint[..at]);
+        let lead = hint.rfind(HINT_SEP).map_or(hint.as_ref(), |at| &hint[..at]);
         let bubble = (self.todo_hovered && !open.is_empty()).then(|| {
             deferred(
                 div()
@@ -2543,11 +2549,11 @@ impl Launcher {
             .child(list);
 
         let hint = if self.levels.is_active() {
-            &HINT_LEVEL
+            HINT_LEVEL.text()
         } else if self.answer_owns_enter() {
-            &HINT_ANSWER
+            HINT_ANSWER.text()
         } else if self.rows.is_empty() && !self.searching && self.mode == Mode::Search {
-            &HINT_EMPTY
+            HINT_EMPTY.text()
         } else {
             self.mode.hint()
         };
@@ -2597,7 +2603,7 @@ impl Launcher {
                 }
             })
             .when(!seated && th.split(), |card| {
-                card.child(self.footer(hint, th, cx))
+                card.child(self.footer(hint.clone(), th, cx))
             })
             // Leaving the launchpad, the card rises in: once per switch, never
             // per keystroke, so the id carries the switch count.
@@ -2681,7 +2687,7 @@ impl Launcher {
 
     /// The classic full-width hint bar: the hint (and the Todo tally) left,
     /// the copyright right.
-    fn hint_bar(&self, hint: &'static str, th: &Theme, cx: &mut Context<Self>) -> Div {
+    fn hint_bar(&self, hint: SharedString, th: &Theme, cx: &mut Context<Self>) -> Div {
         div()
             .flex_shrink_0()
             .px(px(theme::CONTENT_PADDING - theme::ROW_PADDING_X))

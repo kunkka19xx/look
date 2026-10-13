@@ -40,6 +40,11 @@ pub fn get_config() -> ConfigPayload {
     }
 }
 pub fn set_config(updates: Vec<ConfigUpdate>) -> Result<(), String> {
+    write_config(updates, &[])
+}
+
+/// `updates` replace or append their lines, `removals` take theirs out.
+pub fn write_config(updates: Vec<ConfigUpdate>, removals: &[String]) -> Result<(), String> {
     let path = config_file_path();
     // Distinguish "file absent" (fine, start from empty) from "file exists but
     // is unreadable" (bad permissions, non-UTF-8). Treating an unreadable file
@@ -50,17 +55,17 @@ pub fn set_config(updates: Vec<ConfigUpdate>) -> Result<(), String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(format!("Refusing to overwrite an unreadable config: {e}")),
     };
-    let mut lines: Vec<String> = contents.lines().map(|l| l.to_string()).collect();
+    let mut lines: Vec<String> = contents
+        .lines()
+        .filter(|line| !removals.iter().any(|key| assigns(line, key)))
+        .map(|l| l.to_string())
+        .collect();
 
     for update in &updates {
         let new_line = format!("{}={}", update.key, update.value);
         let mut found = false;
         for line in &mut lines {
-            let trimmed = line.trim();
-            if !trimmed.starts_with('#')
-                && let Some((k, _)) = trimmed.split_once('=')
-                && k.trim() == update.key
-            {
+            if assigns(line, &update.key) {
                 *line = new_line.clone();
                 found = true;
                 break;
@@ -77,6 +82,15 @@ pub fn set_config(updates: Vec<ConfigUpdate>) -> Result<(), String> {
     }
     std::fs::write(&path, output).map_err(|e| format!("Failed to write config: {e}"))
 }
+/// An uncommented `key=...` line for `key`.
+fn assigns(line: &str, key: &str) -> bool {
+    let trimmed = line.trim();
+    !trimmed.starts_with('#')
+        && trimmed
+            .split_once('=')
+            .is_some_and(|(k, _)| k.trim() == key)
+}
+
 pub fn reset_config() -> Result<(), String> {
     let path = config_file_path();
     std::fs::write(&path, default_config_contents())

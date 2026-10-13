@@ -31,6 +31,17 @@ opt-level = 3
 [profile.dev.package.image-webp]
 opt-level = 3
 
+# Unoptimised, gpui paints text at about 1 ms per run: Settings > Shortcuts
+# drew at 110 ms a frame. Dependencies, so they compile once.
+[profile.dev.package.gpui-ce]
+opt-level = 2
+[profile.dev.package.gpui_ce_wgpu]
+opt-level = 2
+[profile.dev.package.taffy]
+opt-level = 2
+[profile.dev.package.cosmic-text]
+opt-level = 2
+
 # gpui_ce_wgpu 0.1.0 with pipelines cached per device instead of rebuilt per
 # window: avoids a per-window shader recompile that Mesa virgl never frees
 # (~4 MB a summon in QEMU/KVM guests) and makes every window open cheaper.

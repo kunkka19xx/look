@@ -6,6 +6,7 @@ mod answers;
 mod banner;
 mod bg;
 mod bgimage;
+mod bindings;
 mod blocks;
 mod blur;
 mod commands;
@@ -264,6 +265,7 @@ fn open(shell: &Shell, cx: &mut App) {
     // What a summon does on every shell: the config may have changed, and so
     // may the files.
     theme::load();
+    bindings::load();
     fonts::ensure_family(cx, &theme::get().font_family);
     host::probe_opaque();
     state().request_index_refresh();
