@@ -15,15 +15,22 @@ enum FilePanel {
     private static let settleWindow: Duration = .milliseconds(400)
 
     private(set) static var isPresenting = false
+    /// Held so a second picker cancels the first one's countdown: otherwise
+    /// that one wakes while this panel is still up and clears the flag.
+    private static var settle: Task<Void, Never>?
 
     static func runModal(_ panel: NSSavePanel) -> NSApplication.ModalResponse {
+        settle?.cancel()
         isPresenting = true
         let response = panel.runModal()
         // The picker hands focus back to whatever was in front of it, which is
         // not us. Take it back, so the launcher is key and not merely visible.
         NSApplication.shared.activate(ignoringOtherApps: true)
-        Task { @MainActor in
+        settle = Task { @MainActor in
+            // A cancelled sleep returns rather than throws here, so the flag
+            // needs its own guard.
             try? await Task.sleep(for: settleWindow)
+            guard !Task.isCancelled else { return }
             isPresenting = false
         }
         return response

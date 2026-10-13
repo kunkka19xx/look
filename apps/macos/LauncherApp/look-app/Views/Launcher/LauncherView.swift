@@ -2532,11 +2532,6 @@ struct LauncherView: View {
         }
     }
 
-    /// The slice of the full-panel background image that sits behind this tile:
-    /// the image is sized to the whole panel and offset by the tile's origin in
-    /// the panel coordinate space, so adjacent tiles show a continuous image cut
-    /// apart by the gaps.
-    @ViewBuilder
     /// Background wrapper for the unified top row (search + running apps). A
     /// frosted floating tile when the panes are floating, otherwise the classic
     /// rounded search-bar fill - so the merged bar looks consistent on every
