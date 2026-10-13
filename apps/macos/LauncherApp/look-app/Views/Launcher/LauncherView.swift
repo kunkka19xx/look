@@ -171,6 +171,7 @@ struct LauncherView: View {
     @State var pendingHideAppResult: LauncherResult?
     // True while a trash/empty operation is running, to block re-triggering it.
     @State var isDeleteInFlight = false
+    @State var trashIconRefreshTick: Int = 0
     @State var killListRefreshTick: Int = 0
     @State var recentlyKilledPIDs: Set<Int32> = []
     @State var showsHelpScreen = false
@@ -2240,7 +2241,8 @@ struct LauncherView: View {
                     isActionMenuOpen: isActionMenuOpen,
                     actionMenuIndex: actionMenuIndex,
                     actionMenuDescriptors: actionMenuRows,
-                    onActivateActionMenuRow: { activateActionMenuRow($0) }
+                    onActivateActionMenuRow: { activateActionMenuRow($0) },
+                    trashRefreshTick: trashIconRefreshTick
                 )
                 // Arrow-key nav assigns `selectedResultID` inside a global
                 // `withAnimation` so the pill can glide (see LauncherView+

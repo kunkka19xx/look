@@ -677,6 +677,7 @@ extension LauncherView {
                     showBanner(error, style: .error, duration: 2.6)
                 } else {
                     showBanner("Emptied Trash", style: .success, duration: 1.6)
+                    trashIconRefreshTick &+= 1
                 }
             }
         }
@@ -689,6 +690,9 @@ extension LauncherView {
         DeleteCommand.trash(targets) { [self] outcome in
             isDeleteInFlight = false
             let trashed = Set(outcome.trashedIDs)
+            if !trashed.isEmpty {
+                trashIconRefreshTick &+= 1
+            }
 
             // Drop trashed items from the picked basket.
             for id in outcome.trashedIDs {
