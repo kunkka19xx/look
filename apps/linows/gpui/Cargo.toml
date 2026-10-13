@@ -1,0 +1,45 @@
+[package]
+name = "look-gpui"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+description = "The linows launcher drawn by gpui-ce: the port that replaces the Tauri shell"
+
+[[bin]]
+# Its own name until the port replaces the Tauri shell, so both can be
+# installed side by side.
+name = "lookapp-gpui"
+path = "src/main.rs"
+
+[dependencies]
+linows-backend = { path = "../backend" }
+gpui = { package = "gpui-ce", version = "0.2.2" }
+gpui_platform = { package = "gpui_ce_platform", version = "0.1.0" }
+async-channel = "2"
+anyhow = "1"
+# gpui-ce 0.2.2 exposes palette types directly, so IntoColor is needed for Hsla.
+palette = "0.7"
+chrono = "0.4"
+# Task ids, so a row stays unique across machines once task sync lands.
+uuid = { version = "1", features = ["v4"] }
+raw-window-handle = "0.6"
+# Icons travel from the backend as data URLs, the form the webview takes.
+base64 = "0.22"
+# The background picture is scaled and blurred once into a bitmap; gpui
+# already builds this version for its own decoding.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif"] }
+
+[target.'cfg(windows)'.dependencies]
+# Same version gpui_ce_windows pins, so features unify into one build.
+windows = { version = "0.62", features = ["Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
+# The launcher toggle; the same crate the Tauri shell binds through.
+global-hotkey = "0.8"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gpui_platform = { package = "gpui_ce_platform", version = "0.1.0", features = ["wayland"] }
+# The same build gpui's Linux platform already links; only the folder dialog
+# calls it here, with no parent window (see pick.rs).
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "file_chooser"] }
+# The same build gpui's X11 client links; only the compositor probe uses it.
+x11rb = "0.13"

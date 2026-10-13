@@ -164,7 +164,7 @@ Runtime refresh triggers:
   - `true`: run only when dirty,
   - `false`: run on every launcher open request.
 
-Watcher policy (linows, see `apps/linows/src-tauri/src/state.rs`):
+Watcher policy (linows, see `apps/linows/backend/src/state.rs`):
 
 - **apps roots** (`/usr/share/applications`, `~/.local/share/applications`, `XDG_DATA_DIRS/applications`) - watched **recursively** (small directories, cheap),
 - **file roots** (`~/Documents`, `~/Downloads`, `~/Desktop`, `file_scan_extra_roots`) - watched **non-recursively** to bound inotify watch count on large trees; deep-tree changes reconciled on next launcher-open refresh,

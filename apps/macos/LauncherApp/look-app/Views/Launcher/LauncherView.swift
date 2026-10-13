@@ -732,7 +732,7 @@ struct LauncherView: View {
         // The answer card is the answer: nothing is auto-selected, so Enter has
         // no target. Point at what actually works instead of claiming "open".
         if aiAnswer.isActive {
-            return ["Down pick a row", "Cmd+Enter web search", "Esc dismiss"]
+            return ["Down pick a row", "Cmd+Enter web search"]
         }
 
         // The home screen spends its third slot on the clickable today

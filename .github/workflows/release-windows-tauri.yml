@@ -55,7 +55,7 @@ jobs:
         with:
           workspaces: |
             core
-            apps/linows/src-tauri
+            apps/linows
 
       - name: Install cargo-tauri
         run: cargo install tauri-cli --version "^2" --locked
@@ -83,7 +83,7 @@ jobs:
           # NSIS installer - Tauri bundles lookapp.exe, WebView2Loader.dll, and
           # the WebView2 bootstrapper into this single .exe. Nothing else to
           # ship: the C runtime is static-linked via .cargo/config.toml.
-          Get-ChildItem apps/linows/src-tauri/target/release/bundle/nsis/*.exe `
+          Get-ChildItem apps/linows/target/release/bundle/nsis/*.exe `
             | Copy-Item -Destination dist/ -Force
 
           # Checksums

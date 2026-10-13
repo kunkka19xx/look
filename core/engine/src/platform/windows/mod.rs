@@ -26,6 +26,14 @@ pub(crate) const APP_FALLBACK_SCAN_ROOTS: &[&str] = &[
 pub(crate) const FILE_SCAN_ROOT_SUFFIXES: &[&str] =
     &["Desktop", "Documents", "Downloads", "Pictures", "Videos"];
 
+/// Too big or too live to walk as an extra scan root.
+pub(crate) const RISKY_SCAN_ROOTS: &[&str] = &[
+    "C:/",
+    "C:/Windows",
+    "C:/Program Files",
+    "C:/Program Files (x86)",
+];
+
 pub(crate) const SETTINGS_URL_SCHEME_PREFIX: &str = "ms-settings:";
 pub(crate) const SETTINGS_SUBTITLE_PREFIX: &str = "Windows Settings ";
 
