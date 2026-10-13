@@ -149,7 +149,64 @@ fn cached_config_slot() -> &'static Mutex<Option<RuntimeConfig>> {
     CACHED_CONFIG.get_or_init(|| Mutex::new(None))
 }
 
+/// Why a directory cannot join `file_scan_extra_roots`. The wording is the
+/// macOS settings panel's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExtraRootProblem {
+    NotDirectory,
+    RiskySystemRoot,
+    /// Inside a regular scan root, or holding one.
+    CoveredByScanRoots,
+    /// Inside another extra root, or holding it.
+    OverlapsExtraRoot(String),
+}
+
+impl ExtraRootProblem {
+    pub fn message(&self) -> String {
+        match self {
+            Self::NotDirectory => "Please select a directory".to_string(),
+            Self::RiskySystemRoot => "Refusing a risky system root".to_string(),
+            Self::CoveredByScanRoots => "Directory is already covered by scan roots".to_string(),
+            Self::OverlapsExtraRoot(root) => format!("Overlaps with existing root: {root}"),
+        }
+    }
+}
+
 impl RuntimeConfig {
+    /// Whether `path` may join the extra scan roots next to `extra_roots`
+    /// (the caller's, which may not be saved yet). Nested roots would walk
+    /// the same files twice and spend the scan limit on them.
+    pub fn check_extra_root(
+        &self,
+        path: &str,
+        extra_roots: &[String],
+    ) -> Result<(), ExtraRootProblem> {
+        if !Path::new(path).is_dir() {
+            return Err(ExtraRootProblem::NotDirectory);
+        }
+        if platform::risky_scan_roots()
+            .iter()
+            .any(|risky| platform::paths::same_path(path, risky))
+        {
+            return Err(ExtraRootProblem::RiskySystemRoot);
+        }
+        let overlaps = |root: &str| {
+            platform::paths::path_is_same_or_child(path, root)
+                || platform::paths::path_is_same_or_child(root, path)
+        };
+        if self.file_scan_roots.iter().any(|root| overlaps(root)) {
+            return Err(ExtraRootProblem::CoveredByScanRoots);
+        }
+        let home = user_home_dir();
+        match extra_roots
+            .iter()
+            .find(|root| overlaps(&expand_path(root, home.as_deref())))
+        {
+            Some(root) => Err(ExtraRootProblem::OverlapsExtraRoot(root.clone())),
+            None => Ok(()),
+        }
+    }
+
     /// Reads `~/.look/config` from disk and parses it. Always touches the file.
     /// Most callers should use [`load_cached`](Self::load_cached) instead.
     pub fn load() -> Self {
@@ -900,6 +957,44 @@ fn normalize_app_name(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extra_roots_must_not_nest_with_any_scan_root() {
+        let base = std::env::temp_dir().join(format!("look-extra-roots-{}", std::process::id()));
+        let path = |rel: &str| base.join(rel).to_string_lossy().into_owned();
+        for dir in ["docs/inner", "music/live", "photos"] {
+            std::fs::create_dir_all(base.join(dir)).expect("a scratch directory");
+        }
+        let config = RuntimeConfig {
+            file_scan_roots: vec![path("docs")],
+            ..RuntimeConfig::default()
+        };
+        let extras = vec![path("music")];
+
+        assert_eq!(config.check_extra_root(&path("photos"), &extras), Ok(()));
+        assert_eq!(
+            config.check_extra_root(&path("docs/inner"), &extras),
+            Err(ExtraRootProblem::CoveredByScanRoots)
+        );
+        assert_eq!(
+            config.check_extra_root(&base.to_string_lossy(), &extras),
+            Err(ExtraRootProblem::CoveredByScanRoots)
+        );
+        assert_eq!(
+            config.check_extra_root(&path("music/live"), &extras),
+            Err(ExtraRootProblem::OverlapsExtraRoot(path("music")))
+        );
+        assert_eq!(
+            config.check_extra_root(&path("missing"), &extras),
+            Err(ExtraRootProblem::NotDirectory)
+        );
+        #[cfg(unix)]
+        assert_eq!(
+            config.check_extra_root("/", &[]),
+            Err(ExtraRootProblem::RiskySystemRoot)
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn parse_csv_skips_empty_tokens() {

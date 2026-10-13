@@ -331,7 +331,7 @@ fn extent(tiles: &[LaunchpadTile]) -> (u8, u8) {
 /// What a shell decodes. The shape travels rather than being derived from how
 /// far the tiles reach, which cannot see a trailing empty track: `mic . .`
 /// would come out one column wide, stretched across the strip.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LayoutPayload {
     pub columns: u8,
     pub rows: u8,

@@ -37,7 +37,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $confPath = Join-Path $repoRoot "apps\linows\src-tauri\tauri.conf.json"
-$exePath = Join-Path $repoRoot "apps\linows\src-tauri\target\x86_64-pc-windows-msvc\release\lookapp.exe"
+$exePath = Join-Path $repoRoot "apps\linows\target\x86_64-pc-windows-msvc\release\lookapp.exe"
 if (-not $InstallDir) { $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\Look" }
 $installedExe = Join-Path $InstallDir "lookapp.exe"
 

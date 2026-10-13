@@ -403,7 +403,7 @@ mod tests {
         let _fixture = Fixture::new("garbage");
 
         let outcome = refresh_defs(&defs(&[("ci", "echo hello")]));
-        assert!(cached().get("ci").is_none());
+        assert!(!cached().contains_key("ci"));
         assert!(
             outcome.errors[0].contains("did not print a tile value"),
             "{:?}",
