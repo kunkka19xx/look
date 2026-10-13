@@ -176,7 +176,7 @@ nix develop -c cargo build          # NixOS; elsewhere plain cargo build
 
 Both routes end at the same parked query (`take_launch_query`), but they reach it differently, so a mode is worth trying from cold and from a running instance.
 
-A debug build separates its config and database (`setup_dev_env`). A second launch hands its arguments to the running instance over the control socket (`$XDG_RUNTIME_DIR/lookapp.sock`, port 47811 on Windows), and on Linux a Look that owns `com.look.Desktop` without a socket is toggled instead, as a second instance would be on macOS. So quit the installed app before testing a dev build, or run the dev build as a measurement instance: `LOOK_PACE_PROBE=1` with its own `LOOK_CONTROL_SOCKET` (`LOOK_CONTROL_PORT` on Windows), which takes neither the bus name nor the hotkey.
+A debug build separates its config and database (`setup_dev_env`). A second launch hands its arguments to the running instance over the control socket (`$XDG_RUNTIME_DIR/lookapp.sock`, or `lookapp.sock` in the temp dir when `XDG_RUNTIME_DIR` is unset; port 47811 on Windows), and on Linux a Look that owns `com.look.Desktop` without a socket is toggled instead, as a second instance would be on macOS. So quit the installed app before testing a dev build, or run the dev build as a measurement instance: `LOOK_PACE_PROBE=1` with its own `LOOK_CONTROL_SOCKET` (`LOOK_CONTROL_PORT` on Windows), which takes neither the bus name nor the hotkey.
 
 Override the macOS dev config path:
 

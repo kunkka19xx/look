@@ -628,8 +628,12 @@ fn main() {
     // name: as on macOS, this process only toggles it and exits.
     #[cfg(target_os = "linux")]
     if !probe_wanted() && linows_backend::platform::linux::wayland_shortcut::service_owned() {
-        linows_backend::platform::linux::wayland_shortcut::request_toggle();
-        eprintln!("lookapp: already running, toggled it");
+        if launch == engine_modes::Launch::ReloadConfig {
+            eprintln!("lookapp: an older Look is running and cannot reload; restart it");
+        } else {
+            linows_backend::platform::linux::wayland_shortcut::request_toggle();
+            eprintln!("lookapp: already running, toggled it");
+        }
         return;
     }
     state().start_bootstrap();
