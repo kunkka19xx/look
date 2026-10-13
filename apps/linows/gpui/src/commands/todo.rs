@@ -19,7 +19,7 @@ use crate::bg;
 use crate::bindings::{self, Scope};
 use crate::glyphs;
 use crate::launcher::Launcher;
-use crate::search::{SearchInput, search_field};
+use crate::search::{SearchInput, input_for, search_field};
 use crate::shortcuts;
 use crate::theme::{self, Theme};
 use crate::todo::{
@@ -275,7 +275,7 @@ impl Panel {
         text: &str,
         cx: &mut Context<Launcher>,
     ) {
-        let input = cx.new(SearchInput::new);
+        let input = input_for(cx);
         input.update(cx, |input, cx| input.set_text(text, cx));
         self.field = Some(Field { day, task, input });
         cx.notify();

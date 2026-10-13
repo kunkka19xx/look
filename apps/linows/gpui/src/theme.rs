@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
-use gpui::{Bounds, BoxShadow, Hsla, Pixels, Rgba, SharedString, Size, hsla, point, px, size};
+use gpui::{
+    Bounds, BoxShadow, Hsla, Pixels, Rgba, SharedString, Size, Styled, hsla, point, px, size,
+};
 use linows_backend::config::{self, LauncherLayout};
 use linows_backend::geometry;
 use linows_backend::highlight::TokenType;
@@ -57,6 +59,10 @@ const TILE_RADIUS_BASE: f32 = 12.0;
 const BAR_RADIUS_BASE: f32 = 10.0;
 const CONTROL_RADIUS_BASE: f32 = 8.0;
 const CHIP_RADIUS_BASE: f32 = 6.0;
+/// The accent's share in the tile behind a user-declared row's icon, and in
+/// the ring around it: the webview's `--declared-fill` and `--declared-ring`.
+const DECLARED_FILL_ALPHA: f32 = 0.16;
+const DECLARED_RING_ALPHA: f32 = 0.32;
 
 pub const CONTENT_PADDING: f32 = 14.0;
 pub const INPUT_PADDING_X: f32 = 12.0;
@@ -67,6 +73,13 @@ pub const SEARCH_ICON: f32 = 16.0;
 pub const ROW_HEIGHT: f32 = 48.0;
 pub const ROW_PADDING_X: f32 = 10.0;
 pub const ROW_SPACING: f32 = 4.0;
+/// A row and the gap under it, the uniform list's item: macOS stacks its
+/// rows 4 apart and the webview gives each a 4 px margin.
+pub const ROW_PITCH: f32 = ROW_HEIGHT + ROW_SPACING;
+/// The hairline between rows: `.result-row::after`, the divider colour at
+/// this opacity, hidden under the selection and after the last row.
+pub const ROW_DIVIDER_H: f32 = 1.0;
+const ROW_DIVIDER_OPACITY: f32 = 0.8;
 pub const ICON_CHIP: f32 = 28.0;
 pub const TILE_PADDING: f32 = 12.0;
 pub const CHIP_PADDING_X: f32 = 6.0;
@@ -79,9 +92,9 @@ pub const CARET_HEIGHT: f32 = 1.2;
 pub const ROW_INSET: f32 = 6.0;
 pub const HINT_INSET: f32 = 4.0;
 pub const HINT_INSET_BOTTOM: f32 = 2.0;
-/// The hint band's leading (`.hint-bar, .pane-footer { line-height: 1.2 }`):
-/// gpui's default is phi, which read as a thicker bar than it is.
-pub const HINT_LINE_HEIGHT: f32 = 1.2;
+/// The leading of every small label, hint and info line (the webview's
+/// `line-height: 1.2` on `.hint-bar`, `.ctl-label` and the info rows).
+pub const LABEL_LINE_HEIGHT: f32 = 1.2;
 const SHADOW_OFFSET_Y: f32 = 3.0;
 const SHADOW_BLUR: f32 = 7.0;
 const SHADOW_ALPHA: f32 = 0.25;
@@ -661,6 +674,12 @@ impl Theme {
 
     /// The classic panel's hairline (`--divider-color`): the selection
     /// colour, fainter.
+    /// The hairline under a result row.
+    pub fn row_divider(&self) -> Rgba {
+        let divider = self.divider();
+        veil(divider, divider.alpha * ROW_DIVIDER_OPACITY)
+    }
+
     pub fn divider(&self) -> Rgba {
         let c = self.selection_fill;
         Rgba::new(c.color.red, c.color.green, c.color.blue, DIVIDER_ALPHA)
@@ -706,6 +725,19 @@ impl Theme {
     }
     pub fn chip_radius(&self) -> f32 {
         CHIP_RADIUS_BASE * self.radius_scale
+    }
+    /// The tile behind a user-declared row's icon, in the list and in the
+    /// preview header: the accent as its fill and as a one pixel ring.
+    pub fn declared<E: Styled>(&self, tile: E) -> E {
+        tile.bg(self.declared_fill())
+            .border_1()
+            .border_color(self.declared_ring())
+    }
+    pub fn declared_fill(&self) -> Rgba {
+        veil(self.accent, DECLARED_FILL_ALPHA)
+    }
+    pub fn declared_ring(&self) -> Rgba {
+        veil(self.accent, DECLARED_RING_ALPHA)
     }
 
     /// A layer inside a surface's border: its corner is that much tighter,

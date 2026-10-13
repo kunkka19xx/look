@@ -23,6 +23,7 @@ mod help;
 mod host;
 mod hotkey;
 mod icons;
+mod imagecache;
 mod launcher;
 mod launchpad;
 mod levels;

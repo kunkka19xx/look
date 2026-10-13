@@ -119,7 +119,7 @@ fn load_images() -> Vec<ClipboardImageEntry> {
     let entries: Vec<ClipboardImageEntry> = load_json("clipboard-images.json");
     entries
         .into_iter()
-        .filter(|entry| clipimage::file_path(&entry.hash).is_some_and(|path| path.exists()))
+        .filter(|entry| clipimage::existing_path(&entry.hash).is_some())
         .collect()
 }
 

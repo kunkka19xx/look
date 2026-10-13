@@ -2,14 +2,15 @@
 //! EntityInputHandler, which is how Wayland text-input-v3 (fcitx5) reaches it:
 //! preedit arrives as marked text, a commit as a plain replace.
 
+use std::cell::Cell;
 use std::ops::Range;
 use std::time::Instant;
 
 use gpui::{
     App, AppContext, Bounds, Context, Element, ElementInputHandler, Entity, EntityInputHandler,
-    EventEmitter, FocusHandle, GlobalElementId, Hsla, InspectorElementId, IntoElement, LayoutId,
-    PaintQuad, Pixels, ShapedLine, SharedString, TextAlign, TextRun, Transition, TransitionState,
-    UTF16Selection, UnderlineStyle, Window, fill, point, px, size,
+    EventEmitter, FocusHandle, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
+    PaintQuad, Pixels, ShapedLine, SharedString, Task, TextAlign, TextRun, Transition,
+    TransitionState, UTF16Selection, UnderlineStyle, Window, fill, point, px, size,
 };
 
 use crate::motion;
@@ -28,13 +29,25 @@ pub struct SearchInput {
     caret: Bounds<Pixels>,
     /// The caret's x, gliding to each new column.
     caret_x: Entity<TransitionState<f32>>,
-    /// When the caret last moved: solid for a while after, then blinking.
-    caret_moved: Instant,
+    /// The blink's phase. Solid for a while after every edit or move, then
+    /// the task below flips it twice a period while the field has focus.
+    caret_on: bool,
+    blink: Option<Task<()>>,
+    /// Set by every paint, cleared by every flip: a field that stops
+    /// painting under a running clock lets the clock go.
+    painted: Cell<bool>,
     /// When the field appeared, for the placeholder's slide in.
     shown: Instant,
 }
 
 impl EventEmitter<Changed> for SearchInput {}
+
+/// A field whose caret, selection and text repaint `V` on their own.
+pub fn input_for<V: 'static>(cx: &mut Context<V>) -> Entity<SearchInput> {
+    let input = cx.new(SearchInput::new);
+    cx.observe(&input, |_, _, cx| cx.notify()).detach();
+    input
+}
 
 impl SearchInput {
     pub fn new(cx: &mut Context<Self>) -> Self {
@@ -46,7 +59,9 @@ impl SearchInput {
             marked: None,
             caret: Bounds::default(),
             caret_x: cx.new(|_| TransitionState::new(0.0)),
-            caret_moved: Instant::now(),
+            caret_on: true,
+            blink: None,
+            painted: Cell::new(false),
             shown: Instant::now(),
         }
     }
@@ -139,7 +154,7 @@ impl SearchInput {
             self.anchor = None;
         }
         self.cursor = to.min(self.text.len());
-        cx.notify();
+        self.touch(cx);
     }
 
     pub fn left(&mut self, select: bool, cx: &mut Context<Self>) {
@@ -178,7 +193,7 @@ impl SearchInput {
     pub fn select_all(&mut self, cx: &mut Context<Self>) {
         self.anchor = Some(0);
         self.cursor = self.text.len();
-        cx.notify();
+        self.touch(cx);
     }
 
     /// Typed or pasted text at the cursor, replacing any selection.
@@ -208,7 +223,56 @@ impl SearchInput {
 
     fn changed(&mut self, cx: &mut Context<Self>) {
         cx.emit(Changed);
+        self.touch(cx);
+    }
+
+    /// Every edit or cursor move: the caret lands solid and the blink
+    /// starts over.
+    fn touch(&mut self, cx: &mut Context<Self>) {
+        if self.blink.is_some() {
+            self.start_blink(cx);
+        }
         cx.notify();
+    }
+
+    /// The blink clock, Zed's way: a task that sleeps and flips, two
+    /// notifies a second instead of a frame request on every paint. The
+    /// field starts it when it paints focused and drops it when it paints
+    /// without focus; respawning cancels the sleep in flight.
+    fn start_blink(&mut self, cx: &mut Context<Self>) {
+        self.caret_on = true;
+        self.blink = Some(cx.spawn(async move |this, cx| {
+            let mut wait = motion::dur(motion::CARET_SOLID_MS);
+            loop {
+                cx.background_executor().timer(wait).await;
+                wait = motion::dur(motion::CARET_BLINK_MS / 2);
+                let flipped = this.update(cx, |input, cx| {
+                    if !input.painted.replace(false) {
+                        if let Some(clock) = input.blink.take() {
+                            clock.detach();
+                        }
+                        return false;
+                    }
+                    input.caret_on = !input.caret_on;
+                    cx.notify();
+                    true
+                });
+                if !matches!(flipped, Ok(true)) {
+                    break;
+                }
+            }
+        }));
+    }
+
+    /// Whether the caret paints, on a frame where focus and the blink
+    /// clock disagree: focus gained starts the clock, focus lost stops it.
+    fn caret_shown(&mut self, focused: bool, cx: &mut Context<Self>) -> bool {
+        if focused {
+            self.start_blink(cx);
+        } else {
+            self.blink = None;
+        }
+        focused && self.caret_on
     }
 
     /// A change only when the text differs from `before`: an IME commit
@@ -217,7 +281,7 @@ impl SearchInput {
     /// the key that committed it moved it.
     fn changed_from(&mut self, before: &str, cx: &mut Context<Self>) {
         if self.text == before {
-            cx.notify();
+            self.touch(cx);
         } else {
             self.changed(cx);
         }
@@ -286,7 +350,7 @@ impl EntityInputHandler for SearchInput {
 
     fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.marked = None;
-        cx.notify();
+        self.touch(cx);
     }
 
     fn replace_text_in_range(
@@ -347,7 +411,7 @@ impl EntityInputHandler for SearchInput {
         cx: &mut Context<Self>,
     ) {
         self.cursor = from_utf16(&self.text, &range_utf16).end;
-        cx.notify();
+        self.touch(cx);
     }
 
     fn text_length_utf16(
@@ -557,34 +621,28 @@ impl Element for SearchField {
             )
         });
 
-        let caret = if input.focus_handle.is_focused(window) {
+        let focused = input.focus_handle.is_focused(window);
+        let caret_x = input.caret_x.clone();
+        input.painted.set(true);
+        let on = if focused == input.blink.is_some() {
+            focused && input.caret_on
+        } else {
+            self.input
+                .update(cx, |input, cx| input.caret_shown(focused, cx))
+        };
+        let caret = if focused {
             let goal = if text.is_empty() {
                 0.0
             } else {
                 f32::from(line.x_for_index(cursor))
             };
-            // The caret glides to its column on a `Transition` and stays
-            // solid while it moves; idle, it blinks on its own frames, with
-            // motion off too, as the CSS keeps it.
-            let glide = Transition::new(
-                input.caret_x.clone(),
-                motion::transition(motion::CARET_GLIDE_MS, cx),
-            )
-            .with_easing(motion::curve);
-            let moved = glide.update(cx, |x, _| *x = goal);
-            if moved {
-                self.input
-                    .update(cx, |input, _| input.caret_moved = Instant::now());
-            }
+            // The caret glides to its column on a `Transition`, which asks
+            // for frames only while it moves; the blink runs on the clock
+            // above, with motion off too, as the CSS keeps it.
+            let glide = Transition::new(caret_x, motion::transition(motion::CARET_GLIDE_MS, cx))
+                .with_easing(motion::curve);
+            glide.update(cx, |x, _| *x = goal);
             let x = glide.evaluate(window, cx).round();
-            let idle = self.input.read(cx).caret_moved.elapsed().as_secs_f32()
-                - motion::secs(motion::CARET_SOLID_MS);
-            let alpha = if idle <= 0.0 {
-                1.0
-            } else {
-                motion::blink(idle / (motion::secs(motion::CARET_BLINK_MS)))
-            };
-            window.request_animation_frame();
             let caret_h = font_size * theme::CARET_HEIGHT;
             let caret_bounds = Bounds::new(
                 point(
@@ -594,9 +652,7 @@ impl Element for SearchField {
                 size(px(theme::CARET_WIDTH), caret_h),
             );
             self.input.update(cx, |input, _| input.caret = caret_bounds);
-            let mut colour: Hsla = theme::hsla_of(th.accent);
-            colour.alpha *= alpha;
-            Some(fill(caret_bounds, colour))
+            on.then(|| fill(caret_bounds, theme::hsla_of(th.accent)))
         } else {
             None
         };

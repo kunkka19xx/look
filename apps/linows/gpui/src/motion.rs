@@ -60,20 +60,16 @@ pub const SLIDE_MAX_STAGGER_MS: u64 = 280;
 pub const PLACEHOLDER_SHIFT: f32 = 20.0;
 pub const STRIP_SHIFT: f32 = -18.0;
 
-/// The selection pill's glide between rows, and the icon's zoom when it
-/// lands: at 22 px a few percent is a pixel, so the glyph zooms far more
-/// than a pill ever would. macOS eases in over 110 ms, then a spring with
-/// a 0.3 s response and 0.6 damping takes it back, undershooting a touch
-/// and settling over the rest; the whole run is `ZOOM_MS`.
+/// The selection pill's glide between rows, and the row's parts with it.
 pub const GLIDE_MS: u64 = 300;
-pub const ZOOM_MS: u64 = 710;
-pub const ZOOM_IN_MS: u64 = 110;
-pub const ICON_ZOOM: f32 = 1.24;
-const ZOOM_OUT_RESPONSE: f32 = 0.3;
-const ZOOM_OUT_DAMPING: f32 = 0.6;
 /// The selected row's text sits this much to the right, the macOS
 /// `titleShift`, riding the same glide.
 pub const TITLE_SHIFT: f32 = 4.0;
+/// The icon slides this much the other way on the same glide, the row
+/// opening around the selection. macOS zooms the icon instead; here a
+/// bitmap is sampled afresh at every fractional size, with no mipmaps,
+/// and the shimmer read as a shake, so no row icon zooms.
+pub const ICON_SHIFT: f32 = 2.0;
 
 /// Glyph bounce, the stand-in for symbolEffect(.bounce).
 pub const BOUNCE_MS: u64 = 460;
@@ -138,29 +134,6 @@ pub fn rise(rest: f32, rise: f32, t: f32) -> f32 {
     (rest + rise * (1.0 - t)).round()
 }
 
-/// The icon's scale at `t` of its zoom: an ease-out up to `ICON_ZOOM` for
-/// the first `ZOOM_IN_MS`, then a damped spring back to 1, the way the
-/// macOS row zooms in and lets go.
-pub fn zoom(t: f32) -> f32 {
-    let total = ZOOM_MS as f32 / 1000.0;
-    let rise = ZOOM_IN_MS as f32 / 1000.0;
-    let elapsed = (t.clamp(0.0, 1.0) * total).min(total);
-    let gain = ICON_ZOOM - 1.0;
-    if elapsed < rise {
-        let u = 1.0 - elapsed / rise;
-        return 1.0 + gain * (1.0 - u * u * u);
-    }
-    1.0 + gain * spring(elapsed - rise, ZOOM_OUT_RESPONSE, ZOOM_OUT_DAMPING)
-}
-
-/// A SwiftUI spring's distance from rest, from 1 at `t` = 0: `response`
-/// is the undamped period, `damping` the fraction of critical.
-fn spring(t: f32, response: f32, damping: f32) -> f32 {
-    let w0 = std::f32::consts::TAU / response;
-    let wd = w0 * (1.0 - damping * damping).sqrt();
-    (-damping * w0 * t).exp() * ((wd * t).cos() + (damping * w0 / wd) * (wd * t).sin())
-}
-
 /// A hump from 0 up to 1 at `peak` and back to 0 at the end, the shape of
 /// every CSS keyframe that scales up and settles: the way up is the
 /// settle curve, the way down the same curve reversed.
@@ -171,28 +144,6 @@ pub fn hump(t: f32, peak: f32) -> f32 {
         curve(t / peak)
     } else {
         1.0 - curve((t - peak) / (1.0 - peak))
-    }
-}
-
-/// The caret's blink at `t` of its period: solid for a third, a soft dip
-/// to nothing at two thirds, back to solid.
-pub fn blink(t: f32) -> f32 {
-    let t = t.rem_euclid(1.0);
-    if t < 0.35 {
-        1.0
-    } else if t < 0.67 {
-        1.0 - ease_in_out((t - 0.35) / 0.32)
-    } else {
-        ease_in_out((t - 0.67) / 0.33)
-    }
-}
-
-fn ease_in_out(t: f32) -> f32 {
-    if t < 0.5 {
-        2.0 * t * t
-    } else {
-        let x = -2.0 * t + 2.0;
-        1.0 - x * x / 2.0
     }
 }
 
@@ -274,32 +225,11 @@ mod tests {
     }
 
     #[test]
-    fn the_zoom_peaks_after_the_rise_dips_under_rest_and_settles() {
-        let rise = ZOOM_IN_MS as f32 / ZOOM_MS as f32;
-        assert_eq!(zoom(0.0), 1.0);
-        assert!((zoom(rise) - ICON_ZOOM).abs() < 1e-3);
-        let under = (0..100)
-            .map(|i| zoom(rise + (1.0 - rise) * i as f32 / 100.0))
-            .fold(1.0_f32, f32::min);
-        assert!(under < 1.0 && under > 0.95, "undershoot {under}");
-        assert!((zoom(1.0) - 1.0).abs() < 0.01);
-    }
-
-    #[test]
     fn the_hump_peaks_where_asked_and_rests_at_both_ends() {
         assert_eq!(hump(0.0, 0.26), 0.0);
         assert!((hump(0.26, 0.26) - 1.0).abs() < 1e-5);
         assert_eq!(hump(1.0, 0.26), 0.0);
         assert!(hump(0.1, 0.26) > 0.0 && hump(0.1, 0.26) < 1.0);
-    }
-
-    #[test]
-    fn the_blink_is_solid_then_dips_then_returns() {
-        assert_eq!(blink(0.0), 1.0);
-        assert_eq!(blink(0.3), 1.0);
-        assert!(blink(0.67) < 0.01);
-        assert!((blink(1.0) - 1.0).abs() < 1e-5);
-        assert!(blink(0.5) > 0.0 && blink(0.5) < 1.0);
     }
 
     #[test]

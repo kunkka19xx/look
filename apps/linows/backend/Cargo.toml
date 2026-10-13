@@ -35,14 +35,14 @@ dirs = "6"
 png = "0.17"
 trash = "5"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-tokio = { version = "1.52.3", features = ["rt", "time"] }
+tokio = { version = "1.52.3", features = ["rt", "time", "sync"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # xtest: typing the paste chord into another window, the X11 half of Ctrl+I.
 x11rb = { version = "0.13", features = ["allow-unsafe-code", "xtest"] }
 zbus = "5"
 # StreamExt for zbus signal streams.
-futures-util = { version = "0.3", default-features = false }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 # "system" pins the libwayland backend: blur binds against the shell's own
 # wl_display, which only the sys backend can adopt.

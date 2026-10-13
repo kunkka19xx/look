@@ -26,7 +26,7 @@ use crate::controls::{self, Option_, Range, SliderEvent, SliderPhase};
 use crate::fonts;
 use crate::launcher::Launcher;
 use crate::launchpad::Tone;
-use crate::search::{Changed, SearchInput, search_field};
+use crate::search::{Changed, SearchInput, input_for, search_field};
 use crate::state as app_state;
 use crate::theme::{self, Theme};
 use crate::update::Update;
@@ -708,7 +708,7 @@ impl Settings {
             theme::SYSTEM_FONT => String::new(),
             name => name.to_string(),
         };
-        let input = cx.new(SearchInput::new);
+        let input = input_for(cx);
         input.update(cx, |input, cx| {
             input.set_text(&text, cx);
             input.select_all(cx);

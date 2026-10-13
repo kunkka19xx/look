@@ -5,9 +5,6 @@ use gpui::{
     point, px,
 };
 
-/// Line height of canvas text, the webview's SVG default.
-pub const LINE_HEIGHT: f32 = 1.2;
-
 /// A circle of radius `r` as two half arcs, from the top.
 pub fn circle_path(builder: &mut PathBuilder, centre: Point<Pixels>, r: f32) {
     let (cx, cy) = (f32::from(centre.x), f32::from(centre.y));
@@ -129,7 +126,7 @@ pub fn paint_text(
         &[run],
         None,
     );
-    let line_height = px(style.size * LINE_HEIGHT);
+    let line_height = px(style.size * crate::theme::LABEL_LINE_HEIGHT);
     let origin = point(
         px(centre_x) - line.width() / 2.0,
         px(centre_y) - line_height / 2.0,

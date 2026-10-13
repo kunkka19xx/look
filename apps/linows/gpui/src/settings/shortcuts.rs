@@ -16,7 +16,7 @@ use crate::commands::KeyOutcome;
 use crate::controls;
 use crate::glyphs;
 use crate::launcher::Launcher;
-use crate::search::{Changed, SearchInput, search_field};
+use crate::search::{Changed, input_for, search_field};
 use crate::shortcuts::{self, Entry, Group, Hint, Piece, Topic};
 use crate::theme::Theme;
 
@@ -305,7 +305,7 @@ impl Settings {
 
     /// The text is mirrored into the view, so the filter outlives the box.
     fn open_search_field(&mut self, cx: &mut Context<Launcher>) {
-        let input = cx.new(SearchInput::new);
+        let input = input_for(cx);
         let query = self.shortcuts_view.query.clone();
         input.update(cx, |input, cx| input.set_text(&query, cx));
         cx.subscribe(&input, |this, input, _: &Changed, cx| {

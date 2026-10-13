@@ -15,7 +15,7 @@ use crate::elide::middle_elided;
 use crate::launcher::Launcher;
 use crate::launchpad::Tone;
 use crate::pick;
-use crate::search::{Changed, SearchInput, search_field};
+use crate::search::{Changed, input_for, search_field};
 use crate::theme::{self, BgLayout, Theme};
 use crate::update::Update;
 use gpui::prelude::*;
@@ -394,7 +394,7 @@ impl Settings {
     }
 
     fn open_number_field(&mut self, spec: &'static Number, cx: &mut Context<Launcher>) {
-        let input = cx.new(SearchInput::new);
+        let input = input_for(cx);
         let text = self.number_value(spec).to_string();
         input.update(cx, |input, cx| {
             input.set_text(&text, cx);

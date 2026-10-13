@@ -19,7 +19,7 @@ use gpui::{
 use linows_backend::look_engine::launchpad::{LayoutPayload, TileValue};
 use linows_backend::look_lunar::LunarDate;
 use linows_backend::look_qactions::{LaunchpadTile, TileRole, action_id};
-use linows_backend::nowplaying::{self, NowPlayingSnapshot};
+use linows_backend::nowplaying::{self, NowPlayingSnapshot, NowPlayingWatch};
 use linows_backend::qactions::{
     self, ActionIntent, ActionOutcome, ActionState, BATTERY_CHARGING_INFO_KEY,
     BATTERY_CHARGING_INFO_TEXT, InfoValue,
@@ -27,6 +27,7 @@ use linows_backend::qactions::{
 use linows_backend::weather::{self, WeatherSnapshot};
 use linows_backend::{lunar, sysinfo, todo};
 
+use crate::bg;
 use crate::confirm::CONFIRM_FALLBACK;
 use crate::glyphs;
 use crate::icons;
@@ -90,7 +91,9 @@ const PRESSED_OPACITY: f32 = 0.85;
 const CONFIRM_TIMEOUT: Duration = Duration::from_secs(3);
 /// Ticks are one second; Now Playing changes out of band, the task rotates.
 const TICK: Duration = Duration::from_secs(1);
-const MEDIA_POLL_TICKS: u64 = 2;
+/// How often the Pomodoro's own player, which never signals, is re-read
+/// into the Now Playing tile. MPRIS players push their changes instead.
+const POMO_MUSIC_TICKS: u64 = 2;
 const TASK_ROTATE_TICKS: u64 = 3;
 
 const NOTICE_OK: f32 = 1.2;
@@ -169,7 +172,6 @@ const POMO_SUB_MARGIN: f32 = 6.0;
 /// The big time sits tight, as `.ctl-slot-time` sets it, or the lines
 /// under it fall off the tile.
 const SLOT_TIME_LINE_HEIGHT: f32 = 1.05;
-const SLOT_SUB_LINE_HEIGHT: f32 = 1.2;
 const POMO_ARTIST: &str = "Pomodoro";
 
 /// The layout survives the window, so a summon never waits on the file.
@@ -187,6 +189,10 @@ pub struct Launchpad {
     uptime: Option<String>,
     weather: Option<WeatherSnapshot>,
     media: Option<NowPlayingSnapshot>,
+    /// The MPRIS side of the tile, pushed by the watch below for as long
+    /// as the layout has a Media tile; applied while the bento is shown.
+    mpris: Option<NowPlayingSnapshot>,
+    media_watch: Option<(NowPlayingWatch, Task<()>)>,
     /// The Now Playing tile shows the Pomodoro's own player, which never
     /// reaches MPRIS, so the transport drives it directly.
     media_internal: bool,
@@ -240,6 +246,8 @@ impl Launchpad {
             uptime: None,
             weather: None,
             media: None,
+            mpris: None,
+            media_watch: None,
             media_internal: false,
             last_internal: false,
             lunar: None,
@@ -338,7 +346,7 @@ impl Launchpad {
     ) {
         let token = self.token;
         cx.spawn(async move |this, cx| {
-            let value = crate::bg::blocking(work).get().await;
+            let value = bg::blocking(work).get().await;
             let _ = this.update(cx, |this, cx| {
                 if this.token == token {
                     apply(this, value, cx);
@@ -353,18 +361,17 @@ impl Launchpad {
     fn load_layout(&mut self, cx: &mut Context<Self>) {
         let token = self.token;
         cx.spawn(async move |this, cx| {
-            let fresh = cx
-                .background_executor()
-                .spawn(async move {
-                    let layout = Arc::new(qactions::launchpad_layout());
-                    let warnings = if WARNED.swap(true, Ordering::Relaxed) {
-                        Vec::new()
-                    } else {
-                        qactions::launchpad_warnings()
-                    };
-                    (layout, warnings)
-                })
-                .await;
+            let fresh = bg::blocking(move || {
+                let layout = Arc::new(qactions::launchpad_layout());
+                let warnings = if WARNED.swap(true, Ordering::Relaxed) {
+                    Vec::new()
+                } else {
+                    qactions::launchpad_warnings()
+                };
+                (layout, warnings)
+            })
+            .get()
+            .await;
             let _ = this.update(cx, |this, cx| {
                 let (layout, warnings) = fresh;
                 *LAYOUT.lock().unwrap_or_else(|p| p.into_inner()) = Some(layout.clone());
@@ -416,9 +423,8 @@ impl Launchpad {
                 }
             });
         }
-        if self.has_role(TileRole::Media) {
-            self.refresh_media(cx);
-        }
+        self.watch_media(cx);
+        self.refresh_media(cx);
         if self.has_role(TileRole::Slot) {
             self.fetch(
                 cx,
@@ -483,43 +489,77 @@ impl Launchpad {
 
     /// The Pomodoro's player while it plays, else the MPRIS player; with
     /// nothing playing, whichever played last, as the webview arbitrates.
-    fn refresh_media(&mut self, cx: &mut Context<Self>) {
-        self.fetch(
-            cx,
-            || (nowplaying::now_playing_current(), pomo::music_snapshot()),
-            |this, (mpris, internal), _| {
-                let internal_media = internal.as_ref().map(|m| NowPlayingSnapshot {
-                    title: m.track.clone(),
-                    artist: Some(POMO_ARTIST.to_string()),
-                    app: None,
-                    is_playing: m.playing,
-                    player: None,
+    /// Subscribe to the players while the layout has a Media tile. The
+    /// watch pushes a snapshot on every change through a slot that keeps
+    /// only the latest, and a task hands it to the tile. It outlives a
+    /// trip to the results, which would otherwise rebuild it on every
+    /// keystroke; the thread sleeps between signals.
+    fn watch_media(&mut self, cx: &mut Context<Self>) {
+        if !self.has_role(TileRole::Media) {
+            self.media_watch = None;
+            return;
+        }
+        if self.media_watch.is_some() {
+            return;
+        }
+        let (tx, rx) = async_channel::bounded(1);
+        let watch = nowplaying::now_playing_watch(move |snapshot| {
+            let _ = tx.force_send(snapshot);
+        });
+        let task = cx.spawn(async move |this, cx| {
+            while let Ok(snapshot) = rx.recv().await {
+                let applied = this.update(cx, |this, cx| {
+                    this.mpris = snapshot;
+                    if this.shown {
+                        this.refresh_media(cx);
+                    }
                 });
-                let mpris_playing = mpris
-                    .as_ref()
-                    .is_some_and(|m| m.is_playing && !m.title.is_empty());
-                let mpris_present = mpris.as_ref().is_some_and(|m| !m.title.is_empty());
-                let use_internal = match (&internal, mpris_playing) {
-                    (Some(m), _) if m.playing => true,
-                    (_, true) => false,
-                    (Some(_), false) => this.last_internal || !mpris_present,
-                    (None, _) => false,
-                };
-                if use_internal {
-                    this.media = internal_media;
-                    this.media_internal = true;
-                    if internal.as_ref().is_some_and(|m| m.playing) {
-                        this.last_internal = true;
-                    }
-                } else {
-                    this.media = mpris;
-                    this.media_internal = false;
-                    if mpris_playing {
-                        this.last_internal = false;
-                    }
+                if applied.is_err() {
+                    break;
                 }
-            },
-        );
+            }
+        });
+        self.media_watch = Some((watch, task));
+    }
+
+    /// The tile from the MPRIS snapshot the watch last pushed and the
+    /// Pomodoro's own player, read in process.
+    fn refresh_media(&mut self, cx: &mut Context<Self>) {
+        let internal = pomo::music_snapshot();
+        let mpris = self.mpris.as_ref();
+        let mpris_playing = mpris.is_some_and(|m| m.is_playing && !m.title.is_empty());
+        let mpris_present = mpris.is_some_and(|m| !m.title.is_empty());
+        let use_internal = match (&internal, mpris_playing) {
+            (Some(m), _) if m.playing => true,
+            (_, true) => false,
+            (Some(_), false) => self.last_internal || !mpris_present,
+            (None, _) => false,
+        };
+        let media = if use_internal {
+            if internal.as_ref().is_some_and(|m| m.playing) {
+                self.last_internal = true;
+            }
+            internal.map(|m| NowPlayingSnapshot {
+                title: m.track,
+                artist: Some(POMO_ARTIST.to_string()),
+                app: None,
+                is_playing: m.playing,
+                player: None,
+            })
+        } else {
+            if mpris_playing {
+                self.last_internal = false;
+            }
+            if !self.media_internal && self.media == self.mpris {
+                return;
+            }
+            self.mpris.clone()
+        };
+        if self.media != media || self.media_internal != use_internal {
+            self.media = media;
+            self.media_internal = use_internal;
+            cx.notify();
+        }
     }
 
     /// Two reads on purpose: the cache answers at once so the strip never
@@ -576,7 +616,7 @@ impl Launchpad {
         if !self.shown {
             return;
         }
-        if tick.is_multiple_of(MEDIA_POLL_TICKS) && self.has_role(TileRole::Media) {
+        if tick.is_multiple_of(POMO_MUSIC_TICKS) && self.has_role(TileRole::Media) {
             self.refresh_media(cx);
         }
         if tick.is_multiple_of(TASK_ROTATE_TICKS)
@@ -667,21 +707,18 @@ impl Launchpad {
         self.token += 1;
         cx.notify();
         let apply_id = id.clone();
-        cx.spawn(async move |this, cx| {
-            let outcome = cx
-                .background_executor()
-                .spawn(async move { qactions::quick_action_apply(&apply_id, intent) })
-                .await;
-            let _ = this.update(cx, |this, cx| {
+        bg::fetch(
+            cx,
+            move || qactions::quick_action_apply(&apply_id, intent),
+            move |this, outcome, cx| {
                 this.applying = false;
                 this.notify_outcome(&title, outcome, cx);
                 if reads_back {
                     this.token += 1;
                     this.refresh_control(id, cx);
                 }
-            });
-        })
-        .detach();
+            },
+        );
     }
 
     fn transport(&mut self, command: &'static str, cx: &mut Context<Self>) {
@@ -705,23 +742,18 @@ impl Launchpad {
             // Flip now, roll back unless delivered. No re-read: MPRIS lags the
             // command and would flip it back for a frame.
             let Some(media) = self.media.as_mut() else {
-                cx.background_executor()
-                    .spawn(async move {
-                        nowplaying::now_playing_command(PLAYPAUSE, player.as_deref());
-                    })
-                    .detach();
+                bg::blocking(move || nowplaying::now_playing_command(PLAYPAUSE, player.as_deref()));
                 return;
             };
             let was = media.is_playing;
             media.is_playing = !was;
             cx.notify();
             cx.spawn(async move |this, cx| {
-                let delivered =
-                    cx.background_executor()
-                        .spawn(async move {
-                            nowplaying::now_playing_command(PLAYPAUSE, player.as_deref())
-                        })
-                        .await;
+                let delivered = bg::blocking(move || {
+                    nowplaying::now_playing_command(PLAYPAUSE, player.as_deref())
+                })
+                .get()
+                .await;
                 if !delivered {
                     let _ = this.update(cx, |this, cx| {
                         if let Some(media) = this.media.as_mut() {
@@ -734,15 +766,8 @@ impl Launchpad {
             .detach();
             return;
         }
-        // Next or previous: re-read so the new track shows without the poll.
-        self.fetch(
-            cx,
-            move || {
-                nowplaying::now_playing_command(command, player.as_deref());
-                nowplaying::now_playing_current()
-            },
-            |this, media, _| this.media = media,
-        );
+        // Next or previous: the player's own signal brings the new track.
+        bg::blocking(move || nowplaying::now_playing_command(command, player.as_deref()));
     }
 
     fn arm_confirm(&mut self, id: String, cx: &mut Context<Self>) {
@@ -1075,11 +1100,7 @@ impl Launchpad {
                             .line_height(px(BODY_TIME_SIZE * SLOT_TIME_LINE_HEIGHT))
                             .text_color(th.text),
                     )
-                    .child(
-                        small(sub, LABEL_SMALL, th.text_secondary)
-                            .line_height(px(LABEL_SMALL * SLOT_SUB_LINE_HEIGHT))
-                            .mt(px(POMO_SUB_MARGIN)),
-                    )
+                    .child(small(sub, LABEL_SMALL, th.text_secondary).mt(px(POMO_SUB_MARGIN)))
                     .child(
                         div()
                             .mt(px(POMO_BAR_MARGIN))
@@ -1141,7 +1162,7 @@ impl Launchpad {
                     .child(
                         div()
                             .mt(px(TODO_NEXT_GAP))
-                            .line_height(px(LABEL_SMALL * SLOT_SUB_LINE_HEIGHT))
+                            .line_height(px(LABEL_SMALL * theme::LABEL_LINE_HEIGHT))
                             .flex()
                             .items_center()
                             .gap(px(DOT_GAP))
@@ -1599,6 +1620,7 @@ fn action_body(icon: AnyElement, label: StyledText, confirming: bool, th: &Theme
         .child(
             div()
                 .text_size(px(LABEL_SMALL))
+                .line_height(px(LABEL_SMALL * theme::LABEL_LINE_HEIGHT))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(if confirming { th.danger } else { th.text })
                 .truncate()
@@ -1702,6 +1724,7 @@ fn mono(text: String, size: f32, th: &Theme) -> Div {
 fn small(text: impl Into<SharedString>, size: f32, colour: Rgba) -> Div {
     div()
         .text_size(px(size))
+        .line_height(px(size * theme::LABEL_LINE_HEIGHT))
         .text_color(colour)
         .child(text.into())
 }
