@@ -16,16 +16,24 @@ struct LauncherView: View {
         case info
         case warning
 
-        var background: Color {
+        /// Theme colours, not fixed ones: a translucent `.blue` under the
+        /// theme's own text colour left "Bluetooth off" cream on pale blue.
+        func background(_ theme: ThemeStore) -> Color {
             switch self {
-            case .success:
-                return .green.opacity(0.42)
-            case .error:
-                return .red.opacity(0.45)
-            case .info:
-                return .blue.opacity(0.40)
-            case .warning:
-                return .orange.opacity(0.45)
+            case .success: return theme.successColor()
+            case .error: return theme.dangerColor()
+            case .info: return theme.accentColor()
+            case .warning: return theme.warningColor()
+            }
+        }
+
+        /// Paired with the fill, so the text reads on it in every theme.
+        func foreground(_ theme: ThemeStore) -> Color {
+            switch self {
+            case .success: return theme.onSuccessColor()
+            case .error: return theme.onDangerColor()
+            case .info: return theme.onAccentColor()
+            case .warning: return theme.onWarningColor()
             }
         }
     }
@@ -163,6 +171,7 @@ struct LauncherView: View {
     @State var pendingHideAppResult: LauncherResult?
     // True while a trash/empty operation is running, to block re-triggering it.
     @State var isDeleteInFlight = false
+    @State var trashIconRefreshTick: Int = 0
     @State var killListRefreshTick: Int = 0
     @State var recentlyKilledPIDs: Set<Int32> = []
     @State var showsHelpScreen = false
@@ -1500,7 +1509,7 @@ struct LauncherView: View {
         HStack(spacing: 8) {
             Text(message)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
-                .foregroundStyle(themeStore.fontColor())
+                .foregroundStyle(bannerStyle.foreground(themeStore))
                 // A banner is one line inside a capsule. Anything longer is
                 // truncated by its caller; without this a stray newline in an
                 // interpolated title stacks the pill into a tall narrow block.
@@ -1521,7 +1530,7 @@ struct LauncherView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(bannerStyle.background, in: Capsule())
+        .background(bannerStyle.background(themeStore), in: Capsule())
         .transition(.move(edge: .top).combined(with: .opacity))
         // Sits between the bar and the results, so it takes a seam on both sides.
         .padding(.vertical, stackedContentGap)
@@ -2232,7 +2241,8 @@ struct LauncherView: View {
                     isActionMenuOpen: isActionMenuOpen,
                     actionMenuIndex: actionMenuIndex,
                     actionMenuDescriptors: actionMenuRows,
-                    onActivateActionMenuRow: { activateActionMenuRow($0) }
+                    onActivateActionMenuRow: { activateActionMenuRow($0) },
+                    trashRefreshTick: trashIconRefreshTick
                 )
                 // Arrow-key nav assigns `selectedResultID` inside a global
                 // `withAnimation` so the pill can glide (see LauncherView+

@@ -81,6 +81,20 @@ struct EmptyTrashCommand {
     @MainActor
     static func itemCount(promptIfNeeded: Bool = true) -> Int? {
         if !promptIfNeeded && !isAutomationAllowed() { return nil }
+        return trashCount()
+    }
+
+    /// The passive read behind the Trash preview: never prompts, and leaves the
+    /// Apple event off the main thread, where it can take a moment.
+    @MainActor
+    static func itemCountInBackgroundWithoutPrompt() async -> Int? {
+        guard isAutomationAllowed() else { return nil }
+        return await Task.detached(priority: .utility) { trashCount() }.value
+    }
+
+    /// One copy of the script and its parsing, so the two readers above cannot
+    /// drift apart.
+    nonisolated private static func trashCount() -> Int? {
         let (result, error) = runFinder("return count of (items of the trash)")
         if error != nil { return nil }
         return result.flatMap { Int(exactly: $0.int32Value) }

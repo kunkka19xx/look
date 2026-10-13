@@ -6,6 +6,18 @@ final class DeleteTargetLogicTests: XCTestCase {
         LauncherResult(id: id, kind: kind, title: id, subtitle: nil, path: path, score: 0)
     }
 
+    // MARK: - trash row
+
+    /// The preview reads this to decide between the full and the empty can, so
+    /// a file that merely lives in the Trash must not claim to be the Trash.
+    func testOnlyTheTrashFolderItselfIsTheTrashRow() {
+        let trash = NSHomeDirectory() + "/.Trash"
+        XCTAssertTrue(result("trash", .folder, path: trash).isTrashFolder)
+        XCTAssertFalse(result("file-in-trash", .file, path: trash).isTrashFolder)
+        XCTAssertFalse(result("downloads", .folder, path: NSHomeDirectory() + "/Downloads").isTrashFolder)
+        XCTAssertFalse(result("nested", .folder, path: trash + "/old").isTrashFolder)
+    }
+
     // MARK: - shortcut routing
 
     func testCmdDIsDisabledWhileAnotherLauncherSurfaceIsVisible() {

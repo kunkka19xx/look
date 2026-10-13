@@ -59,6 +59,9 @@ struct ResultPreviewView: View {
     /// Activating a row of the Cmd+K menu, which is not the same as running it:
     /// a target with a `confirm` asks first.
     var onActivateActionMenuRow: (QuickActionDescriptor) -> Void = { _ in }
+    /// Bumped by Look's own trash and empty actions, so the card re-reads a
+    /// count the path alone cannot tell it has changed.
+    var trashRefreshTick: Int = 0
 
     @State private var folderListing: FolderListing?
     @State private var trashItemCount: Int?
@@ -108,10 +111,7 @@ struct ResultPreviewView: View {
 
     /// The pinned Trash quick folder is TCC-protected, so it can't be listed
     /// like a normal folder - it gets a Finder-backed summary instead.
-    private var isTrash: Bool {
-        result.kind == .folder
-            && DeleteTargetLogic.isTrashPath(result.path, homeDirectory: NSHomeDirectory())
-    }
+    private var isTrash: Bool { result.isTrashFolder }
 
     private func folderCountText(_ listing: FolderListing) -> String? {
         var parts: [String] = []
@@ -509,17 +509,25 @@ struct ResultPreviewView: View {
                 else { return }
                 bundleSize = (bundlePath, bytes)
             }
-            .task(id: result.kind == .folder ? result.path : "") {
-                guard result.kind == .folder else {
-                    folderListing = nil
+            // The count has three reasons to change: this row being previewed,
+            // Look emptying or filling the Trash, and the window coming back.
+            // Finder is scripted off the main thread and never prompts, so a
+            // preview cannot stall the UI or pop a permission dialog.
+            .task(id: isTrash ? "trash-\(trashRefreshTick)-\(quickActionsRevealToken)" : "") {
+                guard isTrash else {
                     trashItemCount = nil
                     return
                 }
-                if isTrash {
-                    // Don't list ~/.Trash (TCC) and don't prompt for Automation
-                    // just by previewing - only show a count if already granted.
+                let count = await EmptyTrashCommand.itemCountInBackgroundWithoutPrompt()
+                if Task.isCancelled { return }
+                // nil is "could not read", not "empty": keep the last count.
+                if let count { trashItemCount = count }
+            }
+            .task(id: result.kind == .folder ? result.path : "") {
+                // Don't list ~/.Trash (TCC) and don't prompt for Automation
+                // just by previewing - only show a count if already granted.
+                guard result.kind == .folder, !isTrash else {
                     folderListing = nil
-                    trashItemCount = EmptyTrashCommand.itemCount(promptIfNeeded: false)
                     return
                 }
                 folderListing = nil
