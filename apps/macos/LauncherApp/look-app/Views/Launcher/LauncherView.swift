@@ -198,8 +198,6 @@ struct LauncherView: View {
     @State private var panelSize: CGSize = .zero
     static let panelCoordinateSpace = "launcherPanel"
 
-    static let floatingTileScrimOpacity = 0.30
-
     /// 0 = pure glass, and the bar goes white over a light page; 1 = opaque,
     /// and the blur is lost.
     static let searchBarSubstrateOpacity = 0.55
@@ -1065,9 +1063,12 @@ struct LauncherView: View {
         .onReceive(
             NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
         ) { _ in
-            // Not while a TCC dialog is up: it steals focus, and hiding here
-            // backgrounds the app so the next prompt never appears.
-            if !PermissionPrompt.isPresenting, launcherWindow()?.isVisible == true {
+            // Not while a TCC dialog or one of our own file pickers is up:
+            // both steal focus, and hiding here backgrounds the app so the
+            // next prompt never appears and the picker is left orphaned.
+            if !PermissionPrompt.isPresenting, !FilePanel.isPresenting,
+                launcherWindow()?.isVisible == true
+            {
                 Logger(subsystem: "noah-code.Look", category: "window-resize")
                     .debug("didResignActiveNotification -> hideLauncherWindow(restorePreviousApp: false)")
                 hideLauncherWindow(restorePreviousApp: false)
@@ -1317,6 +1318,7 @@ struct LauncherView: View {
             .onTapGesture { focusActiveInput() }
         }
         .coordinateSpace(name: Self.panelCoordinateSpace)
+        .environment(\.panelGeometry, showsFloatingCards ? panelGeometry : nil)
         .background(
             GeometryReader { geo in
                 Color.clear
@@ -2478,45 +2480,44 @@ struct LauncherView: View {
         }
     }
 
-    /// The frosted surface shared by every floating tile (top bar + columns). When
-    /// a background image is set, each tile shows its own aligned slice of that
-    /// image (cropped to the tile's window position) instead of a blurred desktop,
-    /// so the tiles read as separate windows onto one image. Otherwise it takes the
-    /// themed backdrop, at the same blur and tint opacities as the window.
-    @ViewBuilder
+    /// The surface shared by every floating tile (top bar + columns), and by the
+    /// launchpad strip through the same `frostedTile`. With a background picture
+    /// set, each one shows its own aligned slice of it rather than a blurred
+    /// desktop, so they read as separate windows onto one picture.
     private func tileBackground(
         cornerRadius: CGFloat, floats: Bool, substrate: Bool = false
     ) -> some View {
-        if floats, let image = themeStore.backgroundImage {
-            ZStack {
-                croppedBackgroundImage(image)
-                // Only the opaque image needs a scrim; the blur path is
-                // covered by the tint.
-                themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
-                themeStore.controlFillColor()
+        // A seated surface has the window's own picture behind it already, so
+        // only a floating one cuts its own slice.
+        let panel = floats ? panelGeometry : nil
+        return ZStack {
+            // Bounds how bright the bar can get over a white page. The panes
+            // are dense enough that the same floor only flattens them. The
+            // picture needs none: its slice is opaque under the scrim.
+            if substrate, panel == nil || themeStore.backgroundImage == nil {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(themeStore.commandModeBackgroundColor())
+                    .opacity(Self.searchBarSubstrateOpacity)
             }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        } else {
-            ZStack {
-                // Bounds how bright the bar can get over a white page. The
-                // panes are dense enough that the same floor only flattens them.
-                if substrate {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(themeStore.commandModeBackgroundColor())
-                        .opacity(Self.searchBarSubstrateOpacity)
-                }
 
-                // Window-server composited. The bar hosts an
-                // `NSViewRepresentable`, and a `.withinWindow` material beside
-                // one flips brightness whenever the layer is re-composited.
-                frostedTile(
-                    themeStore: themeStore,
-                    cornerRadius: cornerRadius,
-                    // Seated is the only case with a window backdrop behind it.
-                    blendingMode: floats ? .behindWindow : .withinWindow
-                )
-            }
+            // Window-server composited. The bar hosts an `NSViewRepresentable`,
+            // and a `.withinWindow` material beside one flips brightness
+            // whenever the layer is re-composited.
+            frostedTile(
+                themeStore: themeStore,
+                cornerRadius: cornerRadius,
+                // Seated is the only case with a window backdrop behind it.
+                blendingMode: floats ? .behindWindow : .withinWindow
+            )
         }
+        .environment(\.panelGeometry, panel)
+    }
+
+    /// Where the panel is, for the surfaces that cut a slice out of the picture.
+    var panelGeometry: PanelGeometry? {
+        panelSize == .zero
+            ? nil
+            : PanelGeometry(size: panelSize, coordinateSpace: Self.panelCoordinateSpace)
     }
 
     /// The outline for a floating tile, drawn with the user's configured theme
@@ -2536,16 +2537,6 @@ struct LauncherView: View {
     /// the panel coordinate space, so adjacent tiles show a continuous image cut
     /// apart by the gaps.
     @ViewBuilder
-    private func croppedBackgroundImage(_ image: NSImage) -> some View {
-        GeometryReader { tileGeo in
-            let frame = tileGeo.frame(in: .named(Self.panelCoordinateSpace))
-            backgroundImageView(image: image)
-                .frame(width: panelSize.width, height: panelSize.height)
-                .offset(x: -frame.minX, y: -frame.minY)
-                .blur(radius: themeStore.settings.backgroundImageBlur)
-        }
-    }
-
     /// Background wrapper for the unified top row (search + running apps). A
     /// frosted floating tile when the panes are floating, otherwise the classic
     /// rounded search-bar fill - so the merged bar looks consistent on every

@@ -660,9 +660,9 @@ private let launchpadStateBorderWidth: CGFloat = 1
 private let launchpadOnBorderOpacity = 0.35
 private let launchpadAlertBorderOpacity = 0.3
 
-/// The frosted surface every launchpad tile sits on: the same backdrop +
-/// control-fill stack as `LauncherView.tileBackground(floats:)`. An optional tint
-/// (accent for on-state toggles, caution for a confirming/muted action) layers on top.
+/// The surface every launchpad tile sits on, and the one the floating cards
+/// take through `LauncherView.tileBackground(floats:)`. An optional tint (accent
+/// for on-state toggles, caution for a confirming or muted action) layers on top.
 func frostedTile(
     themeStore: ThemeStore,
     cornerRadius: CGFloat? = nil,
@@ -673,15 +673,49 @@ func frostedTile(
     tint: Color? = nil,
     tintOpacity: Double = 0
 ) -> some View {
-    let radius = cornerRadius ?? themeStore.tileRadius
-    return ZStack {
-        ThemedBackdrop(themeStore: themeStore, blendingMode: blendingMode, cornerRadius: radius)
-        themeStore.controlFillColor()
-        if let tint {
-            tint.opacity(tintOpacity)
+    FrostedTile(
+        themeStore: themeStore,
+        cornerRadius: cornerRadius,
+        blendingMode: blendingMode,
+        tint: tint,
+        tintOpacity: tintOpacity)
+}
+
+/// With a background picture set, the surface shows its own slice of it, the way
+/// the cards around it do; otherwise it is the themed backdrop under the control
+/// fill. A tile that stayed frosted while its neighbours carried the picture is
+/// what made the strip read as pasted on.
+struct FrostedTile: View {
+    @Environment(\.panelGeometry) private var panel
+
+    let themeStore: ThemeStore
+    var cornerRadius: CGFloat? = nil
+    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
+    var tint: Color? = nil
+    var tintOpacity: Double = 0
+
+    /// The opaque picture needs a scrim to keep text on it; the blurred
+    /// desktop is already covered by the tint.
+    static let imageScrimOpacity = 0.30
+
+    private var radius: CGFloat { cornerRadius ?? themeStore.tileRadius }
+
+    var body: some View {
+        ZStack {
+            if let panel, let image = themeStore.backgroundImage {
+                BackgroundImageSlice(themeStore: themeStore, image: image, panel: panel)
+                themeStore.scrimColor(opacity: Self.imageScrimOpacity)
+            } else {
+                ThemedBackdrop(
+                    themeStore: themeStore, blendingMode: blendingMode, cornerRadius: radius)
+            }
+            themeStore.controlFillColor()
+            if let tint {
+                tint.opacity(tintOpacity)
+            }
         }
+        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
     }
-    .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
 }
 
 /// The border for a toggle or slot tile. An on-state toggle always draws its
