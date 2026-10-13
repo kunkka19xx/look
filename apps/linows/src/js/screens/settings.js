@@ -38,11 +38,11 @@ let active = false;
 let activeTab = 'appearance';
 let onExit = null;
 let onConfigReloadFn = null;
+let pendingConfig = {};
 
 const TABS = ['appearance', 'advanced', 'shortcuts'];
 
 const SAVE_MSG_MS = 1600;
-const ERROR_BANNER_SECONDS = 1.5;
 const SAVE_ERROR_BANNER_SECONDS = 4;
 let saveMsgTimer = null;
 
@@ -91,7 +91,7 @@ export function resetZoom() {
 }
 
 // Maps config keys to CSS custom property update functions.
-// Each slider with data-key drives live CSS + config persistence.
+// Each slider with data-key drives a live preview; Save Config persists it.
 const CSS_MAP = {
     ui_tint_red: applytint,
     ui_tint_green: applytint,
@@ -214,7 +214,7 @@ export function init(exitFn) {
         themeMenu.hidden = true;
         const overrides = switchOverrides(theme);
         applyThemePreset(theme, overrides);
-        saveConfig({ ui_theme: theme, [SURFACE_KEY]: surfaceToPersist(theme), ...overrides });
+        stageConfig({ ui_theme: theme, [SURFACE_KEY]: surfaceToPersist(theme), ...overrides });
     });
 
     // Blur style dropdown - populate labels from platform
@@ -269,7 +269,7 @@ export function init(exitFn) {
             // Drive actual CSS --blur-radius from the chosen style (Windows uses
             // a fixed per-style map; Linux uses the provided radius arg).
             platform.applyBlur(0, style);
-            saveConfig({ ...preset, ui_blur_style: style });
+            stageConfig({ ...preset, ui_blur_style: style });
         }
     });
 
@@ -288,7 +288,7 @@ export function init(exitFn) {
         'ui_border_blue',
     ]);
 
-    // All data-key sliders: live preview + save on release
+    // All data-key sliders: live preview + stage on release
     for (const row of screen.querySelectorAll('.settings-row[data-key]')) {
         const key = row.dataset.key;
         const slider = row.querySelector('.settings-slider');
@@ -306,7 +306,7 @@ export function init(exitFn) {
                 markCustomTheme();
                 updates.ui_theme = 'custom';
             }
-            saveConfig(updates);
+            stageConfig(updates);
         });
     }
 
@@ -315,18 +315,18 @@ export function init(exitFn) {
     depthInput.addEventListener('change', () => {
         const v = parseInt(depthInput.value) || 4;
         depthInput.value = Math.max(1, Math.min(12, v));
-        saveConfig({ file_scan_depth: depthInput.value });
+        stageConfig({ file_scan_depth: depthInput.value });
     });
 
     const limitInput = document.getElementById('settings-file-limit');
     limitInput.addEventListener('change', () => {
         const v = parseInt(limitInput.value) || 8000;
         limitInput.value = Math.max(500, Math.min(50000, v));
-        saveConfig({ file_scan_limit: limitInput.value });
+        stageConfig({ file_scan_limit: limitInput.value });
     });
 
     document.getElementById('settings-lazy-indexing').addEventListener('change', (e) => {
-        saveConfig({ lazy_indexing_enabled: e.target.checked ? 'true' : 'false' });
+        stageConfig({ lazy_indexing_enabled: e.target.checked ? 'true' : 'false' });
     });
 
     // AI / web answers toggle - gates the inline answer card and Google
@@ -334,7 +334,7 @@ export function init(exitFn) {
     // change live (it propagates to both the controller and search.js).
     document.getElementById('settings-ai-enabled').addEventListener('change', (e) => {
         const enabled = e.target.checked;
-        saveConfig({ ai_enabled: enabled ? 'true' : 'false' });
+        stageConfig({ ai_enabled: enabled ? 'true' : 'false' });
         document.dispatchEvent(
             new CustomEvent('look:ai-enabled-changed', {
                 detail: { enabled },
@@ -348,7 +348,7 @@ export function init(exitFn) {
     // app.js can apply the change live.
     document.getElementById('settings-running-apps').addEventListener('change', (e) => {
         const enabled = e.target.checked;
-        saveConfig({ running_apps_placement: enabled ? 'right' : 'none' });
+        stageConfig({ running_apps_placement: enabled ? 'right' : 'none' });
         document.dispatchEvent(
             new CustomEvent('look:running-apps-changed', {
                 detail: { enabled },
@@ -360,7 +360,7 @@ export function init(exitFn) {
     // custom event so app.js can show/hide the launchpad live.
     document.getElementById('settings-super-actions').addEventListener('change', (e) => {
         const enabled = e.target.checked;
-        saveConfig({ super_actions_enabled: enabled ? 'true' : 'false' });
+        stageConfig({ super_actions_enabled: enabled ? 'true' : 'false' });
         document.dispatchEvent(
             new CustomEvent('look:super-actions-changed', {
                 detail: { enabled },
@@ -373,7 +373,7 @@ export function init(exitFn) {
     document.getElementById('settings-animations').addEventListener('change', (e) => {
         const enabled = e.target.checked;
         platform.setAnimationsEnabled(enabled);
-        saveConfig({ animations_enabled: enabled ? 'true' : 'false' });
+        stageConfig({ animations_enabled: enabled ? 'true' : 'false' });
     });
 
     // Extra scan dirs
@@ -410,14 +410,14 @@ export function init(exitFn) {
         document.getElementById('settings-bg-path').textContent = file;
         applyBackgroundImage(file);
         applytint();
-        saveConfig({ ui_bg_image: file });
+        stageConfig({ ui_bg_image: file });
     });
 
     document.getElementById('settings-clear-bg').addEventListener('click', () => {
         document.getElementById('settings-bg-path').textContent = 'No background image';
         clearBackgroundImage();
         applytint();
-        saveConfig({ ui_bg_image: '' });
+        stageConfig({ ui_bg_image: '' });
     });
 
     // Background layout dropdown
@@ -445,7 +445,7 @@ export function init(exitFn) {
         bgLayoutMenu.hidden = true;
         bgLayoutHint.textContent = BG_LAYOUT_HINTS[val] || '';
         applyBgLayout(val);
-        saveConfig({ ui_bg_layout: val });
+        stageConfig({ ui_bg_layout: val });
     });
 
     // Log level dropdown
@@ -461,24 +461,18 @@ export function init(exitFn) {
         if (!item) return;
         selectDropdownItem(logDD, item.dataset.value);
         logMenu.hidden = true;
-        saveConfig({ backend_log_level: item.dataset.value });
+        stageConfig({ backend_log_level: item.dataset.value });
     });
 
-    // Window layout: saved before app.js applies it, since the backend reads
-    // the file to size the window.
+    // Preview through the backend's session override without writing the file.
     const layoutSeg = document.getElementById('settings-layout');
-    layoutSeg.addEventListener('click', async (e) => {
+    layoutSeg.addEventListener('click', (e) => {
         const item = e.target.closest('.settings-segment-item');
         if (!item || item.classList.contains('settings-segment-active')) return;
         const value = item.dataset.value;
-        const saved = layoutSeg.querySelector('.settings-segment-active')?.dataset.value;
         selectSegmentItem(layoutSeg, value);
-        if (await saveConfig({ layout: value })) {
-            document.dispatchEvent(new CustomEvent('look:layout-changed', { detail: { value } }));
-        } else if (saved) {
-            // The file still holds the old layout, so the fill has to go back.
-            selectSegmentItem(layoutSeg, saved);
-        }
+        stageConfig({ layout: value });
+        document.dispatchEvent(new CustomEvent('look:layout-preview', { detail: { value } }));
         markLiveLayout(layoutSeg);
     });
 
@@ -489,12 +483,12 @@ export function init(exitFn) {
 
     // Rendering workarounds
     document.getElementById('settings-disable-gpu').addEventListener('change', (e) => {
-        saveConfig({ disable_gpu_compositing: e.target.checked ? 'true' : 'false' });
+        stageConfig({ disable_gpu_compositing: e.target.checked ? 'true' : 'false' });
     });
 
     document.getElementById('settings-compositor-blur').addEventListener('change', (e) => {
         platform.setCompositorBlurWanted(e.target.checked);
-        saveConfig({ ui_compositor_blur: e.target.checked ? 'true' : 'false' });
+        stageConfig({ ui_compositor_blur: e.target.checked ? 'true' : 'false' });
         updateCompositorBlurRow();
         applytint();
         layout.refresh();
@@ -507,7 +501,7 @@ export function init(exitFn) {
         } else if (!platform.blurForcedOff()) {
             document.documentElement.removeAttribute('data-disable-blur');
         }
-        saveConfig({ disable_blur_effect: on ? 'true' : 'false' });
+        stageConfig({ disable_blur_effect: on ? 'true' : 'false' });
         applytint();
         updateInnerGapAvailability();
         updateSuperActionsAvailability();
@@ -518,26 +512,23 @@ export function init(exitFn) {
 
     document.getElementById('settings-launch-login').addEventListener('change', (e) => {
         const enabled = e.target.checked;
-        saveConfig({ launch_at_login: enabled ? 'true' : 'false' });
-        setAutostart(enabled).catch(() => {});
+        stageConfig({ launch_at_login: enabled ? 'true' : 'false' });
     });
 
-    document.getElementById('settings-add-to-path').addEventListener('change', async (e) => {
+    document.getElementById('settings-add-to-path').addEventListener('change', (e) => {
         const enabled = e.target.checked;
-        // The config value stays: startup re-applies it, so a failed write retries.
-        saveConfig({ add_to_path: enabled ? 'true' : 'false' });
-        try {
-            await setCliPath(enabled);
-        } catch {
-            e.target.checked = !enabled;
-            banner.show('Could not update PATH', 'error', ERROR_BANNER_SECONDS);
-        }
+        stageConfig({ add_to_path: enabled ? 'true' : 'false' });
     });
 
     // Fresh config
     document.getElementById('settings-fresh-config').addEventListener('click', async () => {
         try {
             await resetConfig();
+            pendingConfig = {};
+            shortcutrecorder.discardPending();
+            document.dispatchEvent(
+                new CustomEvent('look:layout-preview', { detail: { value: null } }),
+            );
             await sourceblocks.reload();
             await forceIndexRefresh();
             await loadConfig();
@@ -578,7 +569,7 @@ export function init(exitFn) {
     function applyFontName(name) {
         fontNameInput.value = name;
         applyFontFamily(name);
-        saveConfig({ ui_font_name: name });
+        stageConfig({ ui_font_name: name });
         fontSuggestions.hidden = true;
     }
 
@@ -658,7 +649,7 @@ export function init(exitFn) {
     // Save Config button - grab all current UI values and write to .look/config
     document.getElementById('settings-save-btn').addEventListener('click', async () => {
         try {
-            const updates = {};
+            const updates = { ...pendingConfig };
 
             // Theme
             const themeDD = document.getElementById('settings-theme');
@@ -712,6 +703,18 @@ export function init(exitFn) {
             updates.ai_enabled = document.getElementById('settings-ai-enabled').checked
                 ? 'true'
                 : 'false';
+            updates.disable_gpu_compositing = document.getElementById('settings-disable-gpu')
+                .checked
+                ? 'true'
+                : 'false';
+            updates.ui_compositor_blur = document.getElementById('settings-compositor-blur').checked
+                ? 'true'
+                : 'false';
+            updates.disable_blur_effect = document.getElementById('settings-disable-blur').checked
+                ? 'true'
+                : 'false';
+            updates.file_scan_extra_roots = configCache.file_scan_extra_roots || '';
+            updates.file_exclude_paths = configCache.file_exclude_paths || '';
 
             // Advanced: log level
             const logDD = document.getElementById('settings-log-level');
@@ -736,15 +739,32 @@ export function init(exitFn) {
 
             Object.assign(updates, shortcutrecorder.pendingUpdates());
 
-            if (!(await saveConfig(updates))) return;
+            const layoutWasEdited = Object.hasOwn(pendingConfig, 'layout');
+            if (!(await persistConfig(updates))) return;
+            pendingConfig = {};
             await shortcutrecorder.applySaved();
             // Clearing the field saves the sentinel; the live inline override
             // has to go with it or the old family outlives the config value.
             applyFontFamily(updates.ui_font_name);
             await sourceblocks.reload();
             await forceIndexRefresh();
+            if (onConfigReloadFn) onConfigReloadFn(await loadConfigMap());
+            if (layoutWasEdited) {
+                document.dispatchEvent(
+                    new CustomEvent('look:layout-changed', { detail: { value: updates.layout } }),
+                );
+            }
+            document.dispatchEvent(
+                new CustomEvent('look:layout-preview', { detail: { value: null } }),
+            );
 
-            showSaveMessage('Saved', false);
+            const startupErrors = await applyStartupSettings(updates);
+            if (startupErrors.length) {
+                showSaveMessage('Saved; startup update failed', true);
+                banner.show(startupErrors.join('\n'), 'error', SAVE_ERROR_BANNER_SECONDS);
+            } else {
+                showSaveMessage('Saved', false);
+            }
         } catch {
             showSaveMessage('Save failed', true);
         }
@@ -758,6 +778,8 @@ export function isActive() {
 // Ctrl+Shift+; - reload all values from .look/config file into running app.
 // A headless reload passes announceSuccess: false, so only problems show a banner.
 export async function reloadFromFile({ announceSuccess = true } = {}) {
+    pendingConfig = {};
+    document.dispatchEvent(new CustomEvent('look:layout-preview', { detail: { value: null } }));
     shortcutrecorder.discardPending();
     try {
         await sourceblocks.reload();
@@ -822,6 +844,8 @@ export async function reloadFromFile({ announceSuccess = true } = {}) {
 }
 
 export async function enter(contentArea, searchBar) {
+    pendingConfig = {};
+    shortcutrecorder.discardPending();
     active = true;
     layout.setModal('settings', true);
     contentArea.style.display = 'none';
@@ -837,7 +861,10 @@ export async function enter(contentArea, searchBar) {
 
 export function exit(contentArea, searchBar) {
     active = false;
-    shortcutrecorder.cancel();
+    pendingConfig = {};
+    shortcutrecorder.discardPending();
+    document.dispatchEvent(new CustomEvent('look:layout-preview', { detail: { value: null } }));
+    restoreSavedPreview().catch((err) => console.error('Failed to restore config:', err));
     layout.setModal('settings', false);
     screen.style.display = 'none';
     contentArea.style.display = '';
@@ -869,9 +896,9 @@ export function handleKey(e) {
     return false;
 }
 
-export async function restoreOnStartup() {
+export async function restoreOnStartup(savedMap = null) {
     try {
-        const map = await loadConfigMap();
+        const map = savedMap ?? (await loadConfigMap());
 
         platform.setAnimationsEnabled(map.animations_enabled !== 'false');
 
@@ -879,6 +906,8 @@ export async function restoreOnStartup() {
         // already opaque if the user toggled it.
         if (disableBlurSet(map)) {
             document.documentElement.setAttribute('data-disable-blur', '');
+        } else if (!platform.blurForcedOff()) {
+            document.documentElement.removeAttribute('data-disable-blur');
         }
         platform.setCompositorBlurWanted(compositorBlurWanted(map));
 
@@ -889,6 +918,8 @@ export async function restoreOnStartup() {
             applyBgLayout(valueOr(map, 'ui_bg_layout'));
             CSS_MAP.ui_bg_opacity(valueOr(map, 'ui_bg_opacity'));
             CSS_MAP.ui_bg_blur(valueOr(map, 'ui_bg_blur'));
+        } else {
+            clearBackgroundImage();
         }
 
         hydrateUserSliders(map);
@@ -900,6 +931,8 @@ export async function restoreOnStartup() {
 
         // "custom" theme: restore individual overrides from config
         if (theme === 'custom') {
+            // Custom uses the base CSS tokens, not those of a discarded preset.
+            document.documentElement.setAttribute('data-theme', 'custom');
             applyTintFromMap(map);
             applyFontColorFromMap(map);
             applyBorderFromMap(map);
@@ -925,6 +958,40 @@ export async function restoreOnStartup() {
 }
 
 // --- Internal ---
+
+async function applyStartupSettings(updates) {
+    const integrations = [
+        ['Launch at login', () => setAutostart(updates.launch_at_login === 'true')],
+    ];
+    if (platform.isWindows()) {
+        integrations.push(['PATH', () => setCliPath(updates.add_to_path === 'true')]);
+    }
+    const errors = [];
+    for (const [name, apply] of integrations) {
+        try {
+            await apply();
+        } catch (err) {
+            errors.push(`${name} update failed: ${err}`);
+        }
+    }
+    return errors;
+}
+
+async function restoreSavedPreview() {
+    const map = await loadConfigMap();
+    if (active) return;
+    // Hydrate every slider, including defaults, before the tint pass reads it.
+    for (const row of screen.querySelectorAll('.settings-row[data-key]')) {
+        const slider = row.querySelector('.settings-slider');
+        const value = valueOr(map, row.dataset.key);
+        if (slider && value !== undefined) slider.value = value;
+    }
+    await restoreOnStartup(map);
+    if (onConfigReloadFn) onConfigReloadFn(map);
+    superactions.invalidate();
+    superactions.refreshAvailability();
+    layout.refresh();
+}
 
 // One timer: a pending clear from an earlier save must not wipe a newer result.
 function showSaveMessage(text, isError) {
@@ -1507,7 +1574,12 @@ function markLiveLayout(segment) {
     }
 }
 
-async function saveConfig(updates) {
+// Control changes only edit the working copy. The Save button is the sole writer.
+function stageConfig(updates) {
+    Object.assign(pendingConfig, updates);
+}
+
+async function persistConfig(updates) {
     try {
         const list = Object.entries(updates).map(([key, value]) => ({ key, value: String(value) }));
         await setConfig(list);
@@ -1555,21 +1627,19 @@ function csvJoin(arr) {
 }
 
 async function addDirToConfig(key, folder) {
-    const map = await loadConfigMap();
-    const current = csvSplit(map[key] || '');
+    const current = csvSplit(configCache[key] || '');
     if (current.includes(folder)) return;
     current.push(folder);
     const joined = csvJoin(current);
-    if (!(await saveConfig({ [key]: joined }))) return;
+    stageConfig({ [key]: joined });
     configCache[key] = joined;
 }
 
 async function removeDirFromConfig(key, folder) {
-    const map = await loadConfigMap();
-    const current = csvSplit(map[key] || '');
+    const current = csvSplit(configCache[key] || '');
     const updated = current.filter((d) => d !== folder);
     const joined = csvJoin(updated);
-    if (!(await saveConfig({ [key]: joined }))) return;
+    stageConfig({ [key]: joined });
     configCache[key] = joined;
 }
 

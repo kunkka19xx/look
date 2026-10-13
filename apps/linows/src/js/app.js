@@ -251,6 +251,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let configLayout = null;
     // Ctrl+Shift+C's layout for this run only, never saved; null follows the config.
     let sessionLayout = null;
+    // Settings previews are temporary and do not replace Ctrl+Shift+C's override.
+    let settingsLayout = null;
     // The override the backend last heard, so clearing it reaches the backend
     // even when the layout on screen stays the same.
     let backendSessionLayout = null;
@@ -267,15 +269,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function toggleSessionLayout() {
-        const current = sessionLayout ?? configLayout;
+        const current = settingsLayout ?? sessionLayout ?? configLayout;
         const next =
             current === layout.LAYOUT_COMPACT ? layout.LAYOUT_SPLIT : layout.LAYOUT_COMPACT;
-        sessionLayout = next === configLayout ? null : next;
+        if (settingsLayout !== null) settingsLayout = next;
+        else sessionLayout = next === configLayout ? null : next;
         applyEffectiveLayout();
     }
 
     function applyEffectiveLayout() {
-        const compact = (sessionLayout ?? configLayout) === layout.LAYOUT_COMPACT;
+        const effectiveOverride = settingsLayout ?? sessionLayout;
+        const compact = (effectiveOverride ?? configLayout) === layout.LAYOUT_COMPACT;
         const isSwitch = compactApplied !== null && compact !== compactApplied;
         if (compact !== compactApplied) {
             compactApplied = compact;
@@ -286,9 +290,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             syncControlStrip();
             applyAiLayoutMode();
         }
-        if (isSwitch || sessionLayout !== backendSessionLayout) {
-            backendSessionLayout = sessionLayout;
-            applyLayout(sessionLayout).catch((err) =>
+        if (isSwitch || effectiveOverride !== backendSessionLayout) {
+            backendSessionLayout = effectiveOverride;
+            applyLayout(effectiveOverride).catch((err) =>
                 console.error('[layout] resize failed:', err),
             );
         }
@@ -1098,6 +1102,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.addEventListener('look:layout-changed', (e) => {
         applyLayoutSetting(e.detail.value, { fromSettings: true });
+    });
+
+    document.addEventListener('look:layout-preview', (e) => {
+        settingsLayout = e.detail.value;
+        applyEffectiveLayout();
     });
 
     document.addEventListener('look:toggle-session-layout', toggleSessionLayout);

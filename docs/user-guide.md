@@ -448,6 +448,13 @@ Commands are shell text, run by your login shell, so your own scripts are first-
 
 Open settings with `Cmd+Shift+,`.
 
+On Linux and Windows, Settings edits a working copy. Appearance changes preview
+immediately, but sliders, toggles, dropdowns, shortcuts and directory lists only
+write to `~/.look/config` when you press **Save Config**. Leaving Settings without
+saving discards those edits and restores the saved appearance. Launch at login
+and PATH changes also apply only on Save Config. **Create Fresh Config** explicitly
+regenerates the config file with defaults.
+
 ### Appearance / Themes
 
 The Appearance tab controls:
