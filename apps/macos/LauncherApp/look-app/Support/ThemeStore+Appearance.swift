@@ -88,6 +88,16 @@ extension ThemeStore {
         return Color(red: 0.50, green: 0.50, blue: 0.58, opacity: 0.25)
     }
 
+    /// The fill a theme without the token falls back to. Named once, so the
+    /// matching `on*` colour reads the same value the fill was drawn from: a
+    /// hand-written white paired with a pale green at 1.5:1 is how this went
+    /// wrong before.
+    private enum SemanticFallback {
+        static let success = ThemeRGB(red: 0.65, green: 0.90, blue: 0.62)
+        static let warning = ThemeRGB(red: 0.96, green: 0.86, blue: 0.66)
+        static let danger = ThemeRGB(red: 0.94, green: 0.50, blue: 0.55)
+    }
+
     func accentColor() -> Color {
         if let token = activeAppearanceStyle()?.accent {
             return color(from: token, opacity: 1.0)
@@ -99,52 +109,37 @@ extension ThemeStore {
         if let token = activeAppearanceStyle()?.onAccent {
             return color(from: token, opacity: 1.0)
         }
-        if let accent = activeAppearanceStyle()?.accent {
-            return contrastingTextColor(for: accent)
-        }
-        return .white
+        // No accent token means the fill IS the font colour, so the text has
+        // to contrast with that rather than defaulting to white on white.
+        return contrastingTextColor(for: activeAppearanceStyle()?.accent ?? fontToken())
     }
 
     func successColor() -> Color {
-        if let token = activeAppearanceStyle()?.success {
-            return color(from: token, opacity: 1.0)
-        }
-        return Color(red: 0.65, green: 0.90, blue: 0.62, opacity: 1.0)
+        color(from: activeAppearanceStyle()?.success ?? SemanticFallback.success, opacity: 1.0)
     }
 
     func onSuccessColor() -> Color {
-        if let token = activeAppearanceStyle()?.success {
-            return contrastingTextColor(for: token)
-        }
-        return .white
+        contrastingTextColor(for: activeAppearanceStyle()?.success ?? SemanticFallback.success)
     }
 
     func warningColor() -> Color {
-        if let token = activeAppearanceStyle()?.warning {
-            return color(from: token, opacity: 1.0)
-        }
-        return Color(red: 0.96, green: 0.86, blue: 0.66, opacity: 1.0)
+        color(from: activeAppearanceStyle()?.warning ?? SemanticFallback.warning, opacity: 1.0)
     }
 
     func onWarningColor() -> Color {
-        if let token = activeAppearanceStyle()?.warning {
-            return contrastingTextColor(for: token)
-        }
-        return .black
+        contrastingTextColor(for: activeAppearanceStyle()?.warning ?? SemanticFallback.warning)
     }
 
     func dangerColor() -> Color {
-        if let token = activeAppearanceStyle()?.danger {
-            return color(from: token, opacity: 1.0)
-        }
-        return Color(red: 0.94, green: 0.50, blue: 0.55, opacity: 1.0)
+        color(from: activeAppearanceStyle()?.danger ?? SemanticFallback.danger, opacity: 1.0)
     }
 
     func onDangerColor() -> Color {
-        if let token = activeAppearanceStyle()?.danger {
-            return contrastingTextColor(for: token)
-        }
-        return .white
+        contrastingTextColor(for: activeAppearanceStyle()?.danger ?? SemanticFallback.danger)
+    }
+
+    private func fontToken() -> ThemeRGB {
+        ThemeRGB(red: settings.fontRed, green: settings.fontGreen, blue: settings.fontBlue)
     }
 
     // Command-mode panels render against an opaque backdrop (no
@@ -290,9 +285,19 @@ extension ThemeStore {
         )
     }
 
+    /// Black or white, whichever actually reads on the fill. sRGB is gamma
+    /// encoded, so the pick is made on linear luminance; 0.179 is where the
+    /// contrast with black overtakes the contrast with white. Averaging the raw
+    /// channels put white on the pastel reds five themes use for danger, at
+    /// 2.5:1 where black would have been 8:1.
     private func contrastingTextColor(for token: ThemeRGB) -> Color {
-        let luminance = (0.2126 * token.red) + (0.7152 * token.green) + (0.0722 * token.blue)
-        return luminance > 0.62 ? .black.opacity(0.90) : .white
+        func linear(_ channel: Double) -> Double {
+            channel <= 0.04045 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        }
+        let luminance =
+            (0.2126 * linear(token.red)) + (0.7152 * linear(token.green))
+            + (0.0722 * linear(token.blue))
+        return luminance > 0.179 ? .black.opacity(0.90) : .white
     }
 
     private func dimmableColor(baseColor: Color, factor: Double) -> Color {

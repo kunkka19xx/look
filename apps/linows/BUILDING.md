@@ -1,13 +1,13 @@
 # Building & Packaging: linows
 
-Build instructions for the Look desktop app (Linux + Windows target via Tauri v2).
+Build instructions for the Look desktop app on Linux and Windows: the gpui shell in `gpui/`, binary `lookapp`. The Tauri shell in `src-tauri/` is the backup (`cargo build -p lookapp-tauri`, `cargo tauri dev`); it still needs the WebKitGTK packages the old instructions listed.
 
 ## Architecture support
 
 **Released builds target x86_64 (x64) only** on both Linux and Windows.
 
 - ARM64 builds aren't shipped. Windows on ARM (Surface Pro X, Snapdragon X laptops) is still <2% of the install base; users there can run the x64 build under Windows' x64 emulation with a small perf hit. Linux on ARM is rarely a desktop target.
-- The workspace `.cargo/config.toml` already declares `+crt-static` for both `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`, so adding an ARM matrix to the release workflow later is mechanical (rustup target + `cargo tauri build --target`).
+- The workspace `.cargo/config.toml` already declares `+crt-static` for both `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`, so adding an ARM matrix to the release workflow later is mechanical (rustup target + `cargo build --target`).
 - If you have a real ARM machine and want native builds, please open an issue; the project will add an ARM track when there's demand.
 
 ---
@@ -15,7 +15,6 @@ Build instructions for the Look desktop app (Linux + Windows target via Tauri v2
 ## Prerequisites
 
 - **Rust** stable toolchain (`rustup`)
-- **cargo-tauri** CLI (`cargo install tauri-cli --version "^2" --locked`)
 - System libraries (see per-distro sections below)
 
 ---
@@ -26,14 +25,12 @@ Build instructions for the Look desktop app (Linux + Windows target via Tauri v2
 
 ```bash
 sudo apt-get install -y \
-  libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
-  libglib2.0-dev libcairo2-dev libpango1.0-dev \
-  libgdk-pixbuf-2.0-dev libharfbuzz-dev libdbus-1-dev \
-  libasound2-dev librsvg2-dev libssl-dev \
-  libappindicator3-dev pkg-config
+  libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libxcb-xkb-dev \
+  libwayland-dev libasound2-dev libdbus-1-dev libssl-dev \
+  libfontconfig1-dev libfreetype-dev pkg-config
 
 cd apps/linows
-cargo tauri dev
+cargo run
 ```
 
 ### Arch Linux
@@ -41,40 +38,32 @@ cargo tauri dev
 ```bash
 sudo pacman -S --needed \
   base-devel rustup \
-  webkit2gtk-4.1 gtk3 libsoup3 glib2 cairo pango \
-  gdk-pixbuf2 harfbuzz dbus alsa-lib librsvg openssl pkg-config
+  libxkbcommon libxkbcommon-x11 libxcb wayland alsa-lib dbus openssl \
+  fontconfig freetype2 pkg-config
 
 rustup default stable
-cargo install tauri-cli --version "^2" --locked
 
 cd apps/linows
-cargo tauri dev
+cargo run
 ```
 
 > `base-devel` provides `gcc` / `cc`, without it the Rust build fails with `error: linker 'cc' not found` on a fresh Arch install.
 
-> `gtk-layer-shell` is not needed to build - it is dlopened at runtime, and only under compositors with `wlr-layer-shell` (KDE Plasma, sway, niri, Hyprland). Install it from the optional dependencies in [README.md](README.md#optional-dependencies) if you develop on one of those; without it the app logs `libgtk-layer-shell.so.0 not loadable` and uses a normal toplevel window, which shows in the taskbar and Alt+Tab.
+> The Vulkan loader, GL and libwayland are opened at runtime, not linked, so they are not build inputs. Without a Vulkan driver wgpu falls back to GL.
 
 ### NixOS
 
 ```bash
-nix develop --accept-flake-config ./apps/linows/
-cargo tauri dev
+cd apps/linows
+nix develop --accept-flake-config
+cargo run
 ```
 
 The `flake.nix` provides all dependencies automatically. Pass `--accept-flake-config` to trust the Cachix substituter, or add `trusted-substituters = https://look.cachix.org` to your `~/.config/nix/nix.conf` to avoid the prompt.
 
-For i3/X11 without compositor:
-
-```bash
-WEBKIT_DISABLE_COMPOSITING_MODE=1 cargo tauri dev
-```
-
 ### Home Manager
 
-The flake exports a Home Manager module for declarative user configuration. Add
-the input and make sure `inputs` reaches your modules, since Home Manager does
-not pass it by default:
+The flake exports a Home Manager module for declarative user configuration. Add the input and make sure `inputs` reaches your modules, since Home Manager does not pass it by default:
 
 ```nix
 # flake.nix
@@ -91,8 +80,7 @@ not pass it by default:
 }
 ```
 
-Home Manager as a NixOS module wants `home-manager.extraSpecialArgs = { inherit
-inputs; };` instead. Then:
+Home Manager as a NixOS module wants `home-manager.extraSpecialArgs = { inherit inputs; };` instead. Then:
 
 ```nix
 # home.nix
@@ -115,17 +103,9 @@ inputs; };` instead. Then:
 }
 ```
 
-`package` defaults to the flake's own build, so nothing else needs wiring. Set
-it to `null` to manage only the config file, for example when the package is
-already installed system-wide through `environment.systemPackages` or
-`nixosModules.default`.
+`package` defaults to the flake's own build, so nothing else needs wiring. Set it to `null` to manage only the config file, for example when the package is already installed system-wide through `environment.systemPackages` or `nixosModules.default`.
 
-**Binary cache.** The module deliberately does not touch substituters. Those are
-read by the nix daemon, and Home Manager's `nix.settings` only writes
-`~/.config/nix/nix.conf`, which the daemon ignores unless you are listed in
-`trusted-users`. A flake's own `nixConfig` also applies only when that flake is
-the one being built, never when it is an input, so this repo's `nixConfig` does
-nothing for you. Put the cache in the flake you actually build:
+**Binary cache.** The module deliberately does not touch substituters. Those are read by the nix daemon, and Home Manager's `nix.settings` only writes `~/.config/nix/nix.conf`, which the daemon ignores unless you are listed in `trusted-users`. A flake's own `nixConfig` also applies only when that flake is the one being built, never when it is an input, so this repo's `nixConfig` does nothing for you. Put the cache in the flake you actually build:
 
 ```nix
 # your own flake.nix, top level
@@ -135,59 +115,41 @@ nixConfig = {
 };
 ```
 
-Nix asks once whether to trust those settings, or pass `--accept-flake-config`.
-On NixOS the system-wide equivalent is `programs.lookapp.cachix = true` from
-`nixosModules.default`. Elsewhere, `cachix use look` or `/etc/nix/nix.conf`.
-Without one of these, Home Manager will build Look from source.
+Nix asks once whether to trust those settings, or pass `--accept-flake-config`. On NixOS the system-wide equivalent is `programs.lookapp.cachix = true` from `nixosModules.default`. Elsewhere, `cachix use look` or `/etc/nix/nix.conf`. Without one of these, Home Manager will build Look from source.
 
-`theme` accepts `catppuccin`, `tokyo-night`, `rose-pine`, `gruvbox`, `dracula`,
-`kanagawa` (the default), `kindle`, `liquid` and `custom`. Colours are
-derived from the preset at startup, so the module only writes `ui_theme`, plus
-the opacity values for `kindle` and `liquid` because those two own them. Use
-`custom` to drive every `ui_*` value from `settings` instead.
+`theme` accepts `catppuccin`, `tokyo-night`, `rose-pine`, `gruvbox`, `dracula`, `kanagawa` (the default), `kindle`, `liquid` and `custom`. Colours are derived from the preset at startup, so the module only writes `ui_theme`, plus the opacity values for `kindle` and `liquid` because those two own them. Use `custom` to drive every `ui_*` value from `settings` instead.
 
-`settings` keys map directly to `~/.look/config` keys and override values
-derived from `theme`. Lists are written as comma-separated values, except
-`ignored_patterns_*` and `alias_*`, which Look parses as pipe-separated.
-`aliases` is the same thing with the prefix filled in, so declaring
-`aliases.note` and `settings.alias_note` together is an error.
+`settings` keys map directly to `~/.look/config` keys and override values derived from `theme`. Lists are written as comma-separated values, except `ignored_patterns_*` and `alias_*`, which Look parses as pipe-separated. `aliases` is the same thing with the prefix filled in, so declaring `aliases.note` and `settings.alias_note` together is an error.
 
-Activation merges the managed keys into `~/.look/config` rather than replacing
-it: keys you set in Nix win, anything you changed in-app is kept, and keys you
-remove from the Nix config are cleaned up on the next rebuild. The file stays
-writable so the app can keep saving to it, but Nix wins again on every
-activation, so treat Nix as the source of truth for the keys it manages. The
-first activation copies the pre-Nix file to `<config>.hm-backup`.
+Activation merges the managed keys into `~/.look/config` rather than replacing it: keys you set in Nix win, anything you changed in-app is kept, and keys you remove from the Nix config are cleaned up on the next rebuild. The file stays writable so the app can keep saving to it, but Nix wins again on every activation, so treat Nix as the source of truth for the keys it manages. The first activation copies the pre-Nix file to `<config>.hm-backup`.
 
-Upgrading from a Look that kept its config at `~/.look.config`: activation
-merges into whichever file Look reads, the old one until Look copies it into
-`~/.look/` on its next launch, which carries the managed keys across. Nothing
-needs doing by hand, and the old file is left where it is.
+Upgrading from a Look that kept its config at `~/.look.config`: activation merges into whichever file Look reads, the old one until Look copies it into `~/.look/` on its next launch, which carries the managed keys across. Nothing needs doing by hand, and the old file is left where it is.
 
 ### Windows
 
 **Prerequisites:**
 
-- Rust stable + cargo-tauri (as above)
+- Rust stable (as above)
 - **Visual Studio 2022 Build Tools** (Desktop development with C++ workload, provides both `link.exe` and the Windows SDK)
-- WebView2 runtime (ships with Windows 11; for older Win10 the NSIS installer fetches it automatically via the embedded bootstrapper)
+- NSIS (`winget install NSIS.NSIS`), only to build the installer
 
-**Why VS 2022 Build Tools specifically:** the MSVC linker needs both `link.exe` *and* the Windows SDK. VS 2026 Community ships `link.exe` but no SDK by default, and without it `cargo build` fails with `LNK1104: cannot open file 'msvcrt.lib'`. Same applies to `cargo install tauri-cli`.
+**Why VS 2022 Build Tools specifically:** the MSVC linker needs both `link.exe` _and_ the Windows SDK. VS 2026 Community ships `link.exe` but no SDK by default, and without it `cargo build` fails with `LNK1104: cannot open file 'msvcrt.lib'`.
 
 **Running cargo under vcvars:** every cargo invocation must run inside a `vcvarsall.bat x64` shell so the linker can find the SDK. The repo provides a wrapper:
 
 ```cmd
-scripts\windows\with-vcvars.bat cargo tauri dev
-scripts\windows\with-vcvars.bat cargo tauri build
+scripts\windows\with-vcvars.bat cargo run -p lookapp
+scripts\windows\with-vcvars.bat cargo build --release -p lookapp
 ```
 
 The Makefile dispatches to `scripts/Makefile.win` on Windows and wraps every target in the vcvars environment:
 
 ```bash
-make app-run            # cargo tauri dev (hot reload)
-make app-run-release    # cargo tauri build (release bundle)
+make app-run            # cargo run (debug)
+make app-run-release    # cargo run (release)
 make app-build          # cargo build (debug)
 make app-build-release  # cargo build (release)
+make tauri-run          # the Tauri backup, cargo tauri dev
 ```
 
 Format and lint are not Make targets; run them directly under vcvars:
@@ -199,12 +161,13 @@ scripts\windows\with-vcvars.bat cargo clippy --manifest-path apps\linows\Cargo.t
 
 **Dev paths:** in dev mode, Look writes to `%LOCALAPPDATA%\look\look.dev.db` and `%USERPROFILE%\.look\config.dev`. Production builds use `%LOCALAPPDATA%\look\` for both.
 
-**Hot reload caveats:**
+**Installer:** `packaging/windows/look.nsi`, built by `release-windows.yml` with the NSIS on the runner:
 
-- Tauri dev watches the linows workspace (`src-tauri/` and `backend/`). Changes under `core/engine/` need a touch of any file there to trigger a rebuild.
-- Frontend HTML/CSS/JS changes need a manual `Ctrl+R` in the webview; no HMR (`beforeDevCommand` is intentionally empty since `frontendDist` is static).
+```cmd
+makensis /DVERSION=0.7.2 /DBINARY=apps\linows\target\release\lookapp.exe packaging\windows\look.nsi
+```
 
-**Installer output:** `apps\linows\target\release\bundle\nsis\Look_<version>_x64-setup.exe`. The MSVC C runtime is static-linked via the workspace-root `.cargo/config.toml`, so the installer runs on a clean Windows 10/11 install without the VC++ redistributable.
+Output `Look_<version>_x64-setup.exe`, per user, silent with `/S`. The MSVC C runtime is static-linked via the workspace-root `.cargo/config.toml`, so it runs on a clean Windows 10/11 install without the VC++ redistributable.
 
 ---
 
@@ -216,11 +179,11 @@ Release AppImages are built by CI (`release-linux.yml`) on ubuntu-22.04. To buil
 scripts/linux/build-appimage.sh
 ```
 
-Requires docker. The script builds a `look-appimage-builder` image (ubuntu-22.04 with the same dependency list as CI) and runs `cargo tauri build --bundles appimage` inside it. The cargo target dir and caches live in named docker volumes (`look-appimage-target`, `look-appimage-registry`, `look-appimage-cache`), so incremental rebuilds are fast and host build dirs stay untouched.
+Requires docker. The script builds a `look-appimage-builder` image (ubuntu-22.04 with the same dependency list as CI), builds `lookapp` inside it and packs it with `scripts/linux/make-appimage.sh`, the same script CI runs. The cargo target dir and caches live in named docker volumes (`look-appimage-target`, `look-appimage-registry`, `look-appimage-cache`), so incremental rebuilds are fast and host build dirs stay untouched.
 
 Output: `dist/Look_<version>_amd64.AppImage` at the repo root (gitignored).
 
-**Why a container:** Tauri's AppImage bundler runs linuxdeploy, which is itself an AppImage and needs an FHS system. On NixOS it fails outright, and even if forced, the produced binary would embed a `/nix/store` ELF interpreter path and not run on other distros. Building on ubuntu-22.04 also pins the glibc baseline to match releases.
+**Why a container:** linuxdeploy is itself an AppImage and needs an FHS system. On NixOS it fails outright, and even if forced, the produced binary would embed a `/nix/store` ELF interpreter path and not run on other distros. Building on ubuntu-22.04 also pins the glibc baseline to match releases.
 
 **Running on the target machine:**
 
@@ -235,22 +198,22 @@ If FUSE is missing, run with `--appimage-extract-and-run`, or install it (Fedora
 
 ## Runtime Dependencies
 
-| Dependency         | Purpose                         |
-| ------------------ | ------------------------------- |
-| WebKitGTK 4.1      | WebView rendering               |
-| GTK 3              | UI toolkit                      |
-| libsoup 3          | HTTP (WebKitGTK dep)            |
-| dbus               | System bus                      |
-| ALSA (libasound)   | Audio playback (Pomodoro music) |
-| xdg-desktop-portal | File picker dialogs             |
+| Dependency          | Purpose                                       |
+| ------------------- | --------------------------------------------- |
+| xkbcommon, xcb      | Keyboard and the X11 fallback                 |
+| Vulkan loader or GL | Drawing (wgpu picks Vulkan, falls back to GL) |
+| libwayland          | Wayland client, opened at runtime             |
+| dbus                | System bus                                    |
+| ALSA (libasound)    | Audio playback (Pomodoro music)               |
+| xdg-desktop-portal  | File picker dialogs                           |
 
 ---
 
 ## Notes
 
 - **Monorepo**: The linows app depends on `core/` crates via path. The full repo checkout is needed to build.
-- **WebKitGTK version**: Tauri v2 requires the Soup3 variant (`webkitgtk-4.1`), not the older `webkitgtk-4.0`.
-- **NixOS specifics**: Binary wrapping, icon paths in `XDG_DATA_DIRS`, and `wrapGAppsHook` for GTK runtime are handled by the flake.
+- **Version**: a tagged release carries the tag (`LOOK_VERSION` at build time). Dev and Nix builds carry `[workspace.package] version` from `apps/linows/Cargo.toml`, so bump it with each release.
+- **NixOS specifics**: the runtime libraries are added to the binary's rpath and the host tools to its PATH by the flake.
 
 ---
 

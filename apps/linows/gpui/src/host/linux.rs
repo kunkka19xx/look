@@ -27,13 +27,14 @@ pub fn conceal(_: &Window) {}
 
 pub fn reshow(_: &Window, _: Bounds<Pixels>) {}
 
-const SOCKET_NAME: &str = "look-gpui.sock";
+const SOCKET_NAME: &str = "lookapp.sock";
 /// A second instance beside the real one (tools/pace.sh) answers on its own
 /// socket so the two do not trade commands.
 const SOCKET_ENV: &str = "LOOK_CONTROL_SOCKET";
 
-/// `printf toggle | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/look-gpui.sock`.
-pub fn bind() -> std::io::Result<UnixListener> {
+/// `printf toggle | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/lookapp.sock`.
+/// A launcher already answering gets `summon` instead, and the caller exits.
+pub fn bind(summon: &str) -> std::io::Result<UnixListener> {
     let path = std::env::var_os(SOCKET_ENV)
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -42,9 +43,8 @@ pub fn bind() -> std::io::Result<UnixListener> {
                 .unwrap_or_else(std::env::temp_dir)
                 .join(SOCKET_NAME)
         });
-    // A launcher already answers: hand it the summon and let the caller exit.
     if let Ok(mut running) = UnixStream::connect(&path) {
-        let _ = running.write_all(b"toggle");
+        let _ = running.write_all(summon.as_bytes());
         return Err(std::io::ErrorKind::AddrInUse.into());
     }
     let _ = std::fs::remove_file(&path);

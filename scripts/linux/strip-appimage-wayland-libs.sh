@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Strip bundled libwayland-* from a Tauri AppImage and repack it.
+# Strip bundled libwayland-* from an AppImage and repack it.
 #
-# Tauri's linuxdeploy bundling pulls the build host's libwayland into the
-# AppImage. At runtime the host's Mesa EGL driver is loaded into the bundled
-# WebKit; when it binds the older bundled libwayland instead of the host
-# copy, creating the default EGL display fails and WebKitWebProcess aborts
-# with "Could not create default EGL display: EGL_BAD_PARAMETER" (issue
-# #233, AppImage on Fedora KDE Wayland). libwayland must always come from
-# the host so it matches the host Mesa.
+# linuxdeploy bundling pulls the build host's libwayland into the
+# AppImage. At runtime the host's Mesa driver binds the older bundled copy
+# instead of the host's and fails to create an EGL display (issue #233,
+# AppImage on Fedora KDE Wayland). libwayland must always come from the
+# host so it matches the host Mesa.
 #
 # Usage: strip-appimage-wayland-libs.sh <path-to-AppImage>
 

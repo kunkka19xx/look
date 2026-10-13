@@ -1,20 +1,17 @@
-//! Ctrl+H: the help screen, the catalog by topic in the command screen's
-//! frame. The macOS `LauncherHelpScreenView`: the topic capsules ride in
-//! the title row, and "All" keeps the whole catalog in one scroll.
-
-use std::sync::LazyLock;
+//! Ctrl+H: the catalog by topic in the command screen's frame. The macOS
+//! `LauncherHelpScreenView`.
 
 use gpui::prelude::*;
-use gpui::{Context, Div, FocusHandle, FontWeight, ScrollHandle, div, px};
+use gpui::{Context, Div, FocusHandle, FontWeight, ScrollHandle, SharedString, div, px};
 
 use crate::commands::KeyOutcome;
 use crate::launcher::Launcher;
-use crate::shortcuts::{self, Piece, Topic};
+use crate::shortcuts::{self, Hint, Piece, Topic};
 use crate::theme::Theme;
 use crate::update::Update;
 
 const TITLE: &str = "Help";
-const CLOSE_HINT: &str = "Ctrl+H to close";
+const CLOSE_HINT: &str = "to close";
 const SUBTITLE: &str = "Quick guide for app list, clipboard search, and command flow.";
 const ALL_LABEL: &str = "All";
 
@@ -23,27 +20,21 @@ const PADDING_Y: f32 = 10.0;
 const TITLE_SIZE_STEP: f32 = 3.0;
 const TITLE_ROW_GAP: f32 = 12.0;
 const CAPSULE_GAP: f32 = 6.0;
-const CAPSULE_PADDING_X: f32 = 10.0;
-const CAPSULE_PADDING_Y: f32 = 4.0;
-const SELECTED_CAPSULE_ALPHA: f32 = 0.22;
 const SUBTITLE_PADDING_Y: f32 = 6.0;
 const BODY_PADDING_BOTTOM: f32 = 14.0;
 
-static HINT: LazyLock<String> = LazyLock::new(|| {
-    shortcuts::hint(&[
-        Piece::Id(shortcuts::HELP, "Close help"),
-        Piece::Key("Tab", "Next topic"),
-        Piece::Id(shortcuts::BACK, "Close"),
-    ])
-});
+static HINT: Hint = Hint::new(&[
+    Piece::Id(shortcuts::HELP, "Close help"),
+    Piece::Key("Tab", "Next topic"),
+    Piece::Id(shortcuts::BACK, "Close"),
+]);
 
 pub struct Help {
     pub open: bool,
     /// `None` is every topic.
     topic: Option<Topic>,
     scroll: ScrollHandle,
-    /// Holds the keys while the screen is up, so typing cannot reach the
-    /// hidden search field.
+    /// Holds the keys, so typing cannot reach the hidden search field.
     focus: FocusHandle,
 }
 
@@ -63,8 +54,8 @@ impl Help {
         self.scroll.set_offset(Default::default());
     }
 
-    pub fn hint(&self) -> &'static str {
-        &HINT
+    pub fn hint(&self) -> SharedString {
+        HINT.text()
     }
 
     pub fn focus_handle(&self) -> FocusHandle {
@@ -83,7 +74,6 @@ impl Help {
         }
     }
 
-    /// All, then each topic, round and round.
     fn step_topic(&mut self, back: bool) {
         let order: Vec<Option<Topic>> = std::iter::once(None)
             .chain(Topic::ALL.into_iter().map(Some))
@@ -134,29 +124,9 @@ impl Help {
 
     fn title_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let capsule = |i: usize, label: &'static str, topic: Option<Topic>| {
-            let on = topic == self.topic;
-            div()
+            shortcuts::filter_capsule(label, topic == self.topic, th)
                 .id(("help-topic", i))
-                .px(px(CAPSULE_PADDING_X))
-                .py(px(CAPSULE_PADDING_Y))
-                .rounded_full()
-                .text_size(px(th.font_size - 1.0))
-                .cursor_pointer()
-                .map(|el| {
-                    if on {
-                        let mut wash = th.accent;
-                        wash.alpha = SELECTED_CAPSULE_ALPHA;
-                        el.bg(wash)
-                            .text_color(th.text)
-                            .font_weight(FontWeight::SEMIBOLD)
-                    } else {
-                        el.bg(th.control_fill)
-                            .text_color(th.text_muted)
-                            .hover(|s| s.text_color(th.text))
-                    }
-                })
                 .on_click(cx.listener(move |this, _, _, cx| this.help.pick(topic, cx)))
-                .child(label)
         };
         div()
             .px(px(PADDING_X))
@@ -187,7 +157,7 @@ impl Help {
                 div()
                     .text_size(px(th.font_size - 1.0))
                     .text_color(th.text_muted)
-                    .child(CLOSE_HINT),
+                    .child(format!("{} {CLOSE_HINT}", shortcuts::keys(shortcuts::HELP))),
             )
     }
 }

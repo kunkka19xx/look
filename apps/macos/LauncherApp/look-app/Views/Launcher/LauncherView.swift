@@ -16,16 +16,24 @@ struct LauncherView: View {
         case info
         case warning
 
-        var background: Color {
+        /// Theme colours, not fixed ones: a translucent `.blue` under the
+        /// theme's own text colour left "Bluetooth off" cream on pale blue.
+        func background(_ theme: ThemeStore) -> Color {
             switch self {
-            case .success:
-                return .green.opacity(0.42)
-            case .error:
-                return .red.opacity(0.45)
-            case .info:
-                return .blue.opacity(0.40)
-            case .warning:
-                return .orange.opacity(0.45)
+            case .success: return theme.successColor()
+            case .error: return theme.dangerColor()
+            case .info: return theme.accentColor()
+            case .warning: return theme.warningColor()
+            }
+        }
+
+        /// Paired with the fill, so the text reads on it in every theme.
+        func foreground(_ theme: ThemeStore) -> Color {
+            switch self {
+            case .success: return theme.onSuccessColor()
+            case .error: return theme.onDangerColor()
+            case .info: return theme.onAccentColor()
+            case .warning: return theme.onWarningColor()
             }
         }
     }
@@ -163,6 +171,7 @@ struct LauncherView: View {
     @State var pendingHideAppResult: LauncherResult?
     // True while a trash/empty operation is running, to block re-triggering it.
     @State var isDeleteInFlight = false
+    @State var trashIconRefreshTick: Int = 0
     @State var killListRefreshTick: Int = 0
     @State var recentlyKilledPIDs: Set<Int32> = []
     @State var showsHelpScreen = false
@@ -188,8 +197,6 @@ struct LauncherView: View {
     /// share one aligned image, cut apart by the gaps). See `tileBackground`.
     @State private var panelSize: CGSize = .zero
     static let panelCoordinateSpace = "launcherPanel"
-
-    static let floatingTileScrimOpacity = 0.30
 
     /// 0 = pure glass, and the bar goes white over a light page; 1 = opaque,
     /// and the blur is lost.
@@ -1056,9 +1063,12 @@ struct LauncherView: View {
         .onReceive(
             NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
         ) { _ in
-            // Not while a TCC dialog is up: it steals focus, and hiding here
-            // backgrounds the app so the next prompt never appears.
-            if !PermissionPrompt.isPresenting, launcherWindow()?.isVisible == true {
+            // Not while a TCC dialog or one of our own file pickers is up:
+            // both steal focus, and hiding here backgrounds the app so the
+            // next prompt never appears and the picker is left orphaned.
+            if !PermissionPrompt.isPresenting, !FilePanel.isPresenting,
+                launcherWindow()?.isVisible == true
+            {
                 Logger(subsystem: "noah-code.Look", category: "window-resize")
                     .debug("didResignActiveNotification -> hideLauncherWindow(restorePreviousApp: false)")
                 hideLauncherWindow(restorePreviousApp: false)
@@ -1308,6 +1318,7 @@ struct LauncherView: View {
             .onTapGesture { focusActiveInput() }
         }
         .coordinateSpace(name: Self.panelCoordinateSpace)
+        .environment(\.panelGeometry, showsFloatingCards ? panelGeometry : nil)
         .background(
             GeometryReader { geo in
                 Color.clear
@@ -1500,7 +1511,7 @@ struct LauncherView: View {
         HStack(spacing: 8) {
             Text(message)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
-                .foregroundStyle(themeStore.fontColor())
+                .foregroundStyle(bannerStyle.foreground(themeStore))
                 // A banner is one line inside a capsule. Anything longer is
                 // truncated by its caller; without this a stray newline in an
                 // interpolated title stacks the pill into a tall narrow block.
@@ -1521,7 +1532,7 @@ struct LauncherView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(bannerStyle.background, in: Capsule())
+        .background(bannerStyle.background(themeStore), in: Capsule())
         .transition(.move(edge: .top).combined(with: .opacity))
         // Sits between the bar and the results, so it takes a seam on both sides.
         .padding(.vertical, stackedContentGap)
@@ -2232,7 +2243,8 @@ struct LauncherView: View {
                     isActionMenuOpen: isActionMenuOpen,
                     actionMenuIndex: actionMenuIndex,
                     actionMenuDescriptors: actionMenuRows,
-                    onActivateActionMenuRow: { activateActionMenuRow($0) }
+                    onActivateActionMenuRow: { activateActionMenuRow($0) },
+                    trashRefreshTick: trashIconRefreshTick
                 )
                 // Arrow-key nav assigns `selectedResultID` inside a global
                 // `withAnimation` so the pill can glide (see LauncherView+
@@ -2468,45 +2480,44 @@ struct LauncherView: View {
         }
     }
 
-    /// The frosted surface shared by every floating tile (top bar + columns). When
-    /// a background image is set, each tile shows its own aligned slice of that
-    /// image (cropped to the tile's window position) instead of a blurred desktop,
-    /// so the tiles read as separate windows onto one image. Otherwise it takes the
-    /// themed backdrop, at the same blur and tint opacities as the window.
-    @ViewBuilder
+    /// The surface shared by every floating tile (top bar + columns), and by the
+    /// launchpad strip through the same `frostedTile`. With a background picture
+    /// set, each one shows its own aligned slice of it rather than a blurred
+    /// desktop, so they read as separate windows onto one picture.
     private func tileBackground(
         cornerRadius: CGFloat, floats: Bool, substrate: Bool = false
     ) -> some View {
-        if floats, let image = themeStore.backgroundImage {
-            ZStack {
-                croppedBackgroundImage(image)
-                // Only the opaque image needs a scrim; the blur path is
-                // covered by the tint.
-                themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
-                themeStore.controlFillColor()
+        // A seated surface has the window's own picture behind it already, so
+        // only a floating one cuts its own slice.
+        let panel = floats ? panelGeometry : nil
+        return ZStack {
+            // Bounds how bright the bar can get over a white page. The panes
+            // are dense enough that the same floor only flattens them. The
+            // picture needs none: its slice is opaque under the scrim.
+            if substrate, panel == nil || themeStore.backgroundImage == nil {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(themeStore.commandModeBackgroundColor())
+                    .opacity(Self.searchBarSubstrateOpacity)
             }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        } else {
-            ZStack {
-                // Bounds how bright the bar can get over a white page. The
-                // panes are dense enough that the same floor only flattens them.
-                if substrate {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(themeStore.commandModeBackgroundColor())
-                        .opacity(Self.searchBarSubstrateOpacity)
-                }
 
-                // Window-server composited. The bar hosts an
-                // `NSViewRepresentable`, and a `.withinWindow` material beside
-                // one flips brightness whenever the layer is re-composited.
-                frostedTile(
-                    themeStore: themeStore,
-                    cornerRadius: cornerRadius,
-                    // Seated is the only case with a window backdrop behind it.
-                    blendingMode: floats ? .behindWindow : .withinWindow
-                )
-            }
+            // Window-server composited. The bar hosts an `NSViewRepresentable`,
+            // and a `.withinWindow` material beside one flips brightness
+            // whenever the layer is re-composited.
+            frostedTile(
+                themeStore: themeStore,
+                cornerRadius: cornerRadius,
+                // Seated is the only case with a window backdrop behind it.
+                blendingMode: floats ? .behindWindow : .withinWindow
+            )
         }
+        .environment(\.panelGeometry, panel)
+    }
+
+    /// Where the panel is, for the surfaces that cut a slice out of the picture.
+    var panelGeometry: PanelGeometry? {
+        panelSize == .zero
+            ? nil
+            : PanelGeometry(size: panelSize, coordinateSpace: Self.panelCoordinateSpace)
     }
 
     /// The outline for a floating tile, drawn with the user's configured theme
@@ -2518,21 +2529,6 @@ struct LauncherView: View {
         if width > 0 {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(themeStore.borderColor(), lineWidth: width)
-        }
-    }
-
-    /// The slice of the full-panel background image that sits behind this tile:
-    /// the image is sized to the whole panel and offset by the tile's origin in
-    /// the panel coordinate space, so adjacent tiles show a continuous image cut
-    /// apart by the gaps.
-    @ViewBuilder
-    private func croppedBackgroundImage(_ image: NSImage) -> some View {
-        GeometryReader { tileGeo in
-            let frame = tileGeo.frame(in: .named(Self.panelCoordinateSpace))
-            backgroundImageView(image: image)
-                .frame(width: panelSize.width, height: panelSize.height)
-                .offset(x: -frame.minX, y: -frame.minY)
-                .blur(radius: themeStore.settings.backgroundImageBlur)
         }
     }
 

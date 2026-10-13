@@ -1,18 +1,17 @@
-//! The one list of keys: what the help screen shows by topic, what
-//! Settings > Shortcuts shows flat, and where every footer hint takes its
-//! key spelling from, so the three cannot drift. The macOS
-//! `ShortcutCatalog`, with the webview's wording for Linux and Windows.
+//! The one list of keys behind the help screen, Settings > Shortcuts and
+//! the footer hints. The macOS `ShortcutCatalog`. A row with a `bindings`
+//! definition shows its live chord; `keys` is the default.
 
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 
 use gpui::prelude::*;
 use gpui::{Div, FontWeight, SharedString, div, px};
 
+use crate::bindings;
 use crate::modes::{self, COMMAND_ENTRIES};
 use crate::theme::Theme;
 
-/// One documented shortcut. `id` is the stable handle: the keys may
-/// change, the id must not, since the hints bind to it.
+/// One documented shortcut; hints and config keys bind to `id`.
 pub struct Entry {
     pub id: &'static str,
     pub keys: String,
@@ -29,7 +28,6 @@ impl Entry {
     }
 }
 
-/// The help screen's filter capsules; Settings shows every topic in order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Topic {
     Main,
@@ -49,7 +47,7 @@ impl Topic {
     }
 }
 
-/// One titled block. The title is the identity: two groups never share one.
+/// One titled block; the title is the identity.
 pub struct Group {
     pub title: &'static str,
     pub topic: Topic,
@@ -57,26 +55,23 @@ pub struct Group {
 }
 
 pub const TOGGLE_LAUNCHER: &str = "global.toggleLauncher";
-pub const OPEN: &str = "main.open";
 pub const OPEN_PICKED: &str = "main.openPicked";
 pub const COPY: &str = "main.copy";
 pub const PASTE: &str = "main.paste";
 pub const TRASH: &str = "main.trash";
 pub const PICK: &str = "main.pick";
 pub const CLEAR_PICKS: &str = "main.clearPicks";
-pub const MOVE_TAB: &str = "main.moveTab";
 pub const MOVE_ARROWS: &str = "main.moveArrows";
 pub const ACTIONS: &str = "main.actions";
 pub const EDIT: &str = "main.edit";
 pub const TERMINAL: &str = "main.terminal";
 pub const REVEAL: &str = "main.reveal";
 pub const WEB_SEARCH: &str = "main.webSearch";
-pub const QUICK_TOGGLE: &str = "main.quickToggle";
+pub const QUICK_TOGGLE: &str = "main.quickActionToggle";
 pub const COMMAND_MODE: &str = "main.commandMode";
-pub const COMMAND_JUMP: &str = "main.commandJump";
-pub const SETTINGS: &str = "main.settings";
-pub const RELOAD_CONFIG: &str = "main.reloadConfig";
-pub const SWITCH_LAYOUT: &str = "main.switchLayout";
+pub const SETTINGS: &str = "view.settings";
+pub const RELOAD_CONFIG: &str = "view.reloadConfig";
+pub const SWITCH_LAYOUT: &str = "view.toggleLayout";
 pub const HIDE_APP: &str = "main.hideApp";
 pub const HELP: &str = "main.help";
 pub const BACK: &str = "main.back";
@@ -86,13 +81,13 @@ pub const CLIP_REMOVE: &str = "clipboard.remove";
 pub const PROCESS_CPU: &str = "process.cpu";
 pub const PROCESS_KILL: &str = "process.kill";
 pub const PROCESS_COPY_PID: &str = "process.copyPid";
-pub const COMMAND_SWITCH_TAB: &str = "command.switchTab";
 pub const COMMAND_BACK: &str = "command.back";
-pub const KILL_CONFIRM: &str = "kill.confirm";
 pub const POMO_START_PAUSE: &str = "pomo.startPause";
 pub const POMO_RESET: &str = "pomo.reset";
+pub const TODO_TOGGLE_PAGE: &str = "todo.togglePage";
 pub const TODO_SAVE: &str = "todo.save";
 pub const TODO_UNDO: &str = "todo.undo";
+pub const TODO_REDO: &str = "todo.redo";
 pub const SPEED_RERUN: &str = "speed.rerun";
 pub const SPEED_REVEAL: &str = "speed.revealAddress";
 pub const CALC_EVALUATE: &str = "calc.evaluate";
@@ -103,8 +98,6 @@ const BIN_NAME: &str = if cfg!(windows) {
     "Trash"
 };
 
-/// The default spelling of the launcher key; the live one comes from the
-/// hotkey state when Settings shows the row.
 pub const TOGGLE_LAUNCHER_KEYS: &str = "Alt+Space";
 
 static CATALOG: LazyLock<Vec<Group>> = LazyLock::new(build);
@@ -122,6 +115,17 @@ pub fn entry(id: &str) -> Option<&'static Entry> {
         .iter()
         .flat_map(|g| &g.entries)
         .find(|e| e.id == id)
+}
+
+/// The keys a row is on now.
+pub fn keys(id: &str) -> String {
+    let bindings = bindings::get();
+    if id == TOGGLE_LAUNCHER {
+        return bindings.launcher.clone();
+    }
+    bindings
+        .display(id)
+        .unwrap_or_else(|| entry(id).map_or_else(|| id.to_string(), |e| e.keys.clone()))
 }
 
 fn build() -> Vec<Group> {
@@ -144,7 +148,7 @@ fn build() -> Vec<Group> {
             topic: Topic::Main,
             entries: vec![
                 Entry::new(
-                    OPEN,
+                    "main.open",
                     "Enter",
                     "Open selected app/file/folder or copy selected clipboard item",
                 ),
@@ -172,7 +176,11 @@ fn build() -> Vec<Group> {
                 ),
                 Entry::new(PICK, "Ctrl+P", "Pick / unpick item (multi-select copy)"),
                 Entry::new(CLEAR_PICKS, "Ctrl+Shift+P", "Clear all picks"),
-                Entry::new(MOVE_TAB, "Tab / Shift+Tab", "Select next / previous result"),
+                Entry::new(
+                    "main.moveTab",
+                    "Tab / Shift+Tab",
+                    "Select next / previous result",
+                ),
                 Entry::new(MOVE_ARROWS, "Up / Down", "Move selection"),
                 Entry::new(
                     ACTIONS,
@@ -198,7 +206,7 @@ fn build() -> Vec<Group> {
                 ),
                 Entry::new(COMMAND_MODE, "Ctrl+/", "Enter command mode"),
                 Entry::new(
-                    COMMAND_JUMP,
+                    "main.commandJump",
                     ":cmd",
                     "Jump to a command from home (e.g. :calc 2+2, :kill chrome, :sys, :pomo)",
                 ),
@@ -332,7 +340,7 @@ fn build() -> Vec<Group> {
                     ":cmd args",
                     "Jump straight into a command, e.g. :calc 2+2",
                 ),
-                Entry::new(COMMAND_SWITCH_TAB, "Tab / Shift+Tab", "Switch command"),
+                Entry::new("command.switchTab", "Tab / Shift+Tab", "Switch command"),
                 Entry::new(
                     "command.switchByIndex",
                     format!("Ctrl+1..{}", COMMAND_ENTRIES.len()),
@@ -347,7 +355,7 @@ fn build() -> Vec<Group> {
             entries: vec![
                 Entry::new("kill.byPort", "3000", "Match by port or PID, not just name"),
                 Entry::new("kill.select", "Up / Down", "Select app in kill results"),
-                Entry::new(KILL_CONFIRM, "Y / N", "Confirm / cancel the kill"),
+                Entry::new("kill.confirm", "Y / N", "Confirm / cancel the kill"),
             ],
         },
         Group {
@@ -373,7 +381,7 @@ fn build() -> Vec<Group> {
             topic: Topic::Command,
             entries: vec![
                 Entry::new(
-                    "todo.togglePage",
+                    TODO_TOGGLE_PAGE,
                     "Ctrl+N",
                     "Switch the Tasks / Stats page inside /todo",
                 ),
@@ -384,7 +392,7 @@ fn build() -> Vec<Group> {
                     "Undo the last task change inside /todo",
                 ),
                 Entry::new(
-                    "todo.redo",
+                    TODO_REDO,
                     "Ctrl+Shift+Z",
                     "Redo an undone task change inside /todo",
                 ),
@@ -402,9 +410,7 @@ fn build() -> Vec<Group> {
 
 // --- Hints -----------------------------------------------------------------------
 
-/// One `Key: Label` of a footer hint. An `Id` takes its key from the
-/// catalog; a `Key` is a chord the catalog has no row for; `Text` is a
-/// plain phrase.
+/// One `Key: Label` of a footer hint; an `Id` spells its key from the catalog.
 pub enum Piece {
     Id(&'static str, &'static str),
     Key(&'static str, &'static str),
@@ -413,15 +419,11 @@ pub enum Piece {
 
 pub const HINT_SEP: &str = " \u{2022} ";
 
-/// The footer line for `pieces`.
-pub fn hint(pieces: &[Piece]) -> String {
+fn hint(pieces: &[Piece]) -> String {
     pieces
         .iter()
         .map(|piece| match piece {
-            Piece::Id(id, label) => {
-                let keys = entry(id).map_or(*id, |e| e.keys.as_str());
-                format!("{keys}: {label}")
-            }
+            Piece::Id(id, label) => format!("{}: {label}", keys(id)),
             Piece::Key(keys, label) => format!("{keys}: {label}"),
             Piece::Text(text) => (*text).to_string(),
         })
@@ -429,27 +431,98 @@ pub fn hint(pieces: &[Piece]) -> String {
         .join(HINT_SEP)
 }
 
+/// A footer line, built again after a rebind.
+pub struct Hint {
+    pieces: &'static [Piece],
+    cache: Mutex<Option<(u64, SharedString)>>,
+}
+
+impl Hint {
+    pub const fn new(pieces: &'static [Piece]) -> Self {
+        Self {
+            pieces,
+            cache: Mutex::new(None),
+        }
+    }
+
+    pub fn text(&self) -> SharedString {
+        let revision = bindings::revision();
+        let mut cache = self.cache.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((built, text)) = &*cache
+            && *built == revision
+        {
+            return text.clone();
+        }
+        let text: SharedString = hint(self.pieces).into();
+        *cache = Some((revision, text.clone()));
+        text
+    }
+}
+
 // --- Render ----------------------------------------------------------------------
 
 const SECTION_PADDING_TOP: f32 = 10.0;
 const SECTION_PADDING_BOTTOM: f32 = 4.0;
+const SECTION_GAP: f32 = 6.0;
 const ROW_GAP: f32 = 10.0;
 const ROW_PADDING_Y: f32 = 3.0;
 const KEY_PADDING_X: f32 = 8.0;
 const KEY_PADDING_Y: f32 = 3.0;
+/// A recorder capsule's outline; the action text is inset to match it.
+pub const KEY_BORDER: f32 = 1.0;
+/// The macOS `keyColumnWidth`: actions line up past it.
+const KEY_COLUMN_W: f32 = 170.0;
+const FILTER_PADDING_X: f32 = 10.0;
+const FILTER_PADDING_Y: f32 = 4.0;
+const FILTER_SELECTED_ALPHA: f32 = 0.22;
 
-/// A group's title, the webview's `.settings-shortcut-section`.
+/// A topic or filter capsule.
+pub fn filter_capsule(label: impl Into<SharedString>, on: bool, th: &Theme) -> Div {
+    div()
+        .px(px(FILTER_PADDING_X))
+        .py(px(FILTER_PADDING_Y))
+        .rounded_full()
+        .text_size(px(th.font_size - 1.0))
+        .cursor_pointer()
+        .map(|el| {
+            if on {
+                let mut wash = th.accent;
+                wash.alpha = FILTER_SELECTED_ALPHA;
+                el.bg(wash)
+                    .text_color(th.text)
+                    .font_weight(FontWeight::SEMIBOLD)
+            } else {
+                el.bg(th.control_fill)
+                    .text_color(th.text_muted)
+                    .hover(|s| s.text_color(th.text))
+            }
+        })
+        .child(label.into())
+}
+
 pub fn section_title(title: impl Into<SharedString>, th: &Theme) -> Div {
+    section_row(th).child(section_label(title, th))
+}
+
+/// The title's band, with room for a chevron and a count.
+pub fn section_row(th: &Theme) -> Div {
     div()
         .pt(px(SECTION_PADDING_TOP))
         .pb(px(SECTION_PADDING_BOTTOM))
+        .flex()
+        .items_center()
+        .gap(px(SECTION_GAP))
+        .text_color(th.text_secondary)
+}
+
+pub fn section_label(title: impl Into<SharedString>, th: &Theme) -> Div {
+    div()
         .text_size(px(th.font_size + 1.0))
         .font_weight(FontWeight::BOLD)
         .text_color(th.text)
         .child(title.into())
 }
 
-/// The key capsule, the webview's `kbd`.
 pub fn key_cap(keys: impl Into<SharedString>, th: &Theme) -> Div {
     div()
         .px(px(KEY_PADDING_X))
@@ -464,24 +537,36 @@ pub fn key_cap(keys: impl Into<SharedString>, th: &Theme) -> Div {
         .child(keys.into())
 }
 
-/// One row: the capsule, then what it does.
 pub fn row(keys: impl Into<SharedString>, action: impl Into<SharedString>, th: &Theme) -> Div {
+    row_of(key_cap(keys, th), action, th)
+}
+
+/// A row around a ready key column: a recorder, or a dimmed fixed key.
+pub fn row_of(keys: impl IntoElement, action: impl Into<SharedString>, th: &Theme) -> Div {
     div()
         .py(px(ROW_PADDING_Y))
         .flex()
-        .items_baseline()
+        .items_start()
         .gap(px(ROW_GAP))
-        .child(key_cap(keys, th))
+        .child(
+            div()
+                .min_w(px(KEY_COLUMN_W))
+                .flex_shrink_0()
+                .flex()
+                .items_center()
+                .gap(px(ROW_GAP))
+                .child(keys),
+        )
         .child(
             div()
                 .min_w_0()
+                .pt(px(KEY_PADDING_Y + KEY_BORDER))
                 .text_size(px(th.font_size - 1.0))
                 .text_color(th.text_secondary)
                 .child(action.into()),
         )
 }
 
-/// A group as a titled block of rows.
 pub fn group_view(group: &Group, th: &Theme) -> Div {
     div()
         .flex()
@@ -491,7 +576,7 @@ pub fn group_view(group: &Group, th: &Theme) -> Div {
             group
                 .entries
                 .iter()
-                .map(|e| row(e.keys.clone(), e.action.clone(), th)),
+                .map(|e| row(keys(e.id), e.action.clone(), th)),
         )
 }
 
@@ -506,7 +591,6 @@ mod tests {
             assert!(seen.insert(e.id), "duplicate id {}", e.id);
         }
         for id in [
-            OPEN,
             ACTIONS,
             HELP,
             BACK,
@@ -523,11 +607,13 @@ mod tests {
             COMMAND_BACK,
             POMO_START_PAUSE,
             POMO_RESET,
+            TODO_TOGGLE_PAGE,
             TODO_SAVE,
+            TODO_UNDO,
+            TODO_REDO,
             SPEED_RERUN,
             SPEED_REVEAL,
             CALC_EVALUATE,
-            KILL_CONFIRM,
             TOGGLE_LAUNCHER,
         ] {
             assert!(entry(id).is_some(), "missing {id}");
@@ -536,12 +622,16 @@ mod tests {
 
     #[test]
     fn hints_take_keys_from_the_catalog() {
-        let line = hint(&[
-            Piece::Id(OPEN, "Open"),
+        static LINE: Hint = Hint::new(&[
+            Piece::Id("main.open", "Open"),
             Piece::Key("Y", "Confirm"),
             Piece::Text("No match"),
         ]);
-        assert_eq!(line, "Enter: Open \u{2022} Y: Confirm \u{2022} No match");
+        assert_eq!(
+            LINE.text().as_ref(),
+            "Enter: Open \u{2022} Y: Confirm \u{2022} No match"
+        );
+        assert_eq!(LINE.text(), LINE.text());
     }
 
     #[test]

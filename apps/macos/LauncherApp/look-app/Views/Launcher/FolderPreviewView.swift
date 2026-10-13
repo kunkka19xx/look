@@ -109,8 +109,11 @@ struct TrashSummaryView: View {
     let themeStore: ThemeStore
 
     private var trashIcon: NSImage {
-        NSImage(named: NSImage.trashFullName)
-            ?? NSWorkspace.shared.icon(for: .folder)
+        // Only a counted zero draws the empty can. An unknown count means no
+        // Automation permission or a Finder that did not answer, and a full
+        // Trash drawn as empty is the worse of the two lies.
+        let name = itemCount == 0 ? NSImage.trashEmptyName : NSImage.trashFullName
+        return NSImage(named: name) ?? NSWorkspace.shared.icon(for: .folder)
     }
 
     private var headline: String {

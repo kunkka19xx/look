@@ -306,7 +306,7 @@ extension ThemeSettingsView {
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.allowedContentTypes = [.image]
-        if panel.runModal() == .OK {
+        if FilePanel.runModal(panel) == .OK {
             withAnimation(Motion.Fade.animation) {
                 themeStore.setBackgroundImage(url: panel.url)
             }
@@ -318,7 +318,7 @@ extension ThemeSettingsView {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        if panel.runModal() == .OK, let url = panel.url {
+        if FilePanel.runModal(panel) == .OK, let url = panel.url {
             withAnimation(Motion.Insert.animation) {
                 themeStore.addExcludedFolderPath(url: url)
             }
@@ -330,7 +330,7 @@ extension ThemeSettingsView {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        if panel.runModal() == .OK, let url = panel.url {
+        if FilePanel.runModal(panel) == .OK, let url = panel.url {
             withAnimation(Motion.Insert.animation) {
                 if let error = themeStore.addExtraFileScanRoot(url: url) {
                     extraScanDirectoryMessage = error.message

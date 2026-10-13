@@ -55,7 +55,7 @@ updates:
           - "version-update:semver-patch"
 
   - package-ecosystem: "cargo"
-    directory: "/apps/linows/src-tauri"
+    directory: "/apps/linows"
     schedule:
       interval: "weekly"
       day: "monday"

@@ -20,6 +20,7 @@ use linows_backend::search as engine;
 use linows_backend::{autostart, cli_path, files, hotkey};
 
 use crate::bg;
+use crate::bindings;
 use crate::commands::KeyOutcome;
 use crate::controls::{self, Option_, Range, SliderEvent, SliderPhase};
 use crate::fonts;
@@ -349,11 +350,15 @@ impl Tab {
     }
 
     /// The footer line; Appearance has none, as on macOS.
-    fn hint(self) -> Option<&'static str> {
+    fn hint(self) -> Option<SharedString> {
         match self {
             Tab::Appearance => None,
             Tab::Advanced => Some(
-                "Save Config applies changes immediately. Ctrl+Shift+; is only needed after editing .look/config manually.",
+                format!(
+                    "Save Config applies changes immediately. {} is only needed after editing .look/config manually.",
+                    crate::shortcuts::keys(crate::shortcuts::RELOAD_CONFIG)
+                )
+                .into(),
             ),
             Tab::Shortcuts => Some(Settings::tips()),
         }
@@ -367,9 +372,12 @@ impl Tab {
 }
 
 /// Which box is open, and what Enter does with it.
+#[derive(Clone, Copy)]
 pub(super) enum FieldKind {
     Font,
     Number(&'static advanced::Number),
+    /// Filters as typed, so Enter only closes the box.
+    ShortcutSearch,
 }
 
 /// A box while it edits.
@@ -393,6 +401,8 @@ pub struct Settings {
     /// Windows: the fixed drives that are not the system's.
     drives: Vec<CandidateDrive>,
     recorder: shortcuts::Recorder,
+    /// Topic, search and folded groups on the Shortcuts tab.
+    shortcuts_view: shortcuts::View,
     field: Option<Field>,
     /// The open dropdown's key.
     select: Option<&'static str>,
@@ -417,6 +427,7 @@ impl Settings {
             fonts: Vec::new(),
             drives: Vec::new(),
             recorder: shortcuts::Recorder::default(),
+            shortcuts_view: shortcuts::View::default(),
             field: None,
             select: None,
             drag: None,
@@ -430,6 +441,7 @@ impl Settings {
 
     pub fn enter(&mut self, cx: &mut Context<Launcher>) {
         self.tab = Tab::default();
+        self.shortcuts_view = shortcuts::View::default();
         self.scroll.set_offset(Default::default());
         self.reload(cx);
         if self.fonts.is_empty() {
@@ -476,12 +488,17 @@ impl Settings {
                 this.settings.entries = entries;
                 this.settings.drives = drives;
                 this.settings.recorder.state = Some(hotkey);
+                this.settings.recorder.refresh();
             },
         );
     }
 
-    pub fn hint(&self) -> Option<&'static str> {
+    pub fn hint(&self) -> Option<SharedString> {
         self.tab.hint()
+    }
+
+    pub fn is_recording(&self) -> bool {
+        self.recorder.listening.is_some()
     }
 
     pub fn editing_field(&self) -> Option<Entity<SearchInput>> {
@@ -500,7 +517,7 @@ impl Settings {
 
     pub fn handle_key(&mut self, ks: &gpui::Keystroke, cx: &mut Context<Launcher>) -> KeyOutcome {
         let shift = ks.modifiers.shift;
-        if self.recorder.listening {
+        if self.recorder.listening.is_some() {
             return self.record_key(ks, cx);
         }
         if self.select.is_some() {
@@ -510,24 +527,20 @@ impl Settings {
             }
             return KeyOutcome::Consumed;
         }
-        if let Some(field) = &self.field {
-            let number = match field.kind {
-                FieldKind::Number(spec) => Some(spec),
-                FieldKind::Font => None,
-            };
-            return match (ks.key.as_str(), number) {
-                ("escape", _) => {
+        if let Some(kind) = self.field.as_ref().map(|f| f.kind) {
+            return match (kind, ks.key.as_str()) {
+                (_, "escape") | (FieldKind::ShortcutSearch, "enter") => {
                     self.field = None;
                     cx.notify();
                     KeyOutcome::Consumed
                 }
-                ("enter" | "tab", Some(spec)) => self.commit_number(spec, cx),
-                ("enter", None) => {
+                (FieldKind::Number(spec), "enter" | "tab") => self.commit_number(spec, cx),
+                (FieldKind::Font, "enter") => {
                     self.commit_font(cx);
                     KeyOutcome::Consumed
                 }
-                ("down", None) => self.move_highlight(1, cx),
-                ("up", None) => self.move_highlight(-1, cx),
+                (FieldKind::Font, "down") => self.move_highlight(1, cx),
+                (FieldKind::Font, "up") => self.move_highlight(-1, cx),
                 _ => KeyOutcome::Pass,
             };
         }
@@ -800,17 +813,13 @@ impl Settings {
         let launch = self.launch_at_login();
         let add_to_path = self.add_to_path();
         let mut updates = updates;
-        if let Some(pending) = self.recorder.pending.take() {
-            updates.push(ConfigUpdate {
-                key: shortcuts::HOTKEY_KEY.to_string(),
-                value: pending.spec,
-            });
-        }
+        let (shortcut_updates, removals) = self.recorder.writes();
+        updates.extend(shortcut_updates);
         self.recorder.stop();
         bg::fetch(
             cx,
             move || {
-                config::set_config(updates)?;
+                config::write_config(updates, &removals)?;
                 engine::reload_config(app_state(), || {});
                 autostart::set_autostart(launch)?;
                 if cfg!(windows) {
@@ -830,7 +839,13 @@ impl Settings {
                 }
                 this.ai.enabled = ai_on;
                 crate::hotkey::set_active(true);
+                bindings::load();
                 this.settings.recorder.state = Some(hotkey::launcher_hotkey_state());
+                if ok {
+                    this.settings.recorder.saved();
+                } else {
+                    this.settings.recorder.refresh();
+                }
                 this.settings.show_saved(ok, cx);
             },
         );

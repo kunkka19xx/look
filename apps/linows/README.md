@@ -1,19 +1,18 @@
 # linows
 
-Tauri v2 desktop app for **Windows + Linux**. Vanilla HTML/CSS/JS frontend.
+Desktop app for **Windows + Linux**, drawn by gpui-ce. The binary is `lookapp`.
 
-The macOS SwiftUI app (`apps/macos/`) is the design source of truth; this app replicates
-its look, feel, and feature set using web technologies.
+The macOS SwiftUI app (`apps/macos/`) is the design source of truth; this app replicates its look, feel, and feature set.
 
-The gpui port lives in `gpui/`, drawn by gpui-ce instead of WebKitGTK; it grows
-beside this shell until it reaches parity.
+The shell lives in `gpui/` (see its README). The Tauri shell it replaced stays in `src-tauri/` and `src/` as the backup, built by name: `cargo build -p lookapp-tauri`.
 
 ## Architecture
 
 ```
 apps/linows/
   backend/               Rust: search, launching, clipboard, controls, config (shared with the gpui port)
-  src-tauri/             Tauri shell: window, hotkey plugin, one command per backend call
+  gpui/                  The shell: window, screens, keys (lookapp)
+  src-tauri/             Tauri shell (backup): window, hotkey plugin, one command per backend call
     src/
       main.rs            Entry point, plugin registration, global hotkey
       commands.rs        Search, open, reveal, window, quit
@@ -59,13 +58,9 @@ apps/linows/
 
 ## Why This Exists
 
-The previous Windows app was built with WinUI3/C#. It didn't match the macOS app's look
-and feel; the UI felt inconsistent across platforms. This Tauri app replaces it with a
-web-based frontend that can look identical on Windows and Linux, using the macOS SwiftUI
-app as the single design reference.
+The previous Windows app was built with WinUI3/C#. It didn't match the macOS app's look and feel; the UI felt inconsistent across platforms. This Tauri app replaces it with a web-based frontend that can look identical on Windows and Linux, using the macOS SwiftUI app as the single design reference.
 
-The migration is complete and the WinUI3 app has been removed; it lives on in git history
-under `apps/windows/`.
+The migration is complete and the WinUI3 app has been removed; it lives on in git history under `apps/windows/`.
 
 ## Key Decisions
 
@@ -91,27 +86,20 @@ under `apps/windows/`.
 | Hyprland      | Arch   | Tested   | No system settings entries                              |
 | KDE Plasma    |        | Untested |                                                         |
 
-**System settings** (Appearance, Wi-Fi, Sound, etc.) are shown when the desktop's settings app
-is detected: `gnome-control-center` on GNOME and its relatives, KDE System Settings
-(`systemsettings`) on Plasma, where only the modules your install ships are listed. On i3, sway,
-or minimal distros without either, these entries are skipped.
+**System settings** (Appearance, Wi-Fi, Sound, etc.) are shown when the desktop's settings app is detected: `gnome-control-center` on GNOME and its relatives, KDE System Settings (`systemsettings`) on Plasma, where only the modules your install ships are listed. On i3, sway, or minimal distros without either, these entries are skipped.
 
 ## Optional Dependencies
 
-| Package        | Used for                          | Fallback                   |
-| -------------- | --------------------------------- | -------------------------- |
-| `curl`         | Web answers, translation, `/speed` | Answers stay empty; speed test reports "curl is not available on this system" |
-| `xclip`        | Copy files to clipboard (X11)     | Shows "Copy failed" banner |
-| `wl-clipboard` | Copy files to clipboard (Wayland) | Shows "Copy failed" banner |
+| Package           | Used for                                                                                                                                                  | Fallback                                                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `curl`            | Web answers, translation, `/speed`                                                                                                                        | Answers stay empty; speed test reports "curl is not available on this system"                   |
+| `xclip`           | Copy files to clipboard (X11)                                                                                                                             | Shows "Copy failed" banner                                                                      |
+| `wl-clipboard`    | Copy files to clipboard (Wayland)                                                                                                                         | Shows "Copy failed" banner                                                                      |
 | `gtk-layer-shell` | Overlay window on Wayland compositors with `wlr-layer-shell` (KDE Plasma, sway, niri, Hyprland): above fullscreen windows, out of the taskbar and Alt+Tab | Normal toplevel window: listed in the taskbar and Alt+Tab, and a fullscreen window stays on top |
 
-Text clipboard (copy path, clipboard history) works without any external tools.
-File clipboard (copy a file to paste into a file manager) needs one of the above.
+Text clipboard (copy path, clipboard history) works without any external tools. File clipboard (copy a file to paste into a file manager) needs one of the above.
 
-`gtk-layer-shell` is dlopened at runtime, never linked, so a system without it starts
-normally and logs one line. It only changes anything under a compositor that implements
-`wlr-layer-shell`; GNOME/mutter does not, so there it makes no difference either way.
-The AUR package (`look-bin`) depends on it, and the `.deb` recommends it.
+`gtk-layer-shell` is dlopened at runtime, never linked, so a system without it starts normally and logs one line. It only changes anything under a compositor that implements `wlr-layer-shell`; GNOME/mutter does not, so there it makes no difference either way. The AUR package (`look-bin`) depends on it, and the `.deb` recommends it.
 
 ```bash
 # Debian/Ubuntu
@@ -183,59 +171,50 @@ sudo patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 /usr/bin/lookapp
 lookapp                                    # launch from terminal to see logs
 ```
 
-> **Why?** NixOS builds link against `/nix/store/.../ld-linux-x86-64.so.2` which doesn't
-> exist on Ubuntu/Debian. `patchelf` rewrites it to the standard `/lib64/ld-linux-x86-64.so.2`.
-> Without this, the binary shows `cannot execute: required file not found`.
-> For proper release builds, use Ubuntu/Debian CI or add a patchelf step to the build script.
+> **Why?** NixOS builds link against `/nix/store/.../ld-linux-x86-64.so.2` which doesn't exist on Ubuntu/Debian. `patchelf` rewrites it to the standard `/lib64/ld-linux-x86-64.so.2`. Without this, the binary shows `cannot execute: required file not found`. For proper release builds, use Ubuntu/Debian CI or add a patchelf step to the build script.
 
-**VM without GPU** (no `/dev/dri` or virtual GPU driver): the app auto-detects this and
-disables hardware acceleration via the WebKitGTK API (`set_hardware_acceleration_policy(Never)`).
+**VM without GPU** (no `/dev/dri` or virtual GPU driver): wgpu falls back to software GL through Mesa, slower but drawn the same. The Tauri backup detects this itself and turns WebKitGTK's acceleration off (`set_hardware_acceleration_policy(Never)`).
 
 **GNOME Shell extension** requires log out/in after first install to load.
 
 **Keyboard shortcuts:**
 
-| Shortcut      | Action                  |
-| ------------- | ----------------------- |
-| Alt+Space     | Toggle Look window      |
-| Esc           | Hide Look               |
-| Alt+Shift+Q   | Quit Look               |
-| Tab/Shift+Tab | Navigate results        |
-| Enter         | Open selected           |
-| Ctrl+Enter    | Search web              |
-| Ctrl+C        | Copy path to clipboard  |
-| Ctrl+F        | Reveal in file manager  |
-| Ctrl+P        | Pick (multi-select)     |
-| Ctrl+Shift+P  | Clear all picks         |
-| Ctrl+/        | Toggle command mode     |
-| Ctrl+Shift+,  | Open settings           |
-| Ctrl+Shift+;  | Reload config from file |
-| Ctrl+H        | Help screen             |
-| Ctrl+Shift+H  | Hide selected app from Look |
-| Ctrl+Shift+Enter | Run selected app as admin (Windows) |
-| Ctrl+D        | Remove selected clipboard entry (in `c"` mode) |
+| Shortcut         | Action                                         |
+| ---------------- | ---------------------------------------------- |
+| Alt+Space        | Toggle Look window                             |
+| Esc              | Hide Look                                      |
+| Alt+Shift+Q      | Quit Look                                      |
+| Tab/Shift+Tab    | Navigate results                               |
+| Enter            | Open selected                                  |
+| Ctrl+Enter       | Search web                                     |
+| Ctrl+C           | Copy path to clipboard                         |
+| Ctrl+F           | Reveal in file manager                         |
+| Ctrl+P           | Pick (multi-select)                            |
+| Ctrl+Shift+P     | Clear all picks                                |
+| Ctrl+/           | Toggle command mode                            |
+| Ctrl+Shift+,     | Open settings                                  |
+| Ctrl+Shift+;     | Reload config from file                        |
+| Ctrl+H           | Help screen                                    |
+| Ctrl+Shift+H     | Hide selected app from Look                    |
+| Ctrl+Shift+Enter | Run selected app as admin (Windows)            |
+| Ctrl+D           | Remove selected clipboard entry (in `c"` mode) |
 
 **Known issues on Ubuntu:**
 
 - GNOME's default Alt+Space (window menu) is auto-disabled by Look on Wayland; restored when Look exits
-- **GNOME Wayland: dock icon visible while Look is open.** Tauri sets `skip_taskbar_hint`
-  asynchronously after the GTK window is mapped, so GNOME's dock ignores it. Native GTK apps
-  like Ulauncher set this hint in the constructor (before mapping), which works. On X11, the
-  hint works correctly. The icon disappears when Look is hidden (Esc / Alt+Space).
-  **Contributions welcome**: if you know a way to set GTK hints before Tauri maps the window,
-  please open a PR!
+- **GNOME Wayland: dock icon visible while Look is open.** Tauri sets `skip_taskbar_hint` asynchronously after the GTK window is mapped, so GNOME's dock ignores it. Native GTK apps like Ulauncher set this hint in the constructor (before mapping), which works. On X11, the hint works correctly. The icon disappears when Look is hidden (Esc / Alt+Space). **Contributions welcome**: if you know a way to set GTK hints before Tauri maps the window, please open a PR!
 
-  **Workaround: hide running app indicators from the dock:**
+    **Workaround: hide running app indicators from the dock:**
 
-  ```bash
-  # Ubuntu Dock
-  gsettings set org.gnome.shell.extensions.ubuntu-dock show-running false
+    ```bash
+    # Ubuntu Dock
+    gsettings set org.gnome.shell.extensions.ubuntu-dock show-running false
 
-  # Dash to Dock
-  gsettings set org.gnome.shell.extensions.dash-to-dock show-running false
+    # Dash to Dock
+    gsettings set org.gnome.shell.extensions.dash-to-dock show-running false
 
-  # Undo: replace 'false' with 'true'
-  ```
+    # Undo: replace 'false' with 'true'
+    ```
 
 **For dev in VM (nixos)**
 
@@ -245,20 +224,13 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 cargo tauri dev
 
 **Known issue: ghost slider trails / overlapping popovers:**
 
-On some WebKitGTK stacks, dragging a slider in Settings leaves a trail of past thumb
-positions, and the theme dropdown shows old text under the new label. Reported on Arch,
-Ubuntu and inside VMs, while identical webkit versions elsewhere don't show it, so it's some
-webkit x GTK/mutter/mesa interaction we can't auto-detect yet.
+On some WebKitGTK stacks, dragging a slider in Settings leaves a trail of past thumb positions, and the theme dropdown shows old text under the new label. Reported on Arch, Ubuntu and inside VMs, while identical webkit versions elsewhere don't show it, so it's some webkit x GTK/mutter/mesa interaction we can't auto-detect yet.
 
 If you hit it, open **Settings > Advanced > Rendering** and flip one of:
 
-- **Disable GPU compositing** (`disable_gpu_compositing`): keeps blur, fixes the ghost via the
-  same API path VMs already use. Requires restart.
-- **Disable blur effect** (`disable_blur_effect`): drops the remaining filters, keeps tint.
-  Live; no restart.
+- **Disable GPU compositing** (`disable_gpu_compositing`): keeps blur, fixes the ghost via the same API path VMs already use. Requires restart.
+- **Disable blur effect** (`disable_blur_effect`): drops the remaining filters, keeps tint. Live; no restart.
 
-Both default off. Configs written before the rename use `arch_disable_gpu` /
-`arch_disable_blur`, which are still read.
+Both default off. Configs written before the rename use `arch_disable_gpu` / `arch_disable_blur`, which are still read.
 
-If neither helps, please open an issue with: `pacman -Q webkit2gtk-4.1 gtk3 mutter mesa`,
-`lspci -nn | grep VGA`, and `echo $XDG_SESSION_TYPE`.
+If neither helps, please open an issue with: `pacman -Q webkit2gtk-4.1 gtk3 mutter mesa`, `lspci -nn | grep VGA`, and `echo $XDG_SESSION_TYPE`.

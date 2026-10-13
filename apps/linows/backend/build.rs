@@ -1,22 +1,19 @@
 //! The app version and the GNOME extension metadata derived from it.
 //!
-//! `tauri.conf.json` is the one place the version is written (release tags and
-//! CI check against it), so this crate reads it from there rather than keeping
-//! a second copy in its own manifest.
+//! A release build takes the version from the tag through `LOOK_VERSION`, as
+//! the macOS release does; anything else uses the workspace version.
 
-const TAURI_CONF: &str = "../src-tauri/tauri.conf.json";
+const VERSION_ENV: &str = "LOOK_VERSION";
 
 fn main() {
-    let conf = std::fs::read_to_string(TAURI_CONF).expect("tauri.conf.json");
-    let version = conf
-        .lines()
-        .find(|l| l.contains("\"version\""))
-        .and_then(|l| l.split('"').nth(3))
-        .expect("version field in tauri.conf.json");
+    println!("cargo:rerun-if-env-changed={VERSION_ENV}");
+    let version = std::env::var(VERSION_ENV)
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
     println!("cargo:rustc-env=APP_VERSION={version}");
-    println!("cargo:rerun-if-changed={TAURI_CONF}");
 
-    generate_gnome_extension_metadata(version);
+    generate_gnome_extension_metadata(&version);
 }
 
 /// Generate the GNOME Shell extension `metadata.json` with `version` derived

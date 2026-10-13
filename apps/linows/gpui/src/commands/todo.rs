@@ -16,9 +16,11 @@ use gpui::{
 use super::draw::{Type, paint_circle, paint_dot, paint_ring, paint_text};
 use super::{Commands, KeyOutcome};
 use crate::bg;
+use crate::bindings::{self, Scope};
 use crate::glyphs;
 use crate::launcher::Launcher;
 use crate::search::{SearchInput, search_field};
+use crate::shortcuts;
 use crate::theme::{self, Theme};
 use crate::todo::{
     self, EXTENSION_WINDOW_DAYS, FUTURE_GROUP_LIMIT, HEATMAP_WEEKS, Period, TREND_DAYS,
@@ -218,42 +220,40 @@ impl Panel {
     }
 
     pub fn key(&mut self, ks: &gpui::Keystroke, cx: &mut Context<Launcher>) -> KeyOutcome {
-        let ctrl = ks.modifiers.control;
-        let shift = ks.modifiers.shift;
-        let alt = ks.modifiers.alt;
-        let key = ks.key.as_str();
-        // Ctrl+Z and Ctrl+Shift+Z step the history, unless a box is being
-        // typed in; Ctrl+N flips the page and Ctrl+S saves, the macOS pair.
-        if ctrl && !alt && key == "z" {
-            if self.field.is_some() {
-                return KeyOutcome::Pass;
+        match bindings::get().hit(ks, Scope::Todo) {
+            // The history steps, unless a box is being typed in.
+            Some(id @ (shortcuts::TODO_UNDO | shortcuts::TODO_REDO)) => {
+                if self.field.is_some() {
+                    return KeyOutcome::Pass;
+                }
+                let stepped = if id == shortcuts::TODO_REDO {
+                    todo::lock().redo()
+                } else {
+                    todo::lock().undo()
+                };
+                if !stepped {
+                    return KeyOutcome::Pass;
+                }
+                cx.notify();
+                return KeyOutcome::Consumed;
             }
-            let stepped = if shift {
-                todo::lock().redo()
-            } else {
-                todo::lock().undo()
-            };
-            if !stepped {
-                return KeyOutcome::Pass;
+            Some(shortcuts::TODO_TOGGLE_PAGE) => {
+                self.page = match self.page {
+                    Page::Tasks => Page::Stats,
+                    Page::Stats => Page::Tasks,
+                };
+                self.field = None;
+                self.heat_hover = None;
+                cx.notify();
+                return KeyOutcome::Consumed;
             }
-            cx.notify();
-            return KeyOutcome::Consumed;
+            Some(shortcuts::TODO_SAVE) => {
+                self.save(cx);
+                return KeyOutcome::Consumed;
+            }
+            _ => {}
         }
-        if ctrl && !shift && !alt && key == "n" {
-            self.page = match self.page {
-                Page::Tasks => Page::Stats,
-                Page::Stats => Page::Tasks,
-            };
-            self.field = None;
-            self.heat_hover = None;
-            cx.notify();
-            return KeyOutcome::Consumed;
-        }
-        if ctrl && !shift && !alt && key == "s" {
-            self.save(cx);
-            return KeyOutcome::Consumed;
-        }
-        if self.field.is_some() && key == "enter" {
+        if self.field.is_some() && ks.key == "enter" {
             self.commit(cx);
             return KeyOutcome::Consumed;
         }

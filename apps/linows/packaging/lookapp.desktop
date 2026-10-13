@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Look
+Comment=Keyboard-first desktop launcher
+Exec=lookapp
+Icon=lookapp
+Type=Application
+Categories=Utility;
+StartupWMClass=lookapp

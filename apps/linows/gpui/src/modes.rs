@@ -2,11 +2,11 @@
 //! discovery menus. One enum rather than the webview's scattered booleans;
 //! the prefixes are spelled as `core/engine/src/modes.rs` spells them.
 
-use std::sync::LazyLock;
-
 use crate::glyphs;
 use crate::rows::Row;
-use crate::shortcuts::{self, Piece};
+use gpui::SharedString;
+
+use crate::shortcuts::{self, Hint, Piece};
 
 const DISCOVERY: char = '"';
 const COMMAND: char = ':';
@@ -76,7 +76,7 @@ impl Mode {
     }
 
     /// The footer line, the webview's per-mode hints.
-    pub fn hint(self) -> &'static str {
+    pub fn hint(self) -> SharedString {
         match self {
             Self::Search | Self::Recent => &HINT_SEARCH,
             Self::PrefixMenu => &HINT_PREFIX_MENU,
@@ -86,58 +86,45 @@ impl Mode {
             Self::ClipboardImage => &HINT_CLIPBOARD_IMAGE,
             Self::Process => &HINT_PROCESS,
         }
+        .text()
     }
 }
 
 // The footer lines, their keys spelled by the catalog.
-static HINT_SEARCH: LazyLock<String> = LazyLock::new(|| {
-    shortcuts::hint(&[
-        Piece::Id(shortcuts::ACTIONS, "Actions"),
-        Piece::Id(shortcuts::HELP, "Help"),
-    ])
-});
-static HINT_PREFIX_MENU: LazyLock<String> = LazyLock::new(|| {
-    shortcuts::hint(&[
-        Piece::Key("Enter", "Pick prefix"),
-        Piece::Id(shortcuts::MOVE_ARROWS, "Move"),
-        Piece::Id(shortcuts::BACK, "Clear"),
-    ])
-});
-static HINT_COMMAND_MENU: LazyLock<String> = LazyLock::new(|| {
-    shortcuts::hint(&[
-        Piece::Key("Enter", "Run command"),
-        Piece::Id(shortcuts::MOVE_ARROWS, "Move"),
-        Piece::Id(shortcuts::BACK, "Clear"),
-    ])
-});
-static HINT_TRANSLATE: LazyLock<String> = LazyLock::new(|| {
-    shortcuts::hint(&[
-        Piece::Key("Enter", "Translate"),
-        Piece::Text("Copy per result"),
-        Piece::Id(shortcuts::BACK, "Clear"),
-    ])
-});
-static HINT_CLIPBOARD: LazyLock<String> = LazyLock::new(|| {
-    shortcuts::hint(&[
-        Piece::Id(shortcuts::CLIP_COPY_BACK, "Copy clip"),
-        Piece::Id(shortcuts::CLIP_PASTE, "Paste"),
-        Piece::Id(shortcuts::CLIP_REMOVE, "Remove clip"),
-    ])
-});
-static HINT_CLIPBOARD_IMAGE: LazyLock<String> = LazyLock::new(|| {
-    shortcuts::hint(&[
-        Piece::Id(shortcuts::CLIP_COPY_BACK, "Copy image"),
-        Piece::Id(shortcuts::CLIP_PASTE, "Paste"),
-        Piece::Id(shortcuts::CLIP_REMOVE, "Remove image"),
-    ])
-});
-static HINT_PROCESS: LazyLock<String> = LazyLock::new(|| {
-    shortcuts::hint(&[
-        Piece::Id(shortcuts::PROCESS_CPU, "CPU"),
-        Piece::Id(shortcuts::PROCESS_KILL, "Kill"),
-        Piece::Id(shortcuts::PROCESS_COPY_PID, "Copy PID"),
-    ])
-});
+static HINT_SEARCH: Hint = Hint::new(&[
+    Piece::Id(shortcuts::ACTIONS, "Actions"),
+    Piece::Id(shortcuts::HELP, "Help"),
+]);
+static HINT_PREFIX_MENU: Hint = Hint::new(&[
+    Piece::Key("Enter", "Pick prefix"),
+    Piece::Id(shortcuts::MOVE_ARROWS, "Move"),
+    Piece::Id(shortcuts::BACK, "Clear"),
+]);
+static HINT_COMMAND_MENU: Hint = Hint::new(&[
+    Piece::Key("Enter", "Run command"),
+    Piece::Id(shortcuts::MOVE_ARROWS, "Move"),
+    Piece::Id(shortcuts::BACK, "Clear"),
+]);
+static HINT_TRANSLATE: Hint = Hint::new(&[
+    Piece::Key("Enter", "Translate"),
+    Piece::Text("Copy per result"),
+    Piece::Id(shortcuts::BACK, "Clear"),
+]);
+static HINT_CLIPBOARD: Hint = Hint::new(&[
+    Piece::Id(shortcuts::CLIP_COPY_BACK, "Copy clip"),
+    Piece::Id(shortcuts::CLIP_PASTE, "Paste"),
+    Piece::Id(shortcuts::CLIP_REMOVE, "Remove clip"),
+]);
+static HINT_CLIPBOARD_IMAGE: Hint = Hint::new(&[
+    Piece::Id(shortcuts::CLIP_COPY_BACK, "Copy image"),
+    Piece::Id(shortcuts::CLIP_PASTE, "Paste"),
+    Piece::Id(shortcuts::CLIP_REMOVE, "Remove image"),
+]);
+static HINT_PROCESS: Hint = Hint::new(&[
+    Piece::Id(shortcuts::PROCESS_CPU, "CPU"),
+    Piece::Id(shortcuts::PROCESS_KILL, "Kill"),
+    Piece::Id(shortcuts::PROCESS_COPY_PID, "Copy PID"),
+]);
 
 /// The `"` menu's prefixes as `(prefix, argument, description)`, for the
 /// shortcut catalog.

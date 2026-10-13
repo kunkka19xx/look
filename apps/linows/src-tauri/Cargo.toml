@@ -1,6 +1,7 @@
 [package]
-name = "lookapp"
-version = "0.1.0"
+# The backup shell, kept building beside the gpui one that ships as `lookapp`.
+name = "lookapp-tauri"
+version.workspace = true
 edition = "2024"
 license = "GPL-3.0-or-later"
 authors = ["kunkka19xx <nobita079x@gmail.com>"]
