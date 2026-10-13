@@ -66,7 +66,7 @@ Every 3 s, a top-level `.tmp` create + rename to a real file inside `~/Documents
 ```
 
 - `.tmp` half of every save is dropped by the noise filter → 20 of 40 events filtered instead of triggering a refresh.
-- Cooldown defers another 140 would-be fires.
+- `cool-skip` counts the 100 ms simulator ticks a dirty refresh spent waiting out the cooldown (140 ticks, 14 s in all), not separate events or refreshes.
 - Result: **20 → 6 refreshes/min, 345 → 99 ms CPU** (3.5× less).
 
 ### 2.2 active-downloader (browser writing `big.iso.crdownload`)

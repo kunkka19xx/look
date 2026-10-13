@@ -173,7 +173,7 @@ lookapp                                    # launch from terminal to see logs
 
 > **Why?** NixOS builds link against `/nix/store/.../ld-linux-x86-64.so.2` which doesn't exist on Ubuntu/Debian. `patchelf` rewrites it to the standard `/lib64/ld-linux-x86-64.so.2`. Without this, the binary shows `cannot execute: required file not found`. For proper release builds, use Ubuntu/Debian CI or add a patchelf step to the build script.
 
-**VM without GPU** (no `/dev/dri` or virtual GPU driver): the app auto-detects this and disables hardware acceleration via the WebKitGTK API (`set_hardware_acceleration_policy(Never)`).
+**VM without GPU** (no `/dev/dri` or virtual GPU driver): wgpu falls back to software GL through Mesa, slower but drawn the same. The Tauri backup detects this itself and turns WebKitGTK's acceleration off (`set_hardware_acceleration_policy(Never)`).
 
 **GNOME Shell extension** requires log out/in after first install to load.
 

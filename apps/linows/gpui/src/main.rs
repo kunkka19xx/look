@@ -505,7 +505,22 @@ fn apply(command: Command, cx: &mut App) {
         Command::Drag(from, to) => mouse(cx, &[from, to]),
         Command::Wheel(at, lines) => wheel(cx, at, lines),
         Command::Refresh => with_launcher(cx, |launcher, cx| launcher.refresh(cx)),
-        Command::ReloadConfig => with_launcher(cx, |launcher, cx| launcher.reload_config(cx)),
+        Command::ReloadConfig if !cx.windows().is_empty() => {
+            with_launcher(cx, |launcher, cx| launcher.reload_config(cx))
+        }
+        // Hidden: no window to carry the banner, so the engine part alone;
+        // the next open reads the theme and the bindings again anyway.
+        Command::ReloadConfig => {
+            cx.spawn(async move |cx| {
+                cx.background_executor()
+                    .spawn(async {
+                        linows_backend::search::reload_config(state(), || {});
+                    })
+                    .await;
+                cx.update(|_| crate::hotkey::set_active(true));
+            })
+            .detach();
+        }
         Command::Health(issues) => {
             with_launcher(cx, |launcher, cx| launcher.set_health(issues.clone(), cx))
         }

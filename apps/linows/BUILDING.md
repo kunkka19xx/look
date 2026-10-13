@@ -54,7 +54,8 @@ cargo run
 ### NixOS
 
 ```bash
-nix develop --accept-flake-config ./apps/linows/
+cd apps/linows
+nix develop --accept-flake-config
 cargo run
 ```
 

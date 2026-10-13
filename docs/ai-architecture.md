@@ -110,7 +110,7 @@ The shell calls `look_ai_route(memory_path, input, model_available, now)` and sw
 
 ## 4. The planner
 
-The model emits JSON forced by a schema in Ollama's `format` field, so an invalid shape is impossible rather than merely unlikely:
+The model emits JSON constrained by a schema in Ollama's `format` field, which rules out a wrong shape in the value itself; what a small model wraps around that value is the decoder's problem (see `parse_plan` below):
 
 ```json
 {"steps": [{"tool": "<alias>", "params": {...}}]}
