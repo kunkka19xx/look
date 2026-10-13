@@ -75,6 +75,22 @@ fn caller_invocation(name: &str, path: &std::path::Path) -> String {
 }
 
 /// Ask the running launcher to toggle, through the same D-Bus call the
+/// Another Look already answers Toggle on the session bus.
+pub fn service_owned() -> bool {
+    let Some(conn) = super::dbus::session() else {
+        return false;
+    };
+    super::dbus::block_on(async {
+        let Ok(proxy) = zbus::fdo::DBusProxy::new(conn).await else {
+            return false;
+        };
+        let Ok(name) = zbus::names::BusName::try_from(DBUS_NAME) else {
+            return false;
+        };
+        proxy.name_has_owner(name).await.unwrap_or(false)
+    })
+}
+
 /// compositor keybinding makes. `false` when no caller tool is installed or
 /// nothing answered.
 pub fn request_toggle() -> bool {

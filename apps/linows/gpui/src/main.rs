@@ -430,8 +430,10 @@ fn points(text: &str) -> Vec<Point<Pixels>> {
         .filter_map(|n| n.parse().ok())
         .collect();
     numbers
-        .chunks_exact(2)
-        .map(|pair| point(px(pair[0]), px(pair[1])))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|[x, y]| point(px(*x), px(*y)))
         .collect()
 }
 
@@ -597,11 +599,8 @@ fn main() {
         retained: Arc::new(Mutex::new(Retained::default())),
     };
     linows_backend::host::install(Box::new(shell.clone()));
-    state().start_bootstrap();
-    // The histories `c"` and `ci"` list: loaded from disk now, then kept by
-    // the poll thread.
-    linows_backend::clipboard::start_monitor();
-
+    // Before the index and the clipboard start: a second launch only hands
+    // its summon over and exits.
     match serve_commands(shell.tx.clone(), summon) {
         Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
             eprintln!("lookapp: already running, sent {summon}");
@@ -610,6 +609,18 @@ fn main() {
         Err(err) => eprintln!("control socket: {err}"),
         Ok(()) => {}
     }
+    // A Look without a control socket (an older shell) still owns the bus
+    // name: as on macOS, this process only toggles it and exits.
+    #[cfg(target_os = "linux")]
+    if !probe_wanted() && linows_backend::platform::linux::wayland_shortcut::service_owned() {
+        linows_backend::platform::linux::wayland_shortcut::request_toggle();
+        eprintln!("lookapp: already running, toggled it");
+        return;
+    }
+    state().start_bootstrap();
+    // The histories `c"` and `ci"` list: loaded from disk now, then kept by
+    // the poll thread.
+    linows_backend::clipboard::start_monitor();
     #[cfg(target_os = "linux")]
     {
         linows_backend::platform::linux::prime_user_session();

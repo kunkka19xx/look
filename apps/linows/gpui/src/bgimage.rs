@@ -155,7 +155,7 @@ pub fn load(key: Key) -> Result<Backdrop, String> {
 /// gpui samples BGRA. Swapped once, before any blur, which treats the
 /// channels alike.
 pub fn to_bgra(pixels: &mut RgbaImage) {
-    for pixel in pixels.chunks_exact_mut(4) {
+    for pixel in pixels.as_chunks_mut::<4>().0 {
         pixel.swap(0, 2);
     }
 }
