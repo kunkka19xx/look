@@ -85,10 +85,10 @@ After it succeeds, the package is live at https://aur.archlinux.org/packages/loo
 
 In the `look` repo → Settings → Secrets and variables → Actions → New repository secret:
 
-| Name                   | Value                                         |
-| ---------------------- | --------------------------------------------- |
-| `AUR_SSH_PRIVATE_KEY`  | Contents of `~/.ssh/aur_look` (private half)  |
-| `AUR_USERNAME`         | Your AUR username (e.g. `kunkka19xx`)         |
+| Name                  | Value                                        |
+| --------------------- | -------------------------------------------- |
+| `AUR_SSH_PRIVATE_KEY` | Contents of `~/.ssh/aur_look` (private half) |
+| `AUR_USERNAME`        | Your AUR username (e.g. `kunkka19xx`)        |
 
 Paste the **entire** private key, including the `-----BEGIN OPENSSH PRIVATE KEY-----` and `-----END OPENSSH PRIVATE KEY-----` lines.
 
@@ -98,7 +98,7 @@ That's the end of one-time setup.
 
 ## Release flow (every tag)
 
-1. Bump version in `apps/linows/src-tauri/tauri.conf.json`.
+1. Bump `version` under `[workspace.package]` in `apps/linows/Cargo.toml` (the tag is what the release builds carry; this keeps Nix and dev builds in step).
 2. Commit, then tag and push:
    ```bash
    git tag v0.7.0
@@ -142,23 +142,17 @@ git push
 
 ## Troubleshooting
 
-**`Permission denied (publickey)` on git clone/push**
-SSH key isn't registered correctly on AUR, or the `IdentityFile` path in `~/.ssh/config` is wrong. Verify with `ssh -T aur@aur.archlinux.org` - should print `Hi <username>! You've successfully authenticated...`.
+**`Permission denied (publickey)` on git clone/push** SSH key isn't registered correctly on AUR, or the `IdentityFile` path in `~/.ssh/config` is wrong. Verify with `ssh -T aur@aur.archlinux.org` - should print `Hi <username>! You've successfully authenticated...`.
 
-**`fatal: pathspec '.SRCINFO' did not match any files`**
-The Docker container failed silently. Re-run with the `useradd` line - `makepkg` refuses to run as root.
+**`fatal: pathspec '.SRCINFO' did not match any files`** The Docker container failed silently. Re-run with the `useradd` line - `makepkg` refuses to run as root.
 
-**CI `nix-build` job fails on vendoring**
-That's the Nix job, not AUR. `apps/linows/nix/package.nix` vendors from the committed `Cargo.lock` via `importCargoLock`, so there is no `cargoHash` to regenerate - check that the lockfile is committed and in sync with the manifests.
+**CI `nix-build` job fails on vendoring** That's the Nix job, not AUR. `apps/linows/nix/package.nix` vendors from the committed `Cargo.lock` via `importCargoLock`, so there is no `cargoHash` to regenerate - check that the lockfile is committed and in sync with the manifests.
 
-**CI fails with `Could not resolve host: github.com` or `curl: (22) ... 404`**
-The `.deb` filename pattern doesn't match. Inspect the latest GitHub Release; if Tauri changed naming (e.g. uppercase vs lowercase, `_amd64` vs `_x86_64`), update the `source=` line in `packaging/aur/PKGBUILD` and the curl URL in `.github/workflows/release-linux.yml`'s `publish-aur` job.
+**CI fails with `Could not resolve host: github.com` or `curl: (22) ... 404`** The `.deb` filename pattern doesn't match. Inspect the latest GitHub Release; if Tauri changed naming (e.g. uppercase vs lowercase, `_amd64` vs `_x86_64`), update the `source=` line in `packaging/aur/PKGBUILD` and the curl URL in `.github/workflows/release-linux.yml`'s `publish-aur` job.
 
-**AUR shows the new version but `yay -S look-bin` says "package not found"**
-User's AUR helper cache is stale. They run `yay -Syu` or `paru -Syu` to refresh.
+**AUR shows the new version but `yay -S look-bin` says "package not found"** User's AUR helper cache is stale. They run `yay -Syu` or `paru -Syu` to refresh.
 
-**Need to delete the package entirely**
-AUR → package page → "Disown" or, as the maintainer, "Request → Deletion". You can't delete the git repo directly.
+**Need to delete the package entirely** AUR → package page → "Disown" or, as the maintainer, "Request → Deletion". You can't delete the git repo directly.
 
 ---
 

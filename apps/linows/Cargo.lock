@@ -4224,7 +4224,7 @@ checksum = "7e57c38c1e860fd37c604281cdfb1dd2216977fd76a50f85ba2f388ef3219616"
 
 [[package]]
 name = "linows-backend"
-version = "0.1.0"
+version = "0.7.2"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -4345,27 +4345,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "look-gpui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ashpd",
- "async-channel",
- "base64 0.22.1",
- "chrono",
- "global-hotkey",
- "gpui-ce",
- "gpui_ce_platform",
- "image",
- "linows-backend",
- "palette",
- "raw-window-handle",
- "uuid",
- "windows 0.62.2",
- "x11rb",
-]
-
-[[package]]
 name = "look-indexing"
 version = "0.1.0"
 dependencies = [
@@ -4444,7 +4423,28 @@ dependencies = [
 
 [[package]]
 name = "lookapp"
-version = "0.1.0"
+version = "0.7.2"
+dependencies = [
+ "anyhow",
+ "ashpd",
+ "async-channel",
+ "base64 0.22.1",
+ "chrono",
+ "global-hotkey",
+ "gpui-ce",
+ "gpui_ce_platform",
+ "image",
+ "linows-backend",
+ "palette",
+ "raw-window-handle",
+ "uuid",
+ "windows 0.62.2",
+ "x11rb",
+]
+
+[[package]]
+name = "lookapp-tauri"
+version = "0.7.2"
 dependencies = [
  "gtk",
  "libloading 0.8.9",

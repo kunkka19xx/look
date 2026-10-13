@@ -56,12 +56,22 @@ const PORT: u16 = 47811;
 /// port so the two do not trade commands.
 const PORT_ENV: &str = "LOOK_CONTROL_PORT";
 
-pub fn bind() -> std::io::Result<TcpListener> {
+/// A launcher already answering gets `summon` instead, and the caller exits.
+pub fn bind(summon: &str) -> std::io::Result<TcpListener> {
     let port = std::env::var(PORT_ENV)
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(PORT);
-    TcpListener::bind(("127.0.0.1", port))
+    let address = ("127.0.0.1", port);
+    match TcpListener::bind(address) {
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            if let Ok(mut running) = std::net::TcpStream::connect(address) {
+                let _ = std::io::Write::write_all(&mut running, summon.as_bytes());
+            }
+            Err(e)
+        }
+        bound => bound,
+    }
 }
 
 /// Logical height of the primary monitor, which the popup centres on.

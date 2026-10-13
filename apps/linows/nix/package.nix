@@ -1,27 +1,23 @@
 {
   lib,
-  stdenv,
   rustPlatform,
   fetchurl,
   pkg-config,
-  wrapGAppsHook3,
-  webkitgtk_4_1,
-  gtk3,
-  gtk-layer-shell,
-  libsoup_3,
-  glib,
-  cairo,
-  pango,
-  gdk-pixbuf,
-  harfbuzz,
+  makeWrapper,
+  libxkbcommon,
+  xorg,
+  wayland,
+  vulkan-loader,
+  libglvnd,
   alsa-lib,
   dbus,
   openssl,
-  libappindicator-gtk3,
-  xdg-utils,
   fontconfig,
+  freetype,
+  xdg-utils,
   curl,
   procps,
+  glib,
 }:
 
 let
@@ -44,10 +40,21 @@ let
         }
       );
   };
+
+  # Loaded at runtime, never linked: wgpu opens the Vulkan loader and GL,
+  # gpui's Wayland client opens libwayland. An rpath keeps them out of the
+  # environment of every app Look launches.
+  runtimeLibs = [
+    vulkan-loader
+    libglvnd
+    wayland
+    libxkbcommon
+    xorg.libxcb
+  ];
 in
 rustPlatform.buildRustPackage {
   pname = "lookapp";
-  version = (builtins.fromJSON (builtins.readFile ../src-tauri/tauri.conf.json)).version;
+  version = (builtins.fromTOML (builtins.readFile ../Cargo.toml)).workspace.package.version;
 
   src = lib.cleanSourceWith {
     src = ../../..;
@@ -88,7 +95,7 @@ rustPlatform.buildRustPackage {
     };
   };
 
-  buildAndTestSubdir = "apps/linows/src-tauri";
+  buildAndTestSubdir = "apps/linows/gpui";
 
   # buildRustPackage runs `cargo test` by default, which recompiles the
   # workspace as test harnesses on top of the release build. `ci.yml` already
@@ -98,31 +105,24 @@ rustPlatform.buildRustPackage {
 
   nativeBuildInputs = [
     pkg-config
-    wrapGAppsHook3
+    makeWrapper
   ];
 
-  # dlopened at runtime, never linked, so it is not a buildInput: the absolute
-  # store path is compiled in instead. A wrapper exporting LD_LIBRARY_PATH
-  # would leak into every app Look launches.
-  LOOK_GTK_LAYER_SHELL = "${gtk-layer-shell}/lib/libgtk-layer-shell.so.0";
-
   buildInputs = [
-    webkitgtk_4_1
-    gtk3
-    libsoup_3
-    glib
-    cairo
-    pango
-    gdk-pixbuf
-    harfbuzz
+    libxkbcommon
+    xorg.libxcb
+    xorg.libXau
+    xorg.libXdmcp
     alsa-lib
     dbus
     openssl
-    libappindicator-gtk3
+    fontconfig
+    freetype
   ];
 
-  preFixup = ''
-    gappsWrapperArgs+=(
+  postFixup = ''
+    patchelf --add-rpath ${lib.makeLibraryPath runtimeLibs} $out/bin/lookapp
+    wrapProgram $out/bin/lookapp \
       --prefix PATH : ${lib.makeBinPath [
         xdg-utils
         fontconfig
@@ -132,33 +132,17 @@ rustPlatform.buildRustPackage {
         # caller wayland_shortcut.rs looks for.
         glib
       ]}
-    )
   '';
 
   postInstall = ''
-    # Desktop file. StartupWMClass is the app_id GTK derives from argv[0], and
-    # the icon name matches the .deb's (both keyed off the binary name), so the
-    # shell resolves the window to this entry on either packaging.
-    mkdir -p $out/share/applications
-    cat > $out/share/applications/lookapp.desktop <<'EOF'
-[Desktop Entry]
-Name=Look
-Comment=Keyboard-first desktop launcher
-Exec=lookapp
-Icon=lookapp
-Type=Application
-Categories=Utility;
-StartupWMClass=lookapp
-EOF
-
-    # Icons
+    install -Dm644 $src/apps/linows/packaging/lookapp.desktop \
+      $out/share/applications/lookapp.desktop
     for size in 32 64 128; do
-      icon="$src/apps/linows/src-tauri/icons/''${size}x''${size}.png"
-      if [ -f "$icon" ]; then
-        mkdir -p $out/share/icons/hicolor/''${size}x''${size}/apps
-        cp "$icon" $out/share/icons/hicolor/''${size}x''${size}/apps/lookapp.png
-      fi
+      install -Dm644 $src/apps/linows/icons/''${size}x''${size}.png \
+        $out/share/icons/hicolor/''${size}x''${size}/apps/lookapp.png
     done
+    install -Dm644 $src/apps/linows/icons/128x128@2x.png \
+      $out/share/icons/hicolor/256x256/apps/lookapp.png
   '';
 
   meta = {

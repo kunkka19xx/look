@@ -248,7 +248,7 @@ function Invoke-Install {
             $Version = Resolve-LatestVersion $Repo
         }
         $resolvedVersion = $Version
-        # NSIS installer naming from tauri-cli is `<ProductName>_<version>_x64-setup.exe`.
+        # Installer naming from release-windows.yml: `Look_<version>_x64-setup.exe`.
         $setupFileName = "Look_${Version}_x64-setup.exe"
         $base = "https://github.com/$Repo/releases/download/v$Version"
         $setupUrl = "$base/$setupFileName"

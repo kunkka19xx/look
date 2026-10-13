@@ -1,10 +1,14 @@
 [workspace]
 resolver = "3"
 members = ["backend", "gpui", "src-tauri"]
-# What a bare `cargo build` builds: the shipping shell and its backend. The
-# gpui port links wgpu and xkbcommon, which the Tauri dev shell and CI do not
-# carry yet, so it is built by name: `cargo build -p look-gpui`.
-default-members = ["backend", "src-tauri"]
+# A bare `cargo build` builds the shipping shell (gpui) and its backend. The
+# Tauri shell stays as the backup: `cargo build -p lookapp-tauri`.
+default-members = ["backend", "gpui"]
+
+# The release version for dev and Nix builds. A tagged release takes its
+# version from the tag instead (LOOK_VERSION, see backend/build.rs).
+[workspace.package]
+version = "0.7.2"
 
 [profile.release]
 strip = true
@@ -12,12 +16,6 @@ lto = true
 codegen-units = 1
 opt-level = "s"
 panic = "abort"
-
-# The gpui shell builds with the same settings; the name stays so the
-# Makefile and CI targets do, and so it can diverge later without touching
-# the Tauri build.
-[profile.release-gpui]
-inherits = "release"
 
 # Unoptimised, decoding a background photo took seconds in a dev build.
 [profile.dev.package.image]

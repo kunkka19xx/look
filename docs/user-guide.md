@@ -86,16 +86,16 @@ terminal=ghostty
 file_manager=nautilus
 ```
 
-| Key            | Used for                                            | Example values                                            |
-| -------------- | --------------------------------------------------- | --------------------------------------------------------- |
-| `text_editor`  | editing one file (`Cmd+E` on a file row)            | `nvim`, `hx`, `micro`, `vim`, `zed`                       |
-| `code_editor`  | opening a project folder (`Cmd+E` on a folder row)  | `zed`, `code`, `cursor`, `xcode`                          |
-| `terminal`     | `Cmd+T`, and the host for any terminal editor       | `ghostty`, `iterm`, `kitty`, `wezterm`, `gnome-terminal`   |
-| `file_manager` | the `Cmd+F` reveal target                           | `nautilus`, `dolphin`, `thunar`, `finder`                 |
+| Key            | Used for                                           | Example values                                           |
+| -------------- | -------------------------------------------------- | -------------------------------------------------------- |
+| `text_editor`  | editing one file (`Cmd+E` on a file row)           | `nvim`, `hx`, `micro`, `vim`, `zed`                      |
+| `code_editor`  | opening a project folder (`Cmd+E` on a folder row) | `zed`, `code`, `cursor`, `xcode`                         |
+| `terminal`     | `Cmd+T`, and the host for any terminal editor      | `ghostty`, `iterm`, `kitty`, `wezterm`, `gnome-terminal` |
+| `file_manager` | the `Cmd+F` reveal target                          | `nautilus`, `dolphin`, `thunar`, `finder`                |
 
 **Declare nothing and nothing changes.** An undeclared key means the system default, which is what Look did before these keys existed. They are config-file only, with no Settings control, so edit `~/.look/config` and reload with `Cmd+Shift+;`.
 
-**Name the tool, not a command.** A value is a tool *name*, never a command carrying its own arguments: `text_editor=nvim -u NONE` will not work. Look already knows how to drive each tool, including running a terminal editor inside your terminal, which is the whole reason you name one instead of writing a command. Case, a trailing `.app`, and a leading directory are forgiven, so `Zed`, `Zed.app`, and `/opt/homebrew/bin/zed` all mean `zed`. Spelling out a full path pins that exact build instead of whatever `PATH` finds first.
+**Name the tool, not a command.** A value is a tool _name_, never a command carrying its own arguments: `text_editor=nvim -u NONE` will not work. Look already knows how to drive each tool, including running a terminal editor inside your terminal, which is the whole reason you name one instead of writing a command. Case, a trailing `.app`, and a leading directory are forgiven, so `Zed`, `Zed.app`, and `/opt/homebrew/bin/zed` all mean `zed`. Spelling out a full path pins that exact build instead of whatever `PATH` finds first.
 
 Which key an action uses:
 
@@ -109,16 +109,16 @@ Which key an action uses:
 
 A value that cannot work says so instead of doing nothing:
 
-| What you set                     | What Look tells you                                                |
-| -------------------------------- | ------------------------------------------------------------------ |
-| a terminal editor, no `terminal` | _nvim runs in a terminal; set terminal in your Look config_        |
-| a terminal as `text_editor`      | _ghostty is a terminal; set text_editor to the editor it should run_ |
-| `terminal=warp`, `terminal=hyper` | _warp cannot be told to run a command_                             |
-| nothing at all                   | _Set text_editor in your Look config_                              |
+| What you set                      | What Look tells you                                                  |
+| --------------------------------- | -------------------------------------------------------------------- |
+| a terminal editor, no `terminal`  | _nvim runs in a terminal; set terminal in your Look config_          |
+| a terminal as `text_editor`       | _ghostty is a terminal; set text_editor to the editor it should run_ |
+| `terminal=warp`, `terminal=hyper` | _warp cannot be told to run a command_                               |
+| nothing at all                    | _Set text_editor in your Look config_                                |
 
 Warp and Hyper are named because neither offers a way to run a command in a new window. Every other terminal is either known or driven with the `-e` convention, and one nobody has listed simply works if it honors `-e`.
 
-**The action menu.** `Cmd+K` (or `Cmd+J`) on a file, folder, or app row lists every verb that row accepts, with the chord beside it and the declared tool's name filled in: *Edit in Zed*, *Open in Ghostty*, *Reveal in Finder*. `Cmd+J` / `Cmd+K` or the arrows move, `Enter` runs, `Esc` closes. On a row from a source block that declares `then` targets, the menu lists those targets instead, and the chords above keep working on the row.
+**The action menu.** `Cmd+K` (or `Cmd+J`) on a file, folder, or app row lists every verb that row accepts, with the chord beside it and the declared tool's name filled in: _Edit in Zed_, _Open in Ghostty_, _Reveal in Finder_. `Cmd+J` / `Cmd+K` or the arrows move, `Enter` runs, `Esc` closes. On a row from a source block that declares `then` targets, the menu lists those targets instead, and the chords above keep working on the row.
 
 ## Super actions
 
@@ -206,17 +206,19 @@ mnemonic = "L"   # Cmd+L (Alt+L elsewhere), and the L in "Lock" is highlighted
 **`value` prints one JSON object.** Only `value` is required, so a shell one-liner is a whole tile:
 
 ```json
-{"value": "84Gi"}
+{ "value": "84Gi" }
 ```
 
 A tile drawn bigger than one cell can say as much as Weather does:
 
 ```json
-{"value":   "84Gi",
- "caption": "DISK FREE",
- "lines":   ["of 460Gi"],
- "icon":    "internaldrive",
- "state":   "off"}
+{
+  "value": "84Gi",
+  "caption": "DISK FREE",
+  "lines": ["of 460Gi"],
+  "icon": "internaldrive",
+  "state": "off"
+}
 ```
 
 Printing nothing hides the tile - that is how a "next meeting" tile disappears on a day with no meetings.
@@ -372,26 +374,26 @@ lookapp files report       # files-only search for "report"
 
 The mode name comes first, and everything after it is the term, verbatim: `lookapp shell ls -la` keeps its `-la` instead of reading it as an option. Names are case-insensitive and most have shorter aliases.
 
-| Mode | Aliases | Opens | Where |
-| --- | --- | --- | --- |
-| `clipboard` | `clip`, `cb` | `c"` clipboard history | all |
-| `clipboard-image` | `clipimg`, `ci` | `ci"` copied images | all |
-| `apps` | `app` | `a"` applications only | all |
-| `files` | `file` | `f"` files only | all |
-| `folders` | `folder`, `dirs` | `d"` folders only | all |
-| `recent` | | `rc"` recent files and folders | all |
-| `regex` | `re` | `r"` regex search | all |
-| `processes` | `ps` | `ps"` find and kill running processes | all |
-| `translate` | `tr` | `t"` quick translation | all |
-| `dictionary` | `dict` | `tw"` dictionary lookup | macOS |
-| `calc` | `calculator` | the calculator panel | all |
-| `pomo` | `pomodoro` | the pomodoro timer | all |
-| `todo` | | daily tasks | all |
-| `speed` | | the network speed test | all |
-| `kill` | | running processes | all |
-| `shell` | | the shell command panel | all |
-| `sys` | | system info | all |
-| `ai` | `chat`, `ask` | the `>` AI session | macOS |
+| Mode              | Aliases          | Opens                                 | Where |
+| ----------------- | ---------------- | ------------------------------------- | ----- |
+| `clipboard`       | `clip`, `cb`     | `c"` clipboard history                | all   |
+| `clipboard-image` | `clipimg`, `ci`  | `ci"` copied images                   | all   |
+| `apps`            | `app`            | `a"` applications only                | all   |
+| `files`           | `file`           | `f"` files only                       | all   |
+| `folders`         | `folder`, `dirs` | `d"` folders only                     | all   |
+| `recent`          |                  | `rc"` recent files and folders        | all   |
+| `regex`           | `re`             | `r"` regex search                     | all   |
+| `processes`       | `ps`             | `ps"` find and kill running processes | all   |
+| `translate`       | `tr`             | `t"` quick translation                | all   |
+| `dictionary`      | `dict`           | `tw"` dictionary lookup               | macOS |
+| `calc`            | `calculator`     | the calculator panel                  | all   |
+| `pomo`            | `pomodoro`       | the pomodoro timer                    | all   |
+| `todo`            |                  | daily tasks                           | all   |
+| `speed`           |                  | the network speed test                | all   |
+| `kill`            |                  | running processes                     | all   |
+| `shell`           |                  | the shell command panel               | all   |
+| `sys`             |                  | system info                           | all   |
+| `ai`              | `chat`, `ask`    | the `>` AI session                    | macOS |
 
 Flags:
 
@@ -475,63 +477,24 @@ Built-in theme presets are available:
 | Liquid      | Liquid Glass surface (macOS 26+)  |
 | Custom      | Your own colors derived from tint |
 
-Theme is saved as `ui_theme=<name>` in config, and a name written there overrides
-the individual `ui_*` values.
+Theme is saved as `ui_theme=<name>` in config, and a name written there overrides the individual `ui_*` values.
 
-On macOS, Save Config writes the preset name only while every value still matches
-that preset; tweak one and it writes `ui_theme=` with your literal `ui_*` values
-instead. On Linux and Windows the names are hyphenated (`tokyo-night`,
-`rose-pine`), an empty or missing `ui_theme` means the built-in default of
-Kanagawa rather than your literal values, and tweaking a colour writes
-`ui_theme=custom`. Either way the edit survives a reload. A fresh config there
-carries no `ui_*` keys; each one left out takes the shipped default. Kindle is the
-one light preset: it also switches the frosted panels to a light material and the
-font to Charter, macOS' stand-in for Bookerly. Picking a preset overwrites your
-tint, text color, border and font; `Custom` keeps the current values and derives
-the rest from them.
+On macOS, Save Config writes the preset name only while every value still matches that preset; tweak one and it writes `ui_theme=` with your literal `ui_*` values instead. On Linux and Windows the names are hyphenated (`tokyo-night`, `rose-pine`), an empty or missing `ui_theme` means the built-in default of Kanagawa rather than your literal values, and tweaking a colour writes `ui_theme=custom`. Either way the edit survives a reload. A fresh config there carries no `ui_*` keys; each one left out takes the shipped default. Kindle is the one light preset: it also switches the frosted panels to a light material and the font to Charter, macOS' stand-in for Bookerly. Picking a preset overwrites your tint, text color, border and font; `Custom` keeps the current values and derives the rest from them.
 
-Liquid is the one preset that changes how surfaces are drawn rather than only
-what colour they are. It renders the window and every tile on macOS 26's Liquid
-Glass, rounds corners further, and uses far more transparent fills so the glass
-reads as a lens rather than a panel. It needs macOS 26 and is hidden from the
-picker on older releases. If a config written on macOS 26 is opened on an older
-one, the value is kept and shown as unsupported rather than silently changed.
-Two consequences worth knowing:
+Liquid is the one preset that changes how surfaces are drawn rather than only what colour they are. It renders the window and every tile on macOS 26's Liquid Glass, rounds corners further, and uses far more transparent fills so the glass reads as a lens rather than a panel. It needs macOS 26 and is hidden from the picker on older releases. If a config written on macOS 26 is opened on an older one, the value is kept and shown as unsupported rather than silently changed. Two consequences worth knowing:
 
-- `Blur Opacity` is disabled while Liquid Glass is the blur style, because glass
-  has no blur to thin. Your value is kept and returns when you switch back.
-- The glass follows `Blur Style`, not the theme name, so you can pick
-  `Settings > Appearance > Blur Style > Liquid Glass` on any theme to get the
-  glass surface with that theme's palette. Going the other way, selecting Liquid
-  and then a different blur style keeps Liquid's palette _and_ its rounder
-  corners, and swaps only the material for the classic blur.
+- `Blur Opacity` is disabled while Liquid Glass is the blur style, because glass has no blur to thin. Your value is kept and returns when you switch back.
+- The glass follows `Blur Style`, not the theme name, so you can pick `Settings > Appearance > Blur Style > Liquid Glass` on any theme to get the glass surface with that theme's palette. Going the other way, selecting Liquid and then a different blur style keeps Liquid's palette _and_ its rounder corners, and swaps only the material for the classic blur.
 
-On Linux and Windows, Liquid is clear glass rather than frosted: the same
-palette, the same rounder corners, plus a bright rim along the top edge.
-Refraction is not available to a web frontend at all - CSS can only blur what
-the page itself drew, and the desktop behind the window is drawn by the system,
-not the page.
+On Linux and Windows, Liquid is clear glass rather than frosted: the same palette, the same rounder corners, plus a bright rim along the top edge. Refraction is not available to a web frontend at all - CSS can only blur what the page itself drew, and the desktop behind the window is drawn by the system, not the page.
 
-Blur behind the window is the compositor's to grant, and Look asks for it
-wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and niri through the
-`ext-background-effect-v1` protocol, older Plasma through KDE's own, and KWin on
-X11 through a window property. The switch is `Settings > Advanced > Rendering >
-Blur behind window` (`ui_compositor_blur`), and it is there on every Linux
-desktop. It starts on under KWin, where the frost is what it says on the tin,
-and off everywhere else: taking the request and drawing it well are two
-different things, so the rest is opt-in until you have looked at it on your own
-setup. On a desktop that ignores the request the switch does nothing either way.
+Blur behind the window is the compositor's to grant, and Look asks for it wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and niri through the `ext-background-effect-v1` protocol, older Plasma through KDE's own, and KWin on X11 through a window property. The switch is `Settings > Advanced > Rendering > Blur behind window` (`ui_compositor_blur`), and it is there on every Linux desktop. It starts on under KWin, where the frost is what it says on the tin, and off everywhere else: taking the request and drawing it well are two different things, so the rest is opt-in until you have looked at it on your own setup. On a desktop that ignores the request the switch does nothing either way.
 
-With the frost on, `Blur Opacity` starts thinning the tint so more of it shows
-through. The compositor blurs all of that area or none of it, so thinning
-reveals more frost, never a sharp desktop; turning the switch off is what gives
-you a sharp view through. How strong the frost is belongs to the compositor too
+With the frost on, `Blur Opacity` starts thinning the tint so more of it shows through. The compositor blurs all of that area or none of it, so thinning reveals more frost, never a sharp desktop; turning the switch off is what gives you a sharp view through. How strong the frost is belongs to the compositor too
+
 - on Plasma, `System Settings > Desktop Effects > Blur`.
 
-niri answers the request with xray blur, which is its default: one blurred copy
-of the wallpaper, reused behind every window. The frost never picks up the
-windows below, so it looks like a snapshot that froze. To get real frost, point
-a niri rule at Look:
+niri answers the request with xray blur, which is its default: one blurred copy of the wallpaper, reused behind every window. The frost never picks up the windows below, so it looks like a snapshot that froze. To get real frost, point a niri rule at Look:
 
 ```kdl
 layer-rule {
@@ -545,17 +508,9 @@ window-rule {
 }
 ```
 
-Then turn `Blur behind window` on. The layer rule is the one that applies when
-`gtk-layer-shell` is installed and the window rule when it is not, so keeping
-both covers either. Leave `blur` out of the block: Look already asks over the
-protocol, and niri's own `blur true` follows `geometry-corner-radius` instead of
-Look's shape, which frosts the gaps between the floating panes. Dropping xray
-costs GPU time, since the blur is then sampled every frame rather than once.
+Then turn `Blur behind window` on. The layer rule is the one that applies when `gtk-layer-shell` is installed and the window rule when it is not, so keeping both covers either. Leave `blur` out of the block: Look already asks over the protocol, and niri's own `blur true` follows `geometry-corner-radius` instead of Look's shape, which frosts the gaps between the floating panes. Dropping xray costs GPU time, since the blur is then sampled every frame rather than once.
 
-Where there is no frost at all (GNOME 50 and earlier, plain sway, X11 without KWin) Look
-stays clear glass and `Blur Opacity` applies only when you have set a background
-image. Driving blur from your own compositor config still works; Look's request
-is additional, not exclusive.
+Where there is no frost at all (GNOME 50 and earlier, plain sway, X11 without KWin) Look stays clear glass and `Blur Opacity` applies only when you have set a background image. Driving blur from your own compositor config still works; Look's request is additional, not exclusive.
 
 **Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. AI mode (`>`) hides the row regardless of this setting, and its digits open listed conversations instead. The launcher window stays the same size either way.
 
@@ -607,9 +562,7 @@ Runtime config file:
 - reload from a script: `lookapp reload-config` applies the file in the running Look without opening the window, so a script that rewrites the theme (for example to follow the wallpaper) takes effect immediately. If Look is not running it does nothing and exits 0.
 - reset to fresh defaults from UI: `Settings -> Advanced -> Create Fresh Config` (confirmation popup)
 
-NixOS / Home Manager users can manage the same file declaratively through the
-flake's Home Manager module. Add the input and pass `inputs` down to your
-modules, which Home Manager does not do on its own:
+NixOS / Home Manager users can manage the same file declaratively through the flake's Home Manager module. Add the input and pass `inputs` down to your modules, which Home Manager does not do on its own:
 
 ```nix
 # flake.nix
@@ -636,16 +589,9 @@ homeConfigurations."me" = home-manager.lib.homeManagerConfiguration {
 }
 ```
 
-Activation merges those keys into `~/.look/config` instead of replacing it, so
-settings you change in the app are kept and only the keys declared in Nix are
-overwritten. Removing a key from the Nix config removes it from the file on the
-next rebuild. Nix wins on every activation, so for the keys it manages, edit the
-Nix config and rebuild rather than using Look's in-app Save Config button. The
-first activation copies the pre-Nix file to `~/.look.config.hm-backup`. See
-`apps/linows/BUILDING.md` for the full option list.
+Activation merges those keys into `~/.look/config` instead of replacing it, so settings you change in the app are kept and only the keys declared in Nix are overwritten. Removing a key from the Nix config removes it from the file on the next rebuild. Nix wins on every activation, so for the keys it manages, edit the Nix config and rebuild rather than using Look's in-app Save Config button. The first activation copies the pre-Nix file to `~/.look.config.hm-backup`. See `apps/linows/BUILDING.md` for the full option list.
 
-If the window never shows after a system update and Look logs `EGL_BAD_PARAMETER`, add
-`inputs.nixpkgs.follows = "nixpkgs";` to the `look` input (builds locally, no Cachix).
+If the window never shows after a system update and Look logs `EGL_BAD_PARAMETER`, add `inputs.nixpkgs.follows = "nixpkgs";` to the `look` input (builds locally, no Cachix).
 
 Backend-related keys:
 
@@ -718,13 +664,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 
 ## Keyboard shortcuts (quick reference)
 
-Every modifier chord below is the default. On macOS, and in the gpui build on
-Linux and Windows, you can rebind them in `Settings > Shortcuts`: click a key
-capsule, press the chord you want, then Save Config (or set
-`shortcut_<group>_<action>` in `~/.look/config`). The keys that
-structure navigation - `Enter`, `Tab`, `Escape`, the arrows, the `Y`/`N`
-confirmations - stay fixed, since each means something different in the main
-bar, AI mode, command mode and a confirmation.
+Every modifier chord below is the default. On macOS, and in the gpui build on Linux and Windows, you can rebind them in `Settings > Shortcuts`: click a key capsule, press the chord you want, then Save Config (or set `shortcut_<group>_<action>` in `~/.look/config`). The keys that structure navigation - `Enter`, `Tab`, `Escape`, the arrows, the `Y`/`N` confirmations - stay fixed, since each means something different in the main bar, AI mode, command mode and a confirmation.
 
 - `Enter`: open selected result / run command
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)

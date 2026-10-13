@@ -59,5 +59,5 @@ pub use look_storage;
 pub use look_todo;
 pub use look_tools;
 
-/// The release version, from `tauri.conf.json` through `build.rs`.
+/// The release version: the tag in CI, the workspace version otherwise (build.rs).
 pub const APP_VERSION: &str = env!("APP_VERSION");

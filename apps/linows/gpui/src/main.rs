@@ -72,6 +72,8 @@ pub enum Command {
     Toggle,
     Show,
     Hide,
+    /// `lookapp reload-config` from a second process.
+    ReloadConfig,
     Query(String),
     /// Dev control: a keystroke handed to the launcher, so a probe can reach
     /// what a key reaches without synthesizing one at the compositor.
@@ -189,8 +191,8 @@ impl LauncherWindow for Shell {
 
 /// Dev control, standing in for a D-Bus call that carries text: `query <text>`
 /// fills the field so a results screenshot needs no typing.
-fn serve_commands(tx: async_channel::Sender<Command>) -> std::io::Result<()> {
-    let listener = host::bind()?;
+fn serve_commands(tx: async_channel::Sender<Command>, summon: &str) -> std::io::Result<()> {
+    let listener = host::bind(summon)?;
     std::thread::Builder::new()
         .name("look-control".into())
         .spawn(move || {
@@ -204,6 +206,7 @@ fn serve_commands(tx: async_channel::Sender<Command>) -> std::io::Result<()> {
                     "show" => Command::Show,
                     "hide" => Command::Hide,
                     "quit" => Command::Quit,
+                    engine_modes::RELOAD_CONFIG_COMMAND => Command::ReloadConfig,
                     key if key.starts_with("key ") => {
                         match gpui::Keystroke::parse(key["key ".len()..].trim()) {
                             Ok(keystroke) => Command::Key(keystroke),
@@ -500,6 +503,7 @@ fn apply(command: Command, cx: &mut App) {
         Command::Drag(from, to) => mouse(cx, &[from, to]),
         Command::Wheel(at, lines) => wheel(cx, at, lines),
         Command::Refresh => with_launcher(cx, |launcher, cx| launcher.refresh(cx)),
+        Command::ReloadConfig => with_launcher(cx, |launcher, cx| launcher.reload_config(cx)),
         Command::Health(issues) => {
             with_launcher(cx, |launcher, cx| launcher.set_health(issues.clone(), cx))
         }
@@ -543,7 +547,7 @@ fn main() {
     crash::install_panic_hook();
 
     if std::env::args().any(|a| a == "--version" || a == "-V") {
-        println!("lookapp-gpui {}", linows_backend::APP_VERSION);
+        println!("lookapp {}", linows_backend::APP_VERSION);
         return;
     }
 
@@ -564,10 +568,6 @@ fn main() {
             eprintln!("lookapp: mode \"{name}\" is not available on this platform");
             std::process::exit(2);
         }
-        engine_modes::Launch::ReloadConfig => {
-            eprintln!("lookapp: reload-config is not wired in the gpui shell yet");
-            return;
-        }
         // A running launcher answers the same D-Bus call the hotkey makes;
         // with none running, this process becomes it.
         #[cfg(target_os = "linux")]
@@ -578,11 +578,16 @@ fn main() {
         }
         _ => {}
     }
+    // What a second launch hands the running one over the control socket.
+    let summon = if launch == engine_modes::Launch::ReloadConfig {
+        engine_modes::RELOAD_CONFIG_COMMAND
+    } else {
+        "toggle"
+    };
 
     #[cfg(debug_assertions)]
     linows_backend::startup::setup_dev_env();
-    // Autostart and PATH registration (`startup::sync_integrations`) stay with
-    // the shipping shell until this one replaces it.
+    linows_backend::startup::sync_integrations();
 
     let start_hidden = std::env::args().any(|a| a == "--hidden");
     let (tx, rx) = async_channel::unbounded();
@@ -597,9 +602,9 @@ fn main() {
     // the poll thread.
     linows_backend::clipboard::start_monitor();
 
-    match serve_commands(shell.tx.clone()) {
+    match serve_commands(shell.tx.clone(), summon) {
         Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
-            eprintln!("lookapp-gpui: already running, toggled it");
+            eprintln!("lookapp: already running, sent {summon}");
             return;
         }
         Err(err) => eprintln!("control socket: {err}"),

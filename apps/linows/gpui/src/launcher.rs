@@ -1022,7 +1022,7 @@ impl Launcher {
 
     /// Ctrl+Shift+; : the file was edited by hand. The theme, the fonts and
     /// the engine read it again; the settings screen, if up, too.
-    fn reload_config(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn reload_config(&mut self, cx: &mut Context<Self>) {
         theme::load();
         bindings::load();
         fonts::ensure_family(cx, &theme::get().font_family);

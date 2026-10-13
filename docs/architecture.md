@@ -345,6 +345,7 @@ The theme system uses semantic color tokens for consistent theming across all bu
 ### Text Color Derivation (Custom Mode)
 
 In "Custom" mode, semantic text colors auto-derive from main text color:
+
 - Secondary = 82% brightness of main text
 - Muted = 64% brightness of main text
 
@@ -353,200 +354,76 @@ This ensures good contrast whether using light or dark themes.
 ### Built-in Themes
 
 Available themes (selected via Settings > Appearance):
-| Theme | Description |
-|-------|-------------|
-| Catppuccin | Warm pastels (Mocha variant) |
-| Tokyo Night | Dark with vibrant accents |
-| Rose Pine | Soft pink-tinted dark theme |
-| Gruvbox | Retro warm tones |
-| Dracula | Classic purple-accented dark |
-| Kanagawa | Japanese-inspired dark theme |
-| Kindle | Paper and ink, e-reader light theme (Charter serif) |
-| Liquid | Liquid Glass surface, translucent fills (macOS 26+) |
-| Custom | Auto-derived semantic colors from tint |
+
+| Theme       | Description                                         |
+| ----------- | --------------------------------------------------- |
+| Catppuccin  | Warm pastels (Mocha variant)                        |
+| Tokyo Night | Dark with vibrant accents                           |
+| Rose Pine   | Soft pink-tinted dark theme                         |
+| Gruvbox     | Retro warm tones                                    |
+| Dracula     | Classic purple-accented dark                        |
+| Kanagawa    | Japanese-inspired dark theme                        |
+| Kindle      | Paper and ink, e-reader light theme (Charter serif) |
+| Liquid      | Liquid Glass surface, translucent fills (macOS 26+) |
+| Custom      | Auto-derived semantic colors from tint              |
 
 Themes are defined in `Themes/` folder:
+
 - `BuiltinThemeStyle`: Base style with all color tokens
 - `BuiltinThemePreset`: Dropdown selection enum
 - Individual theme files: `CatppuccinTheme.swift`, `TokyoNightTheme.swift`, etc.
 
-A preset declares its `ThemeAppearance` (`.dark` or `.light`). It pins the
-NSVisualEffectView appearance, so a preset frosts the same way whether macOS is
-in Light or Dark mode, and it picks how the opaque command-mode surfaces and the
-pane scrims are mixed: dark themes darken, light themes lighten. A preset may
-also declare a `fontName`; presets that do not reset the font to the app default
-when applied.
+A preset declares its `ThemeAppearance` (`.dark` or `.light`). It pins the NSVisualEffectView appearance, so a preset frosts the same way whether macOS is in Light or Dark mode, and it picks how the opaque command-mode surfaces and the pane scrims are mixed: dark themes darken, light themes lighten. A preset may also declare a `fontName`; presets that do not reset the font to the app default when applied.
 
-A preset also declares a `ThemeSurface` (`.classic` or `.liquid`), the second
-non-token axis alongside `ThemeAppearance`: it selects how surfaces are drawn
-rather than what colour they are, and scales every themed corner radius through
-`ThemeStore.surfaceCornerRadius(_:)`. Any new border or `clipShape` on a themed
-surface must go through that helper, or it desyncs from the fill behind it and
-draws a stray line across the corners.
+A preset also declares a `ThemeSurface` (`.classic` or `.liquid`), the second non-token axis alongside `ThemeAppearance`: it selects how surfaces are drawn rather than what colour they are, and scales every themed corner radius through `ThemeStore.surfaceCornerRadius(_:)`. Any new border or `clipShape` on a themed surface must go through that helper, or it desyncs from the fill behind it and draws a stray line across the corners.
 
-`ThemeStore.themeSurface()` resolves the axis from `blurMaterial` first and the
-preset second. That is deliberate: `savedThemeName()` stops recording `ui_theme`
-as soon as any value diverges from its preset (the load path applies the theme
-*over* the individual `ui_*` keys, so a stale name would discard the user's
-tweaks), while `ui_blur_material` persists on its own. Keying off the material
-means a customised Liquid theme keeps its glass across a relaunch.
+`ThemeStore.themeSurface()` resolves the axis from `blurMaterial` first and the preset second. That is deliberate: `savedThemeName()` stops recording `ui_theme` as soon as any value diverges from its preset (the load path applies the theme _over_ the individual `ui_*` keys, so a stale name would discard the user's tweaks), while `ui_blur_material` persists on its own. Keying off the material means a customised Liquid theme keeps its glass across a relaunch.
 
-Liquid Glass itself is `Components/GlassEffectBackdrop.swift`, an
-`NSGlassEffectView` wrapper. Not SwiftUI's `glassEffect`, which refracts only
-what sits behind it inside its own view tree: the launcher window is
-transparent, so that renders as nearly nothing. The view also draws nothing
-without a `contentView`, and the theme tint is passed into its `tintColor`
-rather than layered over it, since a colour wash on top cancels the refraction.
+Liquid Glass itself is `Components/GlassEffectBackdrop.swift`, an `NSGlassEffectView` wrapper. Not SwiftUI's `glassEffect`, which refracts only what sits behind it inside its own view tree: the launcher window is transparent, so that renders as nearly nothing. The view also draws nothing without a `contentView`, and the theme tint is passed into its `tintColor` rather than layered over it, since a colour wash on top cancels the refraction.
 
-On linows the same presets live in `apps/linows/src/css/theme.css`, one
-`:root[data-theme="…"]` block per preset, with `js/screens/settings.js`
-mirroring the raw slider values in `THEME_PRESETS` (tint, text and border are
-also written as inline custom properties, so both sides must agree). Appearance
-is not a flag there: a light preset flips the `--lift` / `--shadow` RGB
-triplets that stand chips off the backdrop and seat panes on it, and repaints
-the semantic tokens the dark presets inherit from `:root`. Opacities are the
-user's (`USER_CONTROLLED_KEYS`) except at one moment: picking a preset whose
-surface *is* its transparency snaps tint/text/border opacity back to the preset
-(`OPACITY_OWNING_THEMES`), because paper at a dark theme's transparency doesn't
-read as paper and glass at a near-opaque one is a blue panel. The switch
-persists those values, so restore paths stay dumb and the sliders are the
-user's again from the next drag. Kindle's font stack stays in CSS and applies
-while the Font field is left at `system-ui`; an explicit font still wins.
+On linows the same presets live in `apps/linows/src/css/theme.css`, one `:root[data-theme="…"]` block per preset, with `js/screens/settings.js` mirroring the raw slider values in `THEME_PRESETS` (tint, text and border are also written as inline custom properties, so both sides must agree). Appearance is not a flag there: a light preset flips the `--lift` / `--shadow` RGB triplets that stand chips off the backdrop and seat panes on it, and repaints the semantic tokens the dark presets inherit from `:root`. Opacities are the user's (`USER_CONTROLLED_KEYS`) except at one moment: picking a preset whose surface _is_ its transparency snaps tint/text/border opacity back to the preset (`OPACITY_OWNING_THEMES`), because paper at a dark theme's transparency doesn't read as paper and glass at a near-opaque one is a blue panel. The switch persists those values, so restore paths stay dumb and the sliders are the user's again from the next drag. Kindle's font stack stays in CSS and applies while the Font field is left at `system-ui`; an explicit font still wins.
 
-The surface axis ports as `data-surface="liquid"` on the document element,
-beside `data-theme`, with `css/liquid.css` carrying it. It is stored under its
-own config key (`ui_surface`) rather than derived from the theme name, for the
-same reason macOS resolves it from `ui_blur_material` first: nudging any slider
-drops `ui_theme` to `custom`, and the surface must not go with it. The radius
-scale is one custom property (`--surface-radius-scale`) that every themed radius
-multiplies through - `--corner-radius`, `--control-radius`, `--tile-radius`,
-`--bar-radius` - so a radius that skips the scale is a rule that hardcodes a px
-value, not a call site that forgot a helper.
+The surface axis ports as `data-surface="liquid"` on the document element, beside `data-theme`, with `css/liquid.css` carrying it. It is stored under its own config key (`ui_surface`) rather than derived from the theme name, for the same reason macOS resolves it from `ui_blur_material` first: nudging any slider drops `ui_theme` to `custom`, and the surface must not go with it. The radius scale is one custom property (`--surface-radius-scale`) that every themed radius multiplies through - `--corner-radius`, `--control-radius`, `--tile-radius`, `--bar-radius` - so a radius that skips the scale is a rule that hardcodes a px value, not a call site that forgot a helper.
 
-The material itself does not port. `backdrop-filter` blurs what the web engine
-composited behind the element, and the desktop behind a `transparent: true`
-window is composited by the OS, outside the webview; refraction has no CSS
-primitive at all. So linows renders Liquid as clear glass rather than frost:
-high transparency, a specular rim drawn as an overlay pseudo-element (above the
-tint and the background image, and a hairline whatever the user's border
-thickness), and saturated accents. Nothing in it needs the compositor, so it
-looks the same everywhere, and it mirrors macOS 26 shipping `Glass.clear`
-beside `Glass.regular`.
+The material itself does not port. `backdrop-filter` blurs what the web engine composited behind the element, and the desktop behind a `transparent: true` window is composited by the OS, outside the webview; refraction has no CSS primitive at all. So linows renders Liquid as clear glass rather than frost: high transparency, a specular rim drawn as an overlay pseudo-element (above the tint and the background image, and a hairline whatever the user's border thickness), and saturated accents. Nothing in it needs the compositor, so it looks the same everywhere, and it mirrors macOS 26 shipping `Glass.clear` beside `Glass.regular`.
 
-Real frost is available where the compositor grants it, and only there.
-`platform/linux/blur.rs` asks: on Wayland through `ext-background-effect-v1`
-(the cross-desktop staging protocol - KWin 6.7+, Mutter 51+, Hyprland 0.56+, Niri) falling
-back to `org_kde_kwin_blur`, which Plasma spoke until 6.7; on X11 through the
-`_KDE_NET_WM_BLUR_BEHIND_REGION` property, which only KWin reads. The Wayland
-bind (`blur_wayland.rs`) attaches to GTK's own `wl_surface`, taken off the
-window handle rather than through GDK FFI, and runs on a private event queue so
-its roundtrips do not eat the events GDK is waiting for.
+Real frost is available where the compositor grants it, and only there. `platform/linux/blur.rs` asks: on Wayland through `ext-background-effect-v1` (the cross-desktop staging protocol - KWin 6.7+, Mutter 51+, Hyprland 0.56+, Niri) falling back to `org_kde_kwin_blur`, which Plasma spoke until 6.7; on X11 through the `_KDE_NET_WM_BLUR_BEHIND_REGION` property, which only KWin reads. The Wayland bind (`blur_wayland.rs`) attaches to GTK's own `wl_surface`, taken off the window handle rather than through GDK FFI, and runs on a private event queue so its roundtrips do not eat the events GDK is waiting for.
 
-The Wayland request does not currently reach a native Wayland session: the
-`set_blur_region` command is gated on the X11 window id, which nothing caches
-when the window is not an X11 one, so the frost there is CSS only. Lifting that
-gate is not enough on its own, and the notes below are what a second attempt
-needs. GTK destroys the `wl_surface` on hide and makes a new one on the next
-show, so the effect object bound at startup goes inert and the next
-`set_blur_region` is a fatal `surface_destroyed` error, not a no-op: the object
-has to be re-attached per surface. The region is double-buffered state applied
-on the next surface commit, so a settled UI never publishes it. And
-`getBoundingClientRect` reports the *animated* box, so a region built during the
-entrance cascade is a hard-edged rectangle of frost sitting where the tile is
-not, over a part of the window that paints nothing.
+The Wayland request does not currently reach a native Wayland session: the `set_blur_region` command is gated on the X11 window id, which nothing caches when the window is not an X11 one, so the frost there is CSS only. Lifting that gate is not enough on its own, and the notes below are what a second attempt needs. GTK destroys the `wl_surface` on hide and makes a new one on the next show, so the effect object bound at startup goes inert and the next `set_blur_region` is a fatal `surface_destroyed` error, not a no-op: the object has to be re-attached per surface. The region is double-buffered state applied on the next surface commit, so a settled UI never publishes it. And `getBoundingClientRect` reports the _animated_ box, so a region built during the entrance cascade is a hard-edged rectangle of frost sitting where the tile is not, over a part of the window that paints nothing.
 
-Two things follow from that being a capability rather than a setting. The
-region comes from the frontend (`js/blur.js`), because only it knows which
-surfaces are painted: one rectangle for the classic panel, one per tile once
-the panes float, so the gaps stay clear instead of frosting into a single slab.
-Both backends take rectangles only, so a rounded surface is approximated by the
-cross of its two inset rects. And no config key is added: `PlatformInfo`
-carries `compositor_blur`, which is what lets `effectiveBlurOpacity()` treat a
-blurring compositor the same way it treats a background image, so the existing
-Blur Style and Blur Opacity controls act on real frost when there is any.
+Two things follow from that being a capability rather than a setting. The region comes from the frontend (`js/blur.js`), because only it knows which surfaces are painted: one rectangle for the classic panel, one per tile once the panes float, so the gaps stay clear instead of frosting into a single slab. Both backends take rectangles only, so a rounded surface is approximated by the cross of its two inset rects. And no config key is added: `PlatformInfo` carries `compositor_blur`, which is what lets `effectiveBlurOpacity()` treat a blurring compositor the same way it treats a background image, so the existing Blur Style and Blur Opacity controls act on real frost when there is any.
 
 ### Motion
 
-Every animated surface reads its physics from `Support/UI/Motion.swift`, so the
-feel is tuned in one place: `Spawn` (the launchpad cascade), `Selection` (the
-gliding pill and the one-shot zoom), `Slide` (horizontal entrances), `Surface`
-(the panel arriving), `Press`, `Value` (digit rolls) and `Caret`.
+Every animated surface reads its physics from `Support/UI/Motion.swift`, so the feel is tuned in one place: `Spawn` (the launchpad cascade), `Selection` (the gliding pill and the one-shot zoom), `Slide` (horizontal entrances), `Surface` (the panel arriving), `Press`, `Value` (digit rolls) and `Caret`.
 
-Entrances key off `appearanceRevealToken`, a counter `LauncherView` bumps on
-every show. The window is only ordered out and back in, so `onAppear` fires once
-per process and cannot drive them. The modifiers are `rootReveal` (whole panel),
-`spawnReveal` (launchpad tiles, quick actions, the search bar), `slideReveal`
-via `placeholderReveal` / `stripReveal`, plus `symbolEffect(.bounce, value:)` on
-SF Symbols.
+Entrances key off `appearanceRevealToken`, a counter `LauncherView` bumps on every show. The window is only ordered out and back in, so `onAppear` fires once per process and cannot drive them. The modifiers are `rootReveal` (whole panel), `spawnReveal` (launchpad tiles, quick actions, the search bar), `slideReveal` via `placeholderReveal` / `stripReveal`, plus `symbolEffect(.bounce, value:)` on SF Symbols.
 
 Three constraints that are easy to break:
 
-- **Scope animations tightly.** An `.animation(_:value:)` high in the tree
-  attaches to its whole subtree, so when it fires every result row animates at
-  once. Per-row it is just as bad: it fires on each neighbour as the selection
-  passes. Row-local one-shot state driven by `onChange(of: isSelected)` is what
-  keeps a single row moving.
-- **`ThemedBackdrop` opts out of ambient transactions.** Nav wraps its selection
-  assignment in a global `withAnimation`, and re-compositing an
-  `NSVisualEffectView` or `NSGlassEffectView` inside that transaction flickers
-  the whole window on every keypress.
-- **Do not resolve icons inside `body` uncached.** `NSWorkspace.icon(forFile:)`
-  returns a fresh `NSImage` per call, which SwiftUI redraws; every icon in the
-  list then flickers on each keypress. `Support/RowIconCache.swift` returns one
-  instance per path. Process icons stay uncached, since pids are reused.
+- **Scope animations tightly.** An `.animation(_:value:)` high in the tree attaches to its whole subtree, so when it fires every result row animates at once. Per-row it is just as bad: it fires on each neighbour as the selection passes. Row-local one-shot state driven by `onChange(of: isSelected)` is what keeps a single row moving.
+- **`ThemedBackdrop` opts out of ambient transactions.** Nav wraps its selection assignment in a global `withAnimation`, and re-compositing an `NSVisualEffectView` or `NSGlassEffectView` inside that transaction flickers the whole window on every keypress.
+- **Do not resolve icons inside `body` uncached.** `NSWorkspace.icon(forFile:)` returns a fresh `NSImage` per call, which SwiftUI redraws; every icon in the list then flickers on each keypress. `Support/RowIconCache.swift` returns one instance per path. Process icons stay uncached, since pids are reused.
 
-Panel arrival is a content-layer effect, not a window one: animating the window
-would mean touching the `makeKeyAndOrderFront` path that the Cmd+Space
-cold-login bug lives in. Reduce Motion is honoured by every modifier.
+Panel arrival is a content-layer effect, not a window one: animating the window would mean touching the `makeKeyAndOrderFront` path that the Cmd+Space cold-login bug lives in. Reduce Motion is honoured by every modifier.
 
-On linows the same pass lives in `src/css/motion.css`: one `:root` block of
-tokens (durations, offsets, stagger, the house curve) and the keyframes that
-read them, driven by classes rather than a token counter. `js/motion.js` toggles
-`is-entering` on `.launcher-window` on every summon, which cascades the panel
-arrival, the top bar, the placeholder overlay and the running-apps strip; the
-launchpad keeps its own replay (`components/superactions.js`) because it is
-built lazily. `window-shown` and `visibilitychange` both replay, and a short
-guard drops whichever lands second. The same stale-buffer problem macOS does not
-have is handled by arming the first frame on hide, so the frame the compositor
-presents on the next summon matches frame 0 instead of flashing and rewinding.
-Arming alone is not enough: the compositor keeps the last frame the webview
-*painted*, and a hide in the same tick leaves the revealed panel in that buffer.
-So every dismiss goes through `commands::hide_armed`, which emits
-`window-hidden` and holds the window until the frontend acks with `confirm_hide`
-from a double `requestAnimationFrame` - one frame to arm, the next to confirm it
-was painted. A 60 ms timer is the backstop for a webview that never answers.
-Each dismiss carries an id that `commands::show_launcher` clears, so a backstop
-or late ack from a dismiss the user undid can't hide the window again.
+On linows the same pass lives in `src/css/motion.css`: one `:root` block of tokens (durations, offsets, stagger, the house curve) and the keyframes that read them, driven by classes rather than a token counter. `js/motion.js` toggles `is-entering` on `.launcher-window` on every summon, which cascades the panel arrival, the top bar, the placeholder overlay and the running-apps strip; the launchpad keeps its own replay (`components/superactions.js`) because it is built lazily. `window-shown` and `visibilitychange` both replay, and a short guard drops whichever lands second. The same stale-buffer problem macOS does not have is handled by arming the first frame on hide, so the frame the compositor presents on the next summon matches frame 0 instead of flashing and rewinding. Arming alone is not enough: the compositor keeps the last frame the webview _painted_, and a hide in the same tick leaves the revealed panel in that buffer. So every dismiss goes through `commands::hide_armed`, which emits `window-hidden` and holds the window until the frontend acks with `confirm_hide` from a double `requestAnimationFrame` - one frame to arm, the next to confirm it was painted. A 60 ms timer is the backstop for a webview that never answers. Each dismiss carries an id that `commands::show_launcher` clears, so a backstop or late ack from a dismiss the user undid can't hide the window again.
 
-Two constraints are tighter here than on macOS. Only `transform` and `opacity`
-are animated, since they are compositor-handled and animating `filter` /
-`backdrop-filter` tanks the frame rate on WebKitGTK. And the selection pill's
-zoom uses the `scale` property rather than a `transform` function, because
-`components/results.js` drives the pill's position through `transform` and an
-animation on the same property would take the glide over and land the pill
-without it.
+Two constraints are tighter here than on macOS. Only `transform` and `opacity` are animated, since they are compositor-handled and animating `filter` / `backdrop-filter` tanks the frame rate on WebKitGTK. And the selection pill's zoom uses the `scale` property rather than a `transform` function, because `components/results.js` drives the pill's position through `transform` and an animation on the same property would take the glide over and land the pill without it.
 
-Motion has one off switch, `data-motion="off"` on `<html>`. `js/platform.js`
-sets it, for the `animations_enabled` config key (Settings > Appearance >
-Animations) and for `prefers-reduced-motion` alike, so the two cannot drift
-apart in the stylesheets; Windows is left out of the OS half, where the flag
-tracks the "best performance" visual-effects preset rather than motion
-sensitivity. The attribute drives one rule in `motion.css` that takes every
-duration and delay to near zero, near rather than `none` because the pressed
-and rejected states clear themselves on `animationend`. The blinking caret and
-the answer spinner are exempt: they report state, not movement. Anything that
-cannot be expressed in CSS reads `platform.reducesMotion()` instead, the smooth
-`scrollIntoView` behind the selection and the speed gauge's eased dial.
+Motion has one off switch, `data-motion="off"` on `<html>`. `js/platform.js` sets it, for the `animations_enabled` config key (Settings > Appearance > Animations) and for `prefers-reduced-motion` alike, so the two cannot drift apart in the stylesheets; Windows is left out of the OS half, where the flag tracks the "best performance" visual-effects preset rather than motion sensitivity. The attribute drives one rule in `motion.css` that takes every duration and delay to near zero, near rather than `none` because the pressed and rejected states clear themselves on `animationend`. The blinking caret and the answer spinner are exempt: they report state, not movement. Anything that cannot be expressed in CSS reads `platform.reducesMotion()` instead, the smooth `scrollIntoView` behind the selection and the speed gauge's eased dial.
 
 ### Config File Integration
 
 All settings are persisted to `.look/config`:
 
 **UI Theme:**
+
 - `ui_theme` - theme name, applied after the individual `ui_*` keys below, so a preset overrides them. macOS spells the two-word names in camelCase and matches case-insensitively; linows hyphenates them and matches exactly.
 - Empty or absent means Custom on macOS, where Save Config stores a tweaked theme as its literal values. On linows it means `kanagawa`, and a colour slider writes `custom` instead. linows defaults live in `apps/linows/src/js/theme-defaults.js` and are not seeded into the config file.
 
 **Appearance:**
+
 - `ui_tint_red`, `ui_tint_green`, `ui_tint_blue`, `ui_tint_opacity` - background tint (0-1)
 - `ui_blur_material` - blur style (hudWindow, sidebar, menu, underWindowBackground, liquidGlass). `liquidGlass` renders through `NSGlassEffectView` and needs macOS 26; below that it falls back to `hudWindow`, and neither it nor the Liquid theme is offered as a new choice in Settings. A value already persisted stays selectable and is labelled as unsupported rather than being rewritten, since normalising it would destroy the setting for the same config on a newer machine.
 - `ui_blur_opacity` - blur opacity (0-1). On linows this thins the tint only when there is frost to thin: a background image, or a compositor granting behind-window blur. With neither it is ignored and Tint Opacity alone decides the window alpha.
@@ -556,20 +433,24 @@ All settings are persisted to `.look/config`:
 - `ui_border_thickness`, `ui_border_red`, `ui_border_green`, `ui_border_blue`, `ui_border_opacity` - border
 
 **Background Image:**
+
 - `ui_background_image` - path to image file
 - `ui_background_image_mode` - fill, fit, tile, stretch
 - `ui_background_image_opacity` - overlay opacity (0-1)
 - `ui_background_image_blur` - blur radius
 
 **Settings:**
+
 - `settings_blur_multiplier` - settings panel blur (0-1)
 
 **File Scanning:**
+
 - `file_scan_depth` - max depth (1-12), default: 4
 - `file_scan_limit` - max files (500-50000), default: 4000
 - `file_exclude_paths` - comma-separated paths to exclude
 
 **Runtime:**
+
 - `backend_log_level` - error, info, debug
 - `launch_at_login` - true/false
 - `add_to_path` - true/false (Windows; puts the install directory on the user PATH)
@@ -577,6 +458,7 @@ All settings are persisted to `.look/config`:
 ### Config Reload Validation
 
 When reloading (Cmd+Shift+;), invalid values are detected and shown:
+
 - Values outside valid range (e.g., opacity > 1)
 - Unknown theme names
 - Invalid numbers

@@ -1,16 +1,35 @@
 [package]
-name = "look-gpui"
-version = "0.1.0"
+name = "lookapp"
+version.workspace = true
 edition = "2024"
 rust-version = "1.95"
+license = "GPL-3.0-or-later"
+authors = ["kunkka19xx <nobita079x@gmail.com>"]
 publish = false
-description = "The linows launcher drawn by gpui-ce: the port that replaces the Tauri shell"
+description = "Keyboard-first desktop launcher"
 
 [[bin]]
-# Its own name until the port replaces the Tauri shell, so both can be
-# installed side by side.
-name = "lookapp-gpui"
+name = "lookapp"
 path = "src/main.rs"
+
+# `cargo deb -p lookapp`: the .deb release-linux.yml ships. `$auto` lists the
+# linked libraries from the build host; the rest are loaded at runtime.
+[package.metadata.deb]
+name = "lookapp"
+section = "utils"
+priority = "optional"
+license-file = ["../../../LICENSE", "0"]
+extended-description = "Look is a keyboard-first, local-first desktop launcher. Find and open apps, files, folders, clipboard history, and run quick commands without leaving the keyboard."
+depends = "$auto, libvulkan1, xdg-desktop-portal"
+recommends = "mesa-vulkan-drivers, wl-clipboard"
+assets = [
+    ["target/release/lookapp", "usr/bin/", "755"],
+    ["../packaging/lookapp.desktop", "usr/share/applications/", "644"],
+    ["../icons/32x32.png", "usr/share/icons/hicolor/32x32/apps/lookapp.png", "644"],
+    ["../icons/64x64.png", "usr/share/icons/hicolor/64x64/apps/lookapp.png", "644"],
+    ["../icons/128x128.png", "usr/share/icons/hicolor/128x128/apps/lookapp.png", "644"],
+    ["../icons/128x128@2x.png", "usr/share/icons/hicolor/256x256/apps/lookapp.png", "644"],
+]
 
 [dependencies]
 linows-backend = { path = "../backend" }

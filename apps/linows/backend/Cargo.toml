@@ -1,10 +1,10 @@
 [package]
 name = "linows-backend"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 license = "GPL-3.0-or-later"
 authors = ["kunkka19xx <nobita079x@gmail.com>"]
-description = "Everything the linows launcher does that is not drawing: search, launching, clipboard, controls. Shared by the Tauri shell and the gpui port."
+description = "Everything the linows launcher does that is not drawing: search, launching, clipboard, controls. Shared by the gpui shell and the Tauri backup."
 
 [lib]
 name = "linows_backend"

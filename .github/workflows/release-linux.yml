@@ -39,35 +39,24 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      # Fail fast on a tag/version mismatch - this only reads a JSON file, so it
-      # runs before any slow toolchain setup or build.
-      - name: Verify version matches tag
+      # The tag is the version: it is baked into the binary (LOOK_VERSION, see
+      # backend/build.rs) and the packages. The workspace version only serves
+      # dev and Nix builds, so a lag there is a warning, not a failure.
+      - name: Compare with the workspace version
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          CONF_VERSION=$(grep '"version"' apps/linows/src-tauri/tauri.conf.json | head -1 | sed 's/.*"\([0-9][^"]*\)".*/\1/')
-          if [[ "$VERSION" != "$CONF_VERSION" ]]; then
-            echo "::error::Version mismatch! Tag=$VERSION but tauri.conf.json=$CONF_VERSION. Update tauri.conf.json before tagging."
-            exit 1
+          WS_VERSION=$(grep -A1 '^\[workspace.package\]' apps/linows/Cargo.toml | grep version | sed 's/.*"\(.*\)".*/\1/')
+          if [[ "$VERSION" != "$WS_VERSION" ]]; then
+            echo "::warning::Tag is $VERSION but apps/linows/Cargo.toml says $WS_VERSION; Nix builds report the latter until it is bumped."
           fi
 
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libsoup-3.0-dev \
-            libglib2.0-dev \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libgdk-pixbuf-2.0-dev \
-            libharfbuzz-dev \
-            libdbus-1-dev \
-            libasound2-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libappindicator3-dev \
-            pkg-config
+            libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libxcb-xkb-dev \
+            libwayland-dev libasound2-dev libdbus-1-dev libssl-dev \
+            libfontconfig1-dev libfreetype-dev pkg-config file
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -79,30 +68,36 @@ jobs:
             core
             apps/linows
 
-      # 2.6 is the floor: earlier bundlers emit a .desktop file without
-      # StartupWMClass, so GNOME can't match the window (app_id "lookapp") to
-      # the entry it installs as Look.desktop, and falls back to a blank icon.
-      - name: Install cargo-tauri
-        run: cargo install tauri-cli --version "^2.6" --locked
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --version 3.8.0 --locked
 
-      - name: Build Tauri app
+      - name: Build
         working-directory: apps/linows
-        run: cargo tauri build
-
-      # The bundled build-host libwayland breaks EGL on distros with newer
-      # Mesa (issue #233) - the host copy must be used instead.
-      - name: Strip bundled libwayland from AppImage
+        env:
+          LOOK_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          for f in apps/linows/target/release/bundle/appimage/*.AppImage; do
-            scripts/linux/strip-appimage-wayland-libs.sh "$f"
-          done
+          cargo build --release --locked -p lookapp
+          test "$(target/release/lookapp --version)" = "lookapp $LOOK_VERSION"
 
-      - name: Collect artifacts
+      # Built on ubuntu-22.04 so the glibc floor and the $auto depends stay
+      # the oldest supported release.
+      - name: Package .deb
+        working-directory: apps/linows
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          mkdir -p dist
-          cp apps/linows/target/release/bundle/deb/*.deb dist/ 2>/dev/null || true
-          cp apps/linows/target/release/bundle/appimage/*.AppImage dist/ 2>/dev/null || true
+          mkdir -p ../../dist
+          cargo deb -p lookapp --no-build --deb-version "$VERSION" \
+            -o "../../dist/Look_${VERSION}_amd64.deb"
+
+      - name: Package AppImage
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          scripts/linux/make-appimage.sh apps/linows/target/release/lookapp "$VERSION" \
+            "dist/Look_${VERSION}_amd64.AppImage"
+
+      - name: Checksums
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
           cd dist && sha256sum * > "Look-${VERSION}-linux-checksums.txt"
 
       - name: Upload artifacts
