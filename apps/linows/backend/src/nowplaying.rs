@@ -92,7 +92,8 @@ mod imp {
 
     pub fn watch(on_change: OnChange) -> Stop {
         let (stop, stopped) = oneshot::channel();
-        std::thread::Builder::new()
+        // A failed spawn leaves the tile on its last snapshot.
+        let _ = std::thread::Builder::new()
             .name("look-mpris".into())
             .spawn(move || {
                 // Its own runtime: the shared one serves one blocking call
@@ -104,8 +105,7 @@ mod imp {
                     Ok(runtime) => runtime.block_on(run(on_change, stopped)),
                     Err(_) => on_change(None),
                 }
-            })
-            .expect("spawn the MPRIS watch");
+            });
         stop
     }
 
@@ -114,10 +114,10 @@ mod imp {
             on_change(None);
             return;
         };
-        let Some(mut events) = subscribe(conn).await else {
-            on_change(None);
-            return;
-        };
+        // Without signals the safety poll still carries the tile.
+        let mut events = subscribe(conn)
+            .await
+            .unwrap_or_else(|| Box::pin(futures_util::stream::pending()));
         let mut last = current_async(conn).await;
         on_change(last.clone());
         loop {
@@ -514,7 +514,7 @@ mod imp {
 
     pub fn watch(on_change: OnChange) -> Stop {
         let (stop, stopped) = mpsc::channel::<()>();
-        std::thread::Builder::new()
+        let _ = std::thread::Builder::new()
             .name("look-smtc".into())
             .spawn(move || {
                 let mut last = current();
@@ -526,8 +526,7 @@ mod imp {
                         on_change(now);
                     }
                 }
-            })
-            .expect("spawn the SMTC watch");
+            });
         stop
     }
 
