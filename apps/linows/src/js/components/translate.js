@@ -161,9 +161,9 @@ export function hide() {
 }
 
 export async function perform(text) {
+    const token = (performToken += 1);
     if (!text.trim()) return;
     active = true;
-    const token = (performToken += 1);
 
     const languages = await configuredLanguages();
     if (token !== performToken) return;

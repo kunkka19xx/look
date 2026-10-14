@@ -12,9 +12,9 @@ use crate::http;
 const URL_PREFIX: &str = "https://api.mymemory.translated.net/get?langpair=Autodetect%7C";
 const URL_MIDDLE: &str = "&q=";
 const TIMEOUT_SECS: u32 = 5;
-// MyMemory rejects a `q` longer than 500 UTF-8 bytes with QUERY LENGTH LIMIT
-// EXCEEDED, so longer input is split and the pieces reassembled.
-const MAX_QUERY_BYTES: usize = 500;
+// MyMemory rejects a `q` longer than 500 characters (code points) with QUERY
+// LENGTH LIMIT EXCEEDED, so longer input is split and the pieces reassembled.
+const MAX_QUERY_CHARS: usize = 500;
 // MyMemory does not inspect the User-Agent, but a browser string keeps it in
 // line with the other sources and avoids any bot filtering.
 const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -82,8 +82,8 @@ pub fn translate(text: &str, target_lang: &str) -> Translation {
         return Translation::failed(text, TranslateError::InvalidTargetLang);
     }
 
-    // MyMemory caps a single query at 500 bytes, so longer input is split into
-    // chunks that are translated separately and reassembled in order, keeping
+    // MyMemory caps a single query at 500 characters, so longer input is split
+    // into chunks that are translated separately and reassembled in order, keeping
     // the original whitespace that sat between them. A failure in any chunk
     // fails the whole translation rather than returning a partial result.
     let mut translated = String::new();
@@ -113,7 +113,7 @@ pub fn translate(text: &str, target_lang: &str) -> Translation {
     }
 }
 
-/// Sends a single request (already within the byte limit) and returns the
+/// Sends a single request (already within the character limit) and returns the
 /// translated text, or the error to report. The same-language refusal echoes the
 /// input back as a success.
 fn fetch_translation(text: &str, target_lang: &str) -> Result<String, TranslateError> {
@@ -157,34 +157,34 @@ fn fetch_translation(text: &str, target_lang: &str) -> Result<String, TranslateE
     Ok(translated)
 }
 
-/// Splits `text` into chunks of at most `MAX_QUERY_BYTES` bytes, cutting on a
-/// character boundary and preferring the last whitespace inside the window so a
-/// word is not torn apart. Concatenating the returned chunks reproduces `text`
-/// exactly, so the caller can keep the separators when reassembling.
+/// Splits `text` into chunks of at most `MAX_QUERY_CHARS` characters, preferring
+/// to cut at the last whitespace inside the window so a word is not torn apart.
+/// Concatenating the returned chunks reproduces `text` exactly, so the caller
+/// can keep the separators when reassembling.
 fn split_query(text: &str) -> Vec<&str> {
-    if text.len() <= MAX_QUERY_BYTES {
+    if text.chars().count() <= MAX_QUERY_CHARS {
         return vec![text];
     }
     let mut chunks = Vec::new();
-    let mut start = 0;
-    while start < text.len() {
-        if text.len() - start <= MAX_QUERY_BYTES {
-            chunks.push(&text[start..]);
-            break;
-        }
-        let mut end = start + MAX_QUERY_BYTES;
-        while !text.is_char_boundary(end) {
-            end -= 1;
-        }
-        let window = &text[start..end];
-        if let Some(pos) = window.rfind(char::is_whitespace)
-            && pos > 0
-        {
-            let ws_len = window[pos..].chars().next().map_or(0, char::len_utf8);
-            end = start + pos + ws_len;
-        }
-        chunks.push(&text[start..end]);
-        start = end;
+    let mut rest = text;
+    while rest.chars().count() > MAX_QUERY_CHARS {
+        let end = rest
+            .char_indices()
+            .nth(MAX_QUERY_CHARS)
+            .map_or(rest.len(), |(i, _)| i);
+        let window = &rest[..end];
+        let cut = match window.rfind(char::is_whitespace) {
+            Some(pos) if pos > 0 => {
+                let ws_len = window[pos..].chars().next().map_or(0, char::len_utf8);
+                pos + ws_len
+            }
+            _ => end,
+        };
+        chunks.push(&rest[..cut]);
+        rest = &rest[cut..];
+    }
+    if !rest.is_empty() {
+        chunks.push(rest);
     }
     chunks
 }
@@ -343,27 +343,39 @@ mod tests {
     }
 
     #[test]
-    fn splits_long_queries_within_the_byte_limit() {
+    fn splits_long_queries_within_the_char_limit() {
         let text = "từ ".repeat(400);
-        assert!(text.len() > MAX_QUERY_BYTES);
+        assert!(text.chars().count() > MAX_QUERY_CHARS);
         let chunks = split_query(&text);
         assert!(chunks.len() > 1);
         for chunk in &chunks {
-            assert!(chunk.len() <= MAX_QUERY_BYTES);
+            assert!(chunk.chars().count() <= MAX_QUERY_CHARS);
         }
         assert_eq!(chunks.concat(), text);
     }
 
     #[test]
-    fn splits_on_char_boundaries_without_whitespace() {
+    fn splits_without_whitespace_on_char_boundaries() {
         // A run of 3-byte characters and no whitespace, longer than the limit:
         // the split still has to land on valid character boundaries.
         let text = "日本語".repeat(300);
         let chunks = split_query(&text);
         for chunk in &chunks {
-            assert!(chunk.len() <= MAX_QUERY_BYTES);
+            assert!(chunk.chars().count() <= MAX_QUERY_CHARS);
             assert!(!chunk.is_empty());
         }
+        assert_eq!(chunks.concat(), text);
+    }
+
+    #[test]
+    fn splits_sample_vietnamese_text() {
+        let text = "Look là một công cụ tìm kiếm và khởi chạy siêu nhanh trên máy tính của bạn. Nó cho phép bạn tìm kiếm ứng dụng, tệp tin, cửa sổ đang mở và nhiều thứ khác chỉ bằng vài thao tác gõ phím đơn giản. Giao diện gọn gàng, phản hồi tức thì, và hoạt động hoàn toàn cục bộ nên dữ liệu của bạn luôn được bảo mật. Bạn có thể tùy chỉnh danh sách ngôn ngữ dịch trong phần cấu hình. Tính năng dịch tự động phát hiện ngôn ngữ nguồn và gửi truy vấn đến máy chủ. Kết quả trả về được hiển thị song song cho từng ngôn ngữ đích đã chọn.";
+        assert!(text.chars().count() > MAX_QUERY_CHARS);
+        let chunks = split_query(text);
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].chars().count(), 500);
+        assert_eq!(chunks[1].chars().count(), 13);
+        assert!(chunks.iter().all(|c| c.chars().count() <= MAX_QUERY_CHARS));
         assert_eq!(chunks.concat(), text);
     }
 }
