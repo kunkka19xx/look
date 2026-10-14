@@ -165,6 +165,7 @@ pub fn panel(
                     kind: "app".into(),
                     path: target.exec.clone().unwrap_or_default(),
                     id: Some(desktop_id),
+                    size,
                 },
                 cx,
             )

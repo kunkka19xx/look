@@ -268,7 +268,8 @@ impl Launcher {
         let input = input_for(cx);
         cx.subscribe(&input, |this, _, _: &Changed, cx| this.search(cx))
             .detach();
-        let icons = cx.new(IconStore::new);
+        let scale = window.scale_factor();
+        let icons = cx.new(|_| IconStore::new(scale));
         cx.observe(&icons, |_, _, cx| cx.notify()).detach();
         let preview = cx.new(|cx| Preview::new(shell.clone(), icons.clone(), cx));
         cx.observe(&preview, |_, _, cx| cx.notify()).detach();
@@ -2341,6 +2342,7 @@ impl Launcher {
                             kind: row.icon_kind().to_string(),
                             path: row.path.clone(),
                             id: Some(row.id.clone()),
+                            size: ROW_ICON,
                         },
                         cx,
                     )
