@@ -12,6 +12,9 @@ use crate::http;
 const URL_PREFIX: &str = "https://api.mymemory.translated.net/get?langpair=Autodetect%7C";
 const URL_MIDDLE: &str = "&q=";
 const TIMEOUT_SECS: u32 = 5;
+// MyMemory rejects a `q` longer than 500 UTF-8 bytes with QUERY LENGTH LIMIT
+// EXCEEDED, so longer input is split and the pieces reassembled.
+const MAX_QUERY_BYTES: usize = 500;
 // MyMemory does not inspect the User-Agent, but a browser string keeps it in
 // line with the other sources and avoids any bot filtering.
 const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -79,47 +82,111 @@ pub fn translate(text: &str, target_lang: &str) -> Translation {
         return Translation::failed(text, TranslateError::InvalidTargetLang);
     }
 
-    let url = format!(
-        "{URL_PREFIX}{}{URL_MIDDLE}{}",
-        target_lang.trim(),
-        http::encode(&text)
-    );
-    let Some(response) = http::get(&url, TIMEOUT_SECS, USER_AGENT, &[]) else {
-        return Translation::failed(text, TranslateError::RequestFailed);
-    };
-    // A throttled host answers 429; MyMemory also keeps HTTP 200 while flagging
-    // a spent daily quota in the body, which the parse below catches.
-    if response.is_rate_limited() {
-        return Translation::failed(text, TranslateError::RateLimited);
-    }
-    if !response.is_success() {
-        return Translation::failed(text, TranslateError::RequestFailed);
-    }
-    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&response.body) else {
-        return Translation::failed(text, TranslateError::ParseFailed);
-    };
-    // MyMemory refuses to translate a language into itself. The input already
-    // reads in the target language, so echoing it is the honest result rather
-    // than a failure for a section that is working as intended.
-    if is_same_language(&parsed) {
-        return Translation {
-            original: text.clone(),
-            translated: text,
-            error: None,
-        };
-    }
-    if let Some(error) = body_error(&parsed) {
-        return Translation::failed(text, error);
-    }
-    let translated = extract_translation(&parsed);
-    if translated.trim().is_empty() {
-        return Translation::failed(text, TranslateError::EmptyResult);
+    // MyMemory caps a single query at 500 bytes, so longer input is split into
+    // chunks that are translated separately and reassembled in order, keeping
+    // the original whitespace that sat between them. A failure in any chunk
+    // fails the whole translation rather than returning a partial result.
+    let mut translated = String::new();
+    for chunk in split_query(&text) {
+        let payload = chunk.trim();
+        if payload.is_empty() {
+            translated.push_str(chunk);
+            continue;
+        }
+        let lead = chunk.len() - chunk.trim_start().len();
+        let trail = chunk.len() - chunk.trim_end().len();
+        match fetch_translation(payload, target_lang) {
+            Ok(part) => {
+                translated.push_str(&chunk[..lead]);
+                translated.push_str(&part);
+                if trail > 0 {
+                    translated.push_str(&chunk[chunk.len() - trail..]);
+                }
+            }
+            Err(error) => return Translation::failed(text, error),
+        }
     }
     Translation {
         original: text,
         translated,
         error: None,
     }
+}
+
+/// Sends a single request (already within the byte limit) and returns the
+/// translated text, or the error to report. The same-language refusal echoes the
+/// input back as a success.
+fn fetch_translation(text: &str, target_lang: &str) -> Result<String, TranslateError> {
+    let url = format!(
+        "{URL_PREFIX}{}{URL_MIDDLE}{}",
+        target_lang.trim(),
+        http::encode(text)
+    );
+    let Some(response) = http::get(&url, TIMEOUT_SECS, USER_AGENT, &[]) else {
+        return Err(TranslateError::RequestFailed);
+    };
+    // A throttled host answers 429; MyMemory also keeps HTTP 200 while flagging
+    // a spent daily quota in the body, which the parse below catches.
+    if response.is_rate_limited() {
+        return Err(TranslateError::RateLimited);
+    }
+    if !response.is_success() {
+        return Err(TranslateError::RequestFailed);
+    }
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&response.body) else {
+        return Err(TranslateError::ParseFailed);
+    };
+    // A spent quota can arrive together with the same-language detail, so the
+    // quota check runs first: a rate limit must never read as a successful echo.
+    if quota_finished(&parsed) {
+        return Err(TranslateError::RateLimited);
+    }
+    // MyMemory refuses to translate a language into itself. The input already
+    // reads in the target language, so echoing it is the honest result rather
+    // than a failure for a section that is working as intended.
+    if is_same_language(&parsed) {
+        return Ok(text.to_string());
+    }
+    if let Some(error) = body_error(&parsed) {
+        return Err(error);
+    }
+    let translated = extract_translation(&parsed);
+    if translated.trim().is_empty() {
+        return Err(TranslateError::EmptyResult);
+    }
+    Ok(translated)
+}
+
+/// Splits `text` into chunks of at most `MAX_QUERY_BYTES` bytes, cutting on a
+/// character boundary and preferring the last whitespace inside the window so a
+/// word is not torn apart. Concatenating the returned chunks reproduces `text`
+/// exactly, so the caller can keep the separators when reassembling.
+fn split_query(text: &str) -> Vec<&str> {
+    if text.len() <= MAX_QUERY_BYTES {
+        return vec![text];
+    }
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    while start < text.len() {
+        if text.len() - start <= MAX_QUERY_BYTES {
+            chunks.push(&text[start..]);
+            break;
+        }
+        let mut end = start + MAX_QUERY_BYTES;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let window = &text[start..end];
+        if let Some(pos) = window.rfind(char::is_whitespace)
+            && pos > 0
+        {
+            let ws_len = window[pos..].chars().next().map_or(0, char::len_utf8);
+            end = start + pos + ws_len;
+        }
+        chunks.push(&text[start..end]);
+        start = end;
+    }
+    chunks
 }
 
 /// A BCP-47-ish tag accepted by MyMemory (e.g. "en", "vi", "zh-CN").
@@ -142,13 +209,23 @@ fn extract_translation(value: &serde_json::Value) -> String {
 
 /// True when MyMemory refused because the detected source and the target are
 /// the same language. It reports this as HTTP 200/403 with the detail
-/// "PLEASE SELECT TWO DISTINCT LANGUAGES".
+/// "PLEASE SELECT TWO DISTINCT LANGUAGES"; the detail is ignored on other
+/// statuses (e.g. 429) so a throttled response is not echoed as a success.
 fn is_same_language(value: &serde_json::Value) -> bool {
     const DETAIL: &str = "PLEASE SELECT TWO DISTINCT LANGUAGES";
-    value
+    let matches_detail = value
         .get("responseDetails")
         .and_then(|v| v.as_str())
         .map(|detail| detail.contains(DETAIL))
+        .unwrap_or(false);
+    matches_detail && matches!(response_status(value), None | Some(200) | Some(403))
+}
+
+/// True when MyMemory flagged the daily quota as spent in the response body.
+fn quota_finished(value: &serde_json::Value) -> bool {
+    value
+        .get("quotaFinished")
+        .and_then(|v| v.as_bool())
         .unwrap_or(false)
 }
 
@@ -157,11 +234,7 @@ fn is_same_language(value: &serde_json::Value) -> bool {
 /// quota or a rejected request in the body, so the transport status alone would
 /// read as success.
 fn body_error(value: &serde_json::Value) -> Option<TranslateError> {
-    if value
-        .get("quotaFinished")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
+    if quota_finished(value) {
         return Some(TranslateError::RateLimited);
     }
     match response_status(value) {
@@ -240,5 +313,57 @@ mod tests {
             "responseStatus": 200,
         });
         assert!(!is_same_language(&other));
+
+        // The same detail on a throttled status must not be echoed as success.
+        let throttled = serde_json::json!({
+            "responseData": {"translatedText": "PLEASE SELECT TWO DISTINCT LANGUAGES"},
+            "responseStatus": 429,
+            "responseDetails": "PLEASE SELECT TWO DISTINCT LANGUAGES",
+        });
+        assert!(!is_same_language(&throttled));
+    }
+
+    #[test]
+    fn detects_finished_quota() {
+        assert!(quota_finished(
+            &serde_json::json!({ "quotaFinished": true })
+        ));
+        assert!(!quota_finished(
+            &serde_json::json!({ "quotaFinished": false })
+        ));
+        assert!(!quota_finished(
+            &serde_json::json!({ "quotaFinished": null })
+        ));
+    }
+
+    #[test]
+    fn keeps_short_queries_whole() {
+        let text = "hello world";
+        assert_eq!(split_query(text), vec![text]);
+    }
+
+    #[test]
+    fn splits_long_queries_within_the_byte_limit() {
+        let text = "từ ".repeat(400);
+        assert!(text.len() > MAX_QUERY_BYTES);
+        let chunks = split_query(&text);
+        assert!(chunks.len() > 1);
+        for chunk in &chunks {
+            assert!(chunk.len() <= MAX_QUERY_BYTES);
+        }
+        assert_eq!(chunks.concat(), text);
+    }
+
+    #[test]
+    fn splits_on_char_boundaries_without_whitespace() {
+        // A run of 3-byte characters and no whitespace, longer than the limit:
+        // the split still has to land on valid character boundaries.
+        let text = "日本語".repeat(300);
+        let chunks = split_query(&text);
+        for chunk in &chunks {
+            assert!(chunk.len() <= MAX_QUERY_BYTES);
+            assert!(!chunk.is_empty());
+        }
+        assert_eq!(chunks.concat(), text);
     }
 }
