@@ -24,26 +24,26 @@ look-todo = { path = "../../../core/todo" }
 look-tools = { path = "../../../core/tools" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-notify = "6"
+notify = "8"
 open = "5"
-base64 = "0.22"
-rodio = "0.20"
+base64 = "0.23"
+rodio = "0.22"
 arboard = { version = "3", features = ["wayland-data-control"] }
-dirs = "6"
+dirs = "7"
 # PNG for the ci" image clipboard (encode a capture, decode it to paste) and
 # for Windows icon conversion.
-png = "0.17"
+png = "0.18"
 trash = "5"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1.52.3", features = ["rt", "time", "sync"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # xtest: typing the paste chord into another window, the X11 half of Ctrl+I.
-x11rb = { version = "0.13", features = ["allow-unsafe-code", "xtest"] }
+x11rb = { version = "0.14", features = ["allow-unsafe-code", "xtest"] }
 zbus = "5"
 # StreamExt for zbus signal streams.
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 # "system" pins the libwayland backend: blur binds against the shell's own
 # wl_display, which only the sys backend can adopt.
 wayland-client = { version = "0.31", features = ["system"], default-features = false }
@@ -69,7 +69,7 @@ wayland-protocols-misc = { version = "0.3", features = [
 ], default-features = false }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.61", features = [
+windows = { version = "0.62", features = [
     "Foundation",
     # NtQueryInformationProcess: the only way to read another process's
     # command line without a cross-bitness PEB walk.
