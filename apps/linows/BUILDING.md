@@ -117,7 +117,7 @@ nixConfig = {
 
 Nix asks once whether to trust those settings, or pass `--accept-flake-config`. On NixOS the system-wide equivalent is `programs.lookapp.cachix = true` from `nixosModules.default`. Elsewhere, `cachix use look` or `/etc/nix/nix.conf`. Without one of these, Home Manager will build Look from source.
 
-`theme` accepts `catppuccin`, `tokyo-night`, `rose-pine`, `gruvbox`, `dracula`, `kanagawa` (the default), `kindle`, `liquid` and `custom`. Colours are derived from the preset at startup, so the module only writes `ui_theme`, plus the opacity values for `kindle` and `liquid` because those two own them. Use `custom` to drive every `ui_*` value from `settings` instead.
+`theme` accepts `catppuccin`, `tokyo-night`, `rose-pine`, `gruvbox`, `dracula`, `kanagawa` (the default), `kindle`, `liquid` and `custom`. Colours are derived from the preset at startup, so the module only writes `ui_theme`, plus the opacity values for `kindle` and `liquid` because those two own them. Use `custom` to drive every `ui_*` value from `settings` instead. The same names work on macOS: that build spells two of them differently (`tokyoNight`, `rosePine`) and tints `liquid` more lightly, and the module writes whichever spelling and values the installed app understands.
 
 `settings` keys map directly to `~/.look/config` keys and override values derived from `theme`. Lists are written as comma-separated values, except `ignored_patterns_*` and `alias_*`, which Look parses as pipe-separated. `aliases` is the same thing with the prefix filled in, so declaring `aliases.note` and `settings.alias_note` together is an error.
 
@@ -314,7 +314,38 @@ look = {
 
 Look then builds locally instead of coming from Cachix.
 
-> **Note:** For user-level declarative installation and configuration, use the Home Manager module described above. The NixOS module is intended for system-level configuration. Contributions to add Look to [nixpkgs](https://github.com/NixOS/nixpkgs) are welcome.
+> **Note:** For user-level declarative installation and configuration, use the Home Manager module described above. The NixOS module is intended for system-level configuration. Look is also in [nixpkgs](https://github.com/NixOS/nixpkgs) as `lookapp`, Linux only, and that package builds the Tauri shell rather than the gpui one.
+
+### macOS (flake)
+
+**Status:** Available now, Apple Silicon only.
+
+```bash
+nix profile install 'github:kunkka19xx/look?dir=apps/linows'
+```
+
+The flake lives here because every Nix output does, but this package is not the `linows` build: it installs the macOS app from `apps/macos`. That one is an Xcode/Swift target and xcodebuild needs Xcode, which is not in nixpkgs, so there is no source build to offer. The derivation takes the signed and notarized `Look.app` from GitHub Releases instead, the same bundle `brew install --cask look` ships. Keeping Apple's signature is the point rather than a shortcut: macOS keys the Accessibility and Automation grants to it, so a locally re-signed bundle would drop every granted permission on each rebuild, silently, with the switches in System Settings still showing as on.
+
+It installs as `Applications/Look.app` plus a `bin/lookapp` symlink to the bundle executable, the CLI layout `scripts/install-look.sh` already uses. Started through the symlink the app hands off to the bundle, so `lookapp clipboard` and `lookapp --toggle` work from a profile install.
+
+Declarative with [nix-darwin](https://github.com/nix-darwin/nix-darwin):
+
+```nix
+# flake.nix
+inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
+
+# in your darwinSystem modules
+look.darwinModules.default
+{ programs.lookapp.enable = true; }
+```
+
+nix-darwin links the bundle into `/Applications/Nix Apps`, which is what gets Look into Spotlight and into the Accessibility list in System Settings. The [Home Manager module](#home-manager) works unchanged as well, and its `targets.darwin.linkApps` puts the bundle in `~/Applications/Home Manager Apps`.
+
+Three things this does not cover:
+
+- **Intel Macs.** Releases publish one asset per architecture and only the arm64 zip exists so far, so `x86_64-darwin` is left out of the flake rather than shipped broken. It is one entry in `nix/package-darwin.nix` once an Intel release lands.
+- **The binary cache.** `programs.lookapp.cachix` defaults to off on macOS: the package is a fixed-output fetch of the release zip, which every substituter already serves by hash.
+- **A dev shell.** `nix develop` stays Linux-only; the macOS app builds through Xcode (see the repo-root `Makefile`).
 
 ### AppImage (universal)
 

@@ -215,6 +215,14 @@ The Homebrew cask lives in [homebrew/cask](https://github.com/Homebrew/homebrew-
 
 The cask currently has a single `url` and `sha256` pointing at the arm64 asset, so Intel users who run `brew install --cask look` get an arm64 build that cannot launch. Serving them needs `on_arm` and `on_intel` stanzas, which is a manual cask pull request; BrewTestBot's auto-bump keeps working afterwards.
 
+The Nix package for macOS pins that same asset by hash, so it needs the same bump. `update-nix-darwin.yml` does it for you: it waits for the macOS release workflow to finish, rewrites the version and hash, and opens a PR that the `build-darwin` check verifies before merge. To do it by hand, or to backfill an older release:
+
+```bash
+./scripts/nix-bump-darwin.sh 1.0.0
+```
+
+That rewrites `version` and every packaged architecture's hash in one pass, because a bumped version with a stale hash fails the build while a stale version with a fresh hash silently keeps Nix users on the old release. It exits 3 when a release carries an asset for an architecture the file does not package yet, which is the signal to add an `x86_64-darwin` entry to `sources`. The Linux Nix package builds from the tree rather than a release asset, so it needs nothing at release time.
+
 Signing and notarization:
 
 - a paid Apple Developer membership is required for Developer ID signing and notarization
