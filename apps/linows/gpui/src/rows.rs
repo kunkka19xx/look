@@ -174,6 +174,11 @@ fn usage_for(kind: &str) -> &'static str {
 }
 
 impl Row {
+    /// From a block the user declared, as against what Look found.
+    pub fn declared(&self) -> bool {
+        crate::actions::is_source_row(&self.id)
+    }
+
     /// A web suggestion or a URL row: made up from the query, not found
     /// on the machine.
     pub fn is_synthetic(&self) -> bool {

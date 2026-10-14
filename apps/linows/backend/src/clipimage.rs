@@ -40,6 +40,11 @@ pub fn file_path(hash: &str) -> Option<PathBuf> {
     path_for(hash, "")
 }
 
+/// The image's file, while it is still on disk.
+pub fn existing_path(hash: &str) -> Option<PathBuf> {
+    file_path(hash).filter(|path| path.is_file())
+}
+
 pub fn thumbnail_path(hash: &str) -> Option<PathBuf> {
     path_for(hash, THUMBNAIL_SUFFIX)
 }

@@ -1,18 +1,19 @@
-//! Row icons, resolved by the backend off the UI thread and kept for the
-//! process. The list draws a glyph until the picture lands, and keeps the
-//! glyph on a miss.
+//! Row icons, resolved by the backend and decoded off the UI thread, kept
+//! for the launcher's life and released with it, textures included. The
+//! list draws a glyph until the picture lands, and keeps the glyph on a
+//! miss.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use base64::Engine;
-use gpui::{Context, Image, ImageFormat};
+use gpui::{Context, Image, ImageFormat, RenderImage};
 use linows_backend::platform;
 
 use crate::icon_cache;
 
 pub struct IconStore {
-    images: HashMap<String, Option<Arc<Image>>>,
+    images: HashMap<String, Option<Arc<RenderImage>>>,
     pending: HashSet<String>,
 }
 
@@ -29,7 +30,13 @@ impl IconRequest {
 }
 
 impl IconStore {
-    pub fn new() -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        cx.on_release(|store, cx| {
+            for image in store.images.drain().filter_map(|(_, image)| image) {
+                cx.drop_image(image, None);
+            }
+        })
+        .detach();
         Self {
             images: HashMap::new(),
             pending: HashSet::new(),
@@ -38,7 +45,11 @@ impl IconStore {
 
     /// The picture if it is known; otherwise starts resolving it and
     /// notifies once it is, so the row re-renders with it.
-    pub fn get(&mut self, request: IconRequest, cx: &mut Context<Self>) -> Option<Arc<Image>> {
+    pub fn get(
+        &mut self,
+        request: IconRequest,
+        cx: &mut Context<Self>,
+    ) -> Option<Arc<RenderImage>> {
         let key = request.key();
         if let Some(known) = self.images.get(&key) {
             return known.clone();
@@ -46,6 +57,7 @@ impl IconStore {
         if !self.pending.insert(key.clone()) {
             return None;
         }
+        let renderer = cx.svg_renderer();
         cx.spawn(async move |this, cx| {
             let image = cx
                 .background_executor()
@@ -57,7 +69,7 @@ impl IconStore {
                         request.id.as_deref(),
                     )
                     .data_url?;
-                    decode_data_url(&url).map(Arc::new)
+                    decode_data_url(&url)?.to_image_data(renderer).ok()
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {

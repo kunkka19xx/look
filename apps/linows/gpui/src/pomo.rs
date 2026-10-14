@@ -6,7 +6,8 @@
 //! The plan persists in `~/.look/config` under the keys macOS writes, so
 //! both shells share one.
 
-use std::sync::{Mutex, MutexGuard};
+use std::sync::mpsc::{self, Sender};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::Instant;
 
 use linows_backend::config::{self, ConfigUpdate};
@@ -216,6 +217,26 @@ pub fn music_snapshot() -> Option<MusicSnapshot> {
     lock().music_snapshot()
 }
 
+/// One thread writes the plan, in the order the saves were made, so a save
+/// never blocks a keystroke and two close together cannot cross on disk.
+fn config_writer() -> &'static Sender<Vec<ConfigUpdate>> {
+    static WRITER: OnceLock<Sender<Vec<ConfigUpdate>>> = OnceLock::new();
+    WRITER.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<Vec<ConfigUpdate>>();
+        std::thread::Builder::new()
+            .name("look-pomo-save".into())
+            .spawn(move || {
+                for updates in rx {
+                    if let Err(err) = config::set_config(updates) {
+                        eprintln!("[pomo] saving the plan: {err}");
+                    }
+                }
+            })
+            .expect("spawn the pomo config writer");
+        tx
+    })
+}
+
 impl Pomo {
     fn load(&mut self) {
         let entries = config::get_config().entries;
@@ -252,9 +273,7 @@ impl Pomo {
                 value: self.music_folder.clone().unwrap_or_default(),
             },
         ];
-        if let Err(err) = config::set_config(updates) {
-            eprintln!("[pomo] saving the plan: {err}");
-        }
+        config_writer().send(updates).ok();
     }
 
     // --- Timer -------------------------------------------------------------------
@@ -525,9 +544,11 @@ impl Pomo {
     }
 
     /// A folder picked: its tracks replace the list, stopped.
-    pub fn set_music_folder(&mut self, folder: String) {
+    /// `tracks` is the folder's scan, done before taking the lock: a walk
+    /// under it would stall every reader until it ends.
+    pub fn set_music_folder(&mut self, folder: String, tracks: Vec<String>) {
         self.music_stop();
-        self.tracks = shuffled(files::scan_music_folder(&folder));
+        self.tracks = shuffled(tracks);
         self.track = None;
         self.music_folder = Some(folder);
         self.tracks_scanned = true;

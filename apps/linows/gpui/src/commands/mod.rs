@@ -23,7 +23,7 @@ use crate::icons::IconStore;
 use crate::launcher::Launcher;
 use crate::modes::{COMMAND_ENTRIES, CommandEntry};
 use crate::search::{SearchInput, search_field};
-use crate::theme::Theme;
+use crate::theme::{LABEL_LINE_HEIGHT, Theme};
 
 const SIDEBAR_W: f32 = 180.0;
 const SIDEBAR_PADDING: f32 = 5.0;
@@ -35,7 +35,6 @@ const SIDEBAR_ICON_BOX: f32 = 22.0;
 const SIDEBAR_ICON: f32 = 16.0;
 const DIVIDER_MARGIN: f32 = 2.0;
 /// The rows' two lines sit tight, as the CSS sets them.
-const SIDEBAR_LINE_HEIGHT: f32 = 1.2;
 /// The input bar's inset equals the content inset below it, so a command's
 /// bar and its output share edges.
 const BAR_MARGIN_X: f32 = 18.0;
@@ -354,14 +353,14 @@ impl Commands {
                             .child(
                                 div()
                                     .text_size(px(th.font_size - 1.0))
-                                    .line_height(px((th.font_size - 1.0) * SIDEBAR_LINE_HEIGHT))
+                                    .line_height(px((th.font_size - 1.0) * LABEL_LINE_HEIGHT))
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(format!("/{}", entry.id)),
                             )
                             .child(
                                 div()
                                     .text_size(px(th.font_size - 2.0))
-                                    .line_height(px((th.font_size - 2.0) * SIDEBAR_LINE_HEIGHT))
+                                    .line_height(px((th.font_size - 2.0) * LABEL_LINE_HEIGHT))
                                     .text_color(th.text_secondary)
                                     .truncate()
                                     .child(entry.detail),

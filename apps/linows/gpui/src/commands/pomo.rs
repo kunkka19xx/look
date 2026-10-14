@@ -11,7 +11,7 @@ use gpui::{
     canvas, div, fill, point, prelude::*, px, radians, svg,
 };
 
-use super::draw::{LINE_HEIGHT, Type, paint_dot, paint_ring, paint_text};
+use super::draw::{Type, paint_dot, paint_ring, paint_text};
 use super::{Commands, KeyOutcome};
 use crate::banner;
 use crate::bg;
@@ -21,7 +21,7 @@ use crate::launchpad::Tone;
 use crate::motion;
 use crate::pick;
 use crate::pomo::{self, Kind, STYLES, Style};
-use crate::search::{SearchInput, search_field};
+use crate::search::{SearchInput, input_for, search_field};
 use crate::theme::{self, Theme};
 
 pub const ID: &str = "pomo";
@@ -250,7 +250,7 @@ impl Panel {
                 Field::Minutes => session.minutes.to_string(),
             }
         };
-        let input = cx.new(SearchInput::new);
+        let input = input_for(cx);
         input.update(cx, |input, cx| {
             input.set_text(&text, cx);
             input.select_all(cx);
@@ -309,9 +309,12 @@ impl Panel {
                     return;
                 }
             };
-            cx.background_executor()
-                .spawn(async move { pomo::lock().set_music_folder(folder) })
-                .await;
+            bg::blocking(move || {
+                let tracks = linows_backend::files::scan_music_folder(&folder);
+                pomo::lock().set_music_folder(folder, tracks);
+            })
+            .get()
+            .await;
             let _ = this.update(cx, |_, cx| cx.notify());
         })
         .detach();
@@ -356,7 +359,7 @@ pub fn panel(frame: &Commands, th: &Theme, cx: &mut Context<Launcher>) -> Statef
         .gap(px(CARD_GAP))
         .child(
             div()
-                .min_h(px(th.font_size * LINE_HEIGHT))
+                .min_h(px(th.font_size * theme::LABEL_LINE_HEIGHT))
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(SharedString::from(
                     session.as_ref().map(|s| s.name.clone()).unwrap_or_default(),

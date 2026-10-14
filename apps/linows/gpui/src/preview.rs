@@ -10,18 +10,19 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{
-    AnyElement, Context, Div, Entity, EventEmitter, FontWeight, HighlightStyle, Image, ObjectFit,
+    AnyElement, Context, Div, Entity, EventEmitter, FontWeight, HighlightStyle, ObjectFit,
     ScrollHandle, SharedString, Stateful, StyledText, Task, div, img, prelude::*, px, relative,
     svg,
 };
 use linows_backend::highlight::{self, TokenType};
 use linows_backend::process::ProcDetail;
-use linows_backend::{clipboard, files, launch, process};
+use linows_backend::{clipboard, clipimage, files, launch, process};
 
 use crate::Shell;
 use crate::elide::middle_elided;
 use crate::glyphs;
-use crate::icons::{self, IconRequest, IconStore};
+use crate::icons::{IconRequest, IconStore};
+use crate::imagecache::PreviewImages;
 use crate::launchpad::Notice;
 use crate::modes::Mode;
 use crate::qactions::QuickActions;
@@ -42,7 +43,6 @@ const BADGE_PADDING_X: f32 = 8.0;
 const BADGE_PADDING_Y: f32 = 2.0;
 const INFO_GAP: f32 = 12.0;
 const INFO_ROW_GAP: f32 = 12.0;
-const INFO_LINE_HEIGHT: f32 = 1.2;
 const INFO_PADDING_Y: f32 = 5.0;
 const BODY_MARGIN: f32 = 12.0;
 const CODE_PADDING: f32 = 10.0;
@@ -91,11 +91,11 @@ impl EventEmitter<Notice> for Preview {}
 pub enum Content {
     /// A text clip: its counts, the text in a card, when it was captured.
     Clip(Clip),
-    /// A copied image, decoded, or gone from disk.
+    /// A copied image by its file, or gone from disk.
     ClipImage {
         meta: ClipImage,
         title: String,
-        image: Option<Arc<Image>>,
+        image: Option<PathBuf>,
     },
     /// A process: its command line and the facts `/proc` gives at once; the
     /// CPU sample waits for Enter.
@@ -124,6 +124,8 @@ pub enum Content {
     Standard {
         icon: IconRequest,
         glyph: &'static str,
+        /// The row came from a block the user declared.
+        declared: bool,
         title: String,
         badge: String,
         /// The size or the item count, beside the badge.
@@ -151,6 +153,8 @@ pub enum Body {
 pub struct Preview {
     shell: Shell,
     icons: Entity<IconStore>,
+    /// The pictures on screen lately, see `imagecache`.
+    images: Entity<PreviewImages>,
     current: Option<(String, Arc<Content>)>,
     cache: HashMap<String, Arc<Content>>,
     /// The row the panel is waiting on; an answer for another is dropped.
@@ -167,10 +171,11 @@ pub struct Preview {
 }
 
 impl Preview {
-    pub fn new(shell: Shell, icons: Entity<IconStore>) -> Self {
+    pub fn new(shell: Shell, icons: Entity<IconStore>, cx: &mut Context<Self>) -> Self {
         Self {
             shell,
             icons,
+            images: cx.new(PreviewImages::new),
             current: None,
             cache: HashMap::new(),
             wanted: None,
@@ -255,7 +260,7 @@ impl Preview {
     pub fn show(&mut self, row: &Row, ancestors: String, cx: &mut Context<Self>) {
         self.sync_actions(row, cx);
         // A block row is a different panel at a different depth.
-        let key = if crate::actions::is_source_row(&row.id) {
+        let key = if row.declared() {
             format!("{}\u{0}{}", row.id, ancestors)
         } else {
             row.id.clone()
@@ -360,6 +365,7 @@ impl Preview {
                         .justify_center()
                         .child(
                             img(image.clone())
+                                .image_cache(&self.images)
                                 .max_w_full()
                                 .max_h(px(CLIP_IMAGE_MAX_H))
                                 .object_fit(ObjectFit::Contain)
@@ -454,6 +460,7 @@ impl Preview {
                         &meta.name,
                         "Process",
                         Some(&format!("PID {}", meta.pid)),
+                        false,
                         th,
                     ))
                     .child(clip_label("Command", th))
@@ -482,7 +489,7 @@ impl Preview {
                 preview,
             } => {
                 let mut panel = panel
-                    .child(header(None, glyphs::ZAP, title, name, None, th))
+                    .child(header(None, glyphs::ZAP, title, name, None, true, th))
                     .when(!steps.is_empty(), |el| {
                         el.child(clip_label("Enter runs", th)).child(
                             div()
@@ -532,6 +539,7 @@ impl Preview {
             Content::Standard {
                 icon,
                 glyph,
+                declared,
                 title,
                 badge,
                 aside,
@@ -550,7 +558,15 @@ impl Preview {
                 });
                 let shell = self.shell.clone();
                 panel
-                    .child(header(picture, glyph, title, badge, aside.as_deref(), th))
+                    .child(header(
+                        picture,
+                        glyph,
+                        title,
+                        badge,
+                        aside.as_deref(),
+                        *declared,
+                        th,
+                    ))
                     .children(self.actions_section(th, cx))
                     .child(self.body(body, th, shell))
                     // Under a body the rows sit at the foot, as macOS files do.
@@ -655,6 +671,7 @@ impl Preview {
                 .justify_center()
                 .child(
                     img(path.clone())
+                        .image_cache(&self.images)
                         .max_w_full()
                         .max_h(px(image_max_h()))
                         .object_fit(ObjectFit::Contain)
@@ -817,7 +834,7 @@ fn reads_file(row: &Row) -> bool {
 }
 
 fn load(row: &Row, ancestors: &str) -> Content {
-    if crate::actions::is_source_row(&row.id) && row.path.is_empty() {
+    if row.declared() && row.path.is_empty() {
         let args = crate::actions::row_args(row, ancestors);
         let detail = linows_backend::sources::source_block(args);
         let preview = detail.as_ref().filter(|d| d.has_preview).and_then(|_| {
@@ -864,10 +881,7 @@ fn load(row: &Row, ancestors: &str) -> Content {
         Open::ClipImage(meta) => Content::ClipImage {
             meta: meta.clone(),
             title: row.title.clone(),
-            image: clipboard::clipboard_image_data_url(&meta.hash)
-                .as_deref()
-                .and_then(icons::decode_data_url)
-                .map(Arc::new),
+            image: clipimage::existing_path(&meta.hash),
         },
         Open::Process(meta) => Content::Process {
             meta: meta.clone(),
@@ -980,6 +994,7 @@ fn standard(row: &Row) -> Content {
         id: Some(row.id.clone()),
     };
     let badge = badge_label(&row.kind).to_string();
+    let declared = row.declared();
     let mut info: Vec<(&'static str, String)> = Vec::new();
     let mut aside = None;
     let mut body = Body::None;
@@ -1046,6 +1061,7 @@ fn standard(row: &Row) -> Content {
     Content::Standard {
         icon,
         glyph,
+        declared,
         title: row.title.clone(),
         badge,
         aside,
@@ -1054,14 +1070,22 @@ fn standard(row: &Row) -> Content {
     }
 }
 
+/// `declared` marks a row from the user's own block: the tile wears the
+/// accent fill and ring the list gives the same rows.
 fn header(
-    picture: Option<Arc<gpui::Image>>,
+    picture: Option<Arc<gpui::RenderImage>>,
     glyph: &'static str,
     title: &str,
     badge: &str,
     aside: Option<&str>,
+    declared: bool,
     th: &Theme,
 ) -> Div {
+    let glyph_colour = if declared {
+        th.accent
+    } else {
+        th.text_secondary
+    };
     let icon = div()
         .size(px(HEADER_ICON))
         .flex_shrink_0()
@@ -1070,6 +1094,7 @@ fn header(
         .justify_center()
         .rounded(px(HEADER_ICON_RADIUS))
         .bg(th.control_fill)
+        .when(declared, |tile| th.declared(tile))
         .child(match picture {
             Some(image) => img(image)
                 .size(px(HEADER_ICON))
@@ -1078,7 +1103,7 @@ fn header(
             None => svg()
                 .path(glyph)
                 .size(px(HEADER_ICON / 2.0))
-                .text_color(th.text_secondary)
+                .text_color(glyph_colour)
                 .into_any_element(),
         });
     let badge_el = div()
@@ -1141,7 +1166,7 @@ pub(crate) fn info_list(th: &Theme) -> Div {
         .flex_col()
         .gap(px(INFO_ROW_GAP))
         .text_size(px(th.font_size - 2.0))
-        .line_height(relative(INFO_LINE_HEIGHT))
+        .line_height(relative(theme::LABEL_LINE_HEIGHT))
 }
 
 /// A muted label left, its value right.

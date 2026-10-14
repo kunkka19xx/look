@@ -6,14 +6,15 @@
 //! the inner gap as every seam.
 
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Div, Entity,
     FontWeight, KeyDownEvent, Pixels, Render, ScrollStrategy, SharedString, Stateful, Task,
-    Transformation, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred,
-    div, fill, img, point, prelude::*, px, relative, size, svg, uniform_list,
+    Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred, div, fill, img,
+    point, prelude::*, px, relative, size, svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
@@ -45,14 +46,14 @@ use crate::preview::{self, ClipDeleted, Preview};
 use crate::query;
 use crate::rows::{Icon, Open, Row};
 use crate::running::RunningApps;
-use crate::search::{Changed, SearchInput, search_field};
+use crate::search::{Changed, SearchInput, input_for, search_field};
 use crate::settings::{self, Settings};
 use crate::shortcuts::{self, Hint, Piece};
 use crate::theme::{self, Theme};
 use crate::update::Update;
 use crate::{Shell, fonts, health, state as app_state};
 
-const PLACEHOLDER: &str = "Search apps, files, actions";
+const PLACEHOLDER: &str = "Type whatever you want";
 /// The answer card is the answer: no row is picked, so Enter has no target.
 static HINT_ANSWER: Hint = Hint::new(&[
     Piece::Key("Down", "Pick a row"),
@@ -68,7 +69,6 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=en&text=";
 /// webview uses the same.
 const DEBOUNCE: Duration = Duration::from_millis(70);
 /// A row's picture, or the glyph that stands in for it.
-const ROW_ICON: f32 = 22.0;
 const EMPTY_STATE_H: f32 = 200.0;
 const EMPTY_STATE_ICON: f32 = 36.0;
 const EMPTY_STATE_PADDING_X: f32 = 24.0;
@@ -125,6 +125,9 @@ const APP_EXCLUDE_KEY: &str = "app_exclude_names";
 const FRESH_CONFIG_ASK: &str = "Create a fresh config?";
 /// Low bits of a text shift key hold the row index; the change count sits above.
 const SHIFT_ROW_BITS: usize = 20;
+const ROW_ICON: f32 = 22.0;
+/// The declared tile's inset around the icon, the ring included.
+const DECLARED_PAD: f32 = 1.0;
 const FRESH_CONFIG_DONE: &str = "Config reset to defaults";
 const FRESH_CONFIG_FAILED: &str = "Reset failed";
 /// `look_indexing::UsageAction::EXECUTE`: a block run ranks like an open.
@@ -225,6 +228,11 @@ pub struct Launcher {
     backdrop_failed: Option<bgimage::Key>,
     /// The selection pill's top, in list pixels, gliding between rows.
     pill: Entity<TransitionState<f32>>,
+    /// Set when the selection moves, read by the pill's paint: while the
+    /// pill glides the viewport follows it, so the uniform list, which
+    /// would jump, scrolls on the pill's own curve. The wheel owns the
+    /// list the rest of the time.
+    follow_pill: Rc<Cell<bool>>,
     /// Bumped each time `rows` is replaced; the pill lands on a new set
     /// without a glide.
     rows_epoch: u64,
@@ -257,12 +265,12 @@ pub struct Launcher {
 
 impl Launcher {
     pub fn new(shell: Shell, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let input = cx.new(SearchInput::new);
+        let input = input_for(cx);
         cx.subscribe(&input, |this, _, _: &Changed, cx| this.search(cx))
             .detach();
-        let icons = cx.new(|_| IconStore::new());
+        let icons = cx.new(IconStore::new);
         cx.observe(&icons, |_, _, cx| cx.notify()).detach();
-        let preview = cx.new(|_| Preview::new(shell.clone(), icons.clone()));
+        let preview = cx.new(|cx| Preview::new(shell.clone(), icons.clone(), cx));
         cx.observe(&preview, |_, _, cx| cx.notify()).detach();
         cx.subscribe(&preview, |this, _, notice: &Notice, cx| {
             this.banner
@@ -273,7 +281,7 @@ impl Launcher {
             this.clip_removed(cx);
         })
         .detach();
-        let command_input = cx.new(SearchInput::new);
+        let command_input = input_for(cx);
         cx.subscribe(&command_input, |this, _, _: &Changed, cx| {
             this.commands.input_changed(cx)
         })
@@ -323,6 +331,7 @@ impl Launcher {
             backdrop_loading: None,
             backdrop_failed: None,
             pill: cx.new(|_| TransitionState::new(0.0)),
+            follow_pill: Rc::new(Cell::new(false)),
             rows_epoch: 1,
             pill_rows: 0,
             results_epoch: 0,
@@ -1154,8 +1163,6 @@ impl Launcher {
             };
             self.unpicked = false;
             self.navigated = Some(self.input.read(cx).text().to_string());
-            self.scroll
-                .scroll_to_item(self.selected, ScrollStrategy::Nearest);
             self.sync_preview(cx);
             cx.notify();
         }
@@ -1195,9 +1202,7 @@ impl Launcher {
             return true;
         };
         match row.open {
-            Open::Path { .. } if actions::is_source_row(&row.id) => {
-                self.perform_source_row(row, cx)
-            }
+            Open::Path { .. } if row.declared() => self.perform_source_row(row, cx),
             Open::Path { usage } => {
                 match launch::open_path(&self.shell, row.path, Some(&row.kind), Some(&row.id)) {
                     Ok(()) => {
@@ -1271,7 +1276,7 @@ impl Launcher {
         if !matches!(row.open, Open::Path { .. }) {
             return true;
         }
-        if row.path.is_empty() && actions::is_source_row(&row.id) {
+        if row.path.is_empty() && row.declared() {
             let args = actions::row_args(&row, &self.levels.ancestors());
             let shell = self.shell.clone();
             bg::fetch(
@@ -2341,34 +2346,30 @@ impl Launcher {
                     )
                 });
                 match image {
-                    Some(image) => gain(i, selected, img(image)),
-                    None => glyph_icon(glyph, th).into_any_element(),
+                    Some(image) => img(image).size(px(ROW_ICON)).into_any_element(),
+                    None => glyph_icon(glyph, th),
                 }
             }
-            Icon::Glyph(glyph) if selected => glyph_icon(glyph, th)
-                .with_animation(
-                    ("gain", i),
-                    Animation::new(motion::dur(motion::ZOOM_MS)),
-                    |icon, t| {
-                        let scale = motion::zoom(t);
-                        icon.with_transformation(Transformation::scale(size(scale, scale)))
-                    },
-                )
+            Icon::Glyph(glyph) => glyph_icon(glyph, th),
+            Icon::File(path) => img(path.clone())
+                .size(px(ROW_ICON))
+                .rounded(px(th.chip_radius() / 1.5))
+                .object_fit(gpui::ObjectFit::Cover)
                 .into_any_element(),
-            Icon::Glyph(glyph) => glyph_icon(glyph, th).into_any_element(),
-            Icon::File(path) => gain(
-                i,
-                selected,
-                img(path.clone())
-                    .rounded(px(th.chip_radius() / 1.5))
-                    .object_fit(gpui::ObjectFit::Cover),
-            ),
             Icon::Text(text) => div()
                 .text_size(px(ROW_ICON * 0.8))
                 .child(SharedString::from(text.clone()))
                 .into_any_element(),
         };
-        div()
+        let picture = self.glide(
+            "icon",
+            i,
+            selected,
+            icon_chip(picture, row.declared(), th),
+            -motion::ICON_SHIFT,
+        );
+        let last = i + 1 == self.rows.len();
+        let row_face = div()
             .id(("row", i))
             .w_full()
             .h(px(theme::ROW_HEIGHT))
@@ -2382,46 +2383,65 @@ impl Launcher {
                 this.sync_preview(cx);
                 this.enter(cx);
             }))
-            .child(
-                div()
-                    .size(px(theme::ICON_CHIP))
-                    .flex_shrink_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(picture),
-            )
-            .child(self.shifted(i, selected, text))
+            .child(picture)
+            .child(self.glide("shift", i, selected, text, motion::TITLE_SHIFT))
             .when(!row.kind_label.is_empty(), |el| {
                 el.child(muted_text(row.kind_label.clone(), th))
             })
-            .when(self.picked.contains(row), |el| el.child(picked::check(th)))
+            .when(self.picked.contains(row), |el| el.child(picked::check(th)));
+        // The row sits over its gap, with the hairline in the gap: hidden
+        // under the selection and after the last row, by presence rather
+        // than height, so selection never reflows the list.
+        div()
+            .w_full()
+            .h(px(theme::ROW_PITCH))
+            .relative()
+            .child(row_face)
+            .when(!selected && !last, |el| {
+                el.child(
+                    div()
+                        .absolute()
+                        .left(px(theme::ROW_INSET))
+                        .right(px(theme::ROW_INSET))
+                        .bottom(px(theme::ROW_SPACING / 2.0))
+                        .h(px(theme::ROW_DIVIDER_H))
+                        .bg(th.row_divider()),
+                )
+            })
             .into_any_element()
     }
 
-    /// The row's text held `TITLE_SHIFT` to the right while selected: an
-    /// offset, not padding, so nothing reflows. It slides out on the glide
-    /// as the row takes the selection and back as the selection leaves.
-    fn shifted(&self, i: usize, selected: bool, text: Div) -> AnyElement {
+    /// A part of the row held `shift` pixels aside while selected, the
+    /// text to the right and a picture icon to the left: an offset, not
+    /// padding, so nothing reflows. It slides out on the glide as the row
+    /// takes the selection and back as the selection leaves.
+    fn glide(
+        &self,
+        name: &'static str,
+        i: usize,
+        selected: bool,
+        el: Div,
+        shift: f32,
+    ) -> AnyElement {
         let leaving = self.prev_selected == Some(i);
         if !selected && !leaving {
-            return text.into_any_element();
+            return el.into_any_element();
         }
         // One integer carries the row and the change count: gpui keys an
         // element on a name and one number.
         let key = (self.shift_epoch as usize) << SHIFT_ROW_BITS | i;
-        text.relative()
+        el.relative()
             .with_animation(
-                ("shift", key),
+                (name, key),
                 Animation::new(motion::dur(motion::GLIDE_MS)),
-                move |text, t| {
+                move |el, t| {
                     let t = motion::curve(t);
                     let x = if selected {
-                        motion::rise(motion::TITLE_SHIFT, -motion::TITLE_SHIFT, t)
+                        motion::rise(shift, -shift, t)
                     } else {
-                        motion::rise(0.0, motion::TITLE_SHIFT, t)
+                        motion::rise(0.0, shift, t)
                     };
-                    text.left(px(x))
+                    el.left(px(x))
                 },
             )
             .into_any_element()
@@ -2519,13 +2539,7 @@ impl Launcher {
     /// Floating: the list and the preview as two cards with the hint in the
     /// list's foot. Seated: two columns split by a hairline, the hint as a
     /// full-width bar under them.
-    fn results(
-        &mut self,
-        seated: bool,
-        th: &Theme,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn results(&mut self, seated: bool, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let rows = self.rows.clone();
         let row_theme = th.clone();
         let launcher = cx.entity();
@@ -2545,7 +2559,7 @@ impl Launcher {
             .relative()
             .flex_1()
             .min_h_0()
-            .child(self.selection_pill(th, window, cx))
+            .child(self.selection_pill(th, cx))
             .child(list);
 
         let hint = if self.levels.is_active() {
@@ -2956,9 +2970,9 @@ impl Launcher {
                 self.bento(&th, window, cx).into_any_element()
             }
             (true, false, _) if !home_lists() => div().into_any_element(),
-            (true, false, _) => self.results(seated, &th, window, cx).into_any_element(),
+            (true, false, _) => self.results(seated, &th, cx).into_any_element(),
             (false, _, Mode::Translate) => self.translate_panel(seated, &th, cx).into_any_element(),
-            (false, _, _) => self.results(seated, &th, window, cx).into_any_element(),
+            (false, _, _) => self.results(seated, &th, cx).into_any_element(),
         };
         let bar_radius = th.bar_radius();
         // A toast floats over the body just under the bar, so neither the
@@ -3203,49 +3217,67 @@ impl Launcher {
     /// The pill under the selected row: its top glides on a `Transition`
     /// when the selection moves and jumps when the rows are new, and the
     /// paint reads the list's scroll offset so it stays on its row.
-    fn selection_pill(
-        &mut self,
-        th: &Theme,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn selection_pill(&mut self, th: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let transition =
             Transition::new(self.pill.clone(), motion::transition(motion::GLIDE_MS, cx))
                 .with_easing(motion::curve);
-        let goal = self.selected as f32 * theme::ROW_HEIGHT;
+        let goal = self.selected as f32 * theme::ROW_PITCH;
         let fresh = self.pill_rows != self.rows_epoch;
-        if self.selected != self.last_selected {
+        let moved = self.selected != self.last_selected;
+        if moved {
             // New rows land without a slide, so no row is leaving.
             self.prev_selected = (!fresh).then_some(self.last_selected);
             self.shift_epoch += 1;
             self.last_selected = self.selected;
         }
+        let handle = self.scroll.0.borrow().base_handle.clone();
         if fresh {
             self.pill_rows = self.rows_epoch;
             transition.jump_to(goal, cx);
-        } else {
-            // A held key moves the selection faster than a glide can
-            // follow, and a wrap crosses the whole list: the pill never
-            // starts more than one row from where it is going.
-            let current = *transition.evaluate(window, cx);
-            let gap = goal - current;
-            if gap.abs() > theme::ROW_HEIGHT {
-                transition.jump_to(goal - theme::ROW_HEIGHT * gap.signum(), cx);
-            }
+        }
+        if moved {
+            self.follow_pill.set(true);
+        }
+        if !fresh {
+            // A new goal retargets the glide from wherever the pill is,
+            // as the webview's CSS transition does: a held key makes it
+            // chase the selection, never leap to it.
             transition.update(cx, |top, _| *top = goal);
         }
-        let scroll = self.scroll.clone();
+        let follow = self.follow_pill.clone();
         let colour = theme::hsla_of(th.selection_fill);
         let radius = th.control_radius();
         let shown = self.picked().is_some();
         canvas(
             |_, _, _| (),
             move |bounds: Bounds<Pixels>, _, window, cx| {
+                let top = *transition.evaluate(window, cx);
+                // The viewport keeps the whole pitch of the gliding pill in
+                // view, the webview's smooth `scrollIntoView` and the macOS
+                // `scrollTo` inside the glide; once the pill has landed the
+                // wheel may scroll it away.
+                if follow.get() {
+                    let view_h = f32::from(bounds.size.height);
+                    let scrolled = -f32::from(handle.offset().y);
+                    let needed = if top < scrolled {
+                        top
+                    } else if top + theme::ROW_PITCH > scrolled + view_h {
+                        top + theme::ROW_PITCH - view_h
+                    } else {
+                        scrolled
+                    }
+                    .max(0.0);
+                    if needed != scrolled {
+                        handle.set_offset(point(px(0.0), px(-needed)));
+                    }
+                    if transition.evaluate_delta(cx) >= 1.0 {
+                        follow.set(false);
+                    }
+                }
                 if !shown {
                     return;
                 }
-                let top = *transition.evaluate(window, cx);
-                let offset = scroll.0.borrow().base_handle.offset().y;
+                let offset = handle.offset().y;
                 let y = (f32::from(bounds.origin.y + offset) + top).round();
                 let mut quad = fill(
                     Bounds::new(
@@ -3319,7 +3351,7 @@ pub(crate) fn backdrop_layer(radius: f32, th: &Theme) -> Option<impl IntoElement
 
 /// The band's leading at the hint's size.
 fn hint_line_height(th: &Theme) -> f32 {
-    (th.font_size - 1.0) * theme::HINT_LINE_HEIGHT
+    (th.font_size - 1.0) * theme::LABEL_LINE_HEIGHT
 }
 
 /// The author link, macOS `copyrightLink`.
@@ -3358,24 +3390,37 @@ fn muted_text(text: impl Into<SharedString>, th: &Theme) -> Div {
 /// A picture icon at its size, zooming in and back when its row lands
 /// selected. The picture resizes inside its fixed chip, so no text moves;
 /// a glyph scales through its svg transformation instead.
-fn gain(i: usize, selected: bool, picture: gpui::Img) -> AnyElement {
-    if !selected {
-        return picture.size(px(ROW_ICON)).into_any_element();
-    }
-    picture
-        .with_animation(
-            ("gain", i),
-            Animation::new(motion::dur(motion::ZOOM_MS)),
-            |picture, t| picture.size(px(ROW_ICON * motion::zoom(t))),
-        )
-        .into_any_element()
+/// The icon's box. A row the user declared gets a tinted tile with a ring
+/// around its icon, as the webview and macOS mark the user's own entries
+/// apart from what Look found.
+fn icon_chip(picture: AnyElement, declared: bool, th: &Theme) -> Div {
+    let picture = if declared {
+        th.declared(div())
+            .size(px(ROW_ICON + 2.0 * DECLARED_PAD))
+            .rounded(px(th.chip_radius()))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(picture)
+            .into_any_element()
+    } else {
+        picture
+    };
+    div()
+        .size(px(theme::ICON_CHIP))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(picture)
 }
 
-fn glyph_icon(path: &'static str, th: &Theme) -> gpui::Svg {
+fn glyph_icon(path: &'static str, th: &Theme) -> AnyElement {
     svg()
         .path(path)
         .size(px(theme::SEARCH_ICON + 2.0))
         .text_color(th.accent)
+        .into_any_element()
 }
 
 /// What putting a clip back on the clipboard runs, and what the banner says

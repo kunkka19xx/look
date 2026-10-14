@@ -44,7 +44,13 @@ pub fn set_config(updates: Vec<ConfigUpdate>) -> Result<(), String> {
 }
 
 /// `updates` replace or append their lines, `removals` take theirs out.
+/// One writer at a time: this is a read-modify-write of the whole file,
+/// and two threads crossing would drop each other's keys.
 pub fn write_config(updates: Vec<ConfigUpdate>, removals: &[String]) -> Result<(), String> {
+    static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _writing = WRITING
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let path = config_file_path();
     // Distinguish "file absent" (fine, start from empty) from "file exists but
     // is unreadable" (bad permissions, non-UTF-8). Treating an unreadable file
