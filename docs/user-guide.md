@@ -612,6 +612,8 @@ These keys have no control in the Settings screens. Edit `~/.look/config` direct
 - `shortcut_<group>_<action>` (macOS, and the gpui build on Linux and Windows; an in-app shortcut, same grammar as `launcher_hotkey` plus Shift-only chords on keys that type nothing, like `shift+enter`. The name follows the row in `Settings > Shortcuts`: `shortcut_main_copy`, `shortcut_view_reload_config`. Several chords for one action are separated by `|`. Only rebound shortcuts appear in the file; a chord Look cannot parse is ignored and the shortcut keeps its default)
 - `query_retention_seconds` (how long the main query survives while Look is hidden, in seconds; the first open past it returns to the empty home screen; default 5, `0` clears on every hide, and any negative value keeps the query indefinitely)
 - `text_editor`, `code_editor`, `terminal`, `file_manager` (the tools `Cmd+E` / `Cmd+T` / `Cmd+F` act through, see [Preferred tools](#preferred-tools); undeclared means the system default)
+- `hints_enabled` (macOS, and the gpui build on Linux and Windows; the hint line along the bottom of the launcher, with its Todo tally, and the author link. Default `true`; `false` hides all of them on every screen)
+- `search_placeholder` (macOS, and the gpui build on Linux and Windows; the text in the empty search field, shown exactly as written. The config file ships with `search_placeholder=Type whatever you want`; leave the value empty to show no placeholder. As with every value, a ` #` starts a comment)
 
 - `ignored_patterns_<group>` uses gitignore-style path glob syntax: `*`, `**`, `?`, `[abc]`
   - macOS/Linux normally use `/` paths like `~/Library/...` or `/home/name/...`

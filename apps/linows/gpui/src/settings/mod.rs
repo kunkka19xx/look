@@ -459,14 +459,15 @@ impl Settings {
         self.recorder.discard();
     }
 
-    /// Read the file again: on open, and on Ctrl+Shift+; while open. The
-    /// OS owns autostart and PATH, so their switches read the OS, not the
-    /// file, and the drives come along on Windows.
+    /// Start from the config as last loaded: on open, and on Ctrl+Shift+;
+    /// while open, which loads it first. The OS owns autostart and PATH, so
+    /// their switches read the OS, not the file, and the drives come along
+    /// on Windows.
     pub fn reload(&mut self, cx: &mut Context<Launcher>) {
         bg::fetch(
             cx,
             || {
-                let mut entries = theme::entries();
+                let mut entries = (*theme::entries()).clone();
                 let flag = |on: bool| if on { "true" } else { "false" }.to_string();
                 entries.insert(
                     advanced::LAUNCH_AT_LOGIN.key.to_string(),
@@ -839,6 +840,10 @@ impl Settings {
                 }
                 this.ai.enabled = ai_on;
                 crate::hotkey::set_active(true);
+                // What was written is what the next summon reads.
+                if ok {
+                    theme::load();
+                }
                 bindings::load();
                 this.settings.recorder.state = Some(hotkey::launcher_hotkey_state());
                 if ok {

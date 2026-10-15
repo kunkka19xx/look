@@ -266,10 +266,8 @@ fn open(shell: &Shell, cx: &mut App) {
     if shown(cx) {
         return;
     }
-    // What a summon does on every shell: the config may have changed, and so
-    // may the files.
-    theme::load();
-    bindings::load();
+    // The config is read at start and on reload, never here, as on macOS;
+    // the files may have changed since the last summon.
     fonts::ensure_family(cx, &theme::get().font_family);
     host::probe_opaque();
     state().request_index_refresh();
@@ -506,12 +504,15 @@ fn apply(command: Command, cx: &mut App) {
         Command::Drag(from, to) => mouse(cx, &[from, to]),
         Command::Wheel(at, lines) => wheel(cx, at, lines),
         Command::Refresh => with_launcher(cx, |launcher, cx| launcher.refresh(cx)),
-        Command::ReloadConfig if !cx.windows().is_empty() => {
+        // Shown, not merely a window: Windows keeps a parked one while hidden.
+        Command::ReloadConfig if shown(cx) => {
             with_launcher(cx, |launcher, cx| launcher.reload_config(cx))
         }
-        // Hidden: no window to carry the banner, so the engine part alone;
-        // the next open reads the theme and the bindings again anyway.
+        // Hidden: no window to carry the banner; the theme and the bindings
+        // load now for the next open, the engine off the UI thread.
         Command::ReloadConfig => {
+            theme::load();
+            bindings::load();
             cx.spawn(async move |cx| {
                 cx.background_executor()
                     .spawn(async {
@@ -657,6 +658,8 @@ fn main() {
     }
 
     motion::set_desktop_reduces(linows_backend::platform::reduce_motion());
+    // The one read until the user reloads.
+    theme::load();
     gpui_platform::application()
         .with_assets(glyphs::Assets)
         .run(move |cx: &mut App| {

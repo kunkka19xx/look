@@ -566,6 +566,12 @@ clipboard_history_limit=10\n\
 # it on every hide; a negative value keeps it indefinitely.\n\
 query_retention_seconds=5\n\
 \n\
+# The hint line along the bottom and the author link. false hides both.\n\
+hints_enabled=true\n\
+\n\
+# Search bar placeholder. Empty shows none.\n\
+search_placeholder=Type whatever you want\n\
+\n\
 {launcher_hotkey_section}\
 # Preferred tools. Name the tool, not a command: Look knows how to drive it,\n\
 # including running a terminal editor inside your terminal. Declare nothing and\n\

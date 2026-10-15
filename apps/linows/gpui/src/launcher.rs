@@ -54,7 +54,6 @@ use crate::theme::{self, Theme};
 use crate::update::Update;
 use crate::{Shell, fonts, health, state as app_state};
 
-const PLACEHOLDER: &str = "Type whatever you want";
 /// The answer card is the answer: no row is picked, so Enter has no target.
 static HINT_ANSWER: Hint = Hint::new(&[
     Piece::Key("Down", "Pick a row"),
@@ -299,7 +298,14 @@ impl Launcher {
         .detach();
         let focus_handle = input.read(cx).focus_handle.clone();
         window.focus(&focus_handle, cx);
+        // The compositor answers whether it frosts only once a window is
+        // attached, and the tint depends on it: resolve again, from the
+        // config already loaded, when the answer moved.
+        let could_frost = blur::can_frost();
         blur::attach_window(window);
+        if blur::can_frost() != could_frost {
+            theme::install(Theme::from_config());
+        }
 
         let mut this = Self {
             shell,
@@ -361,11 +367,9 @@ impl Launcher {
             cx,
             || {
                 blocks::refresh();
-                config::get_config()
-                    .entries
-                    .into_iter()
-                    .find(|e| e.key == answers::AI_KEY)
-                    .is_none_or(|e| e.value != "false")
+                theme::entries()
+                    .get(answers::AI_KEY)
+                    .is_none_or(|v| v != "false")
             },
             |this, ai_enabled, _| this.ai.enabled = ai_enabled,
         );
@@ -1025,11 +1029,12 @@ impl Launcher {
         cx.notify();
     }
 
-    /// Esc discards what was not saved: the file is the theme again.
+    /// Esc discards what was not saved: the config as last loaded is the
+    /// theme again.
     fn close_settings(&mut self, cx: &mut Context<Self>) {
         self.settings.leave();
         self.settings_open = false;
-        theme::load();
+        theme::install(Theme::from_config());
         self.set_query("", cx);
         cx.notify();
     }
@@ -2056,7 +2061,7 @@ impl Launcher {
         // The focused field (the panel's box, or a row's open field) is where
         // the keys dispatch from, so this root must track that handle.
         let focus_handle = self.focus_target(cx);
-        let footer = hint.is_some() || trailing.is_some();
+        let footer = th.hints && (hint.is_some() || trailing.is_some());
         let trailing = trailing.unwrap_or_else(|| copyright(th, cx).into_any_element());
         let seq = self.confirm_seq;
         let confirm = self
@@ -2127,7 +2132,11 @@ impl Launcher {
         let fade = blur::surfaces_fade(th.frosted());
         let bar_h = theme::TOP_ROW_HEIGHT + 2.0 * theme::INPUT_PADDING_Y;
         let crumbs = self.levels.breadcrumb();
-        let placeholder = if crumbs.is_empty() { PLACEHOLDER } else { "" };
+        let placeholder = if crumbs.is_empty() {
+            th.placeholder.clone()
+        } else {
+            SharedString::default()
+        };
         // The strip steps aside for the translate panel and the compact layout.
         let strip = (th.split() && self.mode != Mode::Translate)
             .then(|| self.running.render(&self.icons, th, cx))
@@ -2166,7 +2175,7 @@ impl Launcher {
             .child(search_field(self.input.clone(), placeholder))
             .children((!th.split()).then(|| self.picked.badge(th)).flatten())
             .children(strip)
-            .when(!th.split(), |el| {
+            .when(!th.split() && th.hints, |el| {
                 el.child(copyright(th, cx).flex_shrink_0())
             });
 
@@ -2623,7 +2632,7 @@ impl Launcher {
                     card.children(list)
                 }
             })
-            .when(!seated && th.split(), |card| {
+            .when(!seated && th.split() && th.hints, |card| {
                 card.child(self.footer(hint.clone(), th, cx))
             })
             // Leaving the launchpad, the card rises in: once per switch, never
@@ -2703,7 +2712,9 @@ impl Launcher {
             .flex()
             .flex_col()
             .child(row)
-            .when(th.split(), |el| el.child(self.hint_bar(hint, th, cx)))
+            .when(th.split() && th.hints, |el| {
+                el.child(self.hint_bar(hint, th, cx))
+            })
     }
 
     /// The classic full-width hint bar: the hint (and the Todo tally) left,
@@ -2895,11 +2906,13 @@ impl Launcher {
                     .flex()
                     .flex_col()
                     .child(body)
-                    .child(
-                        muted_text(Mode::Translate.hint(), th)
-                            .pt(px(theme::HINT_INSET))
-                            .pb(px(theme::HINT_INSET_BOTTOM)),
-                    ),
+                    .when(th.hints, |el| {
+                        el.child(
+                            muted_text(Mode::Translate.hint(), th)
+                                .pt(px(theme::HINT_INSET))
+                                .pb(px(theme::HINT_INSET_BOTTOM)),
+                        )
+                    }),
             )
     }
 }
