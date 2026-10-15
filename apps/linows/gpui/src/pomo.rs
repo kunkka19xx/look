@@ -695,9 +695,8 @@ fn notify(event: &Event) {
     };
     #[cfg(target_os = "linux")]
     {
-        let _ = linows_backend::platform::linux::host_command("notify-send")
-            .args([&title, &body])
-            .spawn();
+        use linows_backend::platform::linux::{host_command, spawn_reaped};
+        let _ = spawn_reaped(host_command("notify-send").args([&title, &body]));
     }
     #[cfg(not(target_os = "linux"))]
     eprintln!("[pomo] {title}: {body}");

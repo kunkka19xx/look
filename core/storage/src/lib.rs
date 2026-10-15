@@ -15,6 +15,7 @@ const MAX_CANDIDATE_PREALLOC: usize = 10_000;
 /// never depends on how many distinct URLs the user has opened (see url-history
 /// spec). Kept modest - history is a convenience cache, not a system of record.
 const MAX_URL_HISTORY_ROWS: usize = 500;
+const JOURNAL_SIZE_LIMIT_BYTES: i64 = 4 * 1024 * 1024;
 /// A recall corpus, not a paste ring - but still bounded: this is text the
 /// user copied.
 pub const MAX_CLIPBOARD_ROWS: usize = 5_000;
@@ -874,6 +875,8 @@ impl SqliteStore {
     }
 
     fn migrate(&self) -> StorageResult<()> {
+        self.conn
+            .pragma_update(None, "journal_size_limit", JOURNAL_SIZE_LIMIT_BYTES)?;
         self.conn.execute_batch(
             // No `busy_timeout`: rusqlite already sets 5s on every connection
             // it opens, before any of this runs.

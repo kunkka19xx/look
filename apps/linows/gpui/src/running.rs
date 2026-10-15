@@ -122,6 +122,7 @@ impl RunningApps {
                             kind: "app".into(),
                             path,
                             id: Some(desktop_id.clone()),
+                            size: theme::TOP_ROW_HEIGHT,
                         },
                         cx,
                     )

@@ -16,6 +16,7 @@ use gpui::{
 const PREVIEW_IMAGES: usize = 4;
 
 pub struct PreviewImages {
+    capacity: usize,
     /// Most recently shown last. The decoded image rides along once it has
     /// landed, so the texture can be dropped with the entry.
     recent: VecDeque<(Resource, Option<Arc<RenderImage>>)>,
@@ -23,6 +24,10 @@ pub struct PreviewImages {
 
 impl PreviewImages {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        Self::with_capacity(PREVIEW_IMAGES, cx)
+    }
+
+    pub fn with_capacity(capacity: usize, cx: &mut Context<Self>) -> Self {
         cx.on_release(|cache, cx| {
             for (resource, image) in cache.recent.drain(..) {
                 release(&resource, image, None, cx);
@@ -30,7 +35,8 @@ impl PreviewImages {
         })
         .detach();
         Self {
-            recent: VecDeque::with_capacity(PREVIEW_IMAGES + 1),
+            capacity,
+            recent: VecDeque::with_capacity(capacity + 1),
         }
     }
 }
@@ -66,7 +72,7 @@ impl ImageCache for PreviewImages {
             _ => prior,
         };
         self.recent.push_back((resource.clone(), image));
-        while self.recent.len() > PREVIEW_IMAGES {
+        while self.recent.len() > self.capacity {
             let (resource, image) = self.recent.pop_front().expect("over the cap");
             release(&resource, image, Some(window), cx);
         }

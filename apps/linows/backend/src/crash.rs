@@ -75,6 +75,8 @@ pub fn state_dir() -> Option<PathBuf> {
     )
 }
 
+const CRASH_LOG_BYTES: u64 = 256 * 1024;
+
 /// Append the crash to `<state dir>/look/crash.log` and return its path.
 /// Linux: ~/.local/state/look (XDG state dir). Windows has no state-dir
 /// notion - falls back to %LOCALAPPDATA%\look, next to the index database.
@@ -82,6 +84,13 @@ fn append_crash_log(message: &str) -> Option<PathBuf> {
     let dir = state_dir()?;
     std::fs::create_dir_all(&dir).ok()?;
     let path = dir.join(CRASH_LOG_NAME);
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > CRASH_LOG_BYTES)
+        && let Ok(log) = std::fs::read(&path)
+    {
+        let half = &log[log.len() - (CRASH_LOG_BYTES / 2) as usize..];
+        let start = half.iter().position(|&b| b == b'\n').map_or(0, |at| at + 1);
+        let _ = std::fs::write(&path, &half[start..]);
+    }
     let unix_s = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())

@@ -125,8 +125,11 @@ pub fn is_exact(key: &Key) -> bool {
     cache().as_ref().is_some_and(|b| b.key == *key)
 }
 
-pub fn store(backdrop: Backdrop) {
-    *cache() = Some(Arc::new(backdrop));
+/// Returns the replaced image so its texture can be dropped.
+pub fn store(backdrop: Backdrop) -> Option<Arc<RenderImage>> {
+    cache()
+        .replace(Arc::new(backdrop))
+        .map(|old| old.image.clone())
 }
 
 /// Decode and scale, unless the last picture was the same one, then blur.

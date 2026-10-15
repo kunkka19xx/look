@@ -4437,6 +4437,7 @@ dependencies = [
  "linows-backend",
  "palette",
  "raw-window-handle",
+ "resvg",
  "uuid",
  "windows 0.62.2",
  "x11rb",

@@ -3,7 +3,8 @@
 //! async runtime and matches the existing `translate_api` transport, including
 //! the Windows console-suppression flag.
 
-use std::process::Command;
+use std::io::Read;
+use std::process::{Command, Stdio};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -17,6 +18,9 @@ const WRITE_OUT_STATUS: &str = "\n%{http_code}";
 const HTTP_OK: u16 = 200;
 const HTTP_MULTIPLE_CHOICES: u16 = 300;
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
+const MAX_BODY_BYTES: u64 = 20 * 1024 * 1024;
+/// What `WRITE_OUT_STATUS` adds after the body: a newline and three digits.
+const STATUS_SUFFIX_BYTES: u64 = 4;
 
 /// A completed GET. The status is carried alongside the body because a throttled
 /// host answers 429 with an HTML apology page, which a caller must not mistake
@@ -98,8 +102,22 @@ fn curl(url: &str, timeout_secs: u32, user_agent: &str, headers: &[&str]) -> Opt
     #[cfg(target_os = "windows")]
     command.creation_flags(CREATE_NO_WINDOW);
 
-    let output = command.output().ok()?;
-    output.status.success().then_some(output.stdout)
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut stdout = Vec::new();
+    let read = (child.stdout.take()?)
+        .take(MAX_BODY_BYTES + STATUS_SUFFIX_BYTES + 1)
+        .read_to_end(&mut stdout);
+    if read.is_err() || stdout.len() as u64 > MAX_BODY_BYTES + STATUS_SUFFIX_BYTES {
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
+    }
+    child.wait().ok()?.success().then_some(stdout)
 }
 
 /// Splits curl's stdout at the last newline into the body and the status.

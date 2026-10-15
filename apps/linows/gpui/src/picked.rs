@@ -153,6 +153,7 @@ impl Picked {
                         kind: item.kind.clone(),
                         path: item.path.clone(),
                         id: Some(item.id.clone()),
+                        size: ITEM_ICON,
                     },
                     cx,
                 )

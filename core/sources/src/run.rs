@@ -379,7 +379,13 @@ fn spawn(step: &str, row: Option<&RowContext>) -> Result<(), String> {
 
     detach(&mut command);
     match command.spawn() {
-        Ok(_) => Ok(()),
+        // Reap, or it stays a zombie.
+        Ok(mut child) => {
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+            Ok(())
+        }
         Err(err) => Err(spawn_failure(&command, err)),
     }
 }

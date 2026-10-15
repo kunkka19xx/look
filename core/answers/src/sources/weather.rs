@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 const TIMEOUT_SECS: u32 = 6;
 /// How long a fetched forecast stays fresh.
 const FORECAST_TTL: Duration = Duration::from_secs(300);
+const GEO_CACHE_PLACES: usize = 1024;
 
 static GEO_CACHE: LazyLock<Mutex<HashMap<String, Geo>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -51,6 +52,7 @@ pub fn answer(place: &str) -> Option<Answer> {
     }
     let answer = fetch(&place)?;
     if let Ok(mut cache) = FORECAST_CACHE.lock() {
+        cache.retain(|_, (at, _)| at.elapsed() < FORECAST_TTL);
         cache.insert(key, (Instant::now(), answer.clone()));
     }
     remember(&place);
@@ -129,6 +131,9 @@ fn geocode(place: &str) -> Option<Geo> {
     }
     let geo = resolve(place)?;
     if let Ok(mut cache) = GEO_CACHE.lock() {
+        if cache.len() >= GEO_CACHE_PLACES {
+            cache.clear();
+        }
         cache.insert(key, geo.clone());
     }
     Some(geo)
