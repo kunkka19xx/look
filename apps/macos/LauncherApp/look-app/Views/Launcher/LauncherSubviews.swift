@@ -304,6 +304,7 @@ struct ResultsListView: View {
                                 onOpen(result.id)
                             }
                         )
+                        .equatable()
                         .id(result.id)
                     }
                 }

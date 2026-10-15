@@ -20,7 +20,7 @@ enum LauncherResultKind: String, Codable {
     }
 }
 
-struct LauncherResult: Identifiable {
+struct LauncherResult: Identifiable, Equatable {
     let id: String
     let kind: LauncherResultKind
     let title: String

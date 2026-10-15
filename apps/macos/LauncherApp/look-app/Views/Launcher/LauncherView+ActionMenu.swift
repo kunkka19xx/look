@@ -45,6 +45,7 @@ extension LauncherView {
             closeActionMenu()
             return
         }
+        catchUpPanel()
         guard !actionMenuDescriptors.isEmpty else {
             showBanner("Nothing to do here", style: .info, duration: 1.2)
             return

@@ -16,8 +16,9 @@ enum Motion {
         static let dampingFraction: Double = 0.68
 
         static func animation(index: Int) -> Animation {
-            let delay = min(Double(max(0, index)) * staggerSeconds, maxStaggerSeconds)
-            return .spring(response: response, dampingFraction: dampingFraction).delay(delay)
+            staggered(
+                .spring(response: response, dampingFraction: dampingFraction),
+                index: index, delay: 0, step: staggerSeconds, cap: maxStaggerSeconds)
         }
     }
 
@@ -132,10 +133,33 @@ enum Motion {
         static let maxStaggerSeconds: Double = 0.28
 
         static func arrive(index: Int) -> Animation {
-            let stagger = min(Double(max(0, index)) * staggerSeconds, maxStaggerSeconds)
-            return .spring(response: response, dampingFraction: dampingFraction)
-                .delay(delaySeconds + stagger)
+            staggered(
+                .spring(response: response, dampingFraction: dampingFraction),
+                index: index, delay: delaySeconds, step: staggerSeconds, cap: maxStaggerSeconds)
         }
+
+        /// The strip is a switcher, so its icons settle in about half the
+        /// placeholder's time: people summon Look to jump to another app.
+        enum Strip {
+            static let response: Double = 0.42
+            static let dampingFraction: Double = 0.82
+            static let delaySeconds: Double = 0.02
+            static let staggerSeconds: Double = 0.02
+            static let maxStaggerSeconds: Double = 0.1
+
+            static func arrive(index: Int) -> Animation {
+                staggered(
+                    .spring(response: response, dampingFraction: dampingFraction),
+                    index: index, delay: delaySeconds, step: staggerSeconds, cap: maxStaggerSeconds)
+            }
+        }
+    }
+
+    /// `animation` after `delay`, plus `step` per place in a cascade, capped.
+    static func staggered(
+        _ animation: Animation, index: Int, delay: Double, step: Double, cap: Double
+    ) -> Animation {
+        animation.delay(delay + min(Double(max(0, index)) * step, cap))
     }
 
     /// The gliding search-field caret (see `SmoothCaretTextField`).
@@ -255,12 +279,12 @@ private struct RootReveal: ViewModifier {
 }
 
 /// Slides a view in horizontally and settles it, on every launcher open.
-/// `index` places it in the stagger; a negative `startOffsetX` comes from the
-/// left, a positive one from the right.
+/// `animation` carries its place in the stagger; a negative `startOffsetX`
+/// comes from the left, a positive one from the right.
 private struct SlideReveal: ViewModifier {
-    let index: Int
     let token: UInt64
     let startOffsetX: CGFloat
+    let animation: Animation
     @Environment(\.reducesMotion) private var reduceMotion
     @State private var shown = false
 
@@ -281,7 +305,7 @@ private struct SlideReveal: ViewModifier {
         // Two transactions, same reason as `SpawnReveal`.
         shown = false
         DispatchQueue.main.async {
-            withAnimation(Motion.Slide.arrive(index: index)) {
+            withAnimation(animation) {
                 shown = true
             }
         }
@@ -316,11 +340,17 @@ extension View {
     }
     /// Slides the search placeholder in from the right on every launcher open.
     func placeholderReveal(token: UInt64) -> some View {
-        modifier(SlideReveal(index: 0, token: token, startOffsetX: Motion.Slide.placeholderOffsetX))
+        modifier(SlideReveal(
+            token: token,
+            startOffsetX: Motion.Slide.placeholderOffsetX,
+            animation: Motion.Slide.arrive(index: 0)))
     }
 
     /// Slides a running-apps icon in from the left, staggered by `index`.
     func stripReveal(index: Int, token: UInt64) -> some View {
-        modifier(SlideReveal(index: index, token: token, startOffsetX: Motion.Slide.stripOffsetX))
+        modifier(SlideReveal(
+            token: token,
+            startOffsetX: Motion.Slide.stripOffsetX,
+            animation: Motion.Slide.Strip.arrive(index: index)))
     }
 }

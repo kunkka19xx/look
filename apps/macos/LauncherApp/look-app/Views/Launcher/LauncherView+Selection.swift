@@ -2,6 +2,10 @@ import AppKit
 import SwiftUI
 
 extension LauncherView {
+    /// Lets the pill's glide draw its first frames before the preview is
+    /// built, and still reads as immediate.
+    static let panelFollowDelaySeconds: TimeInterval = 0.045
+
     func setInitialSelection() {
         if isCommandMode {
             if let activeCommandID {
@@ -166,6 +170,26 @@ extension LauncherView {
         // the pill snaps rather than sliding across unrelated rows.
         withAnimation(Motion.Selection.glide) {
             selectedResultID = displayedResults[nextIndex].id
+        }
+    }
+
+    /// Building the preview in the Tab's own frame stalls the pill's glide, so
+    /// the panel follows a moment later.
+    func schedulePanelCatchUp() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.panelFollowDelaySeconds) {
+            catchUpPanel()
+            loadProcessDetailForSelection()
+        }
+    }
+
+    /// Moves the preview and its quick actions onto the selection. Keys that act
+    /// on the quick actions call it first, so they never hit the row just left.
+    func catchUpPanel() {
+        if previewSelectionID != selectedResultID {
+            previewSelectionID = selectedResultID
+        }
+        if quickActionsLoadedResultID != selectedResultID {
+            refreshQuickActions()
         }
     }
 
@@ -392,7 +416,8 @@ extension LauncherView {
                 pasteSelectedClipboardEntry()
             },
             hasToggleQuickAction: { [self] in
-                hasToggleQuickAction
+                catchUpPanel()
+                return hasToggleQuickAction
             },
             isLaunchpadActive: { [self] in
                 isLaunchpadActive
