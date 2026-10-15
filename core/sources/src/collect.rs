@@ -233,10 +233,17 @@ fn collect_list(file: &Path, format: RowFormat) -> Result<Collected, CollectErro
     let io = |err: std::io::Error| CollectError::Io(format!("{}: {err}", file.display()));
     let mut contents = Vec::new();
     std::io::Read::read_to_end(
-        &mut std::io::Read::take(fs::File::open(file).map_err(io)?, MAX_LIST_FILE_BYTES),
+        &mut std::io::Read::take(fs::File::open(file).map_err(io)?, MAX_LIST_FILE_BYTES + 1),
         &mut contents,
     )
     .map_err(io)?;
+    if contents.len() as u64 > MAX_LIST_FILE_BYTES {
+        return Err(CollectError::Io(format!(
+            "{}: larger than {} MB",
+            file.display(),
+            MAX_LIST_FILE_BYTES / (1024 * 1024)
+        )));
+    }
     let text = String::from_utf8_lossy(&contents);
 
     let (rows, truncated) = parse_rows(&text, MAX_ROWS_PER_SOURCE, format)

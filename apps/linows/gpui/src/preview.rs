@@ -778,7 +778,8 @@ impl Preview {
                         .max_w_full()
                         .max_h(px(image_max_h()))
                         .object_fit(ObjectFit::Contain)
-                        .rounded(px(th.chip_radius())),
+                        .rounded(px(th.chip_radius()))
+                        .id("preview-image"),
                 )
                 .into_any_element(),
             Body::Code { text, truncated } => {

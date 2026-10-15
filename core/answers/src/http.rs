@@ -19,6 +19,8 @@ const HTTP_OK: u16 = 200;
 const HTTP_MULTIPLE_CHOICES: u16 = 300;
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 const MAX_BODY_BYTES: u64 = 20 * 1024 * 1024;
+/// What `WRITE_OUT_STATUS` adds after the body: a newline and three digits.
+const STATUS_SUFFIX_BYTES: u64 = 4;
 
 /// A completed GET. The status is carried alongside the body because a throttled
 /// host answers 429 with an HTML apology page, which a caller must not mistake
@@ -108,9 +110,9 @@ fn curl(url: &str, timeout_secs: u32, user_agent: &str, headers: &[&str]) -> Opt
         .ok()?;
     let mut stdout = Vec::new();
     let read = (child.stdout.take()?)
-        .take(MAX_BODY_BYTES + 1)
+        .take(MAX_BODY_BYTES + STATUS_SUFFIX_BYTES + 1)
         .read_to_end(&mut stdout);
-    if read.is_err() || stdout.len() as u64 > MAX_BODY_BYTES {
+    if read.is_err() || stdout.len() as u64 > MAX_BODY_BYTES + STATUS_SUFFIX_BYTES {
         let _ = child.kill();
         let _ = child.wait();
         return None;

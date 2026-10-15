@@ -133,7 +133,7 @@ fn walk_files(
 
         if metadata.is_dir() {
             // Folders don't count toward the file limit; they get their own.
-            if *folder_count >= config.file_scan_limit * FOLDER_BUDGET_FACTOR {
+            if *folder_count >= config.file_scan_limit.saturating_mul(FOLDER_BUDGET_FACTOR) {
                 continue;
             }
             *folder_count += 1;
