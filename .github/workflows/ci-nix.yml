@@ -60,3 +60,30 @@ jobs:
 
       - name: Verify version
         run: ./result/bin/lookapp --version
+
+  # The macOS package installs the signed release bundle instead of building
+  # it (apps/linows/nix/package-darwin.nix), so what can go wrong is a stale
+  # hash after a release and a bundle that no longer passes Gatekeeper once
+  # it has been through the store. Both are checked here; nothing is compiled.
+  build-darwin:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+
+      - name: Build
+        run: nix build ./apps/linows#packages.aarch64-darwin.default -L
+
+      - name: Verify the bundle
+        run: |
+          set -euo pipefail
+          # Headless-safe: the app is an LSUIElement bundle, so read the
+          # version off the plist rather than launching it.
+          version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' \
+            result/Applications/Look.app/Contents/Info.plist)"
+          echo "Look.app reports $version"
+          test "$version" = "$(nix eval --raw ./apps/linows#packages.aarch64-darwin.default.version)"
+          codesign --verify --deep --strict --verbose=2 result/Applications/Look.app
+          spctl -a -vvv -t exec result/Applications/Look.app
+          test -x result/bin/lookapp

@@ -1,0 +1,119 @@
+name: Update Nix macOS pin
+
+# The macOS Nix package pins a release asset by hash
+# (apps/linows/nix/package-darwin.nix), and a forgotten bump is silent: the old
+# pin keeps building, CI stays green, and Nix users sit on the previous release
+# until someone notices. So the bump follows the release instead of a checklist.
+on:
+  # Not `release: published`: that event can fire before action-gh-release has
+  # finished uploading the zip, and the prefetch would 404. Waiting for the
+  # whole macOS release workflow means the asset is attached.
+  workflow_run:
+    workflows: ["Release macOS App"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to pin (example: 1.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-nix-darwin
+  cancel-in-progress: true
+
+env:
+  BRANCH: chore/update-nix-darwin
+
+jobs:
+  bump:
+    # head_branch carries the tag for a tag-triggered run. A workflow_dispatch
+    # test run of the release workflow attaches nothing, so there is no asset
+    # to pin and the branch name will not look like a tag.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event.workflow_run.conclusion == 'success'
+      && startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # Don't leave a token in .git/config for the steps below.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+
+      # Through the environment rather than straight into the script body, so a
+      # tag or an input cannot end up being interpreted as shell.
+      - name: Resolve the version
+        id: version
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+          RUN_REF: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="$DISPATCH_VERSION"
+          else
+            version="$RUN_REF"
+          fi
+          echo "version=${version#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Bump the pin
+        id: bump
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set +e
+          ./scripts/nix-bump-darwin.sh "$VERSION"
+          status=$?
+          set -e
+          case $status in
+            0) ;;
+            # A release asset for an architecture the file does not package
+            # yet. The bump itself is written, so land it and report after.
+            3) echo "unpackaged=1" >>"$GITHUB_OUTPUT" ;;
+            *) exit $status ;;
+          esac
+
+      # A PAT, not GITHUB_TOKEN: PRs opened with GITHUB_TOKEN never trigger CI,
+      # so the required checks would never run. Here that matters more than
+      # usual, because build-darwin is what proves the new hash resolves and
+      # that the bundle still passes Gatekeeper out of the store, which also
+      # catches a release that went out without notarization.
+      - name: Open or refresh the PR
+        env:
+          GH_TOKEN: ${{ secrets.FLAKE_UPDATE_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::FLAKE_UPDATE_TOKEN is not set (PAT with repo scope)."
+            exit 1
+          fi
+          if git diff --quiet -- apps/linows/nix/package-darwin.nix; then
+            echo "Already pinned to $VERSION."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git commit -m "chore(nix): pin the macOS package to $VERSION" \
+            -- apps/linows/nix/package-darwin.nix
+          gh auth setup-git
+          git push --force origin "$BRANCH"
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --head "$BRANCH" --base main \
+              --title "chore(nix): pin the macOS package to $VERSION" \
+              --body "Points \`apps/linows/nix/package-darwin.nix\` at the \`v$VERSION\` release zip, so \`nix profile install\` on macOS stops serving the previous release."
+          fi
+
+      - name: Report an unpackaged architecture
+        if: steps.bump.outputs.unpackaged == '1'
+        run: |
+          echo "::error::A macOS release asset exists for an architecture apps/linows/nix/package-darwin.nix does not package. Add the sources entry; the bump step logged the URL."
+          exit 1
