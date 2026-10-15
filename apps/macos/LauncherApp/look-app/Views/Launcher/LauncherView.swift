@@ -126,6 +126,9 @@ struct LauncherView: View {
     @State var pendingQuickActions: Set<String> = []
     @State var quickActionTask: Task<Void, Never>?
     @State var selectedResultID: String?
+    /// The row the preview shows, a moment behind the selection (see
+    /// `schedulePanelCatchUp`).
+    @State var previewSelectionID: String?
     /// Where the user has drilled to. One value rather than another set of
     /// flags: a level stack IS navigation state, and the mode booleans above
     /// grew into a pile by being added one at a time.
@@ -985,11 +988,10 @@ struct LauncherView: View {
             handleQueryChange()
         }
         .onChange(of: selectedResultID) { _, _ in
-            // Load Quick Actions + read their live state for the new selection.
-            refreshQuickActions()
-            // Prefetch process detail for the newly selected process row so the
-            // preview pane fills in (cheap per-selection reads, cached by pid).
-            loadProcessDetailForSelection()
+            // An open Cmd+K menu lists the old row's verbs: close it now. The
+            // controls reload in catchUpPanel, beside their own preview.
+            if isActionMenuOpen { closeActionMenu() }
+            schedulePanelCatchUp()
         }
         .onChange(of: isProcessQuery) { _, entering in
             // Enumerate the process table once on entering `ps"` mode; leaving
@@ -2612,8 +2614,8 @@ struct LauncherView: View {
     private var previewResult: LauncherResult? {
         guard pickedKeys.isEmpty,
               !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
-              let selectedID = selectedResultID,
-              let selectedResult = displayedResults.first(where: { $0.id == selectedID }),
+              let selectedResult = displayedResults.first(where: { $0.id == previewSelectionID })
+                ?? displayedResults.first(where: { $0.id == selectedResultID }),
               AppConstants.Launcher.WebSuggestion.text(fromResultID: selectedResult.id) == nil,
               AppConstants.Launcher.WebURL.url(fromResultID: selectedResult.id) == nil
         else { return nil }

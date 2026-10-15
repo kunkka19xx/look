@@ -74,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.contentView = NSHostingView(rootView: content)
+        window.contentView = LauncherHostingView(rootView: AnyView(content))
         window.isReleasedWhenClosed = false
         // Start hidden - this matches the launcher's normal resting state
         // (it is summoned with Cmd+Space, not shown at launch).

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct LauncherRowView: View {
+struct LauncherRowView: View, Equatable {
     @EnvironmentObject private var themeStore: ThemeStore
     let result: LauncherResult
     let isSelected: Bool
@@ -15,6 +15,17 @@ struct LauncherRowView: View {
     /// Live facts appended to the context line (a process's memory and CPU).
     var liveDetail: String? = nil
     let onOpen: () -> Void
+
+    /// Ignores `onOpen`: a closure never compares equal, so every visible row
+    /// would re-render on each Tab, not just the two whose selection changed.
+    static func == (lhs: LauncherRowView, rhs: LauncherRowView) -> Bool {
+        lhs.result == rhs.result
+            && lhs.isSelected == rhs.isSelected
+            && lhs.isPicked == rhs.isPicked
+            && lhs.isLast == rhs.isLast
+            && lhs.selectionNamespace == rhs.selectionNamespace
+            && lhs.liveDetail == rhs.liveDetail
+    }
 
     private enum Layout {
         /// A title-only row would otherwise sit at the icon's height, well
