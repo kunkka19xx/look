@@ -388,7 +388,7 @@ jobs:
     if: inputs.attach_release
     steps:
       - name: Download both architecture artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: look-macos-*
           merge-multiple: true

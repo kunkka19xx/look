@@ -20,9 +20,13 @@ in
       description = "The Look package to install.";
     };
 
+    # Off on macOS: the cache only ever holds the Linux source build, and the
+    # macOS package is a fixed-output fetch of the release zip, so the
+    # substituter would sit in nix.conf without ever matching anything.
     cachix = lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      default = pkgs.stdenv.hostPlatform.isLinux;
+      defaultText = lib.literalExpression "pkgs.stdenv.hostPlatform.isLinux";
       description = "Whether to add the Look binary cache (look.cachix.org) for pre-built binaries.";
     };
   };
