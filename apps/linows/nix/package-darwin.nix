@@ -62,6 +62,14 @@ stdenvNoCC.mkDerivation {
     # scripts/install-look.sh installs it: started through the link, the app
     # sees it is outside its bundle and hands off to the real one (LaunchModes
     # in apps/macos/LauncherApp/look-app/Support).
+    #
+    # The executable name is an assumption about the release artifact, and
+    # `ln -s` would happily create a dangling link if it ever changed, leaving
+    # a derivation that builds and a `lookapp` that does nothing.
+    if [ ! -x $out/Applications/Look.app/Contents/MacOS/Look ]; then
+      echo "Look.app has no executable at Contents/MacOS/Look" >&2
+      exit 1
+    fi
     ln -s $out/Applications/Look.app/Contents/MacOS/Look $out/bin/lookapp
 
     runHook postInstall
