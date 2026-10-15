@@ -558,16 +558,20 @@ pub fn compositor_blur_default() -> bool {
 /// keeps it.
 static FILE: RwLock<Option<Arc<HashMap<String, String>>>> = RwLock::new(None);
 
-/// The file as the theme reads it: `key=` means unset, not "".
 fn read_entries() -> Arc<HashMap<String, String>> {
-    Arc::new(
-        config::get_config()
-            .entries
-            .into_iter()
-            .filter(|e| !e.value.is_empty())
-            .map(|e| (e.key, e.value))
-            .collect(),
-    )
+    Arc::new(clean(config::get_config().entries))
+}
+
+/// The file's lines as the theme reads them: a trailing `# note` cut as
+/// macOS and the engine cut it, and `key=` meaning unset, not "".
+fn clean(entries: Vec<config::ConfigEntry>) -> HashMap<String, String> {
+    entries
+        .into_iter()
+        .filter_map(|e| {
+            let value = config::strip_inline_comment(&e.value).trim();
+            (!value.is_empty()).then(|| (e.key, value.to_string()))
+        })
+        .collect()
 }
 
 /// The config as last loaded, without touching the file.
@@ -682,12 +686,7 @@ impl Theme {
             compositor_blur,
             animations: get(ANIMATIONS_KEY) != Some("false"),
             hints: get(HINTS_KEY) != Some("false"),
-            // Free text, so a trailing `# note` is cut as macOS cuts it.
-            placeholder: get(PLACEHOLDER_KEY)
-                .map(|v| config::strip_inline_comment(v).trim())
-                .unwrap_or_default()
-                .to_string()
-                .into(),
+            placeholder: get(PLACEHOLDER_KEY).unwrap_or_default().to_string().into(),
             syntax: preset.syntax,
         }
     }
@@ -958,11 +957,24 @@ mod tests {
                 .as_ref(),
             "Type whatever you want"
         );
-        assert_eq!(
-            theme(&[(PLACEHOLDER_KEY, "Find it  # mine")])
-                .placeholder
-                .as_ref(),
-            "Find it"
-        );
+    }
+
+    #[test]
+    fn a_trailing_comment_is_cut_from_every_value() {
+        let entry = |key: &str, value: &str| config::ConfigEntry {
+            key: key.to_string(),
+            value: value.to_string(),
+        };
+        let read = clean(vec![
+            entry(HINTS_KEY, "false # hide them"),
+            entry(PLACEHOLDER_KEY, "Find it  # mine"),
+            entry(BG_IMAGE_KEY, "/pics/a#1.png"),
+            entry(LAYOUT_KEY, "# nothing yet"),
+        ]);
+        let get = |key: &str| read.get(key).map(String::as_str);
+        assert_eq!(get(HINTS_KEY), Some("false"));
+        assert_eq!(get(PLACEHOLDER_KEY), Some("Find it"));
+        assert_eq!(get(BG_IMAGE_KEY), Some("/pics/a#1.png"));
+        assert_eq!(get(LAYOUT_KEY), None);
     }
 }
