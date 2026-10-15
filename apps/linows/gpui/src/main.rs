@@ -562,6 +562,7 @@ fn apply(command: Command, cx: &mut App) {
 }
 
 fn main() {
+    host::tune_heap();
     crash::install_panic_hook();
 
     if std::env::args().any(|a| a == "--version" || a == "-V") {

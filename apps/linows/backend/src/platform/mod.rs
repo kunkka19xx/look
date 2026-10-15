@@ -37,6 +37,8 @@ use std::sync::Mutex;
 
 // --- Icon resolution (cross-platform entry point + cache) ---
 
+const ICON_CACHE_ENTRIES: usize = 1024;
+
 #[derive(Default)]
 pub struct IconCache(pub Mutex<HashMap<String, Option<String>>>);
 
@@ -53,8 +55,25 @@ const DECLARED_ICON_KIND: &str = "declared";
 pub struct IconResult {
     pub data_url: Option<String>,
 }
+/// On Linux a file's icon depends only on its extension, and folders share one.
+pub fn icon_key(kind: &str, path: &str) -> String {
+    #[cfg(target_os = "linux")]
+    match kind {
+        "folder" => return kind.to_string(),
+        "file" => {
+            let ext = std::path::Path::new(path)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or_default();
+            return format!("file:.{}", ext.to_ascii_lowercase());
+        }
+        _ => {}
+    }
+    format!("{kind}:{path}")
+}
+
 pub fn get_icon(cache: &IconCache, kind: &str, path: &str, id: Option<&str>) -> IconResult {
-    let key = format!("{kind}:{path}");
+    let key = icon_key(kind, path);
 
     {
         let map = cache.0.lock().unwrap();
@@ -74,6 +93,9 @@ pub fn get_icon(cache: &IconCache, kind: &str, path: &str, id: Option<&str>) -> 
 
     {
         let mut map = cache.0.lock().unwrap();
+        if map.len() >= ICON_CACHE_ENTRIES {
+            map.clear();
+        }
         map.insert(key, data_url.clone());
     }
 

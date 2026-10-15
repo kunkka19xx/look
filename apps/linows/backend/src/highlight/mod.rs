@@ -74,10 +74,16 @@ fn preview_bytes(path: &str) -> Option<(Vec<u8>, bool)> {
         return None;
     }
     let meta = std::fs::metadata(path).ok()?;
-    if meta.len() > size_cap(path) {
+    // Opening a FIFO blocks.
+    if !meta.is_file() || meta.len() > size_cap(path) {
         return None;
     }
-    let mut data = std::fs::read(path).ok()?;
+    let mut data = Vec::new();
+    std::io::Read::read_to_end(
+        &mut std::io::Read::take(std::fs::File::open(path).ok()?, DISPLAY_BYTE_CAP as u64 + 1),
+        &mut data,
+    )
+    .ok()?;
     let truncated = data.len() > DISPLAY_BYTE_CAP;
     data.truncate(DISPLAY_BYTE_CAP);
     Some((data, truncated))

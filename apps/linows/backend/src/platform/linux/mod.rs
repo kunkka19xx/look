@@ -102,6 +102,20 @@ pub fn user_session_command(prog: &str) -> std::process::Command {
     session_command(prog, false)
 }
 
+/// Spawn with null stdio and reap, so no zombie is left.
+pub fn spawn_reaped(command: &mut std::process::Command) -> std::io::Result<()> {
+    use std::process::Stdio;
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
 /// [`user_session_command`] for a caller that reads the result. `systemd-run`
 /// otherwise returns the moment the transient unit starts, so its status
 /// describes the submission rather than `prog`, and every fallback behind that

@@ -10,9 +10,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{
-    AnyElement, Context, Div, Entity, EventEmitter, FontWeight, HighlightStyle, ObjectFit,
-    ScrollHandle, SharedString, Stateful, StyledText, Task, div, img, prelude::*, px, relative,
-    svg,
+    AnyElement, Context, Div, Entity, EventEmitter, FontWeight, HighlightStyle, Hsla,
+    ListAlignment, ListState, ObjectFit, ScrollHandle, SharedString, Stateful, StyledText, Task,
+    div, img, list, prelude::*, px, relative, svg,
 };
 use linows_backend::highlight::{self, TokenType};
 use linows_backend::process::ProcDetail;
@@ -35,6 +35,19 @@ use crate::theme::{self, Theme};
 const DWELL: Duration = Duration::from_millis(120);
 /// Previews kept for the session, so bouncing between rows re-reads nothing.
 const CACHE_LIMIT: usize = 64;
+/// Past this many lines, or bytes, a text body is a list of its lines and
+/// only those in view are laid out. As one text, a 64 KB file is shaped on
+/// the UI thread the frame it lands and walked glyph by glyph on every
+/// frame the launcher animates, which on a laptop CPU stalls the pill
+/// mid-glide. Shorter bodies stay one text, sized to their content.
+const LONG_TEXT_LINES: usize = 80;
+const LONG_TEXT_BYTES: usize = 8 * 1024;
+/// A minified file is one line, so a longer line is cut into list items
+/// this long, each wrapping on its own.
+const LINE_PIECE_BYTES: usize = 512;
+/// How far past the view a text list lays out lines, so a scroll lands on
+/// some already shaped.
+const TEXT_OVERDRAW: f32 = 200.0;
 const HEADER_ICON: f32 = 48.0;
 const HEADER_ICON_RADIUS: f32 = 8.0;
 const HEADER_GAP: f32 = 10.0;
@@ -90,7 +103,7 @@ impl EventEmitter<Notice> for Preview {}
 /// What the panel knows about one row once the backend has answered.
 pub enum Content {
     /// A text clip: its counts, the text in a card, when it was captured.
-    Clip(Clip),
+    Clip { clip: Clip, text: TextBody },
     /// A copied image by its file, or gone from disk.
     ClipImage {
         meta: ClipImage,
@@ -139,8 +152,7 @@ pub enum Body {
     None,
     Image(PathBuf),
     Code {
-        text: String,
-        highlights: Vec<(Range<usize>, TokenType)>,
+        text: TextBody,
         truncated: bool,
     },
     Folder {
@@ -148,6 +160,31 @@ pub enum Body {
         items: Vec<(String, bool, Option<u64>)>,
         truncated: bool,
     },
+}
+
+/// A body's text: whole while short, by lines once long, see
+/// `LONG_TEXT_LINES`.
+pub enum TextBody {
+    Whole {
+        text: SharedString,
+        highlights: Vec<(Range<usize>, TokenType)>,
+    },
+    Lines(Arc<[TextLine]>),
+}
+
+/// One item of a long text: a line, or a piece of a longer one, its
+/// highlights relative to it.
+pub struct TextLine {
+    text: SharedString,
+    highlights: Vec<(Range<usize>, TokenType)>,
+}
+
+/// The size and colour a text body is drawn in.
+#[derive(Clone, Copy)]
+struct TextLook {
+    size: f32,
+    line_height: Option<f32>,
+    color: Option<Hsla>,
 }
 
 pub struct Preview {
@@ -161,6 +198,9 @@ pub struct Preview {
     wanted: Option<String>,
     /// The body's own scroll, reset per row.
     body_scroll: ScrollHandle,
+    /// A long text body's lines, and the body they were last reset for.
+    lines: ListState,
+    lines_for: Option<Arc<[TextLine]>>,
     /// The CPU reading of the process on screen, by pid, so a sample for a
     /// row the user has left is dropped.
     cpu: Option<(u32, String)>,
@@ -180,6 +220,8 @@ impl Preview {
             cache: HashMap::new(),
             wanted: None,
             body_scroll: ScrollHandle::new(),
+            lines: ListState::new(0, ListAlignment::Top, px(TEXT_OVERDRAW)),
+            lines_for: None,
             cpu: None,
             _load: None,
             _cpu: None,
@@ -272,6 +314,7 @@ impl Preview {
             self.current = Some((key, content.clone()));
             self.wanted = None;
             self.body_scroll.set_offset(Default::default());
+            self.lines_for = None;
             cx.notify();
             return;
         }
@@ -297,6 +340,7 @@ impl Preview {
                 this.current = Some((key, content));
                 this.wanted = None;
                 this.body_scroll.set_offset(Default::default());
+                this.lines_for = None;
                 cx.notify();
             });
         }));
@@ -317,11 +361,18 @@ impl Preview {
             return panel;
         };
         match content.as_ref() {
-            Content::Clip(clip) => {
+            Content::Clip { clip, text } => {
                 let remove = Remove::Clip {
                     timestamp: clip.timestamp,
                     text: clip.text.clone(),
                 };
+                let look = TextLook {
+                    size: th.font_size - 1.0,
+                    line_height: None,
+                    color: None,
+                };
+                let lines = matches!(text, TextBody::Lines(_));
+                let scroll = self.text_scroll("clip-text", text, look, th);
                 panel
                     .child(self.clip_header(glyphs::CLIPBOARD, "Clipboard item", remove, th, cx))
                     .child(badge_row(
@@ -332,17 +383,19 @@ impl Preview {
                     .child(clip_label("Preview", th))
                     .child(
                         div()
-                            .id("clip-text")
-                            .max_h(px(CLIP_CARD_MAX_H))
+                            .map(|card| {
+                                if lines {
+                                    card.h(px(CLIP_CARD_MAX_H))
+                                } else {
+                                    card.max_h(px(CLIP_CARD_MAX_H))
+                                }
+                            })
                             .min_h_0()
-                            .overflow_y_scroll()
-                            .track_scroll(&self.body_scroll)
-                            .p(px(CODE_PADDING))
+                            .flex()
+                            .flex_col()
                             .rounded(px(th.control_radius()))
                             .bg(th.control_fill)
-                            .font_family(th.mono_family.clone())
-                            .text_size(px(th.font_size - 1.0))
-                            .child(SharedString::from(clip.text.clone())),
+                            .child(scroll),
                     )
                     .child(info_rows(
                         &[("Captured", rows::format_medium_date(clip.timestamp))],
@@ -407,6 +460,7 @@ impl Preview {
                                 kind: "app".into(),
                                 path: path.clone(),
                                 id: None,
+                                size: HEADER_ICON,
                             },
                             cx,
                         )
@@ -552,6 +606,7 @@ impl Preview {
                             kind: icon.kind.clone(),
                             path: icon.path.clone(),
                             id: icon.id.clone(),
+                            size: icon.size,
                         },
                         cx,
                     )
@@ -661,7 +716,57 @@ impl Preview {
             .child(delete)
     }
 
-    fn body(&self, body: &Body, th: &Theme, shell: Shell) -> AnyElement {
+    /// A text body's scrolling part. Whole, one text sized to its content;
+    /// by lines, a list filling the box it is given that lays out only the
+    /// lines in view.
+    fn text_scroll(
+        &mut self,
+        id: &'static str,
+        text: &TextBody,
+        look: TextLook,
+        th: &Theme,
+    ) -> AnyElement {
+        match text {
+            TextBody::Whole { text, highlights } => look
+                .apply(div(), th)
+                .id(id)
+                .min_h_0()
+                .overflow_y_scroll()
+                .track_scroll(&self.body_scroll)
+                .p(px(CODE_PADDING))
+                .child(StyledText::new(text.clone()).with_highlights(syntax_runs(highlights, th)))
+                .into_any_element(),
+            TextBody::Lines(lines) => {
+                if !self
+                    .lines_for
+                    .as_ref()
+                    .is_some_and(|shown| Arc::ptr_eq(shown, lines))
+                {
+                    self.lines.reset(lines.len());
+                    self.lines_for = Some(lines.clone());
+                }
+                let lines = lines.clone();
+                let th = theme::get();
+                list(self.lines.clone(), move |ix, _, _| {
+                    let Some(line) = lines.get(ix) else {
+                        return div().into_any_element();
+                    };
+                    look.apply(div(), &th)
+                        .child(
+                            StyledText::new(line.text.clone())
+                                .with_highlights(syntax_runs(&line.highlights, &th)),
+                        )
+                        .into_any_element()
+                })
+                .flex_1()
+                .min_h_0()
+                .p(px(CODE_PADDING))
+                .into_any_element()
+            }
+        }
+    }
+
+    fn body(&mut self, body: &Body, th: &Theme, shell: Shell) -> AnyElement {
         match body {
             Body::None => div().into_any_element(),
             Body::Image(path) => div()
@@ -675,46 +780,30 @@ impl Preview {
                         .max_w_full()
                         .max_h(px(image_max_h()))
                         .object_fit(ObjectFit::Contain)
-                        .rounded(px(th.chip_radius())),
+                        .rounded(px(th.chip_radius()))
+                        .id("preview-image"),
                 )
                 .into_any_element(),
-            Body::Code {
-                text,
-                highlights,
-                truncated,
-            } => {
-                let runs = highlights
-                    .iter()
-                    .map(|(range, token)| {
-                        (
-                            range.clone(),
-                            HighlightStyle {
-                                color: Some(theme::hsla_of(th.syntax(*token))),
-                                ..Default::default()
-                            },
-                        )
-                    })
-                    .collect::<Vec<_>>();
+            Body::Code { text, truncated } => {
+                let size = th.font_size - 2.0;
+                let look = TextLook {
+                    size,
+                    line_height: Some(size * CODE_LINE_HEIGHT),
+                    color: Some(theme::hsla_of(th.text_secondary)),
+                };
+                // A long file fills the column; a short one keeps to its
+                // lines, the rows under it at the foot.
+                let lines = matches!(text, TextBody::Lines(_));
+                let scroll = self.text_scroll("code", text, look, th);
                 div()
                     .mt(px(BODY_MARGIN))
                     .min_h_0()
+                    .when(lines, |el| el.flex_1())
                     .rounded(px(th.control_radius()))
                     .bg(th.control_fill)
                     .flex()
                     .flex_col()
-                    .child(
-                        div()
-                            .id("code")
-                            .min_h_0()
-                            .overflow_y_scroll()
-                            .track_scroll(&self.body_scroll)
-                            .p(px(CODE_PADDING))
-                            .font_family(th.mono_family.clone())
-                            .text_size(px(th.font_size - 2.0))
-                            .line_height(px((th.font_size - 2.0) * CODE_LINE_HEIGHT))
-                            .text_color(th.text_secondary)
-                            .child(StyledText::new(text.clone()).with_highlights(runs)),
-                    )
+                    .child(scroll)
                     .when(*truncated, |el| {
                         el.child(truncated_note(TRUNCATED_NOTE, th))
                     })
@@ -821,6 +910,94 @@ impl Preview {
     }
 }
 
+impl TextLook {
+    fn apply(self, el: Div, th: &Theme) -> Div {
+        el.font_family(th.mono_family.clone())
+            .text_size(px(self.size))
+            .when_some(self.line_height, |el, h| el.line_height(px(h)))
+            .when_some(self.color, |el, c| el.text_color(c))
+    }
+}
+
+impl TextBody {
+    /// Built off the UI thread, with the load.
+    fn new(text: String, highlights: Vec<(Range<usize>, TokenType)>) -> Self {
+        if text.len() <= LONG_TEXT_BYTES && text.lines().count() <= LONG_TEXT_LINES {
+            return TextBody::Whole {
+                text: text.into(),
+                highlights,
+            };
+        }
+        TextBody::Lines(text_lines(&text, &highlights).into())
+    }
+}
+
+/// `text` as list items: each line, a long one cut at `LINE_PIECE_BYTES`,
+/// with the highlights that fall in it. `highlights` run in order without
+/// overlapping, as the tokenizer gives them.
+fn text_lines(text: &str, highlights: &[(Range<usize>, TokenType)]) -> Vec<TextLine> {
+    let mut items = Vec::new();
+    let mut next = 0;
+    let mut start = 0;
+    for line in text.strip_suffix('\n').unwrap_or(text).split('\n') {
+        let end = start + line.len();
+        let mut piece = start;
+        loop {
+            let piece_end = if end - piece > LINE_PIECE_BYTES {
+                text.floor_char_boundary(piece + LINE_PIECE_BYTES)
+            } else {
+                end
+            };
+            while highlights.get(next).is_some_and(|(r, _)| r.end <= piece) {
+                next += 1;
+            }
+            let slice = text[piece..piece_end].trim_end_matches('\r');
+            let spans = highlights[next..]
+                .iter()
+                .take_while(|(r, _)| r.start < piece_end)
+                .map(|(r, token)| {
+                    let clip = |at: usize| at.clamp(piece, piece + slice.len()) - piece;
+                    (clip(r.start)..clip(r.end), *token)
+                })
+                .filter(|(r, _)| !r.is_empty())
+                .collect();
+            items.push(TextLine {
+                // A blank line still takes a line's height.
+                text: if slice.is_empty() {
+                    " ".into()
+                } else {
+                    slice.to_string().into()
+                },
+                highlights: spans,
+            });
+            piece = piece_end;
+            if piece >= end {
+                break;
+            }
+        }
+        start = end + 1;
+    }
+    items
+}
+
+fn syntax_runs(
+    highlights: &[(Range<usize>, TokenType)],
+    th: &Theme,
+) -> Vec<(Range<usize>, HighlightStyle)> {
+    highlights
+        .iter()
+        .map(|(range, token)| {
+            (
+                range.clone(),
+                HighlightStyle {
+                    color: Some(theme::hsla_of(th.syntax(*token))),
+                    ..Default::default()
+                },
+            )
+        })
+        .collect()
+}
+
 /// The row's whole description, read on the background executor.
 /// Only a body that reads bytes off disk waits out the dwell: a file's text
 /// or picture, a copied image. Apps, folders, clips and cards describe
@@ -877,7 +1054,10 @@ fn load(row: &Row, ancestors: &str) -> Content {
             hint: "Press Enter to open in browser",
         },
         Open::Path { .. } => standard(row),
-        Open::Clip(clip) => Content::Clip(clip.clone()),
+        Open::Clip(clip) => Content::Clip {
+            clip: clip.clone(),
+            text: TextBody::new(clip.text.clone(), Vec::new()),
+        },
         Open::ClipImage(meta) => Content::ClipImage {
             meta: meta.clone(),
             title: row.title.clone(),
@@ -992,6 +1172,7 @@ fn standard(row: &Row) -> Content {
         kind: row.kind.clone(),
         path: row.path.clone(),
         id: Some(row.id.clone()),
+        size: HEADER_ICON,
     };
     let badge = badge_label(&row.kind).to_string();
     let declared = row.declared();
@@ -1044,12 +1225,13 @@ fn standard(row: &Row) -> Content {
             body = Body::Image(PathBuf::from(&row.path));
         } else if let Some(runs) = highlight::highlight_runs(&row.path) {
             body = Body::Code {
-                text: runs.text,
-                highlights: runs
-                    .spans
-                    .into_iter()
-                    .map(|s| (s.start..s.end, s.token))
-                    .collect(),
+                text: TextBody::new(
+                    runs.text,
+                    runs.spans
+                        .into_iter()
+                        .map(|s| (s.start..s.end, s.token))
+                        .collect(),
+                ),
                 truncated: runs.truncated,
             };
         }
@@ -1291,5 +1473,57 @@ fn format_last_used(epoch: i64) -> String {
     match chrono::Local.timestamp_opt(epoch, 0) {
         chrono::LocalResult::Single(t) => t.format("%b %-d, %Y").to_string(),
         _ => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn texts(lines: &[TextLine]) -> Vec<&str> {
+        lines.iter().map(|l| l.text.as_ref()).collect()
+    }
+
+    /// A block comment over two lines lands on both, each part relative to
+    /// its own line; a blank line keeps its row; CRLF loses the CR.
+    #[test]
+    fn highlights_follow_their_lines() {
+        let text = "a /* b\r\nc */ d\n\nend";
+        let comment = 2..12;
+        let lines = text_lines(text, &[(comment, TokenType::Comment)]);
+        assert_eq!(texts(&lines), ["a /* b", "c */ d", " ", "end"]);
+        assert_eq!(lines[0].highlights, [(2..6, TokenType::Comment)]);
+        assert_eq!(lines[1].highlights, [(0..4, TokenType::Comment)]);
+        assert!(lines[2].highlights.is_empty() && lines[3].highlights.is_empty());
+    }
+
+    /// A long line is cut into pieces on character boundaries, and a span
+    /// across a cut is split with it.
+    #[test]
+    fn a_long_line_is_cut_into_pieces() {
+        let text = "é".repeat(LINE_PIECE_BYTES);
+        let lines = text_lines(&text, &[(0..text.len(), TokenType::String)]);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(
+            lines.iter().map(|l| l.text.len()).sum::<usize>(),
+            text.len()
+        );
+        for line in &lines {
+            assert_eq!(line.highlights, [(0..line.text.len(), TokenType::String)]);
+        }
+    }
+
+    #[test]
+    fn only_a_long_text_goes_by_lines() {
+        let short = "line\n".repeat(LONG_TEXT_LINES);
+        assert!(matches!(
+            TextBody::new(short, Vec::new()),
+            TextBody::Whole { .. }
+        ));
+        let long = "line\n".repeat(LONG_TEXT_LINES + 1);
+        assert!(matches!(
+            TextBody::new(long, Vec::new()),
+            TextBody::Lines(_)
+        ));
     }
 }

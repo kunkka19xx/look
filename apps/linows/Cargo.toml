@@ -29,6 +29,27 @@ opt-level = 3
 [profile.dev.package.image-webp]
 opt-level = 3
 
+# Unoptimised, drawing one SVG icon took ~80 ms on a laptop CPU (Firefox's
+# ~900 ms), so every summon showed glyphs before the icons.
+[profile.dev.package.resvg]
+opt-level = 3
+[profile.dev.package.usvg]
+opt-level = 3
+[profile.dev.package.tiny-skia]
+opt-level = 3
+[profile.dev.package.tiny-skia-path]
+opt-level = 3
+[profile.dev.package.roxmltree]
+opt-level = 3
+[profile.dev.package.svgtypes]
+opt-level = 3
+[profile.dev.package.simplecss]
+opt-level = 3
+[profile.dev.package.kurbo]
+opt-level = 3
+[profile.dev.package.base64]
+opt-level = 3
+
 # Unoptimised, gpui paints text at about 1 ms per run: Settings > Shortcuts
 # drew at 110 ms a frame. Dependencies, so they compile once.
 [profile.dev.package.gpui-ce]
