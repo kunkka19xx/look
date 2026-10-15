@@ -936,7 +936,7 @@ fn text_lines(text: &str, highlights: &[(Range<usize>, TokenType)]) -> Vec<TextL
     let mut items = Vec::new();
     let mut next = 0;
     let mut start = 0;
-    for line in text.split('\n') {
+    for line in text.strip_suffix('\n').unwrap_or(text).split('\n') {
         let end = start + line.len();
         let mut piece = start;
         loop {

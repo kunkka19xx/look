@@ -95,6 +95,8 @@ pub fn probe_opaque() {}
 /// The Windows heap decommits on its own.
 pub fn trim_heap() {}
 
+pub fn tune_heap() {}
+
 pub fn opaque() -> bool {
     false
 }

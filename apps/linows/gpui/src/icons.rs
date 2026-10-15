@@ -11,7 +11,7 @@ use std::hash::{BuildHasher, RandomState};
 use std::sync::Arc;
 
 use base64::Engine;
-use gpui::{App, Context, Global, Image, ImageFormat, RenderImage};
+use gpui::{App, Context, Global, Image, ImageFormat, RenderImage, WeakEntity};
 use image::RgbaImage;
 use image::imageops::FilterType;
 use linows_backend::platform;
@@ -47,6 +47,9 @@ struct Drawn {
     /// type's icon.
     pictures: HashMap<(u64, u32), Arc<RenderImage>>,
     pending: HashSet<Key>,
+    /// Stores that asked for a pending key, told when it lands: the one that
+    /// started it may be gone with a hidden launcher.
+    waiting: HashMap<Key, Vec<WeakEntity<IconStore>>>,
     hasher: RandomState,
 }
 
@@ -55,6 +58,10 @@ impl Global for Drawn {}
 impl IconStore {
     pub fn new(scale: f32) -> Self {
         Self { scale }
+    }
+
+    pub fn set_scale(&mut self, scale: f32) {
+        self.scale = scale;
     }
 
     /// The picture if it is drawn; otherwise starts drawing it and notifies
@@ -66,16 +73,24 @@ impl IconStore {
     ) -> Option<Arc<RenderImage>> {
         let side = (request.size * self.scale).ceil().max(1.0) as u32;
         let key = (platform::icon_key(&request.kind, &request.path), side);
+        let me = cx.weak_entity();
         let drawn = cx.default_global::<Drawn>();
         if let Some(known) = drawn.requests.get(&key) {
             return known.clone();
+        }
+        let waiting = drawn.waiting.entry(key.clone()).or_default();
+        if !waiting
+            .iter()
+            .any(|store| store.entity_id() == me.entity_id())
+        {
+            waiting.push(me);
         }
         if !drawn.pending.insert(key.clone()) {
             return None;
         }
         let hasher = drawn.hasher.clone();
         let renderer = cx.svg_renderer();
-        cx.spawn(async move |this, cx| {
+        cx.spawn(async move |_, cx| {
             let picture = cx
                 .background_executor()
                 .spawn(async move {
@@ -91,17 +106,24 @@ impl IconStore {
                 })
                 .await;
             // Kept even if this launcher hid meanwhile: the next one wants it.
-            cx.update(|cx| land(key, picture, cx));
-            let _ = this.update(cx, |_, cx| cx.notify());
+            for store in cx.update(|cx| land(key, picture, cx)) {
+                let _ = store.update(cx, |_, cx| cx.notify());
+            }
         })
         .detach();
         None
     }
 }
 
-fn land(key: Key, picture: Option<(u64, Arc<RenderImage>)>, cx: &mut App) {
+/// Stores the picture and returns the stores waiting for it.
+fn land(
+    key: Key,
+    picture: Option<(u64, Arc<RenderImage>)>,
+    cx: &mut App,
+) -> Vec<WeakEntity<IconStore>> {
     let drawn = cx.default_global::<Drawn>();
     drawn.pending.remove(&key);
+    let waiting = drawn.waiting.remove(&key).unwrap_or_default();
     let stale: Vec<_> = if drawn.requests.len() >= DRAWN_ENTRIES {
         drawn.requests.clear();
         drawn.pictures.drain().map(|(_, image)| image).collect()
@@ -119,6 +141,7 @@ fn land(key: Key, picture: Option<(u64, Arc<RenderImage>)>, cx: &mut App) {
     for image in stale {
         cx.drop_image(image, None);
     }
+    waiting
 }
 
 /// The picture in `url` fitted to a `side`-pixel square, its aspect kept. A

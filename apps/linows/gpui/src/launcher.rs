@@ -2917,6 +2917,9 @@ impl Render for Launcher {
         let th = theme::get();
         let frame = th.frame_size();
         crate::host::fit(window, frame, cx);
+        // A Wayland window reports 1.0 until its surface enters an output.
+        let scale = window.scale_factor();
+        self.icons.update(cx, |icons, _| icons.set_scale(scale));
         let content = self.content(th, window, cx);
         div().size_full().flex().justify_center().child(
             div()
