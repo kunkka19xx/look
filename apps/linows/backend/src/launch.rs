@@ -3,7 +3,9 @@
 
 use crate::host::LauncherWindow;
 #[cfg(target_os = "linux")]
-use crate::platform::linux::{host_command, user_session_command, user_session_command_for_status};
+use crate::platform::linux::{
+    host_command, spawn_reaped, user_session_command, user_session_command_for_status,
+};
 
 pub fn open_path(
     window: &dyn LauncherWindow,
@@ -56,13 +58,7 @@ pub fn open_path(
         let panel = panel.to_string();
         std::thread::spawn(move || {
             if panel.starts_with("kcm") {
-                if let Err(e) = host_command("systemsettings")
-                    .arg(&panel)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-                {
+                if let Err(e) = spawn_reaped(host_command("systemsettings").arg(&panel)) {
                     eprintln!("[open_path] systemsettings {panel:?} failed: {e}");
                 }
                 return;
@@ -92,12 +88,7 @@ pub fn open_path(
 
             // Fallback: direct command
             if !dbus_ok {
-                let _ = host_command("gnome-control-center")
-                    .arg(&panel)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
+                let _ = spawn_reaped(host_command("gnome-control-center").arg(&panel));
             }
         });
         return Ok(());
@@ -131,12 +122,7 @@ pub fn open_path(
             // env that host_command exists to scrub.
             #[cfg(target_os = "linux")]
             {
-                let _ = host_command("xdg-open")
-                    .arg(&path)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
+                let _ = spawn_reaped(host_command("xdg-open").arg(&path));
                 // Give the browser a beat to receive the URL and surface its
                 // new tab; the focus attempt below races the spawn otherwise.
                 std::thread::sleep(std::time::Duration::from_millis(
@@ -175,12 +161,7 @@ pub fn open_path(
         std::thread::spawn(move || {
             #[cfg(target_os = "linux")]
             {
-                let _ = host_command("xdg-open")
-                    .arg(&path)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
+                let _ = spawn_reaped(host_command("xdg-open").arg(&path));
                 // Same focus dance as the browser branch - Sway/i3 don't raise
                 // the handler on xdg-open activation. Resolves the handler via
                 // the file's MIME type so a PNG opened in Brave focuses Brave,
@@ -353,11 +334,7 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
     std::thread::spawn(move || {
         if needs_steam_warmup {
             eprintln!("[launch] Steam URL exec on cold start; pre-starting steam");
-            let _ = user_session_command("steam")
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn();
+            let _ = spawn_reaped(&mut user_session_command("steam"));
             // Poll for the steam process (up to ~5s), then give the client a
             // moment for its IPC to come up before issuing the URL.
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
@@ -394,14 +371,8 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
         if let Some(cmd) = parts.next() {
             let args: Vec<&str> = parts.filter(|s| !s.starts_with('%')).collect();
             eprintln!("[launch] trying direct exec: {cmd} {}", args.join(" "));
-            match user_session_command(cmd)
-                .args(&args)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-            {
-                Ok(_) => eprintln!("[launch] direct exec spawned"),
+            match spawn_reaped(user_session_command(cmd).args(&args)) {
+                Ok(()) => eprintln!("[launch] direct exec spawned"),
                 Err(e) => eprintln!("[launch] direct exec failed: {e}"),
             }
         }

@@ -37,6 +37,7 @@ use crate::confirm::{Confirm, OnYes};
 use crate::glyphs;
 use crate::help::Help;
 use crate::icons::{IconRequest, IconStore};
+use crate::imagecache::PreviewImages;
 use crate::launchpad::{self, Launchpad, Notice, Tone};
 use crate::levels::{self, Levels};
 use crate::modes::Mode;
@@ -126,6 +127,7 @@ const FRESH_CONFIG_ASK: &str = "Create a fresh config?";
 /// Low bits of a text shift key hold the row index; the change count sits above.
 const SHIFT_ROW_BITS: usize = 20;
 const ROW_ICON: f32 = 22.0;
+const ROW_IMAGES: usize = 64;
 /// The declared tile's inset around the icon, the ring included.
 const DECLARED_PAD: f32 = 1.0;
 const FRESH_CONFIG_DONE: &str = "Config reset to defaults";
@@ -175,6 +177,7 @@ pub struct Launcher {
     pub(crate) shell: Shell,
     input: Entity<SearchInput>,
     icons: Entity<IconStore>,
+    row_images: Entity<PreviewImages>,
     preview: Entity<Preview>,
     launchpad: Entity<Launchpad>,
     pub(crate) banner: Banner,
@@ -302,6 +305,7 @@ impl Launcher {
             shell,
             input,
             icons,
+            row_images: cx.new(|cx| PreviewImages::with_capacity(ROW_IMAGES, cx)),
             preview,
             launchpad,
             banner: Banner::default(),
@@ -2354,6 +2358,7 @@ impl Launcher {
             }
             Icon::Glyph(glyph) => glyph_icon(glyph, th),
             Icon::File(path) => img(path.clone())
+                .image_cache(&self.row_images)
                 .size(px(ROW_ICON))
                 .rounded(px(th.chip_radius() / 1.5))
                 .object_fit(gpui::ObjectFit::Cover)
@@ -3318,10 +3323,14 @@ impl Launcher {
         bg::fetch(
             cx,
             move || bgimage::load(key),
-            |this, result, _| {
+            |this, result, cx| {
                 let key = this.backdrop_loading.take();
                 match result {
-                    Ok(backdrop) => bgimage::store(backdrop),
+                    Ok(backdrop) => {
+                        if let Some(old) = bgimage::store(backdrop) {
+                            cx.drop_image(old, None);
+                        }
+                    }
                     Err(err) => {
                         eprintln!("background image: {err}");
                         this.backdrop_failed = key;

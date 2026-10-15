@@ -59,7 +59,7 @@ pub fn run_shell_command(cmd: &str) -> Result<String, String> {
     }
 
     if result.len() > MAX_OUTPUT_BYTES {
-        result.truncate(MAX_OUTPUT_BYTES);
+        result.truncate(result.floor_char_boundary(MAX_OUTPUT_BYTES));
         result.push_str("\n... (truncated)");
     }
 

@@ -3,6 +3,8 @@
 use base64::Engine;
 use std::fs;
 
+const ICON_FILE_BYTES: u64 = 20 * 1024 * 1024;
+
 /// Read an icon file from disk and return it as a `data:` URL string.
 /// PNG and SVG for themed and app icons, plus the formats a user may declare;
 /// returns None for empty files, XPM, or unknown types.
@@ -10,6 +12,10 @@ use std::fs;
 // the cached-PNG path of the Shell icon pipeline.
 #[allow(dead_code)]
 pub(crate) fn read_icon_file(path: &str) -> Option<String> {
+    let meta = fs::metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > ICON_FILE_BYTES {
+        return None;
+    }
     let data = fs::read(path).ok()?;
     if data.is_empty() {
         return None;

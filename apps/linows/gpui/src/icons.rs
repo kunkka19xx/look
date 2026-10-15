@@ -23,6 +23,8 @@ use crate::icon_cache;
 /// A request at its device size.
 type Key = (String, u32);
 
+const DRAWN_ENTRIES: usize = 1024;
+
 pub struct IconStore {
     /// The window's, so a size in points becomes the pixels it covers.
     scale: f32,
@@ -63,7 +65,7 @@ impl IconStore {
         cx: &mut Context<Self>,
     ) -> Option<Arc<RenderImage>> {
         let side = (request.size * self.scale).ceil().max(1.0) as u32;
-        let key = (format!("{}:{}", request.kind, request.path), side);
+        let key = (platform::icon_key(&request.kind, &request.path), side);
         let drawn = cx.default_global::<Drawn>();
         if let Some(known) = drawn.requests.get(&key) {
             return known.clone();
@@ -100,6 +102,12 @@ impl IconStore {
 fn land(key: Key, picture: Option<(u64, Arc<RenderImage>)>, cx: &mut App) {
     let drawn = cx.default_global::<Drawn>();
     drawn.pending.remove(&key);
+    let stale: Vec<_> = if drawn.requests.len() >= DRAWN_ENTRIES {
+        drawn.requests.clear();
+        drawn.pictures.drain().map(|(_, image)| image).collect()
+    } else {
+        Vec::new()
+    };
     let image = picture.map(|(source, image)| {
         drawn
             .pictures
@@ -108,6 +116,9 @@ fn land(key: Key, picture: Option<(u64, Arc<RenderImage>)>, cx: &mut App) {
             .clone()
     });
     drawn.requests.insert(key, image);
+    for image in stale {
+        cx.drop_image(image, None);
+    }
 }
 
 /// The picture in `url` fitted to a `side`-pixel square, its aspect kept. A
