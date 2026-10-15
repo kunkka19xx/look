@@ -988,8 +988,9 @@ struct LauncherView: View {
             handleQueryChange()
         }
         .onChange(of: selectedResultID) { _, _ in
-            // An open Cmd+K menu lists the old row's verbs: close it now.
-            if isActionMenuOpen { refreshQuickActions() }
+            // An open Cmd+K menu lists the old row's verbs: close it now. The
+            // controls reload in catchUpPanel, beside their own preview.
+            if isActionMenuOpen { closeActionMenu() }
             schedulePanelCatchUp()
         }
         .onChange(of: isProcessQuery) { _, entering in
