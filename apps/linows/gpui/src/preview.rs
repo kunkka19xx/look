@@ -314,6 +314,7 @@ impl Preview {
             self.current = Some((key, content.clone()));
             self.wanted = None;
             self.body_scroll.set_offset(Default::default());
+            self.lines_for = None;
             cx.notify();
             return;
         }
@@ -339,6 +340,7 @@ impl Preview {
                 this.current = Some((key, content));
                 this.wanted = None;
                 this.body_scroll.set_offset(Default::default());
+                this.lines_for = None;
                 cx.notify();
             });
         }));
