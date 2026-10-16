@@ -168,14 +168,30 @@ jobs:
     name: Submit winget manifest
     needs: build-release
     runs-on: ubuntu-latest
+    env:
+      PACKAGE_ID: noah-code.Look
+      VERSION: ${{ needs.build-release.outputs.version }}
+      KOMAC_VERSION: 2.17.1
+      KOMAC_SHA256: e694e79cd451afabf47bead66ed34586fef4814f7b94e4b61a098f419978d5d7
     steps:
-      # Pinned to a commit because the action receives WINGET_TOKEN. It refuses
-      # to run until noah-code.Look exists in winget-pkgs, so the first
-      # manifest is submitted by hand. release-tag is explicit because a
-      # workflow_dispatch rebuild runs on a branch, not the tag.
-      - uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e
-        with:
-          identifier: noah-code.Look
-          release-tag: v${{ needs.build-release.outputs.version }}
-          installers-regex: '_x64-setup\.exe$'
-          token: ${{ secrets.WINGET_TOKEN }}
+      # komac receives WINGET_TOKEN, so it is pinned by version and hash
+      # instead of going through an action that installs it unpinned.
+      - name: Install komac
+        run: |
+          archive="komac-${KOMAC_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSLO "https://github.com/russellbanks/Komac/releases/download/v${KOMAC_VERSION}/${archive}"
+          echo "${KOMAC_SHA256}  ${archive}" | sha256sum -c -
+          tar xzf "$archive" komac
+          install -D komac "${RUNNER_TEMP}/bin/komac"
+          echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
+
+      # update only works once the package exists in winget-pkgs, so the first
+      # manifest is submitted by hand.
+      - name: Submit to winget-pkgs
+        env:
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          komac update "$PACKAGE_ID" \
+            --version "$VERSION" \
+            --urls "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/Look_${VERSION}_x64-setup.exe" \
+            --submit
