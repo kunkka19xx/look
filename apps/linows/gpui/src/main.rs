@@ -643,6 +643,9 @@ fn main() {
         }
         return;
     }
+    // Only the launcher runs from here on; a terminal it was started from is
+    // let go so closing it does not take the launcher along.
+    host::detach_console();
     state().start_bootstrap();
     // The histories `c"` and `ci"` list: loaded from disk now, then kept by
     // the poll thread.
