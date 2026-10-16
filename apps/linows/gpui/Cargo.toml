@@ -54,7 +54,7 @@ resvg = { version = "0.48", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 # Same version gpui_ce_windows pins, so features unify into one build.
-windows = { version = "0.62", features = ["Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62", features = ["Win32_Graphics_Gdi", "Win32_System_Console", "Win32_UI_WindowsAndMessaging"] }
 # The launcher toggle; the same crate the Tauri shell binds through.
 global-hotkey = "0.8"
 

@@ -8,6 +8,9 @@ use linows_backend::platform::windows::window_focus::bring_to_front;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
+use windows::Win32::System::Console::{
+    ATTACH_PARENT_PROCESS, AttachConsole, GetStdHandle, STD_OUTPUT_HANDLE,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_STYLE, GetClientRect, HWND_TOPMOST, SW_HIDE, SWP_FRAMECHANGED, SWP_NOACTIVATE,
     SWP_NOZORDER, SWP_SHOWWINDOW, SetWindowLongPtrW, SetWindowPos, ShowWindow, WS_CLIPSIBLINGS,
@@ -96,6 +99,19 @@ pub fn probe_opaque() {}
 pub fn trim_heap() {}
 
 pub fn tune_heap() {}
+
+/// Without a console `--version` from cmd or PowerShell prints nothing, so
+/// borrow the parent's. A redirected stdout already has its pipe and is left
+/// alone.
+pub fn attach_console() {
+    // SAFETY: plain Win32 calls with no pointers, made before any output.
+    unsafe {
+        let attached = GetStdHandle(STD_OUTPUT_HANDLE).is_ok_and(|h| !h.is_invalid());
+        if !attached {
+            let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+        }
+    }
+}
 
 pub fn opaque() -> bool {
     false
