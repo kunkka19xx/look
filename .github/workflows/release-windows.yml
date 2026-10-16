@@ -50,12 +50,15 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # cache-targets off for the same reason as ci.yml: the post-step tar of
+      # target/ hangs on the windows-2025 image.
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
             core
             apps/linows
+          cache-targets: false
 
       # The tag is the version, baked into the exe through LOOK_VERSION.
       - name: Build
@@ -67,8 +70,16 @@ jobs:
           cargo build --release --locked -p lookapp
           test "$(target/release/lookapp.exe --version)" = "lookapp $LOOK_VERSION"
 
-      # NSIS ships on the Windows runner image. Same file name and silent
-      # flags as before, so scripts/windows/install-look.ps1 is unchanged.
+      # windows-latest (windows-2025) no longer ships NSIS, so install it.
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "${env:ProgramFiles(x86)}\NSIS" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      # Same file name and silent flags as before, so
+      # scripts/windows/install-look.ps1 is unchanged.
       - name: Build installer
         shell: pwsh
         run: |
@@ -143,8 +154,10 @@ jobs:
           path: dist/
           retention-days: 14
 
+      # tag_name is explicit so a workflow_dispatch rebuild lands on the
+      # existing release instead of needing the tag moved.
       - name: Attach to GitHub release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: v${{ steps.version.outputs.version }}
           files: dist/*
