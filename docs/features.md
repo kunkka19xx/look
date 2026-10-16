@@ -23,7 +23,7 @@ This document tracks what `look` supports today and what is planned next.
 - copy selected file/folder path/content handle with `Cmd+C`
 - multi-pick files/folders with `Cmd+P` (toggle); picked set is mirrored to the system pasteboard for paste anywhere. `Cmd+Shift+P` clears the set
 - move selected file/folder (or all picked items) to the Trash with `Cmd+D` - recoverable, no confirmation (macOS only for now)
-- pinned **Trash** quick folder (type `trash`): `Enter` opens it in Finder, its preview shows the item count, and `Cmd+D` empties it via Finder (confirmed, since it's permanent)
+- pinned **Trash** quick folder (type `trash`): `Enter` opens it in Finder, its preview shows the item count with an icon that reads empty or full to match (macOS), and `Cmd+D` empties it via Finder (confirmed, since it's permanent)
 - preview pane: text/image file previews, plus folder previews listing the immediate children (folders first, capped at 30, click to open)
 - hide the selected app from Look with `Cmd+Shift+H` / `Ctrl+Shift+H` so it stops appearing in results
 - run the selected app as administrator with `Ctrl+Shift+Enter` (Windows only, triggers a UAC prompt)
@@ -98,6 +98,7 @@ This document tracks what `look` supports today and what is planned next.
 - activation: click a tile, or press the platform modifier + its highlighted letter - `Cmd` (macOS) / `Alt` (Linux, Windows): `B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `R` Restart, `D` Shut Down, `P` Now Playing play/pause
 - Restart and Shut Down arm on the first press and fire on the second; `Esc` (macOS) or the auto-disarm timeout cancels
 - Battery, Weather and the L slot are read-only
+- with a background image set, each tile shows the slice of it behind its own area under a frosted overlay, so the bar and the strip read as one picture (macOS)
 - toggled on/off via `Settings > Appearance > Super Actions`. Persisted as `super_actions_enabled` in `~/.look/config`. Off by default; turn it on here to show the strip
 - off hides the strip and disables its mnemonics
 
@@ -157,7 +158,7 @@ This document tracks what `look` supports today and what is planned next.
 - startup/index refresh pipeline for apps/files/settings
 - dirty-aware incremental indexing via file-system events (`Cmd+Space` refresh-on-dirty)
 - usage-event feedback loop for ranking updates
-- Rust core + FFI bridge to Swift app shell
+- Rust core: a C FFI bridge to the Swift shell on macOS, a direct crate dependency for the gpui shell on Linux and Windows
 
 ## In progress / near-term
 

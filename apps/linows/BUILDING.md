@@ -164,7 +164,7 @@ scripts\windows\with-vcvars.bat cargo clippy --manifest-path apps\linows\Cargo.t
 **Installer:** `packaging/windows/look.nsi`, built by `release-windows.yml` with the NSIS on the runner:
 
 ```cmd
-makensis /DVERSION=0.7.2 /DBINARY=apps\linows\target\release\lookapp.exe packaging\windows\look.nsi
+makensis /DVERSION=0.7.3 /DBINARY=apps\linows\target\release\lookapp.exe packaging\windows\look.nsi
 ```
 
 Output `Look_<version>_x64-setup.exe`, per user, silent with `/S`. The MSVC C runtime is static-linked via the workspace-root `.cargo/config.toml`, so it runs on a clean Windows 10/11 install without the VC++ redistributable.
@@ -344,7 +344,7 @@ nix-darwin links the bundle into `/Applications/Nix Apps`, which is what gets Lo
 
 Three things this does not cover:
 
-- **Intel Macs.** Releases publish one asset per architecture and only the arm64 zip exists so far, so `x86_64-darwin` is left out of the flake rather than shipped broken. It is one entry in `nix/package-darwin.nix` once an Intel release lands.
+- **Intel Macs.** Releases publish one asset per architecture, and the release workflow now builds an `x86_64` zip beside the arm64 one. The flake still leaves `x86_64-darwin` out until `nix/package-darwin.nix` carries that asset's hash; `scripts/nix-bump-darwin.sh` exits 3 when a release ships an architecture the file does not package yet, which is the cue to add the entry.
 - **The binary cache.** `programs.lookapp.cachix` defaults to off on macOS: the package is a fixed-output fetch of the release zip, which every substituter already serves by hash.
 - **A dev shell.** `nix develop` stays Linux-only; the macOS app builds through Xcode (see the repo-root `Makefile`).
 

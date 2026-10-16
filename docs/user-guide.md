@@ -486,7 +486,7 @@ Liquid is the one preset that changes how surfaces are drawn rather than only wh
 - `Blur Opacity` is disabled while Liquid Glass is the blur style, because glass has no blur to thin. Your value is kept and returns when you switch back.
 - The glass follows `Blur Style`, not the theme name, so you can pick `Settings > Appearance > Blur Style > Liquid Glass` on any theme to get the glass surface with that theme's palette. Going the other way, selecting Liquid and then a different blur style keeps Liquid's palette _and_ its rounder corners, and swaps only the material for the classic blur.
 
-On Linux and Windows, Liquid is clear glass rather than frosted: the same palette, the same rounder corners, plus a bright rim along the top edge. Refraction is not available to a web frontend at all - CSS can only blur what the page itself drew, and the desktop behind the window is drawn by the system, not the page.
+On Linux and Windows, Liquid is clear glass rather than frosted: the same palette, the same rounder corners, plus a bright rim along the top edge. Refraction is the compositor's to provide, and no Linux or Windows compositor offers it to a window, so the glass stays clear. Frost is a separate ask, below.
 
 Blur behind the window is the compositor's to grant, and Look asks for it wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and niri through the `ext-background-effect-v1` protocol, older Plasma through KDE's own, and KWin on X11 through a window property. The switch is `Settings > Advanced > Rendering > Blur behind window` (`ui_compositor_blur`), and it is there on every Linux desktop. It starts on under KWin, where the frost is what it says on the tin, and off everywhere else: taking the request and drawing it well are two different things, so the rest is opt-in until you have looked at it on your own setup. On a desktop that ignores the request the switch does nothing either way.
 
@@ -508,7 +508,7 @@ window-rule {
 }
 ```
 
-Then turn `Blur behind window` on. The layer rule is the one that applies when `gtk-layer-shell` is installed and the window rule when it is not, so keeping both covers either. Leave `blur` out of the block: Look already asks over the protocol, and niri's own `blur true` follows `geometry-corner-radius` instead of Look's shape, which frosts the gaps between the floating panes. Dropping xray costs GPU time, since the blur is then sampled every frame rather than once.
+Then turn `Blur behind window` on. Look is a layer-shell surface on niri, so the layer rule is the one that applies; the window rule covers a session where it opened as a plain window, so keeping both covers either. Leave `blur` out of the block: Look already asks over the protocol, and niri's own `blur true` follows `geometry-corner-radius` instead of Look's shape, which frosts the gaps between the floating panes. Dropping xray costs GPU time, since the blur is then sampled every frame rather than once.
 
 Where there is no frost at all (GNOME 50 and earlier, plain sway, X11 without KWin) Look stays clear glass and `Blur Opacity` applies only when you have set a background image. Driving blur from your own compositor config still works; Look's request is additional, not exclusive.
 
@@ -553,6 +553,7 @@ Lazy indexing behavior:
 - settings-only blur multiplier (`Settings Blur`) for readability when settings is open
 - translation privacy and backend log level
 - launch at login
+- the **Shortcuts** tab: every rebindable chord listed by topic with a search box, a recorder on each key capsule, `Reset` per row and `Reset all`, and a notice when two live chords collide. The launcher toggle records here too on macOS and Windows. See [Keyboard shortcuts](#keyboard-shortcuts-quick-reference)
 
 Runtime config file:
 
@@ -725,6 +726,11 @@ Every modifier chord below is the default. On macOS, and in the gpui build on Li
 - this is usually a focus-handoff timing issue; hide the launcher (`Escape`) and open it again
 - if it reproduces consistently, please file an issue with your macOS version
 
+**Linux - Look shows up in the taskbar or Alt+Tab, or a fullscreen window covers it.**
+
+- on a compositor with `wlr-layer-shell` (KDE Plasma, sway, niri, Hyprland) Look is an overlay surface: above fullscreen windows, out of the taskbar and Alt+Tab, no package needed
+- GNOME has no layer shell, so there Look is an ordinary window that GNOME places and lists while it is open; it disappears when Look hides
+
 **High CPU or slow first launch.**
 
 - the initial index scan is a one-time cost on first run; subsequent launches use the cached SQLite index
@@ -740,10 +746,10 @@ Every modifier chord below is the default. On macOS, and in the gpui build on Li
 - translation requires network; check connectivity and retry
 - corporate proxies and VPNs can block the translation endpoint
 
-**Linux only - ghost slider trails or overlapping popovers in Settings.**
+**Linux, Tauri backup shell only (`lookapp-tauri`) - ghost slider trails or overlapping popovers in Settings.**
 
-- not one distro's problem: reported on Arch, Ubuntu and inside VMs, while identical webkit builds elsewhere are unaffected, so it is a stack interaction we can't auto-detect
-- open **Settings > Advanced > Rendering** and flip one toggle:
+- a WebKitGTK stack interaction reported on Arch, Ubuntu and inside VMs. The shipping `lookapp` draws with gpui and has no WebKitGTK in the process, so it is not affected and ignores the two keys below
+- in the backup shell, open **Settings > Advanced > Rendering** and flip one toggle:
   - **Disable GPU compositing** (`disable_gpu_compositing`) - keeps blur, fixes the ghost. Requires restart.
   - **Disable blur effect** (`disable_blur_effect`) - drops blur, keeps tint. Takes effect immediately.
 - both default off, and both are Linux-only. Configs written before the rename use `arch_disable_gpu` / `arch_disable_blur`, which are still read

@@ -8,7 +8,7 @@ default-members = ["backend", "gpui"]
 # The release version for dev and Nix builds. A tagged release takes its
 # version from the tag instead (LOOK_VERSION, see backend/build.rs).
 [workspace.package]
-version = "0.7.2"
+version = "0.7.3"
 
 [profile.release]
 strip = true

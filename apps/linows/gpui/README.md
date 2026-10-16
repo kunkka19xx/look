@@ -1,6 +1,6 @@
 # linows on gpui-ce
 
-The launcher shell drawn by gpui-ce, shipping as `lookapp` since 2026-10. The Tauri shell in `../src-tauri` is the backup. Everything that is not drawing comes from `../backend` (`linows_backend`), the same crate the Tauri commands call. The design reference is the macOS app; `PLAN-GPUI-NATIVE.md` holds the rules and what is still open.
+The launcher shell drawn by gpui-ce, shipping as `lookapp` since 2026-10. The Tauri shell in `../src-tauri` is the backup. Everything that is not drawing comes from `../backend` (`linows_backend`), the same crate the Tauri commands call. The design reference is the macOS app.
 
 ## Running
 
