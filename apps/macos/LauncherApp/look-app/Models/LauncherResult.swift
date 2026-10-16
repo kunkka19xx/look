@@ -20,7 +20,7 @@ enum LauncherResultKind: String, Codable {
     }
 }
 
-struct LauncherResult: Identifiable {
+struct LauncherResult: Identifiable, Equatable {
     let id: String
     let kind: LauncherResultKind
     let title: String
@@ -78,6 +78,10 @@ extension LauncherResult {
     /// the three cannot disagree about what they are looking at.
     var isClipboardImage: Bool {
         kind == .clipboard && clipboardImagePath != nil
+    }
+
+    var isTrashFolder: Bool {
+        kind == .folder && DeleteTargetLogic.isTrashPath(path, homeDirectory: NSHomeDirectory())
     }
 }
 

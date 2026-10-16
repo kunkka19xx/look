@@ -45,6 +45,13 @@ final class ThemeStore: ObservableObject {
     @Published private(set) var fileScanRoots: [String] = []
     @Published private(set) var extraFileScanRoots: [String] = []
 
+    /// `hints_enabled`: the hint line and the author link. Config only, so
+    /// it lives beside `settings` rather than in its saved blob.
+    @Published private(set) var hintsEnabled = true
+    /// `search_placeholder`: what the empty search field says, exactly. The
+    /// default text lives in the config file, so empty means none.
+    @Published private(set) var searchPlaceholder = ""
+
     enum AddExtraScanRootError: Error {
         case notDirectory
         case alreadyIncluded
@@ -250,9 +257,15 @@ final class ThemeStore: ObservableObject {
         ConfigFileLines.upsert(&lines, key: "backend_log_level", value: settings.backendLogLevel.rawValue)
         ConfigFileLines.upsert(&lines, key: "launch_at_login", value: settings.launchAtLogin ? "true" : "false")
 
+        // In-app chords are written only when they differ from the default, so a
+        // config that rebinds nothing stays as short as it was, and a Reset
+        // takes its line back out.
         for shortcut in ConfigurableShortcut.all {
-            if let spec = settings.shortcutBindings[shortcut.configKey], !spec.isEmpty {
-                ConfigFileLines.upsert(&lines, key: shortcut.configKey, value: spec)
+            let value = settings.shortcutBindings[shortcut.configKey] ?? ""
+            if !value.isEmpty, !shortcut.isDefaultValue(value) {
+                ConfigFileLines.upsert(&lines, key: shortcut.configKey, value: value)
+            } else if shortcut.local != nil {
+                ConfigFileLines.remove(&lines, key: shortcut.configKey)
             }
         }
 
@@ -477,6 +490,8 @@ final class ThemeStore: ObservableObject {
         fileScanRoots = defaultFileScanRoots()
         extraFileScanRoots = []
         settings.shortcutBindings = [:]
+        hintsEnabled = true
+        searchPlaceholder = ""
 
         // Base, not override: the ui_* keys below win. Applied last, it threw
         // away tuned values on every load. Accepted cost: a hand-written
@@ -641,6 +656,12 @@ final class ThemeStore: ObservableObject {
                 if let parsed = parseBool(value) {
                     settings.animationsEnabled = parsed
                 }
+            case "hints_enabled":
+                if let parsed = parseBool(value) {
+                    hintsEnabled = parsed
+                }
+            case "search_placeholder":
+                searchPlaceholder = value
             case "ui_background_image":
                 if !value.isEmpty {
                     settings.backgroundImagePath = value
@@ -672,12 +693,16 @@ final class ThemeStore: ObservableObject {
                 } else {
                     settings.runningAppsPlacement = .none
                 }
-            case _ where ConfigurableShortcut.forConfigKey(key) != nil:
+            case _
+            where key == LauncherHotkeyConfig.key
+                || ShortcutBindingTable.definition(configKey: key) != nil:
                 settings.shortcutBindings[key] = value
             default:
                 continue
             }
         }
+
+        ShortcutBindings.shared.apply(settings.shortcutBindings)
 
         // Keeps the Settings picker in step when the config file is what changed.
         settings.uiTheme = detectBuiltinTheme(for: settings)
@@ -979,6 +1004,12 @@ super_actions_enabled=false
 # Launcher animations (open cascade, selection glide, caret glide).
 # false shows every change instantly.
 animations_enabled=true
+
+# The hint line along the bottom and the author link. false hides both.
+hints_enabled=true
+
+# Search bar placeholder. Empty shows none.
+search_placeholder=Type whatever you want
 
 # Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3
 alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq

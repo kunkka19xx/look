@@ -12,23 +12,23 @@ A keyboard-first, local-first launcher for macOS, Windows, and Linux. Open apps,
 [![Downloads](https://img.shields.io/github/downloads/kunkka19xx/look/total)](https://github.com/kunkka19xx/look/releases)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 
-📘 [Docs](https://noah-code.com/docs/look) · 🎬 [Demo video](https://www.youtube.com/watch?v=NBB5bmjnLFU) · 📖 [User guide](docs/user-guide.md)
+📘 [Docs](https://noah-code.com/docs/look) · 📖 [User guide](docs/user-guide.md)
 
 https://github.com/user-attachments/assets/167b028b-04b2-4c62-ba93-c2321482ac94
 
-Results land as fast as you can type. A Rust core under a native SwiftUI app on macOS, and Tauri on Windows and Linux, riding the system WebView instead of shipping a browser like Electron does. No background daemons. Your index, clipboard, and history stay on your machine; no telemetry.
+Results land as fast as you can type. A Rust core under a native SwiftUI app on macOS, and a GPU-drawn gpui shell on Windows and Linux, with no browser engine in the process. No background daemons. Your index, clipboard, and history stay on your machine; no telemetry.
 
 <details>
 <summary><b>How it compares</b></summary>
 
-|                    | **look**                | Spotlight          | Raycast               | Alfred               | ulauncher  | rofi       |
-| ------------------ | ----------------------- | ------------------ | --------------------- | -------------------- | ---------- | ---------- |
-| Platform           | macOS · Windows · Linux | macOS only         | macOS · Windows       | macOS only           | Linux only | Linux only |
-| Open source        | ✅ GPLv3                | ❌                 | ❌                    | ❌                   | ✅         | ✅         |
-| Free, no paid tier | ✅                      | ✅                 | ❌ Pro $8-10/mo       | ❌ Powerpack £34     | ✅         | ✅         |
-| No account needed  | ✅                      | ✅                 | ✅ core, ❌ sync and AI | ✅                   | ✅         | ✅         |
-| Clipboard history  | ✅ text and images      | ✅ macOS 26+       | ✅ (free: 3 months)   | ❌ Powerpack only    | ❌         | ❌         |
-| Extension store    | ❌                      | ❌                 | ✅                    | ✅ Workflows         | ✅         | ❌         |
+|                    | **look**                | Spotlight    | Raycast                 | Alfred            | ulauncher  | rofi       |
+| ------------------ | ----------------------- | ------------ | ----------------------- | ----------------- | ---------- | ---------- |
+| Platform           | macOS · Windows · Linux | macOS only   | macOS · Windows         | macOS only        | Linux only | Linux only |
+| Open source        | ✅ GPLv3                | ❌           | ❌                      | ❌                | ✅         | ✅         |
+| Free, no paid tier | ✅                      | ✅           | ❌ Pro $8-10/mo         | ❌ Powerpack £34  | ✅         | ✅         |
+| No account needed  | ✅                      | ✅           | ✅ core, ❌ sync and AI | ✅                | ✅         | ✅         |
+| Clipboard history  | ✅ text and images      | ✅ macOS 26+ | ✅ (free: 3 months)     | ❌ Powerpack only | ❌         | ❌         |
+| Extension store    | ❌                      | ❌           | ✅                      | ✅ Workflows      | ✅         | ❌         |
 
 </details>
 
@@ -42,7 +42,17 @@ Results land as fast as you can type. A Rust core under a native SwiftUI app on 
 brew install --cask look
 ```
 
-Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`), or pick another shortcut with `launcher_hotkey` in `~/.look/config`. Release builds are signed and notarized - no Gatekeeper bypass needed.
+Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`), or pick another shortcut with `launcher_hotkey` in `~/.look/config`.
+Release builds are signed and notarized - no Gatekeeper bypass needed. Releases ship one build per architecture, Apple Silicon and Intel.
+Homebrew installs the Apple Silicon build; on an Intel Mac use the curl installer under _Other install options_ below, which picks the archive for your machine.
+
+**Nix (flake):**
+
+```bash
+nix profile install 'github:kunkka19xx/look?dir=apps/linows'
+```
+
+The same signed, notarized bundle Homebrew ships, so the Accessibility and Automation grants survive an update. Apple Silicon only for now. nix-darwin and Home Manager: see [BUILDING.md](apps/linows/BUILDING.md#macos-flake).
 
 ### Linux
 
@@ -79,7 +89,9 @@ chmod +x Look_*.AppImage
 ./Look_*.AppImage
 ```
 
-After installing, launch with `lookapp` from a terminal, or search "Look" in your app launcher. Press `Alt+Space` to toggle the window at any time. To bind your own key instead, set `launcher_hotkey=none` in `~/.look/config`, restart Look, and bind `lookapp --toggle` in your desktop settings. Look autostarts on login by default (on full DEs like GNOME/KDE).
+After installing, launch with `lookapp` from a terminal, or search "Look" in your app launcher. Press `Alt+Space` to toggle the window at any time.
+To bind your own key instead, set `launcher_hotkey=none` in `~/.look/config`, restart Look, and bind `lookapp --toggle` in your desktop settings.
+Look autostarts on login by default (on full DEs like GNOME/KDE).
 
 Uninstall:
 
@@ -88,7 +100,7 @@ Uninstall:
 yay -R look-bin
 
 # Ubuntu/Debian
-sudo dpkg -r look
+sudo dpkg -r lookapp
 
 # AppImage - just delete the file
 rm Look_*.AppImage
@@ -255,6 +267,8 @@ open "/Applications/Look.app"
 | Fire a super action (empty home screen)                                | `Cmd+<letter>`   | `Alt+<letter>`      | `Alt+<letter>`   |
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
+
+Every chord in the table is a default. Rebind the in-app ones in `Settings > Shortcuts` on all three platforms, or set `shortcut_<group>_<action>` in `~/.look/config`; the launcher toggle records there too on macOS and Windows, while Linux takes `launcher_hotkey=none` and your own binding of `lookapp --toggle`. Details in [Keyboard shortcuts](docs/user-guide.md#keyboard-shortcuts-quick-reference).
 
 `Cmd+E` and `Cmd+T` need a tool named in `~/.look/config` (`text_editor`, `code_editor`, `terminal`), and `file_manager` retargets `Cmd+F`. Declare nothing and each falls back to the system default: see [Preferred tools](docs/user-guide.md#preferred-tools).
 

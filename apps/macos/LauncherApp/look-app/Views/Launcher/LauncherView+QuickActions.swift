@@ -150,6 +150,7 @@ extension LauncherView {
     /// resolved yet is refused by `runQuickAction`, the same way `ToggleSwitch` renders
     /// it dimmed and `.disabled` to a click.
     func togglePrimaryQuickAction() {
+        catchUpPanel()
         guard let descriptor = toggleQuickAction else { return }
         runQuickAction(descriptor, intent: .toggle)
     }

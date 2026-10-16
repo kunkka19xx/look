@@ -617,7 +617,7 @@ struct PomoView: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        if panel.runModal() == .OK, let url = panel.url {
+        if FilePanel.runModal(panel) == .OK, let url = panel.url {
             withAnimation(Motion.Fade.animation) {
                 state.music.setFolder(url)
             }

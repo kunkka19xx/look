@@ -199,6 +199,16 @@ pub extern "C" fn look_hotkey_check_json(spec: *const c_char) -> *mut c_char {
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// `spec` checked against the grammar for an in-app shortcut, which accepts
+/// Shift+Enter and friends. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_hotkey_check_local_json(spec: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        hotkey_api::look_hotkey_check_local_json_impl(spec)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// The call request in `query` (`{"name":"mom","modality":null}`), or the
 /// literal `null` for an ordinary search. Tier-1 grammar, cheap enough to call
 /// on every keystroke. Free the result with `look_free_cstring`.

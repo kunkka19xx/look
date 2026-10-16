@@ -1,0 +1,67 @@
+[package]
+name = "lookapp"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+license = "GPL-3.0-or-later"
+authors = ["kunkka19xx <nobita079x@gmail.com>"]
+publish = false
+description = "Keyboard-first desktop launcher"
+
+[[bin]]
+name = "lookapp"
+path = "src/main.rs"
+
+# `cargo deb -p lookapp`: the .deb release-linux.yml ships. `$auto` lists the
+# linked libraries from the build host; the rest are loaded at runtime.
+[package.metadata.deb]
+name = "lookapp"
+section = "utils"
+priority = "optional"
+license-file = ["../../../LICENSE", "0"]
+extended-description = "Look is a keyboard-first, local-first desktop launcher. Find and open apps, files, folders, clipboard history, and run quick commands without leaving the keyboard."
+depends = "$auto, libvulkan1, xdg-desktop-portal"
+recommends = "mesa-vulkan-drivers, wl-clipboard"
+assets = [
+    ["target/release/lookapp", "usr/bin/", "755"],
+    ["../packaging/lookapp.desktop", "usr/share/applications/", "644"],
+    ["../icons/32x32.png", "usr/share/icons/hicolor/32x32/apps/lookapp.png", "644"],
+    ["../icons/64x64.png", "usr/share/icons/hicolor/64x64/apps/lookapp.png", "644"],
+    ["../icons/128x128.png", "usr/share/icons/hicolor/128x128/apps/lookapp.png", "644"],
+    ["../icons/128x128@2x.png", "usr/share/icons/hicolor/256x256/apps/lookapp.png", "644"],
+]
+
+[dependencies]
+linows-backend = { path = "../backend" }
+gpui = { package = "gpui-ce", version = "0.2.2" }
+gpui_platform = { package = "gpui_ce_platform", version = "0.1.0" }
+async-channel = "2"
+anyhow = "1"
+# gpui-ce 0.2.2 exposes palette types directly, so IntoColor is needed for Hsla.
+palette = "0.7"
+chrono = "0.4"
+# Task ids, so a row stays unique across machines once task sync lands.
+uuid = { version = "1", features = ["v4"] }
+raw-window-handle = "0.6"
+# Icons travel from the backend as data URLs, the form the webview takes.
+base64 = "0.22"
+# The background picture is scaled and blurred once into a bitmap; gpui
+# already builds this version for its own decoding.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif"] }
+# Row icons are drawn at the pixels they fill; gpui already builds this
+# version for its own SVGs.
+resvg = { version = "0.48", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+# Same version gpui_ce_windows pins, so features unify into one build.
+windows = { version = "0.62", features = ["Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
+# The launcher toggle; the same crate the Tauri shell binds through.
+global-hotkey = "0.8"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gpui_platform = { package = "gpui_ce_platform", version = "0.1.0", features = ["wayland"] }
+# The same build gpui's Linux platform already links; only the folder dialog
+# calls it here, with no parent window (see pick.rs).
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "file_chooser"] }
+# The same build gpui's X11 client links; only the compositor probe uses it.
+x11rb = "0.13"

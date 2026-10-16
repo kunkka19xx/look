@@ -112,12 +112,12 @@ Keeping your sources in a dotfiles repo works the way you would expect: point `L
 
 ## The four kinds of block
 
-| Producer | What it makes | Use it for |
-| --- | --- | --- |
-| `do` | one row, and Enter performs its steps | routines, bundles, a single command you run often |
-| `dir` | one row per child of a directory | projects, notes, screenshots, anything already on disk |
-| `file` | one row per line of a text file | a list you maintain by hand: SSH hosts, bookmarks |
-| `run` | one row per line a command prints | anything that changes: branches, containers, tickets |
+| Producer | What it makes                         | Use it for                                             |
+| -------- | ------------------------------------- | ------------------------------------------------------ |
+| `do`     | one row, and Enter performs its steps | routines, bundles, a single command you run often      |
+| `dir`    | one row per child of a directory      | projects, notes, screenshots, anything already on disk |
+| `file`   | one row per line of a text file       | a list you maintain by hand: SSH hosts, bookmarks      |
+| `run`    | one row per line a command prints     | anything that changes: branches, containers, tickets   |
 
 Declaring two of them in one block is an error. Pick one and the block is unambiguous.
 
@@ -199,35 +199,35 @@ If the command fails, times out, or prints nothing, **the rows it produced last 
 
 ### Every block can have these
 
-| Key | Type | Default | What it does |
-| --- | --- | --- | --- |
-| `name` | string | the block id | What you type to find the rows, and what the panel shows |
-| `aliases` | list of strings | none | Extra words that also find this block's rows |
-| `bias` | integer | `0` | Score offset. Negative sits below apps and files, positive above |
-| `icon` | string | none | Emoji, SF Symbol name, or an image path |
-| `enabled` | bool | `true` | `false` keeps the file but stops loading the block |
-| `preview` | string | none | Command run for the selected row, in that row's folder; its output fills the right panel. Fixed 5s timeout |
-| `confirm` | string | none | Yes/no question asked before the block does anything |
-| `then` | list of block ids | none | Other blocks a picked row can reach |
-| `open` `edit` `terminal` `reveal` | string | none | See [What Enter does](#what-enter-does-verbs) |
+| Key                               | Type              | Default      | What it does                                                                                               |
+| --------------------------------- | ----------------- | ------------ | ---------------------------------------------------------------------------------------------------------- |
+| `name`                            | string            | the block id | What you type to find the rows, and what the panel shows                                                   |
+| `aliases`                         | list of strings   | none         | Extra words that also find this block's rows                                                               |
+| `bias`                            | integer           | `0`          | Score offset. Negative sits below apps and files, positive above                                           |
+| `icon`                            | string            | none         | Emoji, SF Symbol name, or an image path                                                                    |
+| `enabled`                         | bool              | `true`       | `false` keeps the file but stops loading the block                                                         |
+| `preview`                         | string            | none         | Command run for the selected row, in that row's folder; its output fills the right panel. Fixed 5s timeout |
+| `confirm`                         | string            | none         | Yes/no question asked before the block does anything                                                       |
+| `then`                            | list of block ids | none         | Other blocks a picked row can reach                                                                        |
+| `open` `edit` `terminal` `reveal` | string            | none         | See [What Enter does](#what-enter-does-verbs)                                                              |
 
 ### Producer keys
 
-| Key | Type | Belongs to | Notes |
-| --- | --- | --- | --- |
-| `do` | list of strings | `do` | The steps, run in order |
-| `applies` | word or table | `do` | Rows this action joins even though it did not produce them. See [Actions on any row](#actions-on-any-row-applies) |
-| `dir` | string | `dir` | One root |
-| `dirs` | list of strings | `dir` | More roots. `dir` and `dirs` combine |
-| `depth` | integer | `dir` | Default `1`, immediate children |
-| `only` | `dirs` \| `files` \| `all` | `dir` | Default `all` |
-| `match` | list of globs | `dir` | Keep only entry names matching one of these |
-| `exclude` | list of globs | `dir` | Drop entry names matching one of these |
-| `file` | string | `file` | Path to the list |
-| `run` | string | `run` | The command line |
-| `cwd` | string | `run` | Working directory. Default: [the filesystem root](#where-a-command-runs) |
-| `timeout` | duration string | `run` | `30s`, `5m`, `1h`, `2d`. Default 5s, capped at 30s |
-| `format` | `lines` \| `json` | `file`, `run` | Default `lines` |
+| Key       | Type                       | Belongs to    | Notes                                                                                                             |
+| --------- | -------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `do`      | list of strings            | `do`          | The steps, run in order                                                                                           |
+| `applies` | word or table              | `do`          | Rows this action joins even though it did not produce them. See [Actions on any row](#actions-on-any-row-applies) |
+| `dir`     | string                     | `dir`         | One root                                                                                                          |
+| `dirs`    | list of strings            | `dir`         | More roots. `dir` and `dirs` combine                                                                              |
+| `depth`   | integer                    | `dir`         | Default `1`, immediate children                                                                                   |
+| `only`    | `dirs` \| `files` \| `all` | `dir`         | Default `all`                                                                                                     |
+| `match`   | list of globs              | `dir`         | Keep only entry names matching one of these                                                                       |
+| `exclude` | list of globs              | `dir`         | Drop entry names matching one of these                                                                            |
+| `file`    | string                     | `file`        | Path to the list                                                                                                  |
+| `run`     | string                     | `run`         | The command line                                                                                                  |
+| `cwd`     | string                     | `run`         | Working directory. Default: [the filesystem root](#where-a-command-runs)                                          |
+| `timeout` | duration string            | `run`         | `30s`, `5m`, `1h`, `2d`. Default 5s, capped at 30s                                                                |
+| `format`  | `lines` \| `json`          | `file`, `run` | Default `lines`                                                                                                   |
 
 A leading `~` in any path key (`dir`, `dirs`, `file`, `cwd`, `icon`, and a JSON row's `path`) is your home directory, on every platform: Look resolves those itself. A `~` anywhere else in the value is left alone, because it is a legal character in a filename. Inside a **command** it is your shell's job instead, which matters on Windows: see [Point a block at your own script](#point-a-block-at-your-own-script).
 
@@ -237,20 +237,20 @@ Keys Look does not recognise are reported and ignored, never fatal: a file writt
 
 Every command a block declares expands against the selected row: `do` steps, the four verbs, `preview`, `confirm`, and (when the block is drilled into) its `dir`, `file`, `run`, and `cwd` lines.
 
-| Placeholder | Expands to |
-| --- | --- |
-| `{id}` | The row's id: its path for a `dir` row, its first field for a `file`/`run` row |
-| `{title}` | What the row displays |
-| `{path}` | The row's filesystem path, when it has one |
-| `{dir}` | The row itself when it is a folder, its parent folder when it is a file |
-| `{query}` | What you had typed when you picked the row |
+| Placeholder                                                   | Expands to                                                                              |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `{id}`                                                        | The row's id: its path for a `dir` row, its first field for a `file`/`run` row          |
+| `{title}`                                                     | What the row displays                                                                   |
+| `{path}`                                                      | The row's filesystem path, when it has one                                              |
+| `{dir}`                                                       | The row itself when it is a folder, its parent folder when it is a file                 |
+| `{query}`                                                     | What you had typed when you picked the row                                              |
 | `{parent.id}` `{parent.title}` `{parent.path}` `{parent.dir}` | The same, for the row above. Repeat `parent.` to go further out: `{parent.parent.path}` |
 
 Three rules worth internalising:
 
 - **Never quote a placeholder yourself.** Every value is shell-escaped on substitution. `open {path}` handles a folder called `My Project` correctly, and a row titled `; rm -rf ~` is inert. Writing `open "{path}"` gives you a doubly quoted path that will not resolve.
 - **A block whose producer mentions a placeholder is not a top-level row.** `do = ["make -C {path} deploy"]` only means something against a selected project, so Look keeps it out of the main index and reaches it only through another block's [`then`](#chaining-blocks-with-then). A block with no placeholder (`do = ["open -a Slack"]`) is a row you can type for directly. The producer is the `do` / `dir` / `file` / `run` line **and its `cwd`**, since `run = "npm test"` with `cwd = "{path}"` is the same block as `run = "npm --prefix {path} test"`. The verbs and `preview` do not count: those already act on a row this block produced.
-- **A producer counts one level differently from a command.** When you drill into a block, the row you came from *is* the row while its rows are being produced, so its `dir` / `file` / `run` line says `{path}`. The commands that then act on a row it produced (`open`, `preview`, the verbs, a `then` target's steps) act on the produced row, so *there* the row you came from is `{parent.path}`. The [`then` example below](#chaining-blocks-with-then) shows both in one block.
+- **A producer counts one level differently from a command.** When you drill into a block, the row you came from _is_ the row while its rows are being produced, so its `dir` / `file` / `run` line says `{path}`. The commands that then act on a row it produced (`open`, `preview`, the verbs, a `then` target's steps) act on the produced row, so _there_ the row you came from is `{parent.path}`. The [`then` example below](#chaining-blocks-with-then) shows both in one block.
 
 Steps also see the row in their environment, for [a script that would rather read a variable](#point-a-block-at-your-own-script) than take an argument: `LOOK_ID`, `LOOK_TITLE`, `LOOK_PATH`.
 
@@ -260,12 +260,12 @@ Commands run through your **login shell**, so shell punctuation works too: `&&`,
 
 Four verbs have one key each across the whole app, so the same chord means the same thing whatever the row is:
 
-| Verb | Key | Meaning |
-| --- | --- | --- |
-| `open` | `Enter` | The main action |
-| `edit` | `Cmd+E` / `Ctrl+E` | Open in your editor |
-| `terminal` | `Cmd+T` / `Ctrl+T` | Open a terminal there |
-| `reveal` | `Cmd+F` / `Ctrl+F` | Show in Finder / Explorer / Files |
+| Verb       | Key                | Meaning                           |
+| ---------- | ------------------ | --------------------------------- |
+| `open`     | `Enter`            | The main action                   |
+| `edit`     | `Cmd+E` / `Ctrl+E` | Open in your editor               |
+| `terminal` | `Cmd+T` / `Ctrl+T` | Open a terminal there             |
+| `reveal`   | `Cmd+F` / `Ctrl+F` | Show in Finder / Explorer / Files |
 
 Declare only what differs from your global [preferred tools](user-guide.md#preferred-tools) in `~/.look/config`:
 
@@ -283,7 +283,7 @@ The rule for `Enter`:
 2. Otherwise, if the row has a path, the path opens the way any file in Look opens. This is why most `dir` blocks declare no verbs at all.
 3. Otherwise nothing can happen, and Look says so.
 
-A `do` block cannot declare verbs. It already *is* the action, and a second meaning for `Enter` would be one meaning too many.
+A `do` block cannot declare verbs. It already _is_ the action, and a second meaning for `Enter` would be one meaning too many.
 
 ## Chaining blocks with `then`
 
@@ -335,15 +335,15 @@ Select any `.png` anywhere, press `Cmd+K` / `Ctrl+K`, and Optimize is there. No 
 
 Only a `do` block can declare it. A block that produces rows is a list, and a list is not a verb.
 
-| Written as | Matches |
-| --- | --- |
-| `applies = "files"` | any row whose path is not a directory |
-| `applies = "dirs"` | any row whose path is a directory |
-| `applies = "paths"` | any row with a path, apps included |
-| `applies = "apps"` | app rows |
-| `applies = { ext = ["png"] }` | that extension, any case, written without the dot. Files only |
-| `applies = { match = ["*.tar.gz"] }` | a glob on the file **name**, not the whole path |
-| `applies = { only = "dirs", match = ["*.xcodeproj"] }` | both at once |
+| Written as                                             | Matches                                                       |
+| ------------------------------------------------------ | ------------------------------------------------------------- |
+| `applies = "files"`                                    | any row whose path is not a directory                         |
+| `applies = "dirs"`                                     | any row whose path is a directory                             |
+| `applies = "paths"`                                    | any row with a path, apps included                            |
+| `applies = "apps"`                                     | app rows                                                      |
+| `applies = { ext = ["png"] }`                          | that extension, any case, written without the dot. Files only |
+| `applies = { match = ["*.tar.gz"] }`                   | a glob on the file **name**, not the whole path               |
+| `applies = { only = "dirs", match = ["*.xcodeproj"] }` | both at once                                                  |
 
 A row with nothing on disk (a settings pane) matches nothing, since `{path}` would be empty.
 
@@ -388,17 +388,22 @@ Set `format = "json"` for the two fields tabs cannot carry: `path`, which makes 
 
 ```json
 [
-  {"id": "look", "title": "Look", "subtitle": "3 uncommitted", "path": "~/dev/look"}
+  {
+    "id": "look",
+    "title": "Look",
+    "subtitle": "3 uncommitted",
+    "path": "~/dev/look"
+  }
 ]
 ```
 
-| Field | Required | Notes |
-| --- | --- | --- |
-| `id` | yes | What actions receive |
-| `title` | no | Defaults to the id |
-| `subtitle` | no | Defaults to the block name |
-| `path` | no | Makes the row a filesystem object |
-| `icon` | no | Emoji, SF Symbol name, or an image path. Beats the block's icon |
+| Field      | Required | Notes                                                           |
+| ---------- | -------- | --------------------------------------------------------------- |
+| `id`       | yes      | What actions receive                                            |
+| `title`    | no       | Defaults to the id                                              |
+| `subtitle` | no       | Defaults to the block name                                      |
+| `path`     | no       | Makes the row a filesystem object                               |
+| `icon`     | no       | Emoji, SF Symbol name, or an image path. Beats the block's icon |
 
 Three shapes are accepted, whichever your tool already prints: one top-level array, one object per line, or pretty-printed objects run together. A bare string in the array is a row, like a bare line. Keys Look does not know are ignored, so you can pipe richer output through untouched.
 
@@ -432,10 +437,10 @@ On Unix that is `$SHELL -lc "<your command>"`, a **login** shell. That matters m
 
 A login, non-interactive shell does not read your interactive rc file. Concretely:
 
-| Your shell | Read | Not read |
-| --- | --- | --- |
-| zsh | `~/.zshenv`, `~/.zprofile`, `~/.zlogin` | `~/.zshrc` |
-| bash | `/etc/profile`, then the first of `~/.bash_profile`, `~/.bash_login`, `~/.profile` | `~/.bashrc`, unless your profile sources it, which is a common default |
+| Your shell | Read                                                                               | Not read                                                               |
+| ---------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| zsh        | `~/.zshenv`, `~/.zprofile`, `~/.zlogin`                                            | `~/.zshrc`                                                             |
+| bash       | `/etc/profile`, then the first of `~/.bash_profile`, `~/.bash_login`, `~/.profile` | `~/.bashrc`, unless your profile sources it, which is a common default |
 
 So if a `PATH` entry, an alias, or a shell function lives in `~/.zshrc` and your block cannot find it, that is why. Three ways out, in the order worth trying:
 
@@ -474,11 +479,11 @@ The `~` in those commands is expanded by your shell, the same as in a terminal. 
 
 Your script can be in any language with a shebang, and it can read the row from its environment instead of taking arguments, which is often tidier:
 
-| Variable | Value |
-| --- | --- |
-| `LOOK_ID` | The row's id |
-| `LOOK_TITLE` | The row's title |
-| `LOOK_PATH` | The row's path, when it has one |
+| Variable     | Value                           |
+| ------------ | ------------------------------- |
+| `LOOK_ID`    | The row's id                    |
+| `LOOK_TITLE` | The row's title                 |
+| `LOOK_PATH`  | The row's path, when it has one |
 
 ```bash
 #!/usr/bin/env bash
@@ -491,11 +496,11 @@ If the script needs no options at all, you do not even need the TOML: [drop it s
 
 ### Where a command runs
 
-| Command | Working directory |
-| --- | --- |
-| A `do` step, and a verb | The selected row's folder, meaning its parent when the row is a file. A row with no path (a bundle, a `file` row) leaves it at Look's own working directory, so do not rely on it |
-| `preview` | The selected row's folder |
-| A `run` block's producer | Its `cwd` if it declares one, otherwise the filesystem root (`/`, or `%SystemDrive%\` on Windows) |
+| Command                  | Working directory                                                                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A `do` step, and a verb  | The selected row's folder, meaning its parent when the row is a file. A row with no path (a bundle, a `file` row) leaves it at Look's own working directory, so do not rely on it |
+| `preview`                | The selected row's folder                                                                                                                                                         |
+| A `run` block's producer | Its `cwd` if it declares one, otherwise the filesystem root (`/`, or `%SystemDrive%\` on Windows)                                                                                 |
 
 That last row is the one to watch: a `run` block with no `cwd` does **not** start in your home directory, so any relative path in it is resolved against `/`. Use absolute paths, or `-C`-style flags, or declare `cwd`.
 
@@ -529,7 +534,7 @@ Two rules cover it:
 - **Distinctive beats short.** `notes`, `files`, `code`, `git`, `downloads` and `settings` all collide on a normal machine. `zk`, `worktrees` and `standup` collide with nothing.
 - **Two words beat one.** `"tmux sessions"` is reachable by typing either word and matches far less than `sessions` alone.
 
-An alias earns its place only by being shorter than the name *and* colliding with less, so most blocks need none.
+An alias earns its place only by being shorter than the name _and_ colliding with less, so most blocks need none.
 
 The block **id** (the `[header]`) is what you type only when `name` is omitted, since `name` defaults to it. It has to be unique inside the sources directory. Renaming one loses that block's ranking history, so pick it once and leave it.
 
@@ -537,12 +542,12 @@ The block **id** (the `[header]`) is what you type only when `name` is omitted, 
 
 A block's rows match on its **name**, which is a subtitle match, while a file or page whose own title carries your word gets a title match. Those are not close:
 
-| What matched | Score |
-| --- | --- |
-| the row's own title contains your query | 1200 |
-| the row's title *starts with* your query | +200 more |
-| the row's title *is* your query | +500 more |
-| the block name (how your rows match) | 900 |
+| What matched                             | Score     |
+| ---------------------------------------- | --------- |
+| the row's own title contains your query  | 1200      |
+| the row's title _starts with_ your query | +200 more |
+| the row's title _is_ your query          | +500 more |
+| the block name (how your rows match)     | 900       |
 
 So a row that happens to have your word in its title starts 300 ahead of your block, 500 ahead if its title also starts with that word, and 1000 ahead if the title is exactly it, all before recency. `10` is enough to order two blocks that both match by name; beating a title match takes several hundred.
 
@@ -550,12 +555,12 @@ Remember that `bias` applies to **every** query, not only the one you had in min
 
 ## When things refresh
 
-| Block | Rows re-read when |
-| --- | --- |
-| `do` | reload |
-| `dir` | reload, and on the normal index refresh |
+| Block  | Rows re-read when                       |
+| ------ | --------------------------------------- |
+| `do`   | reload                                  |
+| `dir`  | reload, and on the normal index refresh |
 | `file` | reload, and on the normal index refresh |
-| `run` | reload only |
+| `run`  | reload only                             |
 
 Reload is `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux, Windows). It re-reads every file in the sources directory, re-runs every enabled `run` block, and re-indexes. Editing a block and reloading is the whole development loop.
 
@@ -565,14 +570,14 @@ Drill-down levels are different: those rows are produced **live** every time you
 
 ## Limits
 
-| Limit | Value | Why |
-| --- | --- | --- |
-| Rows per block | 2,000 | A root pointed at your home directory should give a capped list and a visible warning, not a frozen launcher |
-| Default command timeout | 5s | A refresh happens while you wait |
-| Longest `timeout` a block may ask for | 30s | `timeout = "24h"` would otherwise hold the reload for a day |
-| Captured output per command | 256 KB | Both `run` and `preview` |
-| Total time one reload spends running commands | 60s | Blocks run one after another, so without a budget each new source makes every reload slower |
-| Drill-down depth | 5 levels | |
+| Limit                                         | Value    | Why                                                                                                          |
+| --------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| Rows per block                                | 2,000    | A root pointed at your home directory should give a capped list and a visible warning, not a frozen launcher |
+| Default command timeout                       | 5s       | A refresh happens while you wait                                                                             |
+| Longest `timeout` a block may ask for         | 30s      | `timeout = "24h"` would otherwise hold the reload for a day                                                  |
+| Captured output per command                   | 256 KB   | Both `run` and `preview`                                                                                     |
+| Total time one reload spends running commands | 60s      | Blocks run one after another, so without a budget each new source makes every reload slower                  |
+| Drill-down depth                              | 5 levels |                                                                                                              |
 
 Blocks below one second of remaining budget are skipped rather than handed a sliver they would fail in.
 
@@ -597,16 +602,16 @@ It prints every problem, then every block it loaded with its resolved name, icon
 
 **Common messages**
 
-| Message | Meaning |
-| --- | --- |
-| `needs one of do, dir, file, or run` | The block declares no producer |
-| `declares dir and run, but a block is one thing: pick one` | Two producers in one block |
-| `a block id cannot contain ":"` | Rename the `[header]` |
-| `then names unknown block "x"` | A typo, or the target was deleted |
-| `duplicate block [x]: only the first is loaded` | Two blocks share an id, possibly across two files |
-| `ignored: not executable and not a .toml declaration` | A file in the directory Look cannot use. `chmod +x` it, or rename it to `.toml` |
-| `produced no rows; keeping the previous ones` | A `run` command printed nothing |
-| `/bin/zsh: No such file or directory (os error 2)` | A `cwd` that does not exist. The message names the shell rather than the directory, which makes this one hard to spot |
+| Message                                                    | Meaning                                                                                                               |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `needs one of do, dir, file, or run`                       | The block declares no producer                                                                                        |
+| `declares dir and run, but a block is one thing: pick one` | Two producers in one block                                                                                            |
+| `a block id cannot contain ":"`                            | Rename the `[header]`                                                                                                 |
+| `then names unknown block "x"`                             | A typo, or the target was deleted                                                                                     |
+| `duplicate block [x]: only the first is loaded`            | Two blocks share an id, possibly across two files                                                                     |
+| `ignored: not executable and not a .toml declaration`      | A file in the directory Look cannot use. `chmod +x` it, or rename it to `.toml`                                       |
+| `produced no rows; keeping the previous ones`              | A `run` command printed nothing                                                                                       |
+| `/bin/zsh: No such file or directory (os error 2)`         | A `cwd` that does not exist. The message names the shell rather than the directory, which makes this one hard to spot |
 
 **A command works in my terminal but not in Look.** In rough order of likelihood:
 

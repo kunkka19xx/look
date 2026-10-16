@@ -11,6 +11,24 @@ licensed build open without having to track down every contributor later. On
 your first pull request the CLA assistant bot will post a comment; reply to it
 once and the signature covers everything you send afterwards.
 
+## Open an issue before a big change
+
+For anything beyond a small fix, open an issue first and wait for a maintainer
+to agree on the shape of it. That covers:
+
+- a new feature, or a new Quick Action control
+- a new search source, provider, or external integration
+- a UI change that alters existing layout or behavior
+- a new dependency, or a change to packaging, release, or CI
+- a refactor that moves or renames code across crates
+
+A large PR that arrives with no prior issue may be asked to go back to an issue
+first, so the discussion saves you the rework. Link the issue from the PR
+description (`Closes #123`).
+
+Open a PR directly for: bug fixes, docs, tests, and small self-contained
+improvements.
+
 ## Before you open an issue
 
 - search existing issues first to avoid duplicates
@@ -59,14 +77,29 @@ Quick Actions are the interactive toggles/buttons in the launcher's right panel 
 
 ## Development setup
 
-[DEVELOPMENT.md](DEVELOPMENT.md) has the full per-platform prerequisites and build walkthrough. In short: Rust stable plus GNU Make everywhere, with Xcode on macOS, Visual Studio 2022 Build Tools (Desktop C++ workload) for the Tauri app on Windows, and the WebKitGTK/GTK system libraries on Linux.
+[DEVELOPMENT.md](DEVELOPMENT.md) has the full per-platform prerequisites and build walkthrough. In short: Rust stable plus GNU Make everywhere, with Xcode on macOS, Visual Studio 2022 Build Tools (Desktop C++ workload) on Windows, and the xkbcommon/xcb/wayland/alsa/dbus/fontconfig/freetype dev packages on Linux.
 
-Before opening a PR, run the cross-platform checks:
+### The two app shells
+
+The Rust core in `core/` is shared. The UI is not:
+
+- `apps/macos/` is a native SwiftUI app, talking to the core through the C ABI
+  in `bridge/ffi/`
+- `apps/linows/gpui/` is the shipping shell on Linux and Windows, GPU-drawn with
+  [gpui](https://www.gpui.rs), talking to `apps/linows/backend/` in-process.
+  Run it with `cd apps/linows && cargo run`
+- `apps/linows/src-tauri/` is the old Tauri shell, kept only as a fallback
+  (`cargo build -p lookapp-tauri`). Do not build new features on it
+
+Before opening a PR, run the core checks:
 
 ```bash
 cargo test --workspace --manifest-path core/Cargo.toml
 cargo test --manifest-path bridge/ffi/Cargo.toml
 ```
+
+Plus the checks for the shell you touched. The pull request template lists the
+exact commands per area.
 
 ## Branch and PR flow
 
@@ -118,19 +151,29 @@ git merge origin/main
 
 CI runs for pushes to `main` and for pull requests targeting `main`.
 
-- Rust jobs (`lint`, `test`, `cargo-audit`, release `build`) run only when Rust-related paths change
+- Rust jobs (`lint`, `test`, `rust-platform-check`, `security`, release `build`) run only when `core/**` or `bridge/ffi/**` changes
 - secrets scanning (`gitleaks`) always runs
-- macOS app build runs only for PRs to `main` when Swift files change
-- linows (Tauri) build runs when `apps/linows/**` or `core/**` changes
+- macOS app build runs only for PRs to `main` when `apps/macos/**` or `bridge/ffi/**` changes
+- macOS release smoke runs when the release scripts or the Xcode project change
+- linows (gpui) builds on Linux and Windows, plus the JS tests, run when `apps/linows/**` or `core/**` changes
+- the Nix build runs when the linows sources, packaging, or flake change
 - release-style Rust build artifacts run only on push to `main`
 
 ## Pull request checklist
 
+The template at `.github/pull_request_template.md` groups the Testing section
+into one block per area, each with a comment saying when to delete it. Delete
+the blocks your change does not touch, and tick only what you actually ran: a
+ticked box is a claim that it passed on your machine. The final checklist comes
+pre-ticked, so untick anything that is not true.
+
+Beyond that:
+
 - scope is focused and minimal
 - base branch is `main`
-- docs updated when behavior changes
+- a new or large feature links the issue it was agreed in
+- docs updated when behavior changes (`docs/features.md`, `docs/user-guide.md`)
 - no unrelated formatting-only changes
-- tests/checks pass locally
 - PR description explains why this change is needed
 
 ## Commit style

@@ -23,7 +23,7 @@ This document tracks what `look` supports today and what is planned next.
 - copy selected file/folder path/content handle with `Cmd+C`
 - multi-pick files/folders with `Cmd+P` (toggle); picked set is mirrored to the system pasteboard for paste anywhere. `Cmd+Shift+P` clears the set
 - move selected file/folder (or all picked items) to the Trash with `Cmd+D` - recoverable, no confirmation (macOS only for now)
-- pinned **Trash** quick folder (type `trash`): `Enter` opens it in Finder, its preview shows the item count, and `Cmd+D` empties it via Finder (confirmed, since it's permanent)
+- pinned **Trash** quick folder (type `trash`): `Enter` opens it in Finder, its preview shows the item count with an icon that reads empty or full to match (macOS), and `Cmd+D` empties it via Finder (confirmed, since it's permanent)
 - preview pane: text/image file previews, plus folder previews listing the immediate children (folders first, capped at 30, click to open)
 - hide the selected app from Look with `Cmd+Shift+H` / `Ctrl+Shift+H` so it stops appearing in results
 - run the selected app as administrator with `Ctrl+Shift+Enter` (Windows only, triggers a UAC prompt)
@@ -46,7 +46,7 @@ This document tracks what `look` supports today and what is planned next.
 - **search suggestions**: Google autocomplete rows appear under the results for plain text queries (2+ chars); `Enter` on one runs a web search, as does `Cmd+Enter` on the query
 - **model interpretation** *(macOS)*: when a natural-language query finds nothing locally, the model turns the phrasing into a *structured* file query (type, time, place) and re-searches - never a rewritten query string, never overriding results already on screen. Results say when they were interpreted, or when the search had to be relaxed to find near-misses
 - **personal answers**: schedule questions ("what's on my calendar this week?") answer from your calendar itself - deterministic, instant, and never sent to a web source
-- **platform note**: the web answer card and Google suggestions run on macOS, Linux, and Windows (the latter two via the Tauri `apps/linows/` app), sharing the `look-answers` core engine. The on-device LLM (query rewrite + the Apple Intelligence answer fallback) is **macOS-only** - there is no on-device model on Linux/Windows. The `ai_enabled` key is shared so the same toggle gates web answers on Linux/Windows and both web + on-device features on macOS
+- **platform note**: the web answer card and Google suggestions run on macOS, Linux, and Windows (the latter two via the gpui `apps/linows/` app), sharing the `look-answers` core engine. The on-device LLM (query rewrite + the Apple Intelligence answer fallback) is **macOS-only** - there is no on-device model on Linux/Windows. The `ai_enabled` key is shared so the same toggle gates web answers on Linux/Windows and both web + on-device features on macOS
 - network note: while AI is on, the answer card's web sources and the Google suggestions send the typed query to those services; the on-device model itself makes no network calls. All of it is off when `ai_enabled = false`
 
 ### AI actions and chat (macOS)
@@ -98,6 +98,7 @@ This document tracks what `look` supports today and what is planned next.
 - activation: click a tile, or press the platform modifier + its highlighted letter - `Cmd` (macOS) / `Alt` (Linux, Windows): `B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `R` Restart, `D` Shut Down, `P` Now Playing play/pause
 - Restart and Shut Down arm on the first press and fire on the second; `Esc` (macOS) or the auto-disarm timeout cancels
 - Battery, Weather and the L slot are read-only
+- with a background image set, each tile shows the slice of it behind its own area under a frosted overlay, so the bar and the strip read as one picture (macOS)
 - toggled on/off via `Settings > Appearance > Super Actions`. Persisted as `super_actions_enabled` in `~/.look/config`. Off by default; turn it on here to show the strip
 - off hides the strip and disables its mnemonics
 
@@ -138,6 +139,7 @@ This document tracks what `look` supports today and what is planned next.
 - local config file `~/.look/config`
 - runtime reload (`Cmd+Shift+;`)
 - rebindable launcher hotkey: record one in `Settings > Shortcuts` (macOS, Windows) or set `launcher_hotkey` in `~/.look/config`; `none` frees the key for your own binding of `lookapp --toggle`
+- rebindable in-app shortcuts (macOS, and the gpui build on Linux and Windows): every modifier chord in `Settings > Shortcuts`, grouped as the help screen is - click a key capsule, press a new chord, Save Config. Stored as `shortcut_<group>_<action>` in `~/.look/config`, the same keys on every platform, and only what you changed is written. Structural keys (Enter, Esc, Tab, arrows, Y/N confirmations) stay fixed
 - 9 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, Custom)
 - two window layouts, `layout=split` (results beside a preview) and `layout=compact` (Spotlight-width, results list alone)
 - Behind-window blur requested from the compositor where it exists (macOS material; KDE / Hyprland / Niri on Linux), clear glass everywhere else
@@ -145,6 +147,7 @@ This document tracks what `look` supports today and what is planned next.
 - in-app config reset (`Settings > Advanced > Create Fresh Config`) with confirmation popup
 - semantic color system with auto-derived text colors in Custom mode
 - animations switch (`Settings > Appearance > Animations`, `animations_enabled`): off shows every change instantly on all three shells; on, the OS reduce-motion preference still applies (except on Windows, where that flag tracks the performance preset)
+- a quieter launcher (macOS, and the gpui build on Linux and Windows): `hints_enabled=false` drops the hint line and the author link, and `search_placeholder` is the empty search field's text, exactly as written, so an empty value shows none
 - indexing, UI, privacy/logging, launch-at-login controls
 - immediate validation feedback for invalid settings input
 - advanced extra scan directory controls (`file_scan_extra_roots`) with overlap/risky-root validation
@@ -155,7 +158,7 @@ This document tracks what `look` supports today and what is planned next.
 - startup/index refresh pipeline for apps/files/settings
 - dirty-aware incremental indexing via file-system events (`Cmd+Space` refresh-on-dirty)
 - usage-event feedback loop for ranking updates
-- Rust core + FFI bridge to Swift app shell
+- Rust core: a C FFI bridge to the Swift shell on macOS, a direct crate dependency for the gpui shell on Linux and Windows
 
 ## In progress / near-term
 

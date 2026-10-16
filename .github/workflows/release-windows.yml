@@ -1,0 +1,181 @@
+name: Release Windows App
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (example: 1.0.0)"
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-release:
+    name: Build Windows release artifacts
+    runs-on: windows-latest
+    concurrency:
+      group: release-windows-${{ github.ref }}
+      cancel-in-progress: true
+    # Hoisted to job scope so `if: env.WINDOWS_PFX_BASE64 != ''` on the signing
+    # step can actually see the value - step-level `env:` is applied AFTER the
+    # `if:` is evaluated, so a step-scoped env block never triggers the gate.
+    env:
+      WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+      WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+      WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # cache-targets off for the same reason as ci.yml: the post-step tar of
+      # target/ hangs on the windows-2025 image.
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            core
+            apps/linows
+          cache-targets: false
+
+      # The tag is the version, baked into the exe through LOOK_VERSION.
+      - name: Build
+        working-directory: apps/linows
+        shell: bash
+        env:
+          LOOK_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cargo build --release --locked -p lookapp
+          test "$(target/release/lookapp.exe --version)" = "lookapp $LOOK_VERSION"
+
+      # windows-latest (windows-2025) no longer ships NSIS, so install it.
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "${env:ProgramFiles(x86)}\NSIS" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      # Same file name and silent flags as before, so
+      # scripts/windows/install-look.ps1 is unchanged.
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $binary = (Resolve-Path apps/linows/target/release/lookapp.exe).Path
+          $outfile = (Resolve-Path dist).Path + "\Look_${version}_x64-setup.exe"
+          makensis /DVERSION=$version /DBINARY=$binary /DOUTFILE=$outfile packaging/windows/look.nsi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          Push-Location dist
+          Get-ChildItem -File | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.Name).Hash.ToLower()
+            "$hash  $($_.Name)"
+          } | Set-Content -Encoding ascii "Look-$version-windows-checksums.txt"
+          Pop-Location
+
+      - name: Sign installer (optional)
+        if: env.WINDOWS_PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          $tsUrl = if ($env:WINDOWS_TIMESTAMP_URL) { $env:WINDOWS_TIMESTAMP_URL } else { "http://timestamp.digicert.com" }
+          $pfxBytes = [System.Convert]::FromBase64String($env:WINDOWS_PFX_BASE64)
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [System.IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
+
+          # Locate signtool from the latest Windows SDK on the runner.
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" `
+            -ErrorAction SilentlyContinue `
+            | Sort-Object FullName -Descending `
+            | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) {
+            Write-Error "signtool.exe not found in Windows SDK"
+            exit 1
+          }
+
+          Get-ChildItem dist/*.exe | ForEach-Object {
+            & $signtool sign /f $pfxPath /p $env:WINDOWS_PFX_PASSWORD `
+              /fd SHA256 /tr $tsUrl /td SHA256 $_.FullName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $signtool verify /pa /v $_.FullName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+          Remove-Item $pfxPath -Force
+
+          # Refresh checksums after signing (signed bytes differ).
+          Push-Location dist
+          $version = "${{ steps.version.outputs.version }}"
+          Get-ChildItem -File -Exclude "*-checksums.txt" | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.Name).Hash.ToLower()
+            "$hash  $($_.Name)"
+          } | Set-Content -Encoding ascii "Look-$version-windows-checksums.txt"
+          Pop-Location
+
+      - name: Release security summary
+        shell: bash
+        run: |
+          # Read the job-level env (same value the signing step gated on) so
+          # the summary can't drift from what actually happened.
+          if [[ -n "$WINDOWS_PFX_BASE64" ]]; then
+            echo "### Windows signing: ✅ signed" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Windows signing: ⚠️ unsigned (no WINDOWS_PFX_BASE64 secret)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Users will see Windows SmartScreen on first run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: look-windows-${{ steps.version.outputs.version }}
+          path: dist/
+          retention-days: 14
+
+      # tag_name is explicit so a workflow_dispatch rebuild lands on the
+      # existing release instead of needing the tag moved.
+      - name: Attach to GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          files: dist/*
+
+  publish-winget:
+    name: Submit winget manifest
+    needs: build-release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to vedantmgoyal9/winget-releaser v2 (commit 4ffc7888).
+      # This action gets WINGET_TOKEN (public_repo), so never track a branch.
+      # It also refuses to run until noah-code.Look already exists in
+      # winget-pkgs; the first manifest is submitted by hand (spec step 5), so
+      # this job stays red until that PR merges.
+      - uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e
+        with:
+          identifier: noah-code.Look
+          installers-regex: '_x64-setup\.exe$'
+          fork-user: dont-wait
+          token: ${{ secrets.WINGET_TOKEN }}

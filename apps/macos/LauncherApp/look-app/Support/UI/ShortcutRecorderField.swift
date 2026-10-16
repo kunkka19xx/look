@@ -6,6 +6,8 @@ import SwiftUI
 struct ShortcutRecorderField: View {
     @EnvironmentObject private var themeStore: ThemeStore
     @ObservedObject private var launcherHotkey = LauncherHotkeyController.shared
+    /// Redraws the capsule when a rebind takes effect.
+    @ObservedObject private var store = ShortcutBindings.shared
 
     let shortcut: ConfigurableShortcut
     @Binding var bindings: [String: String]
@@ -17,23 +19,28 @@ struct ShortcutRecorderField: View {
     private static let unknownKey = "That key cannot be used"
     private static let deafRecorder = "Could not listen for keys"
     private static let fillOpacity = 0.14
+    private static let restingOutlineOpacity = 0.4
     private static let spacing: CGFloat = 6
 
     private var isRecording: Bool { monitor != nil }
     private var fontSize: CGFloat { CGFloat(themeStore.settings.fontSize - 1) }
     private var shown: String {
-        shortcut.pendingDisplay(in: bindings) ?? shortcut.registration.display
+        shortcut.pendingDisplay(in: bindings) ?? shortcut.display
     }
 
     private var defaultSpec: String? {
-        guard let spec = shortcut.registration.defaultSpec,
-            EngineBridge.shared.hotkeyCheck(spec)?.display != shown
-        else { return nil }
+        guard let spec = shortcut.resetSpec, shortcut.check(spec)?.display != shown else {
+            return nil
+        }
         return spec
     }
 
+    /// A resting recorder still carries a border: it is what tells the reader
+    /// this capsule is an input and the dimmed ones next to it are not.
     private var outline: Color {
-        isRecording || shortcut.hasUnsavedChange(in: bindings) ? themeStore.accentColor() : .clear
+        isRecording || shortcut.hasUnsavedChange(in: bindings)
+            ? themeStore.accentColor()
+            : themeStore.liftColor(opacity: Self.restingOutlineOpacity)
     }
 
     private var capsule: some View {
@@ -71,14 +78,14 @@ struct ShortcutRecorderField: View {
     }
 
     private func startRecording() {
-        shortcut.registration.suspend()
+        shortcut.suspend()
         let installed = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             record(event)
             return nil
         }
         guard let installed else {
             // stopRecording() will not run, so hand the shortcut back here.
-            shortcut.registration.reload()
+            shortcut.reload()
             error = Self.deafRecorder
             return
         }
@@ -92,7 +99,7 @@ struct ShortcutRecorderField: View {
         self.monitor = nil
         error = nil
         ShortcutCapture.isActive = false
-        shortcut.registration.reload()
+        shortcut.reload()
     }
 
     private func record(_ event: NSEvent) {
@@ -101,11 +108,11 @@ struct ShortcutRecorderField: View {
             stopRecording()
             return
         }
-        guard let check = CarbonHotkey.spec(for: event).flatMap(EngineBridge.shared.hotkeyCheck) else {
+        guard let check = CarbonHotkey.spec(for: event).flatMap(shortcut.check) else {
             error = Self.unknownKey
             return
         }
-        if let rejection = check.error {
+        if let rejection = check.error ?? shortcut.unusableReason(check) {
             error = rejection
             return
         }

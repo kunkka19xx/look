@@ -24,10 +24,22 @@ let
     "custom"
   ];
 
+  isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
+
+  # macOS matches `ui_theme` against the Swift preset names, which are
+  # camelCase for these two, while Linux and Windows use the hyphenated
+  # spelling (docs/user-guide.md). The option takes one name either way and
+  # writes whichever the installed app understands.
+  darwinThemeIds = {
+    "tokyo-night" = "tokyoNight";
+    "rose-pine" = "rosePine";
+  };
+
   # Colours are derived from `ui_theme` at startup (applyThemePreset), but the
   # opacity keys stay user-owned across theme switches (USER_CONTROLLED_KEYS in
   # settings.js), so the two presets that own them (OPACITY_OWNING_THEMES) have
-  # to restate them. Values mirror THEME_PRESETS.
+  # to restate them. Values mirror THEME_PRESETS, and LiquidTheme.swift for the
+  # macOS tint: liquid glass is a lighter wash there than the Linux blur.
   themeOpacity = {
     kindle = {
       ui_tint_opacity = 0.93;
@@ -35,7 +47,7 @@ let
       ui_border_opacity = 0.26;
     };
     liquid = {
-      ui_tint_opacity = 0.78;
+      ui_tint_opacity = if isDarwin then 0.35 else 0.78;
       ui_font_opacity = 1.0;
       ui_border_opacity = 0.1;
     };
@@ -46,7 +58,7 @@ let
       { }
     else
       {
-        ui_theme = cfg.theme;
+        ui_theme = if isDarwin then darwinThemeIds.${cfg.theme} or cfg.theme else cfg.theme;
       }
       // (themeOpacity.${cfg.theme} or { });
 
@@ -102,7 +114,7 @@ let
   stateFile = "${config.xdg.stateHome}/lookapp/home-manager-keys";
 
   # Look merges its own writes into its config file line by line and keeps keys
-  # it does not know about (set_config in src-tauri/src/config.rs), so replacing
+  # it does not know about (set_config in backend/src/config.rs), so replacing
   # the whole file on activation would throw away everything the user changed
   # in-app. Merge the same way instead: managed keys win, everything else is
   # left alone, and keys dropped from the Nix config since the last generation

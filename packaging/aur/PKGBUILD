@@ -6,9 +6,10 @@ pkgdesc="Keyboard-first, local-first launcher for apps, files, clipboard, and qu
 arch=('x86_64')
 url="https://github.com/kunkka19xx/look"
 license=('GPL-3.0-or-later')
-depends=('webkit2gtk-4.1' 'gtk3' 'gtk-layer-shell' 'librsvg' 'alsa-lib' 'dbus' 'xdg-desktop-portal')
+depends=('libxkbcommon' 'libxkbcommon-x11' 'libxcb' 'alsa-lib' 'dbus' 'vulkan-icd-loader' 'xdg-desktop-portal')
 makedepends=('binutils' 'tar')
 optdepends=(
+    'vulkan-driver: GPU rendering; the GL fallback runs without it'
     'wl-clipboard: copy files to the clipboard on Wayland'
     'xclip: copy files to the clipboard on X11'
     'zenity: crash report dialog on GNOME'

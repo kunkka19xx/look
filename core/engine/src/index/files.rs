@@ -22,6 +22,8 @@ fn modified_unix_s(metadata: Option<&std::fs::Metadata>) -> Option<i64> {
         .map(|d| d.as_secs() as i64)
 }
 
+const FOLDER_BUDGET_FACTOR: usize = 4;
+
 pub fn discover_local_files_and_folders(config: &RuntimeConfig, tx: mpsc::SyncSender<Candidate>) {
     let mut roots = config.file_scan_roots.clone();
     roots.extend(config.file_scan_extra_roots.iter().cloned());
@@ -32,8 +34,16 @@ pub fn discover_local_files_and_folders(config: &RuntimeConfig, tx: mpsc::SyncSe
     let ignored_file_matchers = build_ignored_matchers(&config.ignored_file_patterns);
 
     let mut file_count = 0usize;
+    let mut folder_count = 0usize;
     for root in &roots {
-        walk_files(root, config, &ignored_file_matchers, &tx, &mut file_count);
+        walk_files(
+            root,
+            config,
+            &ignored_file_matchers,
+            &tx,
+            &mut file_count,
+            &mut folder_count,
+        );
         if file_count >= config.file_scan_limit {
             break;
         }
@@ -46,6 +56,7 @@ fn walk_files(
     ignored_file_matchers: &IgnoredFileMatchers,
     tx: &mpsc::SyncSender<Candidate>,
     file_count: &mut usize,
+    folder_count: &mut usize,
 ) {
     if should_exclude_path(path, &config.file_exclude_paths) {
         return;
@@ -121,6 +132,11 @@ fn walk_files(
         let modified_at = modified_unix_s(Some(&metadata));
 
         if metadata.is_dir() {
+            // Folders don't count toward the file limit; they get their own.
+            if *folder_count >= config.file_scan_limit.saturating_mul(FOLDER_BUDGET_FACTOR) {
+                continue;
+            }
+            *folder_count += 1;
             let key = format!(
                 "{FOLDER_CANDIDATE_ID_PREFIX}{}",
                 candidate_id_path_component(path_str)

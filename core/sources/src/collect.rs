@@ -15,6 +15,7 @@ use crate::run::{RowContext, expand_path};
 /// (a root pointed at the home directory, a runaway script), and the honest
 /// answer is a capped list plus a visible truncation, not a frozen launcher.
 pub const MAX_ROWS_PER_SOURCE: usize = 2_000;
+const MAX_LIST_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Collected {
@@ -229,8 +230,20 @@ fn sort_rows(rows: &mut [SourceRow]) {
 }
 
 fn collect_list(file: &Path, format: RowFormat) -> Result<Collected, CollectError> {
-    let contents =
-        fs::read(file).map_err(|err| CollectError::Io(format!("{}: {err}", file.display())))?;
+    let io = |err: std::io::Error| CollectError::Io(format!("{}: {err}", file.display()));
+    let mut contents = Vec::new();
+    std::io::Read::read_to_end(
+        &mut std::io::Read::take(fs::File::open(file).map_err(io)?, MAX_LIST_FILE_BYTES + 1),
+        &mut contents,
+    )
+    .map_err(io)?;
+    if contents.len() as u64 > MAX_LIST_FILE_BYTES {
+        return Err(CollectError::Io(format!(
+            "{}: larger than {} MB",
+            file.display(),
+            MAX_LIST_FILE_BYTES / (1024 * 1024)
+        )));
+    }
     let text = String::from_utf8_lossy(&contents);
 
     let (rows, truncated) = parse_rows(&text, MAX_ROWS_PER_SOURCE, format)

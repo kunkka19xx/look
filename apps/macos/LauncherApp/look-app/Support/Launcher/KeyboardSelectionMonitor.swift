@@ -98,6 +98,9 @@ final class KeyboardSelectionMonitor {
 
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             if ShortcutCapture.isActive { return event }
+            // Every chord below is asked for by name: `ShortcutBindings` holds
+            // what each one is bound to, so a rebind reaches every branch.
+            let shortcuts = ShortcutBindings.shared
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             Self.logKey(
                 "down keyCode=\(event.keyCode) chars=\(event.charactersIgnoringModifiers ?? "") flagsRaw=\(flags.rawValue) inCommand=\(inCommandMode())"
@@ -163,23 +166,12 @@ final class KeyboardSelectionMonitor {
             // own mnemonic, and ⌘K is already Keep Awake there. Opening a menu
             // of the same tiles would both duplicate what is on screen and
             // shadow the key the user meant.
-            if Self.isActionMenuChord(flags),
-                !isLaunchpadActive(),
-                event.keyCode == KeyCode.k || event.keyCode == KeyCode.j
-                    || event.charactersIgnoringModifiers?.lowercased() == "k"
-                    || event.charactersIgnoringModifiers?.lowercased() == "j"
-            {
+            if shortcuts.matches(.mainActions, event), !isLaunchpadActive() {
                 onToggleActionMenu()
                 return nil
             }
 
-            if flags.contains(.command)
-                && !flags.contains(.control)
-                && !flags.contains(.option)
-                && (event.keyCode == KeyCode.slash
-                    || event.charactersIgnoringModifiers == "/"
-                    || event.charactersIgnoringModifiers == "?")
-            {
+            if shortcuts.matches(.mainCommandMode, event) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                     onEnterCommandMode()
                 }
@@ -200,52 +192,41 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
-            if (event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter) && flags == [.command] {
+            if shortcuts.matches(.mainWebSearch, event) {
                 onWebSearch()
                 return nil
             }
 
-            if (event.keyCode == KeyCode.f || event.charactersIgnoringModifiers?.lowercased() == "f")
-                && flags == [.command]
-            {
+            if shortcuts.matches(.mainReveal, event) {
                 onRevealInFinder()
                 return nil
             }
 
-            if (event.keyCode == KeyCode.e || event.charactersIgnoringModifiers?.lowercased() == "e")
-                && flags == [.command]
-            {
+            if shortcuts.matches(.mainEdit, event) {
                 onEditSelection()
                 return nil
             }
 
-            if (event.keyCode == KeyCode.t || event.charactersIgnoringModifiers?.lowercased() == "t")
-                && flags == [.command]
-            {
+            if shortcuts.matches(.mainTerminal, event) {
                 onOpenTerminalForSelection()
                 return nil
             }
 
-            if (event.keyCode == KeyCode.c || event.charactersIgnoringModifiers?.lowercased() == "c")
-                && flags == [.command]
-            {
+            if shortcuts.matches(.mainCopy, event) {
                 if onCopySelection() {
                     return nil
                 }
                 return event
             }
 
-            if (event.keyCode == KeyCode.c || event.charactersIgnoringModifiers?.lowercased() == "c")
-                && flags == [.command, .shift],
-                let onToggleSessionLayout
-            {
+            if shortcuts.matches(.viewToggleLayout, event), let onToggleSessionLayout {
                 onToggleSessionLayout()
                 return nil
             }
 
             // ⌘. stops a running generation (the macOS-standard cancel chord).
             // The handler gates itself, so it only fires while streaming.
-            if event.charactersIgnoringModifiers == "." && flags == [.command] {
+            if shortcuts.matches(.aiStop, event) {
                 if onStopGeneration?() == true {
                     return nil
                 }
@@ -254,7 +235,7 @@ final class KeyboardSelectionMonitor {
 
             // Undo the last action (its result row is showing). The handler gates
             // itself, so Cmd+Z passes through to text-field undo otherwise.
-            if event.charactersIgnoringModifiers?.lowercased() == "z" && flags == [.command] {
+            if shortcuts.matches(.aiUndo, event) {
                 if onUndoAction?() == true {
                     return nil
                 }
@@ -262,36 +243,28 @@ final class KeyboardSelectionMonitor {
             }
 
             // The handler owns the gating, so the key is only consumed when it acts.
-            if (event.keyCode == KeyCode.h || event.charactersIgnoringModifiers?.lowercased() == "h")
-                && flags == [.command, .shift]
-            {
+            if shortcuts.matches(.mainHideApp, event) {
                 if onHideSelectedApp?() == true {
                     return nil
                 }
                 return event
             }
 
-            if (event.keyCode == KeyCode.h || event.charactersIgnoringModifiers?.lowercased() == "h")
-                && flags == [.command]
-            {
+            if shortcuts.matches(.mainHelp, event) {
                 if !inCommandMode() {
                     onToggleHelp()
                 }
                 return nil
             }
 
-            if (event.keyCode == KeyCode.p || event.charactersIgnoringModifiers?.lowercased() == "p")
-                && flags == [.command]
-            {
+            if shortcuts.matches(.mainPick, event) {
                 if !inCommandMode() {
                     onTogglePick()
                 }
                 return nil
             }
 
-            if (event.keyCode == KeyCode.p || event.charactersIgnoringModifiers?.lowercased() == "p")
-                && flags == [.command, .shift]
-            {
+            if shortcuts.matches(.mainClearPicks, event) {
                 if !inCommandMode() {
                     onClearPicked()
                 }
@@ -310,7 +283,7 @@ final class KeyboardSelectionMonitor {
             // opens the selected result. In AI mode it always falls through:
             // the chord is a line break in the composer, and a pick left over
             // from the main bar must not steal it.
-            if (event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter) && flags == [.shift] {
+            if shortcuts.matches(.mainOpenPicked, event) {
                 if !inCommandMode() && !inAIMode() && hasPickedItems() {
                     onOpenAllPicked()
                     return nil
@@ -318,38 +291,27 @@ final class KeyboardSelectionMonitor {
                 return event
             }
 
-            // Cmd+D (keyCode 2) → trash the selection. Only in result mode; in
-            // command mode it falls through so it keeps any text-editing meaning
-            // in the command input.
-            if (event.keyCode == KeyCode.d || event.charactersIgnoringModifiers?.lowercased() == "d")
-                && flags == [.command]
-                && !inCommandMode()
-            {
+            // Trash the selection. Only in result mode; in command mode it falls
+            // through so the chord keeps any text-editing meaning in the command
+            // input.
+            if shortcuts.matches(.mainTrash, event), !inCommandMode() {
                 onRequestDelete?()
                 return nil
             }
 
-            // Cmd+O toggles the selected result's toggle Quick Action (Bluetooth,
-            // etc.). Multi-choice controls will use Cmd+J/K in a later pass.
-            // Match on the typed character only, not a hardware keyCode: 31 is
-            // the physical ANSI-O position, which types another letter on
-            // Dvorak/Colemak and would hijack that chord. Only swallow the
-            // event when the selection actually has a toggle to act on.
-            if event.charactersIgnoringModifiers?.lowercased() == "o"
-                && flags == [.command]
-                && !inCommandMode()
-                && hasToggleQuickAction()
+            // Flips the selected result's toggle Quick Action (Bluetooth, etc.).
+            // Multi-choice controls will use Cmd+J/K in a later pass. Only
+            // swallow the event when the selection actually has a toggle.
+            if shortcuts.matches(.mainQuickActionToggle, event),
+                !inCommandMode(),
+                hasToggleQuickAction()
             {
                 onToggleQuickAction?()
                 return nil
             }
 
-            // Matched on the typed character, like Cmd+O above, and swallowed
-            // only when there was a clip to paste.
-            if event.charactersIgnoringModifiers?.lowercased() == "i"
-                && flags == [.command]
-                && onPasteSelection?() == true
-            {
+            // Swallowed only when there was a clip to paste.
+            if shortcuts.matches(.clipboardPaste, event), onPasteSelection?() == true {
                 return nil
             }
 
@@ -414,13 +376,7 @@ final class KeyboardSelectionMonitor {
             // Shift+Esc leaves AI mode straight to home (skips the list step).
             // Only consume it when it actually acts, so Shift+Esc keeps its
             // command-mode "hide" meaning elsewhere.
-            if event.keyCode == KeyCode.escape,
-                flags.contains(.shift),
-                !flags.contains(.command),
-                !flags.contains(.option),
-                !flags.contains(.control),
-                onEscapeHome?() == true
-            {
+            if shortcuts.matches(.mainHideLauncher, event), onEscapeHome?() == true {
                 return nil
             }
 
@@ -429,18 +385,22 @@ final class KeyboardSelectionMonitor {
             // Not ⌃↑/↓: those are Mission Control and Application Windows at the
             // WindowServer level, so the app never sees them. Not ⇧↑/↓ either -
             // the composer is multiline now and needs them to select text.
-            if event.keyCode == KeyCode.arrowUp || event.keyCode == KeyCode.arrowDown,
-                flags.contains(.option),
-                !flags.contains(.command),
-                !flags.contains(.control),
-                // ⌥⇧↑/↓ extends the selection by paragraph in the composer.
-                // Claiming it here would replace the draft with a history entry
-                // while the user is trying to select text.
-                !flags.contains(.shift)
-            {
-                let older = event.keyCode == KeyCode.arrowUp
+            // ⌥⇧↑/↓ extends the selection by paragraph in the composer, so the
+            // match is exact: claiming it here would replace the draft with a
+            // history entry while the user is trying to select text.
+            let older = shortcuts.matches(.aiHistoryOlder, event)
+            if older || shortcuts.matches(.aiHistoryNewer, event) {
                 if onRecallPrompt?(older) == true { return nil }
                 return event
+            }
+
+            // A hide-launcher chord rebound off Escape has to be claimed before
+            // the passthrough below hands every modifier combo to the system.
+            // Escape itself still falls into the branch under it, which cancels
+            // a confirmation or climbs out of a drill-down first.
+            if event.keyCode != KeyCode.escape, shortcuts.matches(.mainHideLauncher, event) {
+                onHideLauncher()
+                return nil
             }
 
             if event.modifierFlags.contains(.command)
@@ -485,7 +445,7 @@ final class KeyboardSelectionMonitor {
                 }
 
                 if inCommandMode() {
-                    if flags.contains(.shift) {
+                    if shortcuts.matches(.mainHideLauncher, event) {
                         onHideLauncher()
                     } else {
                         onExitCommandMode()

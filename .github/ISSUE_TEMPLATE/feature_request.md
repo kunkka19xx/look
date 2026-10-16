@@ -6,6 +6,9 @@ labels: enhancement
 assignees: ""
 ---
 
+<!-- Open this before sending a PR for a new or large feature, and wait for a
+     maintainer to agree on the shape of it. See CONTRIBUTING.md. -->
+
 ## Problem
 
 <!-- What user problem are you trying to solve? -->

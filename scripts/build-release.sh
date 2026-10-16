@@ -10,16 +10,19 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
+# shellcheck source=scripts/release-arch.sh
+source "$ROOT_DIR/scripts/release-arch.sh"
+
 "$ROOT_DIR/scripts/release-macos-app.sh" "$VERSION"
 
-ZIP_PATH="$ROOT_DIR/dist/Look-${VERSION}-macOS.zip"
+ZIP_PATH="$ROOT_DIR/dist/Look-${VERSION}-macOS${ARCH_SUFFIX}.zip"
 if [[ ! -f "$ZIP_PATH" ]]; then
   echo "Expected artifact missing: $ZIP_PATH" >&2
   exit 1
 fi
 
 SHA256="$(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
-MANIFEST_PATH="$ROOT_DIR/dist/Look-${VERSION}-manifest.txt"
+MANIFEST_PATH="$ROOT_DIR/dist/Look-${VERSION}-manifest${ARCH_SUFFIX}.txt"
 
 cat > "$MANIFEST_PATH" <<EOF
 version=${VERSION}

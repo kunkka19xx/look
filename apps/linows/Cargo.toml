@@ -1,0 +1,72 @@
+[workspace]
+resolver = "3"
+members = ["backend", "gpui", "src-tauri"]
+# A bare `cargo build` builds the shipping shell (gpui) and its backend. The
+# Tauri shell stays as the backup: `cargo build -p lookapp-tauri`.
+default-members = ["backend", "gpui"]
+
+# The release version for dev and Nix builds. A tagged release takes its
+# version from the tag instead (LOOK_VERSION, see backend/build.rs).
+[workspace.package]
+version = "0.7.3"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "s"
+panic = "abort"
+
+# Unoptimised, decoding a background photo took seconds in a dev build.
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.image-webp]
+opt-level = 3
+
+# Unoptimised, drawing one SVG icon took ~80 ms on a laptop CPU (Firefox's
+# ~900 ms), so every summon showed glyphs before the icons.
+[profile.dev.package.resvg]
+opt-level = 3
+[profile.dev.package.usvg]
+opt-level = 3
+[profile.dev.package.tiny-skia]
+opt-level = 3
+[profile.dev.package.tiny-skia-path]
+opt-level = 3
+[profile.dev.package.roxmltree]
+opt-level = 3
+[profile.dev.package.svgtypes]
+opt-level = 3
+[profile.dev.package.simplecss]
+opt-level = 3
+[profile.dev.package.kurbo]
+opt-level = 3
+[profile.dev.package.base64]
+opt-level = 3
+
+# Unoptimised, gpui paints text at about 1 ms per run: Settings > Shortcuts
+# drew at 110 ms a frame. Dependencies, so they compile once.
+[profile.dev.package.gpui-ce]
+opt-level = 2
+[profile.dev.package.gpui_ce_wgpu]
+opt-level = 2
+[profile.dev.package.taffy]
+opt-level = 2
+[profile.dev.package.cosmic-text]
+opt-level = 2
+
+# gpui_ce_wgpu 0.1.0 with pipelines cached per device instead of rebuilt per
+# window: avoids a per-window shader recompile that Mesa virgl never frees
+# (~4 MB a summon in QEMU/KVM guests) and makes every window open cheaper.
+# The branch is crates.io 0.1.0 (gpui-ce 99109e3) plus that one commit, and is
+# the proposed upstream change (branch wgpu-pipeline-cache) plus a manifest
+# commit that pins its sibling crates to crates.io so the patch links against
+# the same gpui-ce. Drop once a release ships it.
+[patch.crates-io]
+gpui_ce_wgpu = { git = "https://github.com/kunkka19xx/gpui-ce", branch = "wgpu-pipeline-cache-crates-io" }
