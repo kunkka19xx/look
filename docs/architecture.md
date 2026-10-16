@@ -377,13 +377,13 @@ A preset declares its `ThemeAppearance` (`.dark` or `.light`). It pins the NSVis
 
 A preset also declares a `ThemeSurface` (`.classic` or `.liquid`), the second non-token axis alongside `ThemeAppearance`: it selects how surfaces are drawn rather than what colour they are, and scales every themed corner radius through `ThemeStore.surfaceCornerRadius(_:)`. Any new border or `clipShape` on a themed surface must go through that helper, or it desyncs from the fill behind it and draws a stray line across the corners.
 
-`ThemeStore.themeSurface()` resolves the axis from `blurMaterial` first and the preset second. That is deliberate: `savedThemeName()` stops recording `ui_theme` as soon as any value diverges from its preset (the load path applies the theme _over_ the individual `ui_*` keys, so a stale name would discard the user's tweaks), while `ui_blur_material` persists on its own. Keying off the material means a customised Liquid theme keeps its glass across a relaunch.
+`ThemeStore.themeSurface()` resolves the axis from `blurMaterial` first and the preset second. That is deliberate: `ui_theme` is a base the individual `ui_*` keys override, the name stays recorded as you tune, and picking Custom clears it, while `ui_blur_material` persists on its own through all of that. Keying off the material means a customised Liquid theme keeps its glass across a relaunch, named or not.
 
 Liquid Glass itself is `Components/GlassEffectBackdrop.swift`, an `NSGlassEffectView` wrapper. Not SwiftUI's `glassEffect`, which refracts only what sits behind it inside its own view tree: the launcher window is transparent, so that renders as nearly nothing. The view also draws nothing without a `contentView`, and the theme tint is passed into its `tintColor` rather than layered over it, since a colour wash on top cancels the refraction.
 
 On linows the same presets live in `apps/linows/gpui/src/theme.rs`, resolved from `~/.look/config` the same way: a preset names the palette, the `ui_*` keys the user owns override it, and `custom` is the keys alone. Defaults are constants in that file (Kanagawa, 14 pt, the shipped opacities) and are not seeded into the config. Appearance is not a flag there either: a light preset flips the lift and shadow tones that stand chips off the backdrop and seat panes on it. Opacities stay the user's except at one moment: picking a preset whose surface _is_ its transparency (Kindle, Liquid) snaps tint, text and border opacity to the preset's own, because paper at a dark theme's transparency doesn't read as paper and glass at a near-opaque one is a blue panel.
 
-The surface axis is `ui_surface` (`liquid` or empty), stored apart from `ui_theme` for the same reason macOS resolves it from `ui_blur_material` first: nudging any slider drops `ui_theme` to `custom`, and the surface must not go with it. The radius scale is `ui_surface_radius`, one multiplier every themed corner reads through `Theme`, so a corner that skips it is a hardcoded pixel value rather than a call site that forgot a helper.
+The surface axis is `ui_surface` (`liquid` or empty), stored apart from `ui_theme` for the same reason macOS resolves it from `ui_blur_material` first: picking Custom replaces `ui_theme`, and the surface must not go with it. The radius scale is `ui_surface_radius`, one multiplier every themed corner reads through `Theme`, so a corner that skips it is a hardcoded pixel value rather than a call site that forgot a helper.
 
 The material itself does not port. Refraction is the compositor's to provide and none on Linux or Windows offers it to a window, so linows draws Liquid as clear glass rather than frost: high transparency, a specular rim along the top edge above the tint and the background image, and saturated accents. Nothing in it needs the compositor, so it looks the same everywhere, and it mirrors macOS 26 shipping `Glass.clear` beside `Glass.regular`.
 
@@ -391,7 +391,7 @@ Real frost is available where the compositor grants it, and only there. The back
 
 The region is the shell's to compute, because only it knows which surfaces are painted: `launcher.rs` collects one rectangle for the classic panel, or one per tile once the panes float, so the gaps stay clear instead of frosting into a single slab. Both protocols take rectangles only, so a rounded surface is approximated by the cross of its two inset rects. A compositor's frost is on or off per region, never partial, so under frost the surfaces arrive by motion alone rather than fading in over a patch that would pop.
 
-The switch is `ui_compositor_blur` (Settings > Advanced > Rendering > Blur behind window): unset means on under KWin and off elsewhere, since granting the request and drawing it well are two different things. With frost present, `Blur Opacity` thins the tint the way it does over a background image; with neither, tint opacity alone decides the window alpha.
+The switch is `ui_compositor_blur` (Settings > Advanced > Rendering > Blur behind window): unset means on in a Plasma session (`XDG_CURRENT_DESKTOP` names KDE) and off on every other Linux desktop, since granting the request and drawing it well are two different things. With frost present, `Blur Opacity` thins the tint the way it does over a background image; with neither, tint opacity alone decides the window alpha.
 
 ### Motion
 
@@ -417,8 +417,8 @@ All settings are persisted to `.look/config`:
 
 **UI Theme:**
 
-- `ui_theme` - theme name, applied after the individual `ui_*` keys below, so a preset overrides them. macOS spells the two-word names in camelCase and matches case-insensitively; linows hyphenates them and matches exactly.
-- Empty or absent means Custom on macOS, where Save Config stores a tweaked theme as its literal values. On linows it means `kanagawa`, and a colour slider writes `custom` instead. linows defaults are constants in `apps/linows/gpui/src/theme.rs` and are not seeded into the config file.
+- `ui_theme` - theme name, the base the individual `ui_*` keys below override. Picking a preset copies its values into those keys and records the name; the name stays as you tune. macOS spells the two-word names in camelCase and matches case-insensitively; linows hyphenates them and matches exactly.
+- Empty or absent means Custom on macOS, where Save Config stores a tweaked theme as its literal values. On linows it means `kanagawa`, and picking Custom writes `custom`. linows defaults are constants in `apps/linows/gpui/src/theme.rs` and are not seeded into the config file.
 
 **Appearance:**
 
