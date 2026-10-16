@@ -1,3 +1,5 @@
+// Prevents additional console window on Windows in release
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 //! linows drawn by gpui-ce. The backend (`linows_backend`) does the work;
 //! this binary owns the window, the hotkey, and the control socket.
 
