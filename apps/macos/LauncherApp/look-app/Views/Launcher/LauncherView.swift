@@ -1392,8 +1392,10 @@ struct LauncherView: View {
                             if !pickedKeys.isEmpty {
                                 pickedCountPill
                             }
-                            copyrightLink
-                                .padding(.trailing, Self.barCopyrightTrailingInset)
+                            if showsCopyright {
+                                copyrightLink
+                                    .padding(.trailing, Self.barCopyrightTrailingInset)
+                            }
                         }
                     }
                     .frame(minHeight: AppConstants.Launcher.topRowMinHeight)
@@ -1492,7 +1494,8 @@ struct LauncherView: View {
             // While floating, every card carries its own hint footer; only the
             // classic (no-gap) layout keeps the full-width bar below the panel.
             // Compact shows no hints.
-            if !showsFloatingCards
+            if themeStore.hintsEnabled
+                && !showsFloatingCards
                 && !isCompactLayout
                 && !restsAsBareBar
                 && !isKillConfirmationVisible
@@ -2364,13 +2367,14 @@ struct LauncherView: View {
     }
 
     /// A thin footer strip inside a floating card holding a slice of the old
-    /// full-width hint bar. Compact has none (its copyright is in the search bar).
+    /// full-width hint bar. Compact has none (its copyright is in the search bar),
+    /// and `hints_enabled=false` drops it with everything it holds.
     @ViewBuilder
     private func cardFooter<Content: View>(
         placement: CardFooterPlacement = .gridPane,
         @ViewBuilder _ content: () -> Content
     ) -> some View {
-        if !isCompactLayout {
+        if !isCompactLayout && themeStore.hintsEnabled {
             HStack(spacing: 0) {
                 content()
             }
@@ -2639,8 +2643,9 @@ struct LauncherView: View {
     }
 
     /// Settings ends in a floating Save button; a byline in the same corner is
-    /// one more thing in the space that button already owns.
-    private var showsCopyright: Bool { !appUIState.showsThemeSettings }
+    /// one more thing in the space that button already owns. `hints_enabled`
+    /// takes it along with the hints.
+    private var showsCopyright: Bool { themeStore.hintsEnabled && !appUIState.showsThemeSettings }
 
     private var copyrightLink: some View {
         Link("© 2026 by Kunkka", destination: URL(string: "https://github.com/kunkka19xx")!)

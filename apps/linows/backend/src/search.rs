@@ -126,6 +126,7 @@ pub fn reload_config(
     // read on every refresh). When the user explicitly reloads, drop the cache
     // so the next bootstrap picks up their edits.
     RuntimeConfig::invalidate_cache();
+    crate::config::invalidate_cache();
     crate::clipboard::reload_from_config();
     rebind();
     // Before the index pass, never after: the pass reads the rows these blocks

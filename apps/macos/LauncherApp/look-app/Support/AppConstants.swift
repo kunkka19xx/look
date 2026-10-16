@@ -70,8 +70,6 @@ enum AppConstants {
     }
 
     enum Launcher {
-        /// Search field placeholder shown in normal (non-command) mode.
-        static let searchPlaceholder = "Type whatever you want"
         /// Search field placeholder shown in command mode when no command is active.
         static let commandModePlaceholder = "Choose a command with Tab"
 

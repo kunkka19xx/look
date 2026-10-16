@@ -459,14 +459,15 @@ impl Settings {
         self.recorder.discard();
     }
 
-    /// Read the file again: on open, and on Ctrl+Shift+; while open. The
-    /// OS owns autostart and PATH, so their switches read the OS, not the
-    /// file, and the drives come along on Windows.
+    /// Start from the config as last loaded: on open, and on Ctrl+Shift+;
+    /// while open, which loads it first. The OS owns autostart and PATH, so
+    /// their switches read the OS, not the file, and the drives come along
+    /// on Windows.
     pub fn reload(&mut self, cx: &mut Context<Launcher>) {
         bg::fetch(
             cx,
             || {
-                let mut entries = theme::entries();
+                let mut entries = (*theme::entries()).clone();
                 let flag = |on: bool| if on { "true" } else { "false" }.to_string();
                 entries.insert(
                     advanced::LAUNCH_AT_LOGIN.key.to_string(),
@@ -818,16 +819,23 @@ impl Settings {
         self.recorder.stop();
         bg::fetch(
             cx,
+            // Whether the file was written, apart from the OS steps after it:
+            // a failed autostart must not leave the snapshot behind the file.
             move || {
-                config::write_config(updates, &removals)?;
-                engine::reload_config(app_state(), || {});
-                autostart::set_autostart(launch)?;
-                if cfg!(windows) {
-                    cli_path::set_cli_path(add_to_path)?;
+                if let Err(err) = config::write_config(updates, &removals) {
+                    return (false, Err(err));
                 }
-                Ok::<(), String>(())
+                engine::reload_config(app_state(), || {});
+                let os = autostart::set_autostart(launch).and_then(|()| {
+                    if cfg!(windows) {
+                        cli_path::set_cli_path(add_to_path)
+                    } else {
+                        Ok(())
+                    }
+                });
+                (true, os)
             },
-            move |this, result, cx| {
+            move |this, (written, result), cx| {
                 let ok = result.is_ok();
                 if let Err(err) = result {
                     this.banner.show(
@@ -839,6 +847,11 @@ impl Settings {
                 }
                 this.ai.enabled = ai_on;
                 crate::hotkey::set_active(true);
+                // What was written is what the next summon reads, and what
+                // the bindings below are built from.
+                if written {
+                    theme::load();
+                }
                 bindings::load();
                 this.settings.recorder.state = Some(hotkey::launcher_hotkey_state());
                 if ok {

@@ -570,6 +570,11 @@ query_retention_seconds=5\n\
 # shown in this order. Unknown or duplicate codes are dropped; an empty list\n\
 # falls back to vi,en,ja.\n\
 translate_languages=vi,en,ja\n\
+# The hint line along the bottom and the author link. false hides both.\n\
+hints_enabled=true\n\
+\n\
+# Search bar placeholder. Empty shows none.\n\
+search_placeholder=Type whatever you want\n\
 \n\
 {launcher_hotkey_section}\
 # Preferred tools. Name the tool, not a command: Look knows how to drive it,\n\

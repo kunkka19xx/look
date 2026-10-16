@@ -116,6 +116,11 @@ pub const DEFAULT_BG_BLUR: f32 = 10.3;
 /// frozen copy of the wallpaper behind every window.
 pub const COMPOSITOR_BLUR_KEY: &str = "ui_compositor_blur";
 const ANIMATIONS_KEY: &str = "animations_enabled";
+/// The hint lines and the author link, on unless the user turned them off.
+const HINTS_KEY: &str = "hints_enabled";
+/// No fallback: the default text is written in the config file, so
+/// `search_placeholder=` or no line at all shows none.
+const PLACEHOLDER_KEY: &str = "search_placeholder";
 const BLUR_OPACITY_KEY: &str = "ui_blur_opacity";
 /// High Contrast's, the default blur style.
 const DEFAULT_BLUR_OPACITY: f32 = 0.95;
@@ -510,6 +515,10 @@ pub struct Theme {
     pub compositor_blur: bool,
     /// `animations_enabled`: off collapses every motion to its last frame.
     pub animations: bool,
+    /// `hints_enabled`: the hint lines and the author link.
+    pub hints: bool,
+    /// `search_placeholder`: what the empty search field says.
+    pub placeholder: SharedString,
     syntax: [Rgba; 4],
 }
 
@@ -544,18 +553,38 @@ pub fn compositor_blur_default() -> bool {
     }
 }
 
-/// The config as the theme reads it: `key=` means unset, not "".
-pub fn entries() -> HashMap<String, String> {
-    config::get_config()
-        .entries
+/// The config as last read from the file. Read at start and when the user
+/// asks (reload, Save Config, a fresh config), never on a summon, as macOS
+/// keeps it.
+static FILE: RwLock<Option<Arc<HashMap<String, String>>>> = RwLock::new(None);
+
+fn read_entries() -> Arc<HashMap<String, String>> {
+    Arc::new(clean(config::get_config().entries))
+}
+
+/// The file's lines as the theme reads them: a trailing `# note` cut as
+/// macOS and the engine cut it, and `key=` meaning unset, not "".
+fn clean(entries: Vec<config::ConfigEntry>) -> HashMap<String, String> {
+    entries
         .into_iter()
-        .filter(|e| !e.value.is_empty())
-        .map(|e| (e.key, e.value))
+        .filter_map(|e| {
+            let value = config::strip_inline_comment(&e.value).trim();
+            (!value.is_empty()).then(|| (e.key, value.to_string()))
+        })
         .collect()
 }
 
+/// The config as last loaded, without touching the file.
+pub fn entries() -> Arc<HashMap<String, String>> {
+    if let Some(file) = FILE.read().unwrap_or_else(|p| p.into_inner()).as_ref() {
+        return Arc::clone(file);
+    }
+    let mut guard = FILE.write().unwrap_or_else(|p| p.into_inner());
+    Arc::clone(guard.get_or_insert_with(read_entries))
+}
+
 impl Theme {
-    /// Read the config and resolve every token. Called at start and on reload.
+    /// Resolve every token from the config as last loaded.
     pub fn from_config() -> Self {
         Self::from_entries(&entries())
     }
@@ -656,6 +685,8 @@ impl Theme {
             bg_blur: num(BG_BLUR_KEY, DEFAULT_BG_BLUR),
             compositor_blur,
             animations: get(ANIMATIONS_KEY) != Some("false"),
+            hints: get(HINTS_KEY) != Some("false"),
+            placeholder: get(PLACEHOLDER_KEY).unwrap_or_default().to_string().into(),
             syntax: preset.syntax,
         }
     }
@@ -822,9 +853,13 @@ pub fn clear_session_layout() {
     geometry::set_session_layout(None);
 }
 
-/// Resolve the config again. Cheap: one file read.
+/// Read the file again and resolve from it: at start, and when the user
+/// asks. A summon reuses what this read.
 pub fn load() {
-    install(Theme::from_config());
+    let entries = read_entries();
+    let theme = Theme::from_entries(&entries);
+    *FILE.write().unwrap_or_else(|p| p.into_inner()) = Some(entries);
+    install(theme);
 }
 
 /// Make `theme` the one every render reads, written to the config or not.
@@ -892,4 +927,54 @@ fn over(top: Rgba, bottom: Rgba) -> Rgba {
         mix(top.color.blue, bottom.color.blue),
         alpha,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn theme(pairs: &[(&str, &str)]) -> Theme {
+        let entries = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        Theme::from_entries(&entries)
+    }
+
+    #[test]
+    fn hints_stay_on_unless_turned_off() {
+        assert!(theme(&[]).hints);
+        assert!(theme(&[(HINTS_KEY, "true")]).hints);
+        assert!(!theme(&[(HINTS_KEY, "false")]).hints);
+    }
+
+    #[test]
+    fn the_placeholder_is_the_config_text_with_no_fallback() {
+        assert_eq!(theme(&[]).placeholder.as_ref(), "");
+        assert_eq!(
+            theme(&[(PLACEHOLDER_KEY, "Type whatever you want")])
+                .placeholder
+                .as_ref(),
+            "Type whatever you want"
+        );
+    }
+
+    #[test]
+    fn a_trailing_comment_is_cut_from_every_value() {
+        let entry = |key: &str, value: &str| config::ConfigEntry {
+            key: key.to_string(),
+            value: value.to_string(),
+        };
+        let read = clean(vec![
+            entry(HINTS_KEY, "false # hide them"),
+            entry(PLACEHOLDER_KEY, "Find it  # mine"),
+            entry(BG_IMAGE_KEY, "/pics/a#1.png"),
+            entry(LAYOUT_KEY, "# nothing yet"),
+        ]);
+        let get = |key: &str| read.get(key).map(String::as_str);
+        assert_eq!(get(HINTS_KEY), Some("false"));
+        assert_eq!(get(PLACEHOLDER_KEY), Some("Find it"));
+        assert_eq!(get(BG_IMAGE_KEY), Some("/pics/a#1.png"));
+        assert_eq!(get(LAYOUT_KEY), None);
+    }
 }

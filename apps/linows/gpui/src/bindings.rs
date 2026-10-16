@@ -7,7 +7,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, RwLock};
 
 use gpui::Keystroke;
-use linows_backend::config;
 use linows_backend::look_engine::hotkey::{Hotkey, HotkeyCheck, Key, Modifier};
 
 use crate::shortcuts::{
@@ -241,11 +240,10 @@ pub struct Bindings {
 
 impl Bindings {
     pub fn from_config() -> Self {
-        let overrides = config::get_config()
-            .entries
-            .into_iter()
-            .filter(|e| e.key.starts_with(CONFIG_KEY_PREFIX) && !e.value.is_empty())
-            .map(|e| (e.key, e.value))
+        let overrides = crate::theme::entries()
+            .iter()
+            .filter(|(key, _)| key.starts_with(CONFIG_KEY_PREFIX))
+            .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
         Self::from_overrides(overrides, linows_backend::hotkey::configured().display)
     }

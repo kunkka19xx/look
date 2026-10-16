@@ -146,6 +146,7 @@ This document tracks what `look` supports today and what is planned next.
 - in-app config reset (`Settings > Advanced > Create Fresh Config`) with confirmation popup
 - semantic color system with auto-derived text colors in Custom mode
 - animations switch (`Settings > Appearance > Animations`, `animations_enabled`): off shows every change instantly on all three shells; on, the OS reduce-motion preference still applies (except on Windows, where that flag tracks the performance preset)
+- a quieter launcher (macOS, and the gpui build on Linux and Windows): `hints_enabled=false` drops the hint line and the author link, and `search_placeholder` is the empty search field's text, exactly as written, so an empty value shows none
 - indexing, UI, privacy/logging, launch-at-login controls
 - immediate validation feedback for invalid settings input
 - advanced extra scan directory controls (`file_scan_extra_roots`) with overlap/risky-root validation

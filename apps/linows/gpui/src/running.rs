@@ -47,11 +47,9 @@ impl RunningApps {
         bg::fetch(
             cx,
             || {
-                let enabled = linows_backend::config::get_config()
-                    .entries
-                    .into_iter()
-                    .find(|e| e.key == PLACEMENT_KEY)
-                    .is_none_or(|e| e.value != PLACEMENT_NONE);
+                let enabled = crate::theme::entries()
+                    .get(PLACEMENT_KEY)
+                    .is_none_or(|v| v != PLACEMENT_NONE);
                 let apps = if enabled {
                     let mut apps = process::list_running_apps();
                     apps.truncate(MAX_ITEMS);
