@@ -17,6 +17,7 @@
 !endif
 
 !define PRODUCT "Look"
+!define PUBLISHER "Noah Code"
 !define EXE "lookapp.exe"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT}"
 
@@ -49,7 +50,7 @@ Section "Install"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "${PRODUCT}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\${EXE}"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "kunkka19xx"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "${PUBLISHER}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "UninstallString" '"$INSTDIR\uninstall.exe"'
   WriteRegStr HKCU "${UNINSTALL_KEY}" "QuietUninstallString" '"$INSTDIR\uninstall.exe" /S'

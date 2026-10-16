@@ -39,8 +39,11 @@
   },
   "bundle": {
     "active": true,
-    "publisher": "Noah Code",
-    "targets": ["deb", "appimage", "nsis"],
+    "targets": [
+      "deb",
+      "appimage",
+      "nsis"
+    ],
     "icon": [
       "../icons/32x32.png",
       "../icons/128x128.png",
