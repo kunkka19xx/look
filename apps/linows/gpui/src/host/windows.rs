@@ -2,7 +2,7 @@
 //! over loopback TCP since std has no named pipe server.
 
 use std::net::TcpListener;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use gpui::{App, Bounds, Pixels, Size, Window, WindowBackgroundAppearance, WindowKind};
 use linows_backend::platform::windows::window_focus::bring_to_front;
@@ -10,7 +10,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::{HANDLE, HWND, POINT, RECT};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::System::Console::{
-    ATTACH_PARENT_PROCESS, AttachConsole, FreeConsole, GetStdHandle, STD_ERROR_HANDLE,
+    ATTACH_PARENT_PROCESS, AttachConsole, FreeConsole, GetStdHandle, STD_ERROR_HANDLE, STD_HANDLE,
     STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -102,36 +102,57 @@ pub fn trim_heap() {}
 
 pub fn tune_heap() {}
 
-/// Set when `attach_console` borrowed the parent's console, so only that one
-/// is given back; a debug build's own console stays.
-static BORROWED: AtomicBool = AtomicBool::new(false);
+const STD_HANDLES: [STD_HANDLE; 3] = [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE];
+
+/// Bit `i` set when `STD_HANDLES[i]` came from the parent's console.
+static BORROWED: AtomicU8 = AtomicU8::new(0);
+
+fn std_handle(which: STD_HANDLE) -> Option<HANDLE> {
+    // SAFETY: plain Win32 call with no pointers.
+    unsafe { GetStdHandle(which) }
+        .ok()
+        .filter(|h| !h.is_invalid())
+}
 
 /// Without a console `--version` from cmd or PowerShell prints nothing, so
 /// borrow the parent's. A redirected stdout already has its pipe and is left
 /// alone.
 pub fn attach_console() {
+    if std_handle(STD_OUTPUT_HANDLE).is_some() {
+        return;
+    }
+    let before = STD_HANDLES.map(std_handle);
     // SAFETY: plain Win32 calls with no pointers, made before any output.
     unsafe {
-        let attached = GetStdHandle(STD_OUTPUT_HANDLE).is_ok_and(|h| !h.is_invalid());
-        if !attached && AttachConsole(ATTACH_PARENT_PROCESS).is_ok() {
-            BORROWED.store(true, Ordering::Relaxed);
+        if AttachConsole(ATTACH_PARENT_PROCESS).is_err() {
+            return;
         }
+        let mut borrowed = 0u8;
+        for (i, (which, kept)) in STD_HANDLES.into_iter().zip(before).enumerate() {
+            match kept {
+                Some(handle) => {
+                    let _ = SetStdHandle(which, handle);
+                }
+                None => borrowed |= 1u8 << i,
+            }
+        }
+        BORROWED.store(borrowed, Ordering::Relaxed);
     }
 }
 
-/// Gives the borrowed console back once only the launcher is left to run:
-/// still attached, closing the terminal would end it and its logs would land
-/// in the user's shell. The std handles are nulled so a later write is dropped
-/// instead of reaching whatever reuses their values.
+/// Closing the terminal would otherwise take the launcher with it.
 pub fn detach_console() {
-    if !BORROWED.swap(false, Ordering::Relaxed) {
+    let borrowed = BORROWED.swap(0, Ordering::Relaxed);
+    if borrowed == 0 {
         return;
     }
     // SAFETY: plain Win32 calls with no pointers.
     unsafe {
         let _ = FreeConsole();
-        for which in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
-            let _ = SetStdHandle(which, HANDLE::default());
+        for (i, which) in STD_HANDLES.into_iter().enumerate() {
+            if borrowed & (1u8 << i) != 0 {
+                let _ = SetStdHandle(which, HANDLE::default());
+            }
         }
     }
 }
