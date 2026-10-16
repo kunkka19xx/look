@@ -305,7 +305,7 @@ struct LookupDefinitionPanelView: View {
         if !query.isEmpty {
             components?.queryItems = [
                 URLQueryItem(name: "sl", value: "auto"),
-                URLQueryItem(name: "tl", value: "en"),
+                URLQueryItem(name: "tl", value: definition?.browserTargetLanguage ?? "en"),
                 URLQueryItem(name: "text", value: query),
                 URLQueryItem(name: "op", value: "translate"),
             ]

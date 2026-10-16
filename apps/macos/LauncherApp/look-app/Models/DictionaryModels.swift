@@ -6,6 +6,9 @@ struct LookupDefinition {
     let query: String
     let sourceLabel: String
     let sections: [LookupTranslationSection]
+    /// Target language code for the "Open in Browser" link: the first configured
+    /// `translate_languages` entry for web translation, `en` otherwise.
+    var browserTargetLanguage: String = "en"
 }
 
 struct LookupTranslationSection {

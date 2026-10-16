@@ -44,35 +44,27 @@ extension LauncherView {
         }
     }
 
-    /// The target language codes from `translate_languages`, in order and
-    /// deduplicated. A code that is empty, duplicated, or absent from
-    /// `languageLabels` is a typo or an unsupported language and is dropped from
-    /// both the label list and the result sections. An absent, empty, or
-    /// all-invalid list falls back to the built-in list, so a typo never blanks
-    /// the panel.
-    func configuredTranslateLanguages() -> [String] {
-        let fallback = AppConstants.Launcher.Translate.defaultLanguages
-        let labels = AppConstants.Launcher.Translate.languageLabels
+    /// The raw `translate_languages` value from the config file, or empty.
+    private func rawTranslateLanguages() -> String {
         let path = URL(fileURLWithPath: ConfigPathResolver.resolvedPath())
-        guard let raw = try? String(contentsOf: path, encoding: .utf8) else {
-            return fallback
-        }
-        let value = ConfigFileLines.keyValues(raw)[AppConstants.Launcher.Translate.languagesConfigKey] ?? ""
-        var seen = Set<String>()
-        var codes: [String] = []
-        for entry in ConfigFileLines.parseList(value) {
-            let code = entry.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard !code.isEmpty, !seen.contains(code), labels[code] != nil else { continue }
-            seen.insert(code)
-            codes.append(code)
-        }
-        return codes.isEmpty ? fallback : codes
+        let raw = (try? String(contentsOf: path, encoding: .utf8)) ?? ""
+        return ConfigFileLines.keyValues(raw)[AppConstants.Launcher.Translate.languagesConfigKey] ?? ""
+    }
+
+    /// The target language codes from `translate_languages`, in order. Parsing,
+    /// validation, and the fallback list live in `look_answers` (reached through
+    /// the bridge), so every shell reads the same table. The built-in list below
+    /// only covers the bridge call itself failing, so the panel is never blank.
+    func configuredTranslateLanguages() -> [String] {
+        let codes = bridge.translateLanguages(rawConfig: rawTranslateLanguages()).map(\.code)
+        return codes.isEmpty ? ["vi", "en", "ja"] : codes
     }
 
     /// The built-in label for a supported code, or the uppercased code as a
     /// last resort (callers only pass codes from `configuredTranslateLanguages`).
     func translateLanguageLabel(for code: String) -> String {
-        AppConstants.Launcher.Translate.languageLabels[code] ?? code.uppercased()
+        bridge.translateLanguages(rawConfig: code).first { $0.code == code }?.label
+            ?? code.uppercased()
     }
 
     private func lookupSections(
@@ -197,7 +189,8 @@ extension LauncherView {
                     dictionaryDefinition: nil,
                     failed: false
                 )
-            }
+            },
+            browserTargetLanguage: codes.first ?? "en"
         )
 
         Task {
@@ -215,7 +208,8 @@ extension LauncherView {
                             dictionaryDefinition: nil,
                             failed: results[code]?.translated == nil
                         )
-                    }
+                    },
+                    browserTargetLanguage: codes.first ?? "en"
                 )
 
                 if !hasAnyResult {

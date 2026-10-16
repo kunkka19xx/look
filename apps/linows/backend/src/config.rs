@@ -212,6 +212,7 @@ pub const CLIPBOARD_IMAGE_LIMIT_DEFAULT: usize = 20;
 pub const CLIPBOARD_IMAGE_LIMIT_MIN: usize = 5;
 pub const CLIPBOARD_IMAGE_LIMIT_MAX: usize = 50;
 const QUERY_RETENTION_SECONDS_KEY: &str = "query_retention_seconds";
+const TRANSLATE_LANGUAGES_KEY: &str = "translate_languages";
 pub const QUERY_RETENTION_SECONDS_DEFAULT: i64 = 5;
 /// The opt-out every negative value normalizes to.
 pub const QUERY_RETENTION_SECONDS_NEVER: i64 = -1;
@@ -354,6 +355,17 @@ fn limit_from_file(key: &str, range: std::ops::RangeInclusive<usize>, default: u
 /// value keeps it indefinitely.
 pub fn query_retention_seconds() -> i64 {
     show_values(|v| v.retention_secs)
+}
+
+/// Target languages for the `t"` translation panel, parsed from
+/// `translate_languages`. The parsing and the label table live in
+/// `look_answers`, shared by the webview, gpui, and macOS shells.
+pub fn translate_languages() -> Vec<look_answers::TranslateLanguage> {
+    let raw = std::fs::read_to_string(config_file_path())
+        .ok()
+        .and_then(|contents| last_value(&contents, TRANSLATE_LANGUAGES_KEY).map(str::to_string))
+        .unwrap_or_default();
+    look_answers::translate_languages(&raw)
 }
 
 /// A count out of range is a typo, not a request, so the default stands rather

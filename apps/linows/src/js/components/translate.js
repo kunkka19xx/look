@@ -1,109 +1,26 @@
 import * as layout from '../layout.js';
-import { translate, copyToClipboard, getConfig } from '../ipc.js';
+import { translate, translateLanguages, copyToClipboard } from '../ipc.js';
 import { globeLg, copy as copyIcon, link as linkIcon, externalLink } from '../icons.js';
 
+// Last resort when the backend call fails; the real list, labels included,
+// comes from `translate_languages`.
 const DEFAULT_LANGUAGES = [
     { code: 'vi', label: 'TIẾNG VIỆT' },
     { code: 'en', label: 'ENGLISH' },
     { code: 'ja', label: '日本語' },
 ];
 
-// Display names for the supported codes. Keys are lowercase because the config
-// value is lowercased before lookup (so `zh-CN` reads as `zh-cn`). This doubles
-// as the allowlist: a code with no entry is a typo or an unsupported language,
-// so it is dropped rather than shown with a placeholder label.
-const LANGUAGE_LABELS = {
-    af: 'Afrikaans',
-    ar: 'العربية',
-    az: 'Azərbaycan',
-    be: 'Беларуская',
-    bg: 'Български',
-    bn: 'বাংলা',
-    ca: 'Català',
-    cs: 'Čeština',
-    da: 'Dansk',
-    de: 'Deutsch',
-    el: 'Ελληνικά',
-    en: 'English',
-    es: 'Español',
-    et: 'Eesti',
-    eu: 'Euskara',
-    fa: 'فارسی',
-    fi: 'Suomi',
-    fil: 'Filipino',
-    fr: 'Français',
-    gl: 'Galego',
-    gu: 'ગુજરાતી',
-    he: 'עברית',
-    hi: 'हिन्दी',
-    hr: 'Hrvatski',
-    hu: 'Magyar',
-    hy: 'Հայերեն',
-    id: 'Bahasa Indonesia',
-    is: 'Íslenska',
-    it: 'Italiano',
-    ja: '日本語',
-    ka: 'ქართული',
-    kk: 'Қазақ',
-    km: 'ខ្មែរ',
-    kn: 'ಕನ್ನಡ',
-    ko: '한국어',
-    lo: 'ລາວ',
-    lt: 'Lietuvių',
-    lv: 'Latviešu',
-    mk: 'Македонски',
-    ml: 'മലയാളം',
-    mn: 'Монгол',
-    mr: 'मराठी',
-    ms: 'Bahasa Melayu',
-    my: 'မြန်မာ',
-    ne: 'नेपाली',
-    nl: 'Nederlands',
-    no: 'Norsk',
-    pa: 'ਪੰਜਾਬੀ',
-    pl: 'Polski',
-    pt: 'Português',
-    'pt-br': 'Português (Brasil)',
-    ro: 'Română',
-    ru: 'Русский',
-    si: 'සිංහල',
-    sk: 'Slovenčina',
-    sl: 'Slovenščina',
-    sq: 'Shqip',
-    sr: 'Српски',
-    sv: 'Svenska',
-    sw: 'Kiswahili',
-    ta: 'தமிழ்',
-    te: 'తెలుగు',
-    th: 'ไทย',
-    tr: 'Türkçe',
-    uk: 'Українська',
-    ur: 'اردو',
-    uz: 'Oʻzbek',
-    vi: 'Tiếng Việt',
-    zh: '中文',
-    'zh-cn': '中文（简体）',
-    'zh-tw': '中文（繁體）',
-};
-
 // The target languages come from `translate_languages` in the config, in order.
-// Codes that are empty, duplicated, or not in LANGUAGE_LABELS are dropped from
-// both the label list and the result sections; an absent, empty, or all-invalid
-// list falls back to the defaults, so a typo never blanks the panel.
+// The backend parses and validates them (dropping empty, duplicate, or
+// unsupported codes, and falling back to the defaults), so every shell shares
+// one table. Labels are uppercased for the section headers.
 async function configuredLanguages() {
     try {
-        const cfg = await getConfig();
-        const raw = cfg?.entries?.find((e) => e.key === 'translate_languages')?.value ?? '';
-        const seen = new Set();
-        const languages = [];
-        for (const entry of raw.split(',')) {
-            const code = entry.trim().toLowerCase();
-            const label = LANGUAGE_LABELS[code];
-            if (!code || seen.has(code) || typeof label !== 'string') continue;
-            seen.add(code);
-            languages.push({ code, label: label.toUpperCase() });
-        }
-        return languages.length ? languages : DEFAULT_LANGUAGES;
+        const languages = await translateLanguages();
+        return languages.map((lang) => ({
+            code: lang.code,
+            label: lang.label.toUpperCase(),
+        }));
     } catch {
         return DEFAULT_LANGUAGES;
     }

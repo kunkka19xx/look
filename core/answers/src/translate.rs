@@ -11,7 +11,9 @@ use crate::http;
 
 const URL_PREFIX: &str = "https://api.mymemory.translated.net/get?langpair=Autodetect%7C";
 const URL_MIDDLE: &str = "&q=";
-const TIMEOUT_SECS: u32 = 5;
+// A 500-character query regularly takes 2-4s on MyMemory and sometimes more than
+// 5s, which failed one language in a parallel set with "request failed".
+const TIMEOUT_SECS: u32 = 10;
 // MyMemory rejects a `q` longer than 500 characters (code points) with QUERY
 // LENGTH LIMIT EXCEEDED, so longer input is split and the pieces reassembled.
 // Its spec page says "Max 500 bytes", but this was checked live: a request with

@@ -16,12 +16,14 @@
 mod fmt;
 pub mod http;
 mod json;
+mod languages;
 mod parse;
 mod sources;
 mod translate;
 mod types;
 mod url;
 
+pub use languages::{TranslateLanguage, translate_languages};
 pub use translate::{TranslateError, Translation, translate};
 pub use types::Answer;
 pub use url::{UrlMatch, UrlTier, classify_url};
