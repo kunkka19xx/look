@@ -40,7 +40,7 @@ struct SearchInputBar: View {
         if isAIMode {
             return "Ask, act, or search conversations"
         }
-        return AppConstants.Launcher.searchPlaceholder
+        return themeStore.searchPlaceholder
     }
 
     var body: some View {
@@ -81,8 +81,9 @@ struct SearchInputBar: View {
                 onSubmit: onSubmit
             )
                 // The field's own placeholder is empty, so it would otherwise
-                // reach VoiceOver unnamed.
-                .accessibilityLabel(placeholderText)
+                // reach VoiceOver unnamed. A placeholder configured away
+                // still leaves the field a name.
+                .accessibilityLabel(placeholderText.isEmpty ? "Search" : placeholderText)
                 .frame(maxWidth: .infinity)
                 .overlay(alignment: .leading) {
                     if text.isEmpty {
