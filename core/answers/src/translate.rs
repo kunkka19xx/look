@@ -14,6 +14,9 @@ const URL_MIDDLE: &str = "&q=";
 const TIMEOUT_SECS: u32 = 5;
 // MyMemory rejects a `q` longer than 500 characters (code points) with QUERY
 // LENGTH LIMIT EXCEEDED, so longer input is split and the pieces reassembled.
+// Its spec page says "Max 500 bytes", but this was checked live: a request with
+// 500 three-byte characters (1500 bytes) still translated, so the API counts
+// code points. Keep this in characters, not bytes.
 const MAX_QUERY_CHARS: usize = 500;
 // MyMemory does not inspect the User-Agent, but a browser string keeps it in
 // line with the other sources and avoids any bot filtering.

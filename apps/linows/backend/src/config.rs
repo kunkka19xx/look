@@ -153,6 +153,11 @@ fn default_config_contents() -> String {
          # clears it on every hide; a negative value keeps it indefinitely.\n\
          query_retention_seconds=5\n\
          \n\
+         # Target languages for the t\" translation panel, comma-separated BCP-47 codes,\n\
+         # shown in this order. Unknown or duplicate codes are dropped; an empty list\n\
+         # falls back to vi,en,ja.\n\
+         translate_languages=vi,en,ja\n\
+         \n\
          # Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
          clipboard_history_limit=10\n\
          \n\
@@ -673,5 +678,10 @@ mod tests {
     #[test]
     fn reset_template_hides_super_actions() {
         assert!(default_config_contents().contains("\nsuper_actions_enabled=false\n"));
+    }
+
+    #[test]
+    fn reset_template_includes_translate_languages() {
+        assert!(default_config_contents().contains("\ntranslate_languages=vi,en,ja\n"));
     }
 }

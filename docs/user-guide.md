@@ -288,7 +288,8 @@ Clipboard mode (`c"`):
 Translation mode (`t"`/`tw"`):
 
 - shows one result section per target language, default VI/EN/JA and configurable via `translate_languages` (see File-only settings below),
-- translation uses network requests.
+- translation uses network requests,
+- the backend is MyMemory, which is free but capped at about 5,000 characters per day per IP address, shared across every configured language - a 500-character paste with three targets spends 1,500 of that budget. Once the budget is spent the sections report a rate-limit message until it resets.
 
 ## Command mode
 
