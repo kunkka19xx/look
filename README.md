@@ -12,7 +12,7 @@ A keyboard-first, local-first launcher for macOS, Windows, and Linux. Open apps,
 [![Downloads](https://img.shields.io/github/downloads/kunkka19xx/look/total)](https://github.com/kunkka19xx/look/releases)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 
-📘 [Docs](https://noah-code.com/docs/look) · 🎬 [Demo video](https://www.youtube.com/watch?v=NBB5bmjnLFU) · 📖 [User guide](docs/user-guide.md)
+📘 [Docs](https://noah-code.com/docs/look) · 📖 [User guide](docs/user-guide.md)
 
 https://github.com/user-attachments/assets/167b028b-04b2-4c62-ba93-c2321482ac94
 
