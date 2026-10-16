@@ -17,7 +17,7 @@ let
   # Bumped together with the hashes below; the two are only correct as a pair.
   # Not read from ../Cargo.toml: that version moves at release prep, before the
   # zip exists, which would break `nix build` on main.
-  version = "0.7.2";
+  version = "0.7.3";
 
   # One asset per architecture (scripts/release-arch.sh), arm64 keeping the
   # historical name. Both lines are rewritten by scripts/nix-bump-darwin.sh,
@@ -31,7 +31,7 @@ let
   sources = {
     aarch64-darwin = {
       url = "https://github.com/kunkka19xx/look/releases/download/v${version}/Look-${version}-macOS.zip";
-      hash = "sha256-h8DlDos4YfBnR1cfompTM0YgDUrzcZQHhUVEg1zgR50=";
+      hash = "sha256-TttGb3rKxHzYGrPJ/Z2BcXnxS7JOHC1S8TqULpwIAFw=";
     };
   };
 
