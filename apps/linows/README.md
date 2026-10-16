@@ -58,20 +58,18 @@ apps/linows/
 
 ## Why This Exists
 
-The previous Windows app was built with WinUI3/C#. It didn't match the macOS app's look and feel; the UI felt inconsistent across platforms. This Tauri app replaces it with a web-based frontend that can look identical on Windows and Linux, using the macOS SwiftUI app as the single design reference.
+The previous Windows app was built with WinUI3/C#. It didn't match the macOS app's look and feel; the UI felt inconsistent across platforms. A Tauri app replaced it with a web-based frontend that could look identical on Windows and Linux, and the gpui shell in `gpui/` then replaced that, drawing the same design on the GPU with no browser engine in the process. The macOS SwiftUI app stays the single design reference throughout.
 
-The migration is complete and the WinUI3 app has been removed; it lives on in git history under `apps/windows/`.
+Both migrations are complete: the WinUI3 app has been removed and lives on in git history under `apps/windows/`, and the Tauri shell stays in the tree as the backup only.
 
 ## Key Decisions
 
-- Direct Rust crate deps (no FFI/cdylib); Tauri commands call core engine directly
-- Own Cargo workspace (not part of core/ workspace)
-- ES modules (`<script type="module">`), no bundler
-- CSS custom properties for theming
+- Direct Rust crate deps (no FFI/cdylib); both shells call the `backend/` crate, which calls the core engine directly
+- Own Cargo workspace (not part of core/ workspace); `default-members` is `backend` + `gpui`, so a bare `cargo build` builds the shipping shell
 - macOS design language: dark, blurred, rounded, minimal
-- Audio playback via `rodio` (Rust); WebKitGTK's HTML5 Audio has issues on Linux
-- Folder picker via `tauri-plugin-dialog`, cross-platform native dialogs
-- Tauri v2 capabilities in `capabilities/default.json` for event/dialog permissions
+- Audio playback via `rodio` (Rust)
+
+Backup-shell decisions, still true of `src-tauri/` and `src/`: ES modules (`<script type="module">`) with no bundler, CSS custom properties for theming, `tauri-plugin-dialog` for the folder picker, and Tauri v2 capabilities in `capabilities/default.json` for event/dialog permissions.
 
 ## Linux Desktop Environments
 
@@ -120,19 +118,24 @@ sudo pacman -S gtk-layer-shell            # KDE Plasma, wlroots compositors
 
 ## Build
 
+[BUILDING.md](BUILDING.md) is canonical for prerequisites, Windows `vcvars`, and packaging. The short version:
+
 ```bash
 cd apps/linows
-cargo tauri dev       # development
-cargo tauri build     # production
+cargo run             # development
+cargo run --release   # production profile
+cargo build --locked  # backend + gpui shell
 ```
 
 **NixOS dev shell** (uses flake.nix):
 
 ```bash
 nix develop
-cargo tauri dev
-cargo tauri build --bundles deb    # build .deb package
+nix develop -c cargo run
+nix build ./apps/linows#default -L   # the packaged build, from the repo root
 ```
+
+The Tauri backup builds by name: `cargo build -p lookapp-tauri`, `cargo tauri dev`, `cargo tauri build --bundles deb`.
 
 ## Testing on Ubuntu VM (virt-manager)
 

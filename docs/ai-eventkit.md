@@ -1,6 +1,6 @@
 # The EventKit backend (macOS)
 
-Calendar and Reminders are an Apple system framework, so this half is Swift only (`Support/Calendar/EventKitService.swift`). Rust never knows EventKit exists: `core/ai` returns `Execute`/`Undo` as data and the shell switches on it. macOS is the only AI shell and no other is being built; the data-only split is here because it keeps the testable logic out of a framework that cannot run unattended, not because a port is coming. A Linux or Windows backend would be a thinner feature regardless - there is no unified system calendar to drive on Linux, and Windows restricts programmatic access.
+Calendar and Reminders are an Apple system framework, so this half is Swift only (`Support/Calendar/EventKitService.swift`). Rust never knows EventKit exists: `core/ai` returns `Execute`/`Undo` as data and the shell switches on it. macOS is the only `core/ai` shell and no other is being built; the data-only split is here because it keeps the testable logic out of a framework that cannot run unattended, not because a port is coming. A Linux or Windows backend would be a thinner feature regardless - there is no unified system calendar to drive on Linux, and Windows restricts programmatic access.
 
 The shared brain, the routing ladder, and the execution spine this plugs into: `ai-architecture.md`. Why connectors work this way and the platform matrix: `ai-vision.md`.
 

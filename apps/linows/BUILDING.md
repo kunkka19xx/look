@@ -214,6 +214,7 @@ If FUSE is missing, run with `--appimage-extract-and-run`, or install it (Fedora
 - **Monorepo**: The linows app depends on `core/` crates via path. The full repo checkout is needed to build.
 - **Version**: a tagged release carries the tag (`LOOK_VERSION` at build time). Dev and Nix builds carry `[workspace.package] version` from `apps/linows/Cargo.toml`, so bump it with each release.
 - **NixOS specifics**: the runtime libraries are added to the binary's rpath and the host tools to its PATH by the flake.
+- **One git dependency**: `gpui_ce_wgpu` is patched to a fork (`[patch.crates-io]` in `Cargo.toml`), so a build fetches it from GitHub rather than crates.io. See `gpui/README.md` for why it exists and what to re-pin when it moves.
 
 ---
 

@@ -63,21 +63,22 @@ jobs:
               - 'apps/macos/LauncherApp/look-app.xcodeproj/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/reusable-release-macos.yml'
+            # "!(*.md)" is an extglob inside ONE pattern - every file under
+            # apps/linows/ that is not markdown - so editing README.md or
+            # BUILDING.md no longer fires these builds.
+            #
+            # A separate "!..." LINE would not work: rules are OR-ed, and a
+            # leading "!" is a picomatch negation matching every file *outside*
+            # that path, which is how an excluded-subdir line once fired these
+            # builds on macOS-only and docs-only PRs.
             linows:
-              - 'apps/linows/**'
+              - 'apps/linows/**/!(*.md)'
               - 'core/**'
-            # NOTE: dorny/paths-filter matches each changed file against the rule
-            # list with OR semantics, and a leading "!" is a picomatch negation
-            # that matches every file *outside* that path - so an excluded-subdir
-            # line like "!.../platform/windows/**" matched virtually any change
-            # (macOS code, docs, README), firing these builds on unrelated PRs.
-            # There's no AND across rules to express "linows changes except subdir
-            # X", so we just trigger on any apps/linows or core change.
             linows_linux:
-              - 'apps/linows/**'
+              - 'apps/linows/**/!(*.md)'
               - 'core/**'
             linows_windows:
-              - 'apps/linows/**'
+              - 'apps/linows/**/!(*.md)'
               - 'core/**'
 
   lint:
