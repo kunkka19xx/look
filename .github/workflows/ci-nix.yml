@@ -12,6 +12,10 @@ on:
       - "apps/linows/nix/**"
       - "apps/linows/flake.nix"
       - "apps/linows/flake.lock"
+      # Last match wins in GitHub's own path filter, so this trailing negation
+      # drops a docs-only edit. Note it is NOT the syntax ci.yml uses: that one
+      # filters with dorny/paths-filter, where rules are OR-ed instead.
+      - "!apps/linows/**.md"
   push:
     branches: [main]
     paths:
@@ -24,6 +28,10 @@ on:
       - "apps/linows/nix/**"
       - "apps/linows/flake.nix"
       - "apps/linows/flake.lock"
+      # Last match wins in GitHub's own path filter, so this trailing negation
+      # drops a docs-only edit. Note it is NOT the syntax ci.yml uses: that one
+      # filters with dorny/paths-filter, where rules are OR-ed instead.
+      - "!apps/linows/**.md"
 
 concurrency:
   group: ci-nix-${{ github.ref }}
