@@ -485,6 +485,13 @@ enum AppConstants {
             static let never = -1
         }
 
+        /// Target languages for the `t"` translation panel. Only the config key
+        /// lives here: parsing, the built-in labels, and the fallback are in
+        /// `look_answers::translate_languages`, shared by every shell.
+        enum Translate {
+            static let languagesConfigKey = "translate_languages"
+        }
+
         /// Virtual key codes (`NSEvent.keyCode`). These are physical positions on a
         /// US layout, not characters, so a handler that must follow the printed
         /// letter on other layouts matches `charactersIgnoringModifiers` as well.

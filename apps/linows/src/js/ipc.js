@@ -272,6 +272,10 @@ export async function translate(text, targetLang) {
     return invoke('translate', { text, targetLang });
 }
 
+export async function translateLanguages() {
+    return invoke('translate_languages');
+}
+
 // Quick Actions: descriptors come from the shared look-qactions catalog;
 // state/apply go through the native adapter for the action id
 // (see docs/writing-controls.md).

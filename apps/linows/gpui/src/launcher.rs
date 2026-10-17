@@ -18,6 +18,7 @@ use gpui::{
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
+use linows_backend::look_answers::TranslateLanguage;
 use linows_backend::search as engine;
 use linows_backend::{
     clipboard, config, files, launch, paste, process, sources, tools, translate, trash, weburl,
@@ -64,7 +65,9 @@ static HINT_EMPTY: Hint = Hint::new(&[
     Piece::Id(shortcuts::WEB_SEARCH, "Search the web"),
 ]);
 const WEB_SEARCH_URL: &str = "https://www.google.com/search?q=";
-const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=en&text=";
+/// The browser translation page; the target language and the text follow, the
+/// target being the first configured language, as in the webview.
+const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 /// How long a keystroke waits for the next before the query runs; the
 /// webview uses the same.
 const DEBOUNCE: Duration = Duration::from_millis(70);
@@ -84,8 +87,6 @@ const TRANSLATE_PLACEHOLDER: &str = "Press Enter to translate";
 const TRANSLATING: &str = "Translating\u{2026}";
 const TRANSLATE_FAILED: &str = "Translation failed";
 const OPEN_IN_BROWSER: &str = "Open in Browser";
-/// The three targets, in the panel's order.
-const LANGUAGES: [(&str, &str); 3] = [("vi", "TIẾNG VIỆT"), ("en", "ENGLISH"), ("ja", "日本語")];
 const CLIP_DELETED: &str = "Clipboard item deleted";
 const CLIP_IMAGE_DELETED: &str = "Image removed from history";
 static HINT_LEVEL: Hint = Hint::new(&[
@@ -137,6 +138,8 @@ const USAGE_EXECUTE: &str = "execute";
 /// One translation request and what has come back for each language.
 struct Translation {
     text: String,
+    /// The configured targets, in order, read once when the request starts.
+    languages: Vec<TranslateLanguage>,
     /// None while in flight.
     sections: Vec<Option<Result<String, String>>>,
 }
@@ -1511,7 +1514,8 @@ impl Launcher {
         true
     }
 
-    /// `t"` Enter: the three translations, each landing as it answers.
+    /// `t"` Enter: one translation per configured language, each landing as it
+    /// answers.
     fn translate(&mut self, cx: &mut Context<Self>) {
         let query = self.input.read(cx).text().to_string();
         let (_, term) = Mode::of(&query);
@@ -1519,11 +1523,14 @@ impl Launcher {
         if text.is_empty() {
             return;
         }
+        let languages = config::translate_languages();
+        let codes: Vec<&'static str> = languages.iter().map(|lang| lang.code).collect();
         self.translation = Some(Translation {
             text: text.clone(),
-            sections: vec![None; LANGUAGES.len()],
+            languages,
+            sections: vec![None; codes.len()],
         });
-        for (i, (code, _)) in LANGUAGES.iter().enumerate() {
+        for (i, code) in codes.into_iter().enumerate() {
             let text = text.clone();
             let wanted = text.clone();
             bg::fetch(
@@ -2773,7 +2780,7 @@ impl Launcher {
                             .text_color(th.accent)
                             .child(TRANSLATE_BADGE),
                     );
-                let sections = LANGUAGES.iter().enumerate().map(|(i, (_, label))| {
+                let sections = translation.languages.iter().enumerate().map(|(i, lang)| {
                     let (text, colour, copy) = match &translation.sections[i] {
                         None => (TRANSLATING.to_string(), th.text_muted, None),
                         Some(Ok(text)) => (text.clone(), th.text, Some(text.clone())),
@@ -2804,7 +2811,7 @@ impl Launcher {
                                         .text_size(px(th.font_size - 2.0))
                                         .font_weight(FontWeight::BOLD)
                                         .text_color(th.text_secondary)
-                                        .child(*label),
+                                        .child(lang.label.to_uppercase()),
                                 )
                                 .when_some(copy, |el, text| {
                                     el.child(
@@ -2845,7 +2852,11 @@ impl Launcher {
                         )
                         .child(div().text_color(colour).child(text))
                 });
-                let url = format!("{TRANSLATE_URL}{}", url_encode(&translation.text));
+                let target = translation.languages.first().map_or("en", |lang| lang.code);
+                let url = format!(
+                    "{TRANSLATE_URL}{target}&text={}",
+                    url_encode(&translation.text)
+                );
                 let footer = div()
                     .id("translate-open")
                     .mt(px(TRANSLATE_PADDING_Y))
