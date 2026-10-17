@@ -148,7 +148,9 @@ git push
 
 **CI `nix-build` job fails on vendoring** That's the Nix job, not AUR. `apps/linows/nix/package.nix` vendors from the committed `Cargo.lock` via `importCargoLock`, so there is no `cargoHash` to regenerate - check that the lockfile is committed and in sync with the manifests.
 
-**CI fails with `Could not resolve host: github.com` or `curl: (22) ... 404`** The `.deb` filename pattern doesn't match. Inspect the latest GitHub Release; if Tauri changed naming (e.g. uppercase vs lowercase, `_amd64` vs `_x86_64`), update the `source=` line in `packaging/aur/PKGBUILD` and the curl URL in `.github/workflows/release-linux.yml`'s `publish-aur` job.
+**CI fails with `Could not resolve host: github.com`** DNS or network trouble on the runner, nothing to do with the package. Rerun the job.
+
+**CI fails with `curl: (22) ... 404`** The `.deb` filename pattern doesn't match. Inspect the latest GitHub Release; if the release workflow renamed the asset (e.g. uppercase vs lowercase, `_amd64` vs `_x86_64`), update the `source=` line in `packaging/aur/PKGBUILD` and the curl URL in `.github/workflows/release-linux.yml`'s `publish-aur` job.
 
 **AUR shows the new version but `yay -S look-bin` says "package not found"** User's AUR helper cache is stale. They run `yay -Syu` or `paru -Syu` to refresh.
 

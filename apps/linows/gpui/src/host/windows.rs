@@ -2,12 +2,17 @@
 //! over loopback TCP since std has no named pipe server.
 
 use std::net::TcpListener;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use gpui::{App, Bounds, Pixels, Size, Window, WindowBackgroundAppearance, WindowKind};
 use linows_backend::platform::windows::window_focus::bring_to_front;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use windows::Win32::Foundation::{HWND, POINT, RECT};
+use windows::Win32::Foundation::{HANDLE, HWND, POINT, RECT};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
+use windows::Win32::System::Console::{
+    ATTACH_PARENT_PROCESS, AttachConsole, FreeConsole, GetStdHandle, STD_ERROR_HANDLE, STD_HANDLE,
+    STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_STYLE, GetClientRect, HWND_TOPMOST, SW_HIDE, SWP_FRAMECHANGED, SWP_NOACTIVATE,
     SWP_NOZORDER, SWP_SHOWWINDOW, SetWindowLongPtrW, SetWindowPos, ShowWindow, WS_CLIPSIBLINGS,
@@ -96,6 +101,61 @@ pub fn probe_opaque() {}
 pub fn trim_heap() {}
 
 pub fn tune_heap() {}
+
+const STD_HANDLES: [STD_HANDLE; 3] = [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE];
+
+/// Bit `i` set when `STD_HANDLES[i]` came from the parent's console.
+static BORROWED: AtomicU8 = AtomicU8::new(0);
+
+fn std_handle(which: STD_HANDLE) -> Option<HANDLE> {
+    // SAFETY: plain Win32 call with no pointers.
+    unsafe { GetStdHandle(which) }
+        .ok()
+        .filter(|h| !h.is_invalid())
+}
+
+/// Without a console `--version` from cmd or PowerShell prints nothing, so
+/// borrow the parent's. A redirected stdout already has its pipe and is left
+/// alone.
+pub fn attach_console() {
+    if std_handle(STD_OUTPUT_HANDLE).is_some() {
+        return;
+    }
+    let before = STD_HANDLES.map(std_handle);
+    // SAFETY: plain Win32 calls with no pointers, made before any output.
+    unsafe {
+        if AttachConsole(ATTACH_PARENT_PROCESS).is_err() {
+            return;
+        }
+        let mut borrowed = 0u8;
+        for (i, (which, kept)) in STD_HANDLES.into_iter().zip(before).enumerate() {
+            match kept {
+                Some(handle) => {
+                    let _ = SetStdHandle(which, handle);
+                }
+                None => borrowed |= 1u8 << i,
+            }
+        }
+        BORROWED.store(borrowed, Ordering::Relaxed);
+    }
+}
+
+/// Closing the terminal would otherwise take the launcher with it.
+pub fn detach_console() {
+    let borrowed = BORROWED.swap(0, Ordering::Relaxed);
+    if borrowed == 0 {
+        return;
+    }
+    // SAFETY: plain Win32 calls with no pointers.
+    unsafe {
+        let _ = FreeConsole();
+        for (i, which) in STD_HANDLES.into_iter().enumerate() {
+            if borrowed & (1u8 << i) != 0 {
+                let _ = SetStdHandle(which, HANDLE::default());
+            }
+        }
+    }
+}
 
 pub fn opaque() -> bool {
     false

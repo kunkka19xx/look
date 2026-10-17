@@ -21,6 +21,8 @@ jobs:
   build-release:
     name: Build Windows release artifacts
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     concurrency:
       group: release-windows-${{ github.ref }}
       cancel-in-progress: true
@@ -50,12 +52,15 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # cache-targets off for the same reason as ci.yml: the post-step tar of
+      # target/ hangs on the windows-2025 image.
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
             core
             apps/linows
+          cache-targets: false
 
       # The tag is the version, baked into the exe through LOOK_VERSION.
       - name: Build
@@ -67,8 +72,16 @@ jobs:
           cargo build --release --locked -p lookapp
           test "$(target/release/lookapp.exe --version)" = "lookapp $LOOK_VERSION"
 
-      # NSIS ships on the Windows runner image. Same file name and silent
-      # flags as before, so scripts/windows/install-look.ps1 is unchanged.
+      # windows-latest (windows-2025) no longer ships NSIS, so install it.
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "${env:ProgramFiles(x86)}\NSIS" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      # Same file name and silent flags as before, so
+      # scripts/windows/install-look.ps1 is unchanged.
       - name: Build installer
         shell: pwsh
         run: |
@@ -143,8 +156,42 @@ jobs:
           path: dist/
           retention-days: 14
 
+      # tag_name is explicit so a workflow_dispatch rebuild lands on the
+      # existing release instead of needing the tag moved.
       - name: Attach to GitHub release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: v${{ steps.version.outputs.version }}
           files: dist/*
+
+  publish-winget:
+    name: Submit winget manifest
+    needs: build-release
+    runs-on: ubuntu-latest
+    env:
+      PACKAGE_ID: noah-code.Look
+      VERSION: ${{ needs.build-release.outputs.version }}
+      KOMAC_VERSION: 2.17.1
+      KOMAC_SHA256: e694e79cd451afabf47bead66ed34586fef4814f7b94e4b61a098f419978d5d7
+    steps:
+      # komac receives WINGET_TOKEN, so it is pinned by version and hash
+      # instead of going through an action that installs it unpinned.
+      - name: Install komac
+        run: |
+          archive="komac-${KOMAC_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSLO "https://github.com/russellbanks/Komac/releases/download/v${KOMAC_VERSION}/${archive}"
+          echo "${KOMAC_SHA256}  ${archive}" | sha256sum -c -
+          tar xzf "$archive" komac
+          install -D komac "${RUNNER_TEMP}/bin/komac"
+          echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
+
+      # update only works once the package exists in winget-pkgs, so the first
+      # manifest is submitted by hand.
+      - name: Submit to winget-pkgs
+        env:
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          komac update "$PACKAGE_ID" \
+            --version "$VERSION" \
+            --urls "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/Look_${VERSION}_x64-setup.exe" \
+            --submit

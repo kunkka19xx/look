@@ -93,27 +93,23 @@ Backup-shell decisions, still true of `src-tauri/` and `src/`: ES modules (`<scr
 | `curl`            | Web answers, translation, `/speed`                                                                                                                        | Answers stay empty; speed test reports "curl is not available on this system"                   |
 | `xclip`           | Copy files to clipboard (X11)                                                                                                                             | Shows "Copy failed" banner                                                                      |
 | `wl-clipboard`    | Copy files to clipboard (Wayland)                                                                                                                         | Shows "Copy failed" banner                                                                      |
-| `gtk-layer-shell` | Overlay window on Wayland compositors with `wlr-layer-shell` (KDE Plasma, sway, niri, Hyprland): above fullscreen windows, out of the taskbar and Alt+Tab | Normal toplevel window: listed in the taskbar and Alt+Tab, and a fullscreen window stays on top |
 
 Text clipboard (copy path, clipboard history) works without any external tools. File clipboard (copy a file to paste into a file manager) needs one of the above.
 
-`gtk-layer-shell` is dlopened at runtime, never linked, so a system without it starts normally and logs one line. It only changes anything under a compositor that implements `wlr-layer-shell`; GNOME/mutter does not, so there it makes no difference either way. The AUR package (`look-bin`) depends on it, and the `.deb` recommends it.
+The overlay window (above fullscreen windows, out of the taskbar and Alt+Tab) needs no package: gpui speaks `wlr-layer-shell` itself wherever the compositor implements it (KDE Plasma, sway, niri, Hyprland). GNOME/mutter does not, so there Look is an ordinary toplevel that GNOME places.
 
 ```bash
 # Debian/Ubuntu
 sudo apt install xclip                    # X11
 sudo apt install wl-clipboard             # Wayland
-sudo apt install libgtk-layer-shell0      # KDE Plasma, wlroots compositors
 
 # Fedora
 sudo dnf install xclip                    # X11
 sudo dnf install wl-clipboard             # Wayland
-sudo dnf install gtk-layer-shell          # KDE Plasma, wlroots compositors
 
 # Arch
 sudo pacman -S xclip                      # X11
 sudo pacman -S wl-clipboard               # Wayland
-sudo pacman -S gtk-layer-shell            # KDE Plasma, wlroots compositors
 ```
 
 ## Build
@@ -139,11 +135,12 @@ The Tauri backup builds by name: `cargo build -p lookapp-tauri`, `cargo tauri de
 
 ## Testing on Ubuntu VM (virt-manager)
 
-**Build .deb on NixOS host:**
+**Build .deb on NixOS host** (needs `cargo install cargo-deb`, the same tool CI uses):
 
 ```bash
-nix develop --command cargo tauri build --bundles deb
-# Output: target/release/bundle/deb/Look_*.deb
+nix develop -c cargo build --release -p lookapp
+nix develop -c cargo deb -p lookapp --no-build
+# Output: target/debian/lookapp_*.deb
 ```
 
 **Get VM IP** (on the VM):
@@ -162,14 +159,14 @@ sudo apt install openssh-server patchelf
 **Deploy** (from host, run as one script):
 
 ```bash
-scp -O apps/linows/target/release/bundle/deb/Look_*.deb kunkka@192.168.122.x:/tmp/
+scp -O apps/linows/target/debian/lookapp_*.deb kunkka@192.168.122.x:/tmp/
 ```
 
 **Install on VM:**
 
 ```bash
 pkill lookapp                              # stop running instance
-sudo dpkg -r look && sudo dpkg -i /tmp/Look_*.deb
+sudo dpkg -r lookapp && sudo dpkg -i /tmp/lookapp_*.deb
 sudo patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 /usr/bin/lookapp
 lookapp                                    # launch from terminal to see logs
 ```
@@ -205,7 +202,7 @@ lookapp                                    # launch from terminal to see logs
 **Known issues on Ubuntu:**
 
 - GNOME's default Alt+Space (window menu) is auto-disabled by Look on Wayland; restored when Look exits
-- **GNOME Wayland: dock icon visible while Look is open.** Tauri sets `skip_taskbar_hint` asynchronously after the GTK window is mapped, so GNOME's dock ignores it. Native GTK apps like Ulauncher set this hint in the constructor (before mapping), which works. On X11, the hint works correctly. The icon disappears when Look is hidden (Esc / Alt+Space). **Contributions welcome**: if you know a way to set GTK hints before Tauri maps the window, please open a PR!
+- **GNOME Wayland: dock icon visible while Look is open.** Mutter has no layer shell, so Look is an ordinary toplevel there, and GNOME's dock lists it until Look hides (Esc / Alt+Space). On compositors with `wlr-layer-shell` the window is an overlay surface and never reaches the dock.
 
     **Workaround: hide running app indicators from the dock:**
 
@@ -219,21 +216,23 @@ lookapp                                    # launch from terminal to see logs
     # Undo: replace 'false' with 'true'
     ```
 
-**For dev in VM (nixos)**
+## Tauri backup only
+
+None of this applies to `lookapp`; it concerns `lookapp-tauri`, which still draws through WebKitGTK.
+
+**Dev in a VM (NixOS):**
 
 ```bash
 WEBKIT_DISABLE_COMPOSITING_MODE=1 cargo tauri dev
 ```
 
-**Known issue: ghost slider trails / overlapping popovers:**
-
-On some WebKitGTK stacks, dragging a slider in Settings leaves a trail of past thumb positions, and the theme dropdown shows old text under the new label. Reported on Arch, Ubuntu and inside VMs, while identical webkit versions elsewhere don't show it, so it's some webkit x GTK/mutter/mesa interaction we can't auto-detect yet.
+**Ghost slider trails / overlapping popovers:** on some WebKitGTK stacks, dragging a slider in Settings leaves a trail of past thumb positions, and the theme dropdown shows old text under the new label. Reported on Arch, Ubuntu and inside VMs, while identical webkit versions elsewhere don't show it, so it's some webkit x GTK/mutter/mesa interaction we can't auto-detect yet.
 
 If you hit it, open **Settings > Advanced > Rendering** and flip one of:
 
 - **Disable GPU compositing** (`disable_gpu_compositing`): keeps blur, fixes the ghost via the same API path VMs already use. Requires restart.
 - **Disable blur effect** (`disable_blur_effect`): drops the remaining filters, keeps tint. Live; no restart.
 
-Both default off. Configs written before the rename use `arch_disable_gpu` / `arch_disable_blur`, which are still read.
+Both default off and are ignored by the gpui shell. Configs written before the rename use `arch_disable_gpu` / `arch_disable_blur`, which are still read.
 
 If neither helps, please open an issue with: `pacman -Q webkit2gtk-4.1 gtk3 mutter mesa`, `lspci -nn | grep VGA`, and `echo $XDG_SESSION_TYPE`.

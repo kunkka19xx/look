@@ -4224,7 +4224,7 @@ checksum = "7e57c38c1e860fd37c604281cdfb1dd2216977fd76a50f85ba2f388ef3219616"
 
 [[package]]
 name = "linows-backend"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -4423,7 +4423,7 @@ dependencies = [
 
 [[package]]
 name = "lookapp"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "ashpd",
@@ -4445,7 +4445,7 @@ dependencies = [
 
 [[package]]
 name = "lookapp-tauri"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "gtk",
  "libloading 0.8.9",

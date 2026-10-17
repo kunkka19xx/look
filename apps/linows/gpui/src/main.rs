@@ -1,6 +1,9 @@
 //! linows drawn by gpui-ce. The backend (`linows_backend`) does the work;
 //! this binary owns the window, the hotkey, and the control socket.
 
+// A GUI subsystem binary, or Windows opens a console beside the launcher.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod actions;
 mod answers;
 mod banner;
@@ -564,6 +567,7 @@ fn apply(command: Command, cx: &mut App) {
 
 fn main() {
     host::tune_heap();
+    host::attach_console();
     crash::install_panic_hook();
 
     if std::env::args().any(|a| a == "--version" || a == "-V") {
@@ -639,6 +643,7 @@ fn main() {
         }
         return;
     }
+    host::detach_console();
     state().start_bootstrap();
     // The histories `c"` and `ci"` list: loaded from disk now, then kept by
     // the poll thread.

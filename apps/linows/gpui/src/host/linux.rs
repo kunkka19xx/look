@@ -103,6 +103,11 @@ pub fn trim_heap() {
     }
 }
 
+/// A terminal is always the parent's to begin with.
+pub fn attach_console() {}
+
+pub fn detach_console() {}
+
 /// Caps glibc at two arenas and sends allocations over 1 MB straight to mmap,
 /// so a decoded screenshot or icon batch goes back to the kernel when freed
 /// instead of staying in a per-thread arena. Call before any thread starts.
