@@ -606,12 +606,16 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
         ));
     }
 
-    // Only once the directory has actually been enumerated. `load_dir` answers
-    // an unreadable directory with zero blocks, exactly as it answers an empty
-    // one, and sweeping on that reading would drop every block's rows. Asking
-    // whether it exists is not the same question: a directory can be there and
-    // still refuse to be read.
-    if std::fs::read_dir(sources_dir(&home)).is_ok() {
+    // Only once the directories have actually been enumerated. `load_dir`
+    // answers an unreadable directory with zero blocks, exactly as it answers
+    // an empty one, and sweeping on that reading would drop every block's rows.
+    // Asking whether it exists is not the same question: a directory can be
+    // there and still refuse to be read. Both directories count, since `keep`
+    // is built from both and a missing connector block looks like a deleted one.
+    let connectors = look_sources::connectors_dir(&home);
+    let readable_enough = std::fs::read_dir(sources_dir(&home)).is_ok()
+        && (!connectors.exists() || std::fs::read_dir(&connectors).is_ok());
+    if readable_enough {
         crate::index::sweep_run_cache(&keep);
     }
 

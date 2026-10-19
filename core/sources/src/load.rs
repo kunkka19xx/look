@@ -73,6 +73,27 @@ fn configured_dir(env_key: &str, home: &Path, name: &str) -> PathBuf {
 /// it so a manifest keeps naming its own blocks plainly.
 pub fn load_connectors(dir: &Path) -> Loaded {
     let mut loaded = load_dir(dir);
+
+    // A stem that cannot be half of a usable id takes its blocks down with it.
+    // `my..app.toml` would namespace to `my..app.notes`, and the row cache
+    // refuses a name holding `..`, so its `run` rows would fail every refresh
+    // and never appear. Better to say so once than to fail quietly forever.
+    let (kept, unusable): (Vec<Block>, Vec<Block>) = loaded
+        .blocks
+        .into_iter()
+        .partition(|block| manifest_of(block).is_none_or(|stem| usable_namespace(&stem)));
+    for block in unusable {
+        let file = PathBuf::from(block.source_file.unwrap_or_default());
+        loaded.problems.push(Problem {
+            message: format!(
+                "manifest name {:?} cannot namespace a block: no `..`, `/` or `\\`",
+                file.file_stem().unwrap_or_default()
+            ),
+            file,
+        });
+    }
+    loaded.blocks = kept;
+
     let owners: BTreeMap<String, String> = loaded
         .blocks
         .iter()
@@ -102,6 +123,12 @@ fn manifest_of(block: &Block) -> Option<String> {
 
 fn namespaced(manifest: &str, id: &str) -> String {
     format!("{manifest}{NAMESPACE}{id}")
+}
+
+/// What a manifest's name may be, which is what the row cache can hold as part
+/// of a file name (`look_engine::index::run_cache`).
+fn usable_namespace(stem: &str) -> bool {
+    !stem.is_empty() && !stem.contains(['/', '\\']) && !stem.contains("..")
 }
 
 impl Loaded {
@@ -488,6 +515,18 @@ mod tests {
             .find(|b| b.id == "myapp.notes")
             .unwrap();
         assert_eq!(notes.then, ["myapp.archive"]);
+    }
+
+    #[test]
+    fn a_manifest_name_that_cannot_namespace_is_refused() {
+        // `my..app.notes` would be rejected by the row cache, so its `run`
+        // rows would fail every refresh and never show. Said once instead.
+        let tmp = TempDir::new("bad-manifest");
+        tmp.write("my..app.toml", "[notes]\ndo = [\"true\"]\n");
+
+        let loaded = load_connectors(&tmp.0);
+        assert!(loaded.blocks.is_empty());
+        assert!(loaded.problems[0].message.contains("cannot namespace"));
     }
 
     #[test]
