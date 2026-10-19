@@ -311,15 +311,30 @@ impl Block {
     /// block's `then`, never as a top-level row: running `make -C {path} deploy`
     /// with nothing selected would substitute an empty path.
     pub fn needs_row(&self) -> bool {
-        self.producer_text()
-            .iter()
-            .any(|text| mentions_placeholder(text))
+        self.builds_rows_ahead_but_wants_an_arg()
+            || self
+                .producer_text()
+                .iter()
+                .any(|text| mentions_placeholder(text))
     }
 
     /// True when this block takes the rest of the typed line as its argument.
     /// Such a block stays a top-level row: `{arg}` is the line, not a row.
+    ///
+    /// Only a `do` block can. The other producers make their rows ahead of the
+    /// query - on reload for `run`, on the index walk for `dir` and `file` -
+    /// so there is no typed line to take, and `builds_rows_ahead` refuses one.
     pub fn takes_arg(&self) -> bool {
-        self.producer_text().iter().any(|text| mentions_arg(text))
+        matches!(self.producer, Producer::Bundle { .. })
+            && self.producer_text().iter().any(|text| mentions_arg(text))
+    }
+
+    /// Whether a producer asks for an argument it can never be given. Reported
+    /// at load, and the block is kept out of the index: a `run` command naming
+    /// `{arg}` would otherwise be executed with the braces still in it.
+    pub fn builds_rows_ahead_but_wants_an_arg(&self) -> bool {
+        !matches!(self.producer, Producer::Bundle { .. })
+            && self.producer_text().iter().any(|text| mentions_arg(text))
     }
 
     /// Whether this block declared itself an action on rows like this one.
@@ -419,7 +434,15 @@ pub fn parse_file(contents: &str) -> Result<ParsedFile, String> {
             }
         };
         match build(id, raw) {
-            Ok(block) => parsed.blocks.push(block),
+            Ok(block) => {
+                if block.builds_rows_ahead_but_wants_an_arg() {
+                    parsed.problems.push(format!(
+                        "[{id}]: {{arg}} in a producer that makes its rows before you type. \
+                         Only a `do` block can take the rest of the line"
+                    ));
+                }
+                parsed.blocks.push(block);
+            }
             Err(message) => parsed.problems.push(format!("[{id}]: {message}")),
         }
     }
@@ -1058,6 +1081,29 @@ run = "git -C {path} branch"
         let by_query = one("[old]\ndo = [\"open myapp://new?name={query}\"]\n");
         assert!(!by_query.takes_arg());
         assert!(by_query.needs_row());
+    }
+
+    #[test]
+    fn a_producer_that_makes_rows_ahead_cannot_take_an_argument() {
+        // `run` rows are produced on reload, so there is no typed line yet.
+        // Left as a top-level block, the refresh would execute the braces.
+        let parsed = parse_file("[lookup]\nrun = \"lookup {arg}\"\n").expect("parses");
+        assert!(
+            parsed.problems[0].contains("before you type"),
+            "{:?}",
+            parsed.problems
+        );
+
+        // Reported, never fatal: the block still loads, it just cannot be run
+        // against nothing.
+        let block = &parsed.blocks[0];
+        assert!(!block.takes_arg());
+        assert!(block.needs_row(), "so the refresh skips it");
+
+        // A `do` block is the one that can: it runs when you press Enter.
+        let steps = one("[newnote]\ndo = [\"note {arg}\"]\n");
+        assert!(steps.takes_arg());
+        assert!(!steps.needs_row());
     }
 
     #[test]

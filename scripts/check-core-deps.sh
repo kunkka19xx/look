@@ -27,9 +27,12 @@ for manifest in "$root"/core/*/Cargo.toml; do
         failures=$((failures + 1))
         ;;
     esac
-  done < <(grep -o 'path = "[^"]*"' "$manifest" | sed 's/path = "//; s/"$//')
+  done < <(grep -oE "path[[:space:]]*=[[:space:]]*[\"'][^\"']*[\"']" "$manifest" \
+    | sed -E "s/path[[:space:]]*=[[:space:]]*[\"']//; s/[\"']\$//")
 
-  if [ "$crate" != "ai" ] && grep -q '^look-ai\b' "$manifest"; then
+  # Anywhere in the manifest, not just at the start of a line: `look-ai` also
+  # arrives as `[dependencies.look-ai]` and as `x = { package = "look-ai" }`.
+  if [ "$crate" != "ai" ] && grep -qE '(^|[^a-z-])look-ai([^a-z-]|$)' "$manifest"; then
     echo "error: core/$crate depends on look-ai; the AI surface is a leaf feature"
     failures=$((failures + 1))
   fi

@@ -211,6 +211,11 @@ pub fn mentions_placeholder(text: &str) -> bool {
 /// Percent-encoding, which shell quoting cannot do: an `&` in a filename ends
 /// the query string whatever the shell thinks. Everything outside RFC 3986's
 /// unreserved set is escaped, `/` included.
+///
+/// The output is `%HH` pairs, and on Windows `cmd` expands `%NAME%` with no way
+/// to escape it (see `look_tools::cmd_quote`). A value would have to encode to
+/// a pair of percents around the name of a variable that actually exists, so it
+/// is the same unfixable hole quoting already has, not a new one.
 fn url_encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {

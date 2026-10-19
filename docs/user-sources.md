@@ -276,7 +276,7 @@ argument, so it stays a row you can reach directly:
 ```toml
 [newnote]
 name    = "New note"
-aliases = ["nn"]
+aliases = ["newnote", "nn"]
 icon    = "🆕"
 do      = ["open \"obsidian://new?vault=notes&name={arg:url}\""]
 ```
@@ -285,8 +285,13 @@ Type `newnote Meeting with Bob`, or `nn Meeting with Bob`, and the row leads the
 results showing `Meeting with Bob` as its subtitle, so `Enter` is not a guess.
 
 - the opening word is the block's `name` or one of its `aliases`, matched
-  without regard to case. A name with a space in it cannot be that word, since
-  you type one token before the argument begins, so give such a block an alias.
+  without regard to case. **The block's id is not one of them**, and a name with
+  a space in it cannot be the word either, since you type one token before the
+  argument begins. Both are why the example above repeats `newnote` as an alias.
+- only a `do` block can take an argument. `dir`, `file` and `run` make their
+  rows before you have typed anything, so `{arg}` in one of those is reported
+  and the block stays out of the index rather than running with the braces
+  still in it.
 - `{arg}` is empty when the row was reached any other way, by search or through
   `Cmd+K`. The query that found a row is not an argument, and handing it over
   would create a note called `meeting`.
