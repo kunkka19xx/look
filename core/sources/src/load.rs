@@ -14,9 +14,14 @@ use crate::def::{Block, inferred, parse_file};
 /// Overrides where sources are read from, for dotfiles kept elsewhere. Mirrors
 /// `LOOK_CONFIG_PATH` in the engine config.
 pub const SOURCES_DIR_ENV: &str = "LOOK_SOURCES_DIR";
+/// The same, for the directory apps install their manifests into.
+pub const CONNECTORS_DIR_ENV: &str = "LOOK_CONNECTORS_DIR";
 
 const SOURCES_DIR_NAME: &str = ".look/sources";
+const CONNECTORS_DIR_NAME: &str = ".look/connectors";
 const DECLARATION_EXTENSION: &str = "toml";
+/// Between a manifest's name and a block's own id.
+const NAMESPACE: char = '.';
 
 /// A file the loader could not use, kept so the app can show it instead of
 /// failing silently.
@@ -36,13 +41,96 @@ pub struct Loaded {
 
 /// Where sources live: `$LOOK_SOURCES_DIR`, else `~/.look/sources`.
 pub fn sources_dir(home: &Path) -> PathBuf {
-    if let Ok(custom) = env::var(SOURCES_DIR_ENV) {
+    configured_dir(SOURCES_DIR_ENV, home, SOURCES_DIR_NAME)
+}
+
+/// Where connector manifests live: `$LOOK_CONNECTORS_DIR`, else
+/// `~/.look/connectors`. A second directory rather than more files in the
+/// first, because an app writes these and the user writes those: uninstalling
+/// is then one file, and neither can take the other's blocks down with it.
+pub fn connectors_dir(home: &Path) -> PathBuf {
+    configured_dir(CONNECTORS_DIR_ENV, home, CONNECTORS_DIR_NAME)
+}
+
+fn configured_dir(env_key: &str, home: &Path, name: &str) -> PathBuf {
+    if let Ok(custom) = env::var(env_key) {
         let trimmed = custom.trim();
         if !trimmed.is_empty() {
             return PathBuf::from(trimmed);
         }
     }
-    home.join(SOURCES_DIR_NAME)
+    home.join(name)
+}
+
+/// Loads every manifest in `dir`, each block's id namespaced by the file that
+/// declared it: `[notes]` in `myapp.toml` is `myapp.notes`.
+///
+/// The namespace is what lets an app install blocks without knowing what the
+/// user already called theirs, and the separator is a dot because a bare
+/// `[myapp.notes]` is a nested table in TOML rather than an id: colliding with
+/// a manifest takes deliberate quoting. It follows the file rather than a
+/// declared key so uninstalling is still one file, and `then` is rewritten with
+/// it so a manifest keeps naming its own blocks plainly.
+pub fn load_connectors(dir: &Path) -> Loaded {
+    let mut loaded = load_dir(dir);
+    let owners: BTreeMap<String, String> = loaded
+        .blocks
+        .iter()
+        .filter_map(|block| Some((block.id.clone(), manifest_of(block)?)))
+        .collect();
+
+    for block in &mut loaded.blocks {
+        let Some(manifest) = manifest_of(block) else {
+            continue;
+        };
+        for target in &mut block.then {
+            if owners.get(target.as_str()) == Some(&manifest) {
+                *target = namespaced(&manifest, target);
+            }
+        }
+        block.id = namespaced(&manifest, &block.id);
+    }
+    loaded
+}
+
+/// The file name that declared a block, without its extension.
+fn manifest_of(block: &Block) -> Option<String> {
+    Path::new(block.source_file.as_deref()?)
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+}
+
+fn namespaced(manifest: &str, id: &str) -> String {
+    format!("{manifest}{NAMESPACE}{id}")
+}
+
+impl Loaded {
+    /// Takes `other`'s blocks and problems. An id this one already holds is
+    /// dropped and reported, so a manifest cannot shadow a block the user
+    /// wrote themselves.
+    pub fn absorb(&mut self, other: Loaded) {
+        let taken: BTreeMap<&str, ()> = self
+            .blocks
+            .iter()
+            .map(|block| (block.id.as_str(), ()))
+            .collect();
+        let (kept, shadowed): (Vec<Block>, Vec<Block>) = other
+            .blocks
+            .into_iter()
+            .partition(|block| !taken.contains_key(block.id.as_str()));
+
+        for block in shadowed {
+            self.problems.push(Problem {
+                file: PathBuf::from(block.source_file.unwrap_or_default()),
+                message: format!(
+                    "block [{}] is already declared elsewhere; this one is not loaded",
+                    block.id
+                ),
+            });
+        }
+        self.blocks.extend(kept);
+        self.problems.extend(other.problems);
+    }
 }
 
 /// Loads every block in `dir`. A directory that does not exist is not a problem
@@ -379,6 +467,52 @@ mod tests {
         let loaded = load_dir(&tmp.0);
         assert!(loaded.blocks.is_empty());
         assert!(loaded.problems[0].message.contains("ignored"));
+    }
+
+    #[test]
+    fn a_manifests_blocks_are_namespaced_by_its_file() {
+        let tmp = TempDir::new("manifest");
+        tmp.write(
+            "myapp.toml",
+            "[notes]\ndir = \"~/notes\"\nthen = [\"archive\"]\n\n[archive]\ndo = [\"true\"]\n",
+        );
+
+        let loaded = load_connectors(&tmp.0);
+        let ids: Vec<&str> = loaded.blocks.iter().map(|b| b.id.as_str()).collect();
+        assert_eq!(ids, ["myapp.archive", "myapp.notes"]);
+
+        // `then` keeps naming the block plainly in the file and still resolves.
+        let notes = loaded
+            .blocks
+            .iter()
+            .find(|b| b.id == "myapp.notes")
+            .unwrap();
+        assert_eq!(notes.then, ["myapp.archive"]);
+    }
+
+    #[test]
+    fn a_manifest_cannot_shadow_a_block_the_user_wrote() {
+        // Quoted, because a bare `[myapp.notes]` is a NESTED table in TOML, not
+        // an id with a dot in it. That is most of why the dot is the namespace:
+        // a user has to go out of their way to collide with one.
+        let user = TempDir::new("user-blocks");
+        user.write("mine.toml", "[\"myapp.notes\"]\ndo = [\"true\"]\n");
+        let apps = TempDir::new("app-blocks");
+        apps.write("myapp.toml", "[notes]\ndo = [\"false\"]\n");
+
+        let mut loaded = load_dir(&user.0);
+        loaded.absorb(load_connectors(&apps.0));
+
+        assert_eq!(
+            loaded.blocks.len(),
+            1,
+            "the user's own block is the one kept"
+        );
+        assert_eq!(
+            loaded.blocks[0].source_file.as_deref().unwrap_or(""),
+            user.0.join("mine.toml").to_string_lossy()
+        );
+        assert!(loaded.problems[0].message.contains("already declared"));
     }
 
     #[test]

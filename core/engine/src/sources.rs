@@ -177,7 +177,7 @@ pub struct RefreshOutcome {
 /// `None` when there is neither, which is every row until someone declares an
 /// `applies` block.
 pub fn block_detail(candidate_id: &str, row: &RowContext) -> Option<BlockDetail> {
-    let blocks = load_dir(&sources_dir(&home_dir()?)).blocks;
+    let blocks = declared(&home_dir()?).blocks;
     let block = CandidateIdKind::source_id_of(candidate_id)
         .and_then(|block_id| blocks.iter().find(|block| block.id == block_id));
 
@@ -325,7 +325,7 @@ pub fn block_summaries() -> Vec<BlockSummary> {
     let Some(home) = home_dir() else {
         return Vec::new();
     };
-    load_dir(&sources_dir(&home))
+    declared(&home)
         .blocks
         .into_iter()
         .map(|block| BlockSummary {
@@ -549,7 +549,7 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
     // failed, a block the time budget could not reach). Anything else in the
     // cache directory belongs to a block that no longer exists.
     let mut keep: BTreeSet<String> = BTreeSet::new();
-    for block in load_dir(&sources_dir(&home)).blocks {
+    for block in declared(&home).blocks {
         let Producer::Run {
             command,
             cwd,
@@ -618,10 +618,21 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
     outcome
 }
 
+/// Every declared block, from both directories: the user's own in
+/// `~/.look/sources`, and the manifests apps install in `~/.look/connectors`.
+/// One function so a caller cannot read half the blocks by accident.
+pub fn declared(home: &Path) -> look_sources::Loaded {
+    let mut loaded = load_dir(&sources_dir(home));
+    loaded.absorb(look_sources::load_connectors(
+        &look_sources::connectors_dir(home),
+    ));
+    loaded
+}
+
 /// The block `block_id` names, read from the directory rather than a cache so
 /// an edited file takes effect on the next press.
 pub fn find_block(block_id: &str) -> Option<Block> {
-    load_dir(&sources_dir(&home_dir()?))
+    declared(&home_dir()?)
         .blocks
         .into_iter()
         .find(|block| block.id == block_id)
@@ -853,11 +864,20 @@ mod tests {
             std::fs::create_dir_all(&dir).expect("fixture dir");
             std::fs::create_dir_all(&cache).expect("fixture cache");
             std::fs::write(dir.join("blocks.toml"), declarations).expect("fixture file");
+            let connectors = base.join("connectors");
+            std::fs::create_dir_all(&connectors).expect("fixture connectors");
             unsafe { std::env::set_var(look_sources::SOURCES_DIR_ENV, &dir) };
+            unsafe { std::env::set_var(look_sources::CONNECTORS_DIR_ENV, &connectors) };
             // A refresh sweeps the row cache, so it has to be one of ours: the
             // real one belongs to whoever is running the tests.
             unsafe { std::env::set_var(crate::index::ROWS_CACHE_DIR_ENV, &cache) };
             Self { base, dir, cache }
+        }
+
+        /// A manifest an app installed, in the connectors directory.
+        fn manifest(&self, name: &str, declarations: &str) {
+            let path = self.base.join("connectors").join(name);
+            std::fs::write(path, declarations).expect("manifest file");
         }
 
         /// Rows a `run` block is pretending to have produced earlier.
@@ -880,6 +900,7 @@ mod tests {
     impl Drop for Fixture {
         fn drop(&mut self) {
             unsafe { std::env::remove_var(look_sources::SOURCES_DIR_ENV) };
+            unsafe { std::env::remove_var(look_sources::CONNECTORS_DIR_ENV) };
             unsafe { std::env::remove_var(crate::index::ROWS_CACHE_DIR_ENV) };
             let _ = std::fs::remove_dir_all(&self.base);
         }
@@ -921,6 +942,26 @@ mod tests {
 
     /// Also beside the sources tests: a declared control is read from the
     /// sources directory, the state `GUARD` serialises.
+    #[test]
+    fn an_installed_manifest_declares_blocks_under_its_own_name() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("manifest", "[notes]\ndo = [\"true\"]\n");
+        fixture.manifest("myapp.toml", "[notes]\ndo = [\"true\"]\n");
+        let home = fixture.base.clone();
+
+        let ids: Vec<String> = declared(&home)
+            .blocks
+            .into_iter()
+            .map(|block| block.id)
+            .collect();
+        // The user's `notes` and the app's `notes` are different blocks, which
+        // is the whole point of giving an app its own namespace.
+        assert!(ids.contains(&"notes".to_string()));
+        assert!(ids.contains(&"myapp.notes".to_string()));
+
+        assert!(find_block("myapp.notes").is_some());
+    }
+
     #[test]
     fn a_block_may_not_borrow_a_system_control() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());

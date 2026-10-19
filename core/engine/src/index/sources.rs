@@ -16,9 +16,7 @@ use std::sync::mpsc::SyncSender;
 use std::time::UNIX_EPOCH;
 
 use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
-use look_sources::{
-    Block, Producer, RowFormat, SourceRow, collect, expand_home, load_dir, sources_dir,
-};
+use look_sources::{Block, Producer, RowFormat, SourceRow, collect, expand_home};
 
 use crate::index::run_cache;
 
@@ -33,7 +31,7 @@ pub fn declared_blocks() -> Vec<Block> {
     let Some(home) = crate::config::user_home_dir() else {
         return Vec::new();
     };
-    load_dir(&sources_dir(Path::new(&home))).blocks
+    crate::sources::declared(Path::new(&home)).blocks
 }
 
 pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
@@ -41,7 +39,7 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
         return;
     };
     let home = Path::new(&home);
-    let loaded = load_dir(&sources_dir(home));
+    let loaded = crate::sources::declared(home);
 
     for problem in &loaded.problems {
         eprintln!(

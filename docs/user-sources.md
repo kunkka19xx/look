@@ -110,6 +110,29 @@ Two things are shared across all of them:
 
 Keeping your sources in a dotfiles repo works the way you would expect: point `LOOK_SOURCES_DIR` at the directory in the repo, or symlink `~/.look/sources` to it. Look reads through symlinks.
 
+## Where blocks come from
+
+Two directories, same schema, different author:
+
+| Directory | Written by | Block ids |
+| --- | --- | --- |
+| `~/.look/sources/` | you | exactly what you call them |
+| `~/.look/connectors/` | an app, when it installs | namespaced by the manifest's file name |
+
+Everything in this document applies to both. The second one exists so an app can
+install its own rows without asking you to write TOML, and without being able to
+collide with what you wrote: `[notes]` in `myapp.toml` is the block
+`myapp.notes`, so it is a different block from your own `[notes]`. Inside the
+manifest, `then` still names its blocks plainly.
+
+A dot cannot appear in a bare id anyway, since `[myapp.notes]` is a nested table
+in TOML rather than a name, so colliding with a manifest takes deliberate
+quoting. If one does collide, yours is the one that loads and the manifest's is
+reported.
+
+Uninstalling an app is then one file, and `LOOK_CONNECTORS_DIR` repoints the
+directory the way `LOOK_SOURCES_DIR` repoints yours.
+
 ## The four kinds of block
 
 | Producer | What it makes                         | Use it for                                             |

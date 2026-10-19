@@ -24,7 +24,10 @@ pub use def::{
     parse_file,
 };
 pub use detail::{DetailBlock, DetailField, DetailItem, parse as parse_detail};
-pub use load::{Loaded, Problem, SOURCES_DIR_ENV, load_dir, sources_dir};
+pub use load::{
+    CONNECTORS_DIR_ENV, Loaded, Problem, SOURCES_DIR_ENV, connectors_dir, load_connectors,
+    load_dir, sources_dir,
+};
 pub use rows::{SourceRow, parse_rows};
 pub use run::{
     ENV_ID, ENV_PATH, ENV_TITLE, ParentRow, RowContext, StepOutcome, capture, expand, expand_path,
