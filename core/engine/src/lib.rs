@@ -8,6 +8,7 @@ pub mod launchpad_values;
 pub mod modes;
 mod normalize;
 mod platform;
+pub mod qactions;
 mod query;
 pub mod result;
 mod scoring;

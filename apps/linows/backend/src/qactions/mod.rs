@@ -204,7 +204,7 @@ pub fn unavailable_status() -> QuickActionStatus {
 /// Quick Action descriptors for a selected result, from the shared catalog.
 /// Empty for results with no actions (the common case).
 pub fn quick_actions(result_id: &str, kind: &str) -> Vec<look_qactions::ActionDescriptor> {
-    look_qactions::descriptors_for(result_id, kind)
+    look_engine::qactions::descriptors_for(result_id, kind)
 }
 
 /// A tile icon that names a file rather than one of the shell's glyphs, with

@@ -157,6 +157,9 @@ pub struct Level {
 pub struct PreviewOutcome {
     pub text: String,
     pub error: Option<String>,
+    /// The same output read as a layout, when it is one. `text` is kept beside
+    /// it so a shell that does not draw blocks still shows something.
+    pub blocks: Vec<look_sources::DetailBlock>,
 }
 
 #[derive(Serialize, Default)]
@@ -514,10 +517,15 @@ pub fn preview(candidate_id: &str, row: &RowContext) -> Option<PreviewOutcome> {
             DEFAULT_CAPTURE_TIMEOUT,
             MAX_CAPTURE_BYTES,
         ) {
-            Ok(text) => PreviewOutcome { text, error: None },
+            Ok(text) => PreviewOutcome {
+                blocks: look_sources::parse_detail(&text).unwrap_or_default(),
+                text,
+                error: None,
+            },
             Err(message) => PreviewOutcome {
                 text: String::new(),
                 error: Some(message),
+                blocks: Vec::new(),
             },
         },
     )
@@ -909,6 +917,27 @@ mod tests {
         // "meeting".
         assert_eq!(arg_of_line("meeting"), "");
         assert_eq!(arg_of_line("newnote"), "");
+    }
+
+    /// Also beside the sources tests: a declared control is read from the
+    /// sources directory, the state `GUARD` serialises.
+    #[test]
+    fn a_block_may_not_borrow_a_system_control() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new(
+            "control",
+            "[lamp]\ncontrol = \"bluetooth\"\ndo = [\"true\"]\n\n[plain]\ndo = [\"true\"]\n",
+        );
+
+        // Borrowing a system control is refused: the row runs `true` and has
+        // no business offering the machine's Bluetooth.
+        let lamp = CandidateIdKind::source_row_candidate_id("lamp", &[], "");
+        assert!(crate::qactions::descriptors_for(&lamp, "action").is_empty());
+
+        // No table on any platform names a declared row, so a block that says
+        // nothing carries nothing either: the declaration is the whole binding.
+        let plain = CandidateIdKind::source_row_candidate_id("plain", &[], "");
+        assert!(crate::qactions::descriptors_for(&plain, "action").is_empty());
     }
 
     /// Lives beside the sources tests because it needs the declarations on

@@ -9,6 +9,7 @@
 //!
 mod collect;
 mod def;
+mod detail;
 mod load;
 mod rows;
 mod run;
@@ -22,6 +23,7 @@ pub use def::{
     KEY_RUN, Only, ParsedFile, Producer, RowFormat, RowKind, Verbs, inferred, parse_duration,
     parse_file,
 };
+pub use detail::{DetailBlock, DetailField, DetailItem, parse as parse_detail};
 pub use load::{Loaded, Problem, SOURCES_DIR_ENV, load_dir, sources_dir};
 pub use rows::{SourceRow, parse_rows};
 pub use run::{

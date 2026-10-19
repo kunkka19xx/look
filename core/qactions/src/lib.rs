@@ -410,39 +410,56 @@ pub fn descriptors_for(result_id: &str, kind: &str) -> Vec<ActionDescriptor> {
         .collect()
 }
 
-/// Maps a platform result to a shared `action_id`. The action DEFINITIONS above
-/// are shared; only which platform result triggers them is per-OS, so this is
-/// `cfg`-gated. A contributor adding an OS binds its result id here.
-#[cfg(target_os = "macos")]
-fn binding_for(result_id: &str, _kind: &str) -> Option<&'static str> {
-    match result_id {
-        "setting:com.apple.bluetoothsettings" => Some("bluetooth"),
-        _ => None,
-    }
+/// One row of the binding table: a control, and the result id that carries it.
+///
+/// A table rather than a `match` because the second way to name a binding is
+/// already here - a user-declared block names its own control, resolved in
+/// `look_engine::qactions` - and because "every row of a kind" (every process,
+/// every app) is a `kind` field away, while an arm per id could never be
+/// either.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Binding {
+    control: &'static str,
+    result_id: &'static str,
 }
+
+/// Which platform results carry which control. The action DEFINITIONS above are
+/// shared; only the trigger is per-OS, so the table is `cfg`-gated and a
+/// contributor adding one adds a row rather than an arm.
+#[cfg(target_os = "macos")]
+const BINDINGS: &[Binding] = &[Binding {
+    control: action_id::BLUETOOTH,
+    result_id: "setting:com.apple.bluetoothsettings",
+}];
 
 #[cfg(target_os = "linux")]
-fn binding_for(result_id: &str, _kind: &str) -> Option<&'static str> {
-    // Ids come from core/engine/src/platform/linux/settings_catalog.rs.
-    match result_id {
-        "setting:bluetooth" => Some("bluetooth"),
-        _ => None,
-    }
-}
+const BINDINGS: &[Binding] = &[Binding {
+    control: action_id::BLUETOOTH,
+    result_id: "setting:bluetooth",
+}];
 
 #[cfg(target_os = "windows")]
-fn binding_for(result_id: &str, _kind: &str) -> Option<&'static str> {
-    // Ids come from core/engine/src/platform/windows/settings_catalog.rs
-    // (candidate_id_suffix, prefixed with `setting:`).
-    match result_id {
-        "setting:windows.devices.bluetooth" => Some("bluetooth"),
-        _ => None,
-    }
-}
+const BINDINGS: &[Binding] = &[Binding {
+    control: action_id::BLUETOOTH,
+    result_id: "setting:windows.devices.bluetooth",
+}];
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-fn binding_for(_result_id: &str, _kind: &str) -> Option<&'static str> {
-    None
+const BINDINGS: &[Binding] = &[];
+
+/// Maps a platform result to a shared `action_id`, by the first table row that
+/// names it.
+fn binding_for(result_id: &str, _kind: &str) -> Option<&'static str> {
+    first_match(BINDINGS, result_id)
+}
+
+/// The table scan itself, over any table, so a test can state the rule without
+/// depending on which platform it runs on.
+fn first_match<'a>(table: &'a [Binding], result_id: &str) -> Option<&'a str> {
+    table
+        .iter()
+        .find(|binding| binding.result_id == result_id)
+        .map(|binding| binding.control)
 }
 
 #[cfg(test)]
@@ -461,6 +478,23 @@ mod tests {
     #[test]
     fn unknown_action_is_none() {
         assert!(descriptor("nope").is_none());
+    }
+
+    #[test]
+    fn the_table_binds_by_id_and_says_nothing_otherwise() {
+        const TABLE: &[Binding] = &[
+            Binding {
+                control: action_id::WIFI,
+                result_id: "setting:a",
+            },
+            Binding {
+                control: action_id::BLUETOOTH,
+                result_id: "setting:b",
+            },
+        ];
+        assert_eq!(first_match(TABLE, "setting:b"), Some(action_id::BLUETOOTH));
+        assert_eq!(first_match(TABLE, "setting:a"), Some(action_id::WIFI));
+        assert_eq!(first_match(TABLE, "setting:c"), None);
     }
 
     #[test]

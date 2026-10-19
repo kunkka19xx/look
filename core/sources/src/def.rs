@@ -293,6 +293,10 @@ pub struct Block {
     /// A yes/no question asked before this block performs anything. Destructive
     /// steps get one, because a launcher makes Enter on the wrong row cheap.
     pub confirm: Option<String>,
+    /// A quick-action control this block's rows carry. The platform table
+    /// names the panes a control hangs from; this is how a declaration names
+    /// one for rows no catalog knows about.
+    pub control: Option<String>,
     /// The file this block was declared in, so the app can show it and reveal
     /// it. Set by the loader; parsing a string alone has no file to name.
     pub source_file: Option<String>,
@@ -370,6 +374,7 @@ struct RawBlock {
     enabled: Option<bool>,
     preview: Option<String>,
     confirm: Option<String>,
+    control: Option<String>,
 
     #[serde(rename = "do")]
     steps: Option<Vec<String>>,
@@ -516,6 +521,7 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
         enabled: raw.enabled.unwrap_or(true),
         preview: raw.preview,
         confirm: raw.confirm.filter(|question| !question.trim().is_empty()),
+        control: raw.control.filter(|control| !control.trim().is_empty()),
         source_file: None,
         unknown_keys: raw.extra.keys().cloned().collect(),
     })

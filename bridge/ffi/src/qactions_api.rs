@@ -22,7 +22,7 @@ pub(crate) fn look_qactions_json_impl(
 ) -> *mut c_char {
     let result_id = cstr_to_string(result_id);
     let kind = cstr_to_string(kind);
-    let descriptors = look_qactions::descriptors_for(&result_id, &kind);
+    let descriptors = look_engine::qactions::descriptors_for(&result_id, &kind);
     let json = serde_json::to_string(&descriptors).unwrap_or_else(|_| JSON_EMPTY_ARRAY.to_string());
     let cstring =
         CString::new(json).unwrap_or_else(|_| CString::new(JSON_EMPTY_ARRAY).expect("valid"));

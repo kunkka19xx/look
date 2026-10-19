@@ -107,6 +107,27 @@ struct ResultPreviewView: View {
         .zIndex(1)
     }
 
+    /// The row's compiled controls, defined once and placed by each preview
+    /// rather than wrapped around them: the branches own their layout, and a
+    /// control belongs under the header in all of them. It lived in the
+    /// file/app/settings branch alone, so no other kind could show one.
+    @ViewBuilder
+    private var controlsSection: some View {
+        if !quickActions.isEmpty {
+            QuickActionsSection(
+                descriptors: quickActions,
+                states: quickActionStates,
+                info: quickActionInfo,
+                pendingItems: pendingQuickActionItems,
+                busyActionIds: busyQuickActionIds,
+                themeStore: themeStore,
+                revealToken: quickActionsRevealToken,
+                onRun: onRunQuickAction,
+                onActivateItem: onActivateQuickActionItem
+            )
+        }
+    }
+
     /// A System Settings pane result (its "path" is a URL scheme, not a file).
     private var isSetting: Bool {
         result.isSettingsRow
@@ -451,19 +472,7 @@ struct ResultPreviewView: View {
                 // chord unlearnable and the toggle reachable through Cmd+K
                 // alone. Only compiled controls reach here - the row's menu
                 // verbs stay in Cmd+K (see `systemControlDescriptors`).
-                if !quickActions.isEmpty {
-                    QuickActionsSection(
-                        descriptors: quickActions,
-                        states: quickActionStates,
-                        info: quickActionInfo,
-                        pendingItems: pendingQuickActionItems,
-                        busyActionIds: busyQuickActionIds,
-                        themeStore: themeStore,
-                        revealToken: quickActionsRevealToken,
-                        onRun: onRunQuickAction,
-                        onActivateItem: onActivateQuickActionItem
-                    )
-                }
+                controlsSection
 
                 if result.kind == .file {
                     FilePreview(path: result.path)
@@ -589,6 +598,8 @@ struct ResultPreviewView: View {
                 }
             }
 
+            controlsSection
+
             if !blockSteps.isEmpty {
                 Text("Enter runs")
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
@@ -686,6 +697,13 @@ struct ResultPreviewView: View {
             Text(error)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
                 .foregroundStyle(themeStore.mutedTextColor())
+        } else if !preview.blocks.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(preview.blocks.enumerated()), id: \.offset) { _, block in
+                    detailBlockBody(block)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else if !preview.text.isEmpty {
             let shown = PreviewText.visible(preview.text)
             Text(shown.text)
@@ -698,6 +716,62 @@ struct ResultPreviewView: View {
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
                     .foregroundStyle(themeStore.mutedTextColor())
             }
+        }
+    }
+
+    /// The one size every block's text uses: a panel of mixed blocks that
+    /// disagreed about it would read as several panels.
+    private var detailFont: Font {
+        themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular)
+    }
+
+    /// One block of a row's panel, drawn the way the same content is drawn
+    /// elsewhere, so a connector's panel reads like the rest of the app.
+    @ViewBuilder
+    private func detailBlockBody(_ block: DetailBlock) -> some View {
+        switch block {
+        case .fields(let rows):
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(rows, id: \.self) { row in
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(row.label)
+                            .foregroundStyle(themeStore.mutedTextColor())
+                        Spacer(minLength: 12)
+                        Text(row.value)
+                            .foregroundStyle(themeStore.secondaryTextColor())
+                            .multilineTextAlignment(.trailing)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            .font(detailFont)
+        case .list(let items):
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(items, id: \.self) { item in
+                    HStack(spacing: 8) {
+                        Image(systemName: (item.on ?? false) ? "largecircle.fill.circle" : "circle")
+                            .foregroundStyle(themeStore.mutedTextColor())
+                        Text(item.label)
+                            .foregroundStyle(themeStore.secondaryTextColor())
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .font(detailFont)
+        case .text(let text):
+            Text(text)
+                .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
+                .foregroundStyle(themeStore.secondaryTextColor())
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        case .code(let language, let text):
+            AICodeBlockView(
+                code: text,
+                language: language ?? "text",
+                themeStore: themeStore,
+                maxVisibleLines: Layout.visibleStepLines
+            )
         }
     }
 
@@ -877,6 +951,8 @@ struct ResultPreviewView: View {
                 }
                 Spacer()
             }
+
+            controlsSection
 
             // Command line (argv).
             if let detail = processDetail, !detail.cmdline.isEmpty {

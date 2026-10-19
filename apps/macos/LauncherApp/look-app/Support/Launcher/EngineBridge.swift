@@ -1595,6 +1595,52 @@ nonisolated struct RunBlockRefreshOutcome: Decodable {
 nonisolated struct SourcePreview: Decodable {
     let text: String
     let error: String?
+    /// The same output read as a layout, empty when it was plain text.
+    let blocks: [DetailBlock]
+}
+
+/// One piece of a row's panel, as the core resolved it. The cases are what the
+/// app already draws: fields and items come from a control's info, code from
+/// the steps.
+nonisolated enum DetailBlock: Decodable {
+    case fields([DetailField])
+    case list([DetailItem])
+    case text(String)
+    case code(language: String?, text: String)
+
+    private enum Keys: String, CodingKey {
+        case type, rows, items, text, language
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: Keys.self)
+        switch try container.decode(String.self, forKey: .type) {
+        case "fields":
+            self = .fields(try container.decode([DetailField].self, forKey: .rows))
+        case "list":
+            self = .list(try container.decode([DetailItem].self, forKey: .items))
+        case "text":
+            self = .text(try container.decode(String.self, forKey: .text))
+        case "code":
+            self = .code(
+                language: try container.decodeIfPresent(String.self, forKey: .language),
+                text: try container.decode(String.self, forKey: .text))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .type, in: container, debugDescription: "unknown block \(other)")
+        }
+    }
+}
+
+nonisolated struct DetailField: Decodable, Hashable {
+    let label: String
+    let value: String
+}
+
+nonisolated struct DetailItem: Decodable, Hashable {
+    let id: String?
+    let label: String
+    let on: Bool?
 }
 
 /// How performing a block went. `errors` is empty when every step was spawned;
