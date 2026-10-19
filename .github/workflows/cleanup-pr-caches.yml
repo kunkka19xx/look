@@ -1,0 +1,21 @@
+name: Clean up PR caches
+
+# pull_request_target so the token can write on Dependabot and fork PRs too.
+# Safe here: the job never checks out or runs PR code.
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  actions: write
+
+jobs:
+  delete-caches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete caches scoped to this PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: gh cache delete --all --ref "$PR_REF" --succeed-on-no-caches
