@@ -53,14 +53,12 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
 
     for block in &loaded.blocks {
         // Silent at the row, so it is said once here instead.
-        if let Some(control) = block.control.as_deref()
-            && !crate::qactions::declaration_may_offer(control)
+        if let Some(problem) = block
+            .control
+            .as_deref()
+            .and_then(crate::qactions::declared_control_problem)
         {
-            eprintln!(
-                "look sources: [{}] cannot offer the system control '{control}'; \
-                 a declaration may only offer a control it supplies",
-                block.id
-            );
+            eprintln!("look sources: [{}] {problem}", block.id);
         }
 
         // A block whose producer refers to a row (`make -C {path} deploy`) is

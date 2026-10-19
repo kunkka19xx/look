@@ -27,6 +27,23 @@ pub fn declaration_may_offer(control: &str) -> bool {
     look_qactions::descriptor(control).is_none()
 }
 
+/// Why a declared control shows nothing, or `None` when it does show.
+///
+/// Refused and unknown are different answers and both are silent at the row,
+/// so the index pass says which one it was. A name nobody supplies is the
+/// ordinary state today, and will stop being one when a declaration can carry
+/// its own descriptor.
+pub fn declared_control_problem(control: &str) -> Option<String> {
+    if !declaration_may_offer(control) {
+        return Some(format!(
+            "cannot offer the system control '{control}'; a declaration may only offer a control it supplies"
+        ));
+    }
+    Some(format!(
+        "declares the control '{control}', which nothing supplies; a declaration cannot carry its own control yet"
+    ))
+}
+
 /// The control the producing block declared, if it may offer it. Reads the
 /// sources directory: a per-selection cost, never a per-keystroke one.
 fn declared_control(result_id: &str) -> Option<String> {
@@ -65,5 +82,14 @@ mod tests {
         // Refused and absent are different reasons; only the refusal is a rule.
         assert!(declaration_may_offer("myapp.lamp"));
         assert!(look_qactions::descriptor("myapp.lamp").is_none());
+    }
+
+    #[test]
+    fn both_kinds_of_dead_control_say_which_they_are() {
+        let refused = declared_control_problem(look_qactions::action_id::BLUETOOTH).unwrap();
+        assert!(refused.contains("may only offer a control it supplies"));
+
+        let unknown = declared_control_problem("myapp.lamp").unwrap();
+        assert!(unknown.contains("nothing supplies"));
     }
 }

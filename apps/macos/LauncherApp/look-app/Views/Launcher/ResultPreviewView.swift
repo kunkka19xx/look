@@ -732,7 +732,10 @@ struct ResultPreviewView: View {
         switch block {
         case .fields(let rows):
             VStack(alignment: .leading, spacing: 4) {
-                ForEach(rows, id: \.self) { row in
+                // By offset, not by value: two rows saying the same thing are
+                // two rows, and SwiftUI needs to tell them apart to update
+                // either of them correctly.
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     HStack(alignment: .firstTextBaseline) {
                         Text(row.label)
                             .foregroundStyle(themeStore.mutedTextColor())
@@ -747,7 +750,7 @@ struct ResultPreviewView: View {
             .font(detailFont)
         case .list(let items):
             VStack(alignment: .leading, spacing: 4) {
-                ForEach(items, id: \.self) { item in
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(spacing: 8) {
                         Image(systemName: (item.on ?? false) ? "largecircle.fill.circle" : "circle")
                             .foregroundStyle(themeStore.mutedTextColor())
