@@ -1320,7 +1320,7 @@ struct LauncherView: View {
             .onTapGesture { focusActiveInput() }
         }
         .coordinateSpace(name: Self.panelCoordinateSpace)
-        .environment(\.panelGeometry, showsFloatingCards ? panelGeometry : nil)
+        .environment(\.panelGeometry, barFloatsFree ? panelGeometry : nil)
         .background(
             GeometryReader { geo in
                 Color.clear

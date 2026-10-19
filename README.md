@@ -43,8 +43,7 @@ brew install --cask look
 ```
 
 Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`), or pick another shortcut with `launcher_hotkey` in `~/.look/config`.
-Release builds are signed and notarized - no Gatekeeper bypass needed. Releases ship one build per architecture, Apple Silicon and Intel.
-Homebrew installs the Apple Silicon build; on an Intel Mac use the curl installer under _Other install options_ below, which picks the archive for your machine.
+Release builds are signed and notarized - no Gatekeeper bypass needed. Releases ship one build per architecture, Apple Silicon and Intel, and Homebrew installs the one that matches your Mac.
 
 **Nix (flake):**
 
