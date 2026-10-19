@@ -2226,6 +2226,7 @@ struct LauncherView: View {
                 // Info + actions panel: the preview plus any Quick Actions.
                 ResultPreviewView(
                     result: selectedResult,
+                    query: query,
                     rowAncestorsJSON: selectedRowAncestorsJSON,
                     quickActions: systemControlDescriptors,
                     quickActionStates: quickActionStates,

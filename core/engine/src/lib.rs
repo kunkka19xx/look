@@ -85,6 +85,10 @@ pub struct QueryEngine {
     /// declaration, so editing it must take effect without reindexing every row
     /// the block produced.
     source_biases: HashMap<String, i64>,
+    /// Candidate index of each block that takes the rest of the line, keyed by
+    /// every single-word name or alias that opens it. Scored as one long query
+    /// the row the user explicitly named would not appear at all.
+    arg_rows: HashMap<String, u32>,
 }
 
 impl QueryEngine {
@@ -100,7 +104,7 @@ impl QueryEngine {
             .map(|block| (block.id.as_str(), block.name.as_str()))
             .collect();
         // Build an in-memory search index up front (hot path reads only).
-        let candidates = candidates
+        let candidates: Vec<IndexedCandidate> = candidates
             .into_iter()
             .map(|candidate| IndexedCandidate::new(candidate, &block_names))
             .collect();
@@ -127,11 +131,38 @@ impl QueryEngine {
             .map(|block| (block.id.clone(), block.bias))
             .collect();
 
+        let mut arg_rows: HashMap<String, u32> = HashMap::new();
+        for block in declared.iter().filter(|block| block.takes_arg()) {
+            let row_id = CandidateIdKind::source_row_candidate_id(&block.id, &[], "");
+            let Some(index) = candidates
+                .iter()
+                .position(|indexed| indexed.candidate.id.as_ref() == row_id)
+            else {
+                continue;
+            };
+            let openers = std::iter::once(&block.name).chain(block.aliases.iter());
+            for opener in openers.filter(|name| !name.contains(char::is_whitespace)) {
+                arg_rows.insert(opener.to_lowercase(), index as u32);
+            }
+        }
+
         Self {
             candidates,
             search_aliases,
             source_biases,
+            arg_rows,
         }
+    }
+
+    /// The row the typed line names and the argument after it. `newnote` alone
+    /// is `None`: that is the block's own row, which ordinary search finds.
+    pub(crate) fn arg_row(&self, query: &str) -> Option<(u32, String)> {
+        if self.arg_rows.is_empty() {
+            return None;
+        }
+        let (head, rest) = sources::trigger_and_rest(query)?;
+        let index = *self.arg_rows.get(&head)?;
+        Some((index, rest.to_string()))
     }
 
     /// The declared bias for the block that produced `candidate`, or 0.
@@ -146,8 +177,7 @@ impl QueryEngine {
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Vec<LaunchResult> {
-        let scored = self.search_scored(query, limit);
-        scored
+        self.search_scored(query, limit)
             .into_iter()
             .map(|(candidate, score)| LaunchResult::from((&candidate, score)))
             .collect()

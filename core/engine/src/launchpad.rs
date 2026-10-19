@@ -1163,6 +1163,33 @@ confirm = "Really?"
         );
     }
 
+    /// The published tile format, pinned against a committed fixture. A
+    /// script prints this shape, so a change here is a change to a contract.
+    #[test]
+    fn the_tile_format_matches_its_golden_fixture() {
+        let text = include_str!("../fixtures/tile_values.json");
+        let cases: Vec<serde_json::Value> = serde_json::from_str(text).expect("fixture parses");
+
+        for case in cases.iter().filter(|case| case.get("input").is_some()) {
+            let parsed: TileValue =
+                serde_json::from_value(case["input"].clone()).expect("fixture input parses");
+            let want = &case["parsed"];
+            let field = |name: &str| want[name].as_str().map(str::to_string);
+
+            assert_eq!(Some(parsed.value.clone()), field("value"));
+            assert_eq!(parsed.caption, field("caption"));
+            assert_eq!(parsed.icon, field("icon"));
+            assert_eq!(parsed.state, field("state"));
+            let lines: Vec<String> = want["lines"]
+                .as_array()
+                .expect("expected lines")
+                .iter()
+                .map(|line| line.as_str().expect("line is a string").to_string())
+                .collect();
+            assert_eq!(parsed.lines, lines);
+        }
+    }
+
     #[test]
     fn a_tile_value_carries_the_same_anatomy_a_built_in_shows() {
         // Weather shows a temperature, a condition, a high/low and a humidity.

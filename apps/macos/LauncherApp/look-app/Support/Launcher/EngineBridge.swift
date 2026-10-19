@@ -266,7 +266,7 @@ private func look_refresh_run_blocks_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_preview_json")
 nonisolated
-private func look_source_preview_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private func look_source_preview_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_blocks_json")
 nonisolated
@@ -278,7 +278,7 @@ private func look_source_rows_json(_ blockID: UnsafePointer<CChar>?, _ parentCan
 
 @_silgen_name("look_source_block_json")
 nonisolated
-private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_perform_block_json")
 nonisolated
@@ -341,6 +341,34 @@ nonisolated struct LunarDate: Decodable {
     let month: Int
     let year: Int
     let leap: Bool
+}
+
+/// The six strings every row-scoped export takes, held as C pointers for one
+/// call. Spelled out per call site it is six nested closures, four times over,
+/// and the way one of them quietly loses an argument.
+private nonisolated func withRowStrings<T>(
+    _ first: String,
+    _ row: RowRef,
+    _ query: String,
+    _ ancestorsJSON: String,
+    _ body: (
+        UnsafePointer<CChar>, UnsafePointer<CChar>, UnsafePointer<CChar>,
+        UnsafePointer<CChar>, UnsafePointer<CChar>, UnsafePointer<CChar>
+    ) -> T
+) -> T {
+    first.withCString { first in
+        row.id.withCString { id in
+            row.title.withCString { title in
+                row.path.withCString { path in
+                    query.withCString { query in
+                        ancestorsJSON.withCString { ancestors in
+                            body(first, id, title, path, query, ancestors)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 final class EngineBridge: @unchecked Sendable {
@@ -1050,19 +1078,13 @@ final class EngineBridge: @unchecked Sendable {
     /// The user-declared block a row belongs to, with the exact steps Enter will
     /// perform, and the actions declared for rows like it. Reads the sources
     /// directory, so call it off the main thread.
+    /// `query` is not a nicety: a block taking `{arg}` expands against it, so
+    /// omitting it previews an empty argument Enter would not run.
     nonisolated func sourceBlock(
-        candidateID: String, row: RowRef, ancestorsJSON: String = "[]"
+        candidateID: String, row: RowRef, query: String = "", ancestorsJSON: String = "[]"
     ) -> SourceBlock? {
-        let ptr = candidateID.withCString { candidate in
-            row.id.withCString { id in
-                row.title.withCString { title in
-                    row.path.withCString { path in
-                        ancestorsJSON.withCString { ancestors in
-                            look_source_block_json(candidate, id, title, path, ancestors)
-                        }
-                    }
-                }
-            }
+        let ptr = withRowStrings(candidateID, row, query, ancestorsJSON) {
+            look_source_block_json($0, $1, $2, $3, $4, $5)
         }
         guard let ptr else { return nil }
         defer { look_free_cstring(ptr) }
@@ -1077,19 +1099,9 @@ final class EngineBridge: @unchecked Sendable {
         blockID: String, parentCandidateID: String, parentTitle: String, parentPath: String,
         query: String, ancestorsJSON: String = "[]"
     ) -> SourceLevel? {
-        let ptr = blockID.withCString { block in
-            parentCandidateID.withCString { parent in
-                parentTitle.withCString { title in
-                    parentPath.withCString { path in
-                        query.withCString { query in
-                            ancestorsJSON.withCString { ancestors in
-                                look_source_rows_json(
-                                    block, parent, title, path, query, ancestors)
-                            }
-                        }
-                    }
-                }
-            }
+        let parent = RowRef(id: parentCandidateID, title: parentTitle, path: parentPath)
+        let ptr = withRowStrings(blockID, parent, query, ancestorsJSON) {
+            look_source_rows_json($0, $1, $2, $3, $4, $5)
         }
         guard let ptr else { return nil }
         defer { look_free_cstring(ptr) }
@@ -1149,18 +1161,10 @@ final class EngineBridge: @unchecked Sendable {
     /// A block's declared `preview`, run against the selected row. Nil when the
     /// block declares none. Runs a command - call off the main thread.
     nonisolated func sourcePreview(
-        candidateID: String, row: RowRef, ancestorsJSON: String = "[]"
+        candidateID: String, row: RowRef, query: String = "", ancestorsJSON: String = "[]"
     ) -> SourcePreview? {
-        let ptr = candidateID.withCString { candidate in
-            row.id.withCString { id in
-                row.title.withCString { title in
-                    row.path.withCString { path in
-                        ancestorsJSON.withCString { ancestors in
-                            look_source_preview_json(candidate, id, title, path, ancestors)
-                        }
-                    }
-                }
-            }
+        let ptr = withRowStrings(candidateID, row, query, ancestorsJSON) {
+            look_source_preview_json($0, $1, $2, $3, $4, $5)
         }
         guard let ptr else { return nil }
         defer { look_free_cstring(ptr) }
@@ -1189,19 +1193,8 @@ final class EngineBridge: @unchecked Sendable {
         ancestorsJSON: String = "[]",
         asTarget: Bool = false
     ) -> PerformBlockOutcome {
-        let ptr = blockID.withCString { block in
-            row.id.withCString { id in
-                row.title.withCString { title in
-                    row.path.withCString { path in
-                        query.withCString { query in
-                            ancestorsJSON.withCString { ancestors in
-                                look_perform_block_json(
-                                    block, id, title, path, query, ancestors, asTarget)
-                            }
-                        }
-                    }
-                }
-            }
+        let ptr = withRowStrings(blockID, row, query, ancestorsJSON) {
+            look_perform_block_json($0, $1, $2, $3, $4, $5, asTarget)
         }
         // A failure carries a reason. An empty `errors` with nothing performed
         // means something else entirely (a block that produces rows), and the
@@ -1545,6 +1538,14 @@ nonisolated struct RowRef {
         id = result.id
         title = result.title
         path = result.path
+    }
+
+    /// A row the caller already holds as three strings, for the levels: there
+    /// the row is the parent that was drilled from, not a selected result.
+    init(id: String, title: String, path: String) {
+        self.id = id
+        self.title = title
+        self.path = path
     }
 }
 

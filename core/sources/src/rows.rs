@@ -191,6 +191,32 @@ fn text_field(value: Option<&Value>) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// The published row formats, pinned against a committed fixture. An
+    /// outside producer targets this file; changing it changes a contract.
+    #[test]
+    fn the_row_formats_match_their_golden_fixture() {
+        let text = include_str!("../fixtures/row_formats.json");
+        let fixture: Value = serde_json::from_str(text).expect("fixture parses");
+
+        for (key, format) in [("lines", RowFormat::Lines), ("json", RowFormat::Json)] {
+            let case = &fixture[key];
+            let input = case["input"].as_str().expect("input is a string");
+            let (rows, truncated) = parse_rows(input, 100, format).expect("fixture rows parse");
+            assert!(!truncated);
+
+            let expected = case["rows"].as_array().expect("expected rows");
+            assert_eq!(rows.len(), expected.len(), "{key}: row count");
+            for (row, want) in rows.iter().zip(expected) {
+                let field = |name: &str| want[name].as_str().map(str::to_string);
+                assert_eq!(Some(row.id.clone()), field("id"), "{key}: id");
+                assert_eq!(Some(row.title.clone()), field("title"), "{key}: title");
+                assert_eq!(row.subtitle, field("subtitle"), "{key}: subtitle");
+                assert_eq!(row.path, field("path"), "{key}: path");
+                assert_eq!(row.icon, field("icon"), "{key}: icon");
+            }
+        }
+    }
+
     #[test]
     fn a_bare_line_is_its_own_id_and_title() {
         let row = parse_line("look").unwrap();

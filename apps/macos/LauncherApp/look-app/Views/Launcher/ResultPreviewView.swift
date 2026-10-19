@@ -27,6 +27,9 @@ struct ResultPreviewView: View {
 
     @EnvironmentObject private var themeStore: ThemeStore
     let result: LauncherResult
+    /// What is typed right now: a block taking `{arg}` expands its steps
+    /// against it, and the panel shows the steps Enter will run.
+    let query: String
     /// The levels this row was reached through, for a `preview` that names
     /// `{parent.*}`. Empty for every row that is not inside a drill-down.
     var rowAncestorsJSON: String = "[]"
@@ -639,13 +642,14 @@ struct ResultPreviewView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .task(id: result.id) {
+        .task(id: "\(result.id)\n\(query)") {
             let candidateID = result.id
             let ancestors = rowAncestorsJSON
+            let typed = query
             let row = RowRef(result)
             let block = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.sourceBlock(
-                    candidateID: candidateID, row: row, ancestorsJSON: ancestors)
+                    candidateID: candidateID, row: row, query: typed, ancestorsJSON: ancestors)
             }.value
             // The detached read outlives a cancelled task, so a late answer must
             // not populate the panel of a row the user has already left.
@@ -666,7 +670,7 @@ struct ResultPreviewView: View {
             }
             let preview = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.sourcePreview(
-                    candidateID: candidateID, row: row, ancestorsJSON: ancestors)
+                    candidateID: candidateID, row: row, query: typed, ancestorsJSON: ancestors)
             }.value
             if Task.isCancelled { return }
             blockPreview = preview

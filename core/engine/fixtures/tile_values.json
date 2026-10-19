@@ -1,0 +1,52 @@
+[
+  {
+    "_": "Golden fixture for the super-action tile wire format. The same shape in and out, so what a script prints is what is documented."
+  },
+  {
+    "input": {
+      "value": "84Gi"
+    },
+    "parsed": {
+      "value": "84Gi",
+      "caption": null,
+      "lines": [],
+      "icon": null,
+      "state": null
+    }
+  },
+  {
+    "input": {
+      "value": "29°",
+      "caption": "PARTLY CLOUDY",
+      "lines": [
+        "H 32° L 23°",
+        "41%"
+      ],
+      "icon": "cloud.sun",
+      "state": "on"
+    },
+    "parsed": {
+      "value": "29°",
+      "caption": "PARTLY CLOUDY",
+      "lines": [
+        "H 32° L 23°",
+        "41%"
+      ],
+      "icon": "cloud.sun",
+      "state": "on"
+    }
+  },
+  {
+    "input": {
+      "value": "3",
+      "unknown": "ignored"
+    },
+    "parsed": {
+      "value": "3",
+      "caption": null,
+      "lines": [],
+      "icon": null,
+      "state": null
+    }
+  }
+]

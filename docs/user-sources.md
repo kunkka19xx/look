@@ -244,17 +244,57 @@ Every command a block declares expands against the selected row: `do` steps, the
 | `{path}`                                                      | The row's filesystem path, when it has one                                              |
 | `{dir}`                                                       | The row itself when it is a folder, its parent folder when it is a file                 |
 | `{query}`                                                     | What you had typed when you picked the row                                              |
+| `{arg}`                                                       | The rest of the line, after the word that named the block. See [Typing into a block](#typing-into-a-block-arg) |
 | `{parent.id}` `{parent.title}` `{parent.path}` `{parent.dir}` | The same, for the row above. Repeat `parent.` to go further out: `{parent.parent.path}` |
+| `{path:url}`, and `:url` on any of the above                  | The same value, percent-encoded for use inside a URL                                    |
 
-Three rules worth internalising:
+Four rules worth internalising:
 
 - **Never quote a placeholder yourself.** Every value is shell-escaped on substitution. `open {path}` handles a folder called `My Project` correctly, and a row titled `; rm -rf ~` is inert. Writing `open "{path}"` gives you a doubly quoted path that will not resolve.
-- **A block whose producer mentions a placeholder is not a top-level row.** `do = ["make -C {path} deploy"]` only means something against a selected project, so Look keeps it out of the main index and reaches it only through another block's [`then`](#chaining-blocks-with-then). A block with no placeholder (`do = ["open -a Slack"]`) is a row you can type for directly. The producer is the `do` / `dir` / `file` / `run` line **and its `cwd`**, since `run = "npm test"` with `cwd = "{path}"` is the same block as `run = "npm --prefix {path} test"`. The verbs and `preview` do not count: those already act on a row this block produced.
+- **A block whose producer mentions a placeholder is not a top-level row** (except `{arg}`, which is the line itself: see below)**.** `do = ["make -C {path} deploy"]` only means something against a selected project, so Look keeps it out of the main index and reaches it only through another block's [`then`](#chaining-blocks-with-then). A block with no placeholder (`do = ["open -a Slack"]`) is a row you can type for directly. The producer is the `do` / `dir` / `file` / `run` line **and its `cwd`**, since `run = "npm test"` with `cwd = "{path}"` is the same block as `run = "npm --prefix {path} test"`. The verbs and `preview` do not count: those already act on a row this block produced.
 - **A producer counts one level differently from a command.** When you drill into a block, the row you came from _is_ the row while its rows are being produced, so its `dir` / `file` / `run` line says `{path}`. The commands that then act on a row it produced (`open`, `preview`, the verbs, a `then` target's steps) act on the produced row, so _there_ the row you came from is `{parent.path}`. The [`then` example below](#chaining-blocks-with-then) shows both in one block.
+
+- **A value that lands inside a URL needs `:url`.** Quoting protects the shell and does nothing for the URL, so a note called `Notes & ideas (draft).md` ends the query string early and the app opens the wrong thing, or nothing. `:url` percent-encodes the value first:
+
+  ```toml
+  do = ["open \"obsidian://open?path={path:url}\""]
+  ```
+
+  Both forms of one placeholder can appear in the same command, since they mean different things: `{path}` for the filesystem and the shell, `{path:url}` for a URL. The encoding covers everything outside the unreserved set, `/` included, so whatever decodes it gets the original string back.
+
+  The `:url` form is the one thing Look does **not** quote, and it does not need to: what comes out is only `A-Za-z0-9-._~%`, which no shell reads as punctuation. That is what lets you write the URL inside quotes, which you have to, since `?` and `&` are shell punctuation.
 
 Steps also see the row in their environment, for [a script that would rather read a variable](#point-a-block-at-your-own-script) than take an argument: `LOOK_ID`, `LOOK_TITLE`, `LOOK_PATH`.
 
 Commands run through your **login shell**, so shell punctuation works too: `&&`, `|`, `>`. Which of your shell files that reads, and what it means if you use fish, is [its own section](#your-shell-and-your-shell-config).
+
+## Typing into a block (`{arg}`)
+
+A block whose producer uses `{arg}` takes the rest of what you typed as its
+argument, so it stays a row you can reach directly:
+
+```toml
+[newnote]
+name    = "New note"
+aliases = ["nn"]
+icon    = "🆕"
+do      = ["open \"obsidian://new?vault=notes&name={arg:url}\""]
+```
+
+Type `newnote Meeting with Bob`, or `nn Meeting with Bob`, and the row leads the
+results showing `Meeting with Bob` as its subtitle, so `Enter` is not a guess.
+
+- the opening word is the block's `name` or one of its `aliases`, matched
+  without regard to case. A name with a space in it cannot be that word, since
+  you type one token before the argument begins, so give such a block an alias.
+- `{arg}` is empty when the row was reached any other way, by search or through
+  `Cmd+K`. The query that found a row is not an argument, and handing it over
+  would create a note called `meeting`.
+- `{arg}` alone, with nothing typed after the word, is also empty, and the row
+  is simply the block's own row.
+- this is why `{arg}` and `{query}` are different keys. `{query}` means "the
+  query that found this row", which only makes sense against a row, so a
+  producer using it is reachable only through another block's `then`.
 
 ## What Enter does (verbs)
 

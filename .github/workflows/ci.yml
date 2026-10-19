@@ -105,6 +105,9 @@ jobs:
             core
             bridge/ffi
 
+      - name: Check core dependency direction
+        run: ./scripts/check-core-deps.sh
+
       - name: Check formatting (core workspace)
         run: cargo fmt --all --manifest-path core/Cargo.toml -- --check
 

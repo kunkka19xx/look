@@ -412,6 +412,9 @@ pub fn level(
         // The parent's own ancestors: inside this call the parent IS the row, so
         // a producer saying `{parent.path}` means the grandparent.
         parents,
+        // A drilled row was picked, not typed into: its block named the row,
+        // so there is no argument half of the line.
+        arg: String::new(),
     };
 
     let Some(home) = home_dir() else {
@@ -644,12 +647,45 @@ pub fn row_context(
     query: &str,
     parents: Vec<look_sources::ParentRow>,
 ) -> RowContext {
+    let arg = CandidateIdKind::source_id_of(candidate_id)
+        .and_then(find_block)
+        .filter(Block::takes_arg)
+        .map(|block| arg_of(&block, query))
+        .unwrap_or_default();
+
     RowContext {
         id: CandidateIdKind::source_row_id_of(candidate_id).to_string(),
         title: title.to_string(),
         path: path.to_string(),
         query: query.to_string(),
+        arg,
         parents,
+    }
+}
+
+/// `newnote Meeting with Bob` split in two: the word that names a block, and
+/// the argument after it. `None` when the line is one word, which names no
+/// argument at all.
+pub fn trigger_and_rest(query: &str) -> Option<(String, &str)> {
+    let (head, rest) = query.trim_start().split_once(char::is_whitespace)?;
+    let rest = rest.trim();
+    (!rest.is_empty()).then(|| (head.to_lowercase(), rest))
+}
+
+/// The argument half of a line that opens with one of `block`'s own words.
+///
+/// A line that does not open with one is not an argument at all - the row was
+/// reached by search or by a chord - so it reads as empty rather than as the
+/// whole query, which would create a note named after the search that found it.
+pub fn arg_of(block: &Block, query: &str) -> String {
+    let Some((head, rest)) = trigger_and_rest(query) else {
+        return String::new();
+    };
+    let mut names = std::iter::once(&block.name).chain(block.aliases.iter());
+    if names.any(|name| name.to_lowercase() == head) {
+        rest.to_string()
+    } else {
+        String::new()
     }
 }
 
@@ -853,6 +889,73 @@ mod tests {
 
     fn descend(block: &str, parent_id: &str, parent_path: &str) -> Level {
         level(block, parent_id, "parent", parent_path, "", Vec::new())
+    }
+
+    #[test]
+    fn a_block_that_takes_the_line_gets_what_follows_its_own_word() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new(
+            "arg",
+            "[newnote]\naliases = [\"nn\"]\ndo = [\"open myapp://new?name={arg:url}\"]\n",
+        );
+        let id = CandidateIdKind::source_row_candidate_id("newnote", &[], "");
+        let arg_of_line = |line: &str| row_context(&id, "New note", "", line, Vec::new()).arg;
+
+        assert_eq!(arg_of_line("newnote Meeting with Bob"), "Meeting with Bob");
+        assert_eq!(arg_of_line("nn Meeting with Bob"), "Meeting with Bob");
+        assert_eq!(arg_of_line("NEWNOTE Meeting with Bob"), "Meeting with Bob");
+        // Found by search rather than typed at: the query that found the row is
+        // not an argument, and handing it over would create a note called
+        // "meeting".
+        assert_eq!(arg_of_line("meeting"), "");
+        assert_eq!(arg_of_line("newnote"), "");
+    }
+
+    /// Lives beside the sources tests because it needs the declarations on
+    /// disk, which is the state `GUARD` serialises.
+    #[test]
+    fn the_row_a_line_names_leads_the_results_and_shows_its_argument() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new(
+            "argsearch",
+            "[newnote]\naliases = [\"nn\"]\ndo = [\"open myapp://new?name={arg:url}\"]\n",
+        );
+        let id = CandidateIdKind::source_row_candidate_id("newnote", &[], "");
+        let mut bundle = look_indexing::Candidate::new(
+            &id,
+            look_indexing::CandidateKind::Action,
+            "New note",
+            "",
+        );
+        // What the indexer gives a bundle row, so the test also shows the
+        // argument replacing it rather than landing on a blank subtitle.
+        bundle.subtitle = Some("1 step".into());
+        let engine = crate::QueryEngine::new(vec![
+            bundle,
+            look_indexing::Candidate::new(
+                "file:/tmp/meeting-notes.md",
+                look_indexing::CandidateKind::File,
+                "meeting-notes.md",
+                "/tmp/meeting-notes.md",
+            ),
+        ]);
+
+        // Scored as one long query, "New note" would lose to the file whose
+        // name actually contains the words.
+        let results = engine.search("newnote Meeting with Bob", 5);
+        assert_eq!(results[0].id, id);
+        assert_eq!(results[0].subtitle.as_deref(), Some("Meeting with Bob"));
+
+        // The shells read the compact payload, which builds its rows straight
+        // from `search_scored`. Decorating only in `search` left the app
+        // showing the block's own subtitle and no sign of the argument.
+        let scored = engine.search_scored("newnote Meeting with Bob", 5);
+        assert_eq!(scored[0].0.subtitle.as_deref(), Some("Meeting with Bob"));
+
+        // The block's own word alone is just its row, found the ordinary way.
+        let plain = engine.search("newnote", 5);
+        assert_eq!(plain[0].id, id);
+        assert_eq!(plain[0].subtitle.as_deref(), Some("1 step"));
     }
 
     #[test]

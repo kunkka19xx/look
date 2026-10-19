@@ -18,7 +18,7 @@ use std::time::Duration;
 use look_tools::Action;
 use serde::Deserialize;
 
-use crate::run::{PLACEHOLDER_PARENT, PLACEHOLDERS};
+use crate::run::{mentions_arg, mentions_placeholder};
 
 /// Immediate children only. Deep walks belong to the file index, not to a
 /// block the user declared to get one short list.
@@ -311,12 +311,15 @@ impl Block {
     /// block's `then`, never as a top-level row: running `make -C {path} deploy`
     /// with nothing selected would substitute an empty path.
     pub fn needs_row(&self) -> bool {
-        self.producer_text().iter().any(|text| {
-            text.contains(PLACEHOLDER_PARENT)
-                || PLACEHOLDERS
-                    .iter()
-                    .any(|placeholder| text.contains(placeholder))
-        })
+        self.producer_text()
+            .iter()
+            .any(|text| mentions_placeholder(text))
+    }
+
+    /// True when this block takes the rest of the typed line as its argument.
+    /// Such a block stays a top-level row: `{arg}` is the line, not a row.
+    pub fn takes_arg(&self) -> bool {
+        self.producer_text().iter().any(|text| mentions_arg(text))
     }
 
     /// Whether this block declared itself an action on rows like this one.
@@ -1040,6 +1043,30 @@ run = "git -C {path} branch"
         // A fixed directory names no row, so the block stands on its own.
         let fixed = one("[scripts]\nrun = \"npm run\"\ncwd = \"~/dev/look\"\n");
         assert!(!fixed.needs_row());
+    }
+
+    #[test]
+    fn a_block_that_takes_the_line_stays_a_top_level_row() {
+        // `{query}` demotes a block to a `then` target, because it means "the
+        // query that found the row". `{arg}` is the line itself, so a block
+        // using it is exactly the row the user is typing at.
+        let block =
+            one("[newnote]\naliases = [\"nn\"]\ndo = [\"open myapp://new?name={arg:url}\"]\n");
+        assert!(block.takes_arg());
+        assert!(!block.needs_row());
+
+        let by_query = one("[old]\ndo = [\"open myapp://new?name={query}\"]\n");
+        assert!(!by_query.takes_arg());
+        assert!(by_query.needs_row());
+    }
+
+    #[test]
+    fn the_url_form_of_a_placeholder_also_names_a_row() {
+        // `{path:url}` does not contain `{path}`, so a substring check on the
+        // plain spellings alone would index this as a top-level row and then
+        // run it against literal text.
+        let block = one("[open]\ndo = [\"open myapp://x?p={path:url}\"]\n");
+        assert!(block.needs_row());
     }
 
     #[test]
