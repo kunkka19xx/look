@@ -705,17 +705,25 @@ struct ResultPreviewView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else if !preview.text.isEmpty {
-            let shown = PreviewText.visible(preview.text)
-            Text(shown.text)
-                .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
-                .foregroundStyle(themeStore.secondaryTextColor())
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if shown.dropped > 0 {
-                Text("… \(shown.dropped) more lines")
-                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
-                    .foregroundStyle(themeStore.mutedTextColor())
-            }
+            capturedText(preview.text)
+        }
+    }
+
+    /// Output a command produced, held to the line limit and saying what it
+    /// dropped. Shared with the `text` block, which is the same thing arriving
+    /// inside a layout rather than on its own.
+    @ViewBuilder
+    private func capturedText(_ text: String) -> some View {
+        let shown = PreviewText.visible(text)
+        Text(shown.text)
+            .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
+            .foregroundStyle(themeStore.secondaryTextColor())
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        if shown.dropped > 0 {
+            Text("… \(shown.dropped) more lines")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                .foregroundStyle(themeStore.mutedTextColor())
         }
     }
 
@@ -763,11 +771,7 @@ struct ResultPreviewView: View {
             }
             .font(detailFont)
         case .text(let text):
-            Text(text)
-                .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
-                .foregroundStyle(themeStore.secondaryTextColor())
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            capturedText(text)
         case .code(let language, let text):
             AICodeBlockView(
                 code: text,
