@@ -27,12 +27,18 @@ for manifest in "$root"/core/*/Cargo.toml; do
         failures=$((failures + 1))
         ;;
     esac
-  done < <(grep -oE "path[[:space:]]*=[[:space:]]*[\"'][^\"']*[\"']" "$manifest" \
-    | sed -E "s/path[[:space:]]*=[[:space:]]*[\"']//; s/[\"']\$//")
+    # One pattern per quote style, so an apostrophe inside a double-quoted
+    # path cannot end the value early and smuggle the rest past the case.
+  done < <(grep -oE "path[[:space:]]*=[[:space:]]*(\"[^\"]*\"|'[^']*')" "$manifest" \
+    | sed -E "s/path[[:space:]]*=[[:space:]]*.//; s/.$//")
 
-  # Anywhere in the manifest, not just at the start of a line: `look-ai` also
-  # arrives as `[dependencies.look-ai]` and as `x = { package = "look-ai" }`.
-  if [ "$crate" != "ai" ] && grep -qE '(^|[^a-z-])look-ai([^a-z-]|$)' "$manifest"; then
+  # Declarations only, with comments stripped first: a manifest is allowed to
+  # name the rule it obeys without tripping it.
+  declarations=$(sed 's/#.*//' "$manifest")
+  look_ai='(^[[:space:]]*look-ai[[:space:]]*=)'
+  look_ai="$look_ai|(^[[:space:]]*\\[[^]]*dependencies\\.look-ai[[:space:]]*\\])"
+  look_ai="$look_ai|(package[[:space:]]*=[[:space:]]*[\"']look-ai[\"'])"
+  if [ "$crate" != "ai" ] && printf '%s' "$declarations" | grep -qE "$look_ai"; then
     echo "error: core/$crate depends on look-ai; the AI surface is a leaf feature"
     failures=$((failures + 1))
   fi
