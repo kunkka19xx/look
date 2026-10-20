@@ -113,8 +113,10 @@ impl Request {
                 title: cstr_to_string(row_title),
                 path: path.clone(),
                 // A chord carries no query: `{query}` is what the user typed to
-                // reach a row, and Cmd+E is not that.
+                // reach a row, and Cmd+E is not that. Nor an argument, which is
+                // the half of a typed line after the word that named a block.
                 query: String::new(),
+                arg: String::new(),
                 parents: parents_from(ancestors_json),
             },
             path,

@@ -19,6 +19,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: check-core-deps
+        name: core dependency direction (no shells, no look-ai)
+        entry: ./scripts/check-core-deps.sh
+        language: system
+        pass_filenames: false
+        files: ^core/[^/]+/Cargo\.toml$
+
       - id: cargo-fmt-core
         name: cargo fmt (core workspace, auto-fix)
         entry: cargo fmt --manifest-path core/Cargo.toml --all

@@ -18,7 +18,7 @@ use std::time::Duration;
 use look_tools::Action;
 use serde::Deserialize;
 
-use crate::run::{PLACEHOLDER_PARENT, PLACEHOLDERS};
+use crate::run::{mentions_arg, mentions_placeholder};
 
 /// Immediate children only. Deep walks belong to the file index, not to a
 /// block the user declared to get one short list.
@@ -293,6 +293,10 @@ pub struct Block {
     /// A yes/no question asked before this block performs anything. Destructive
     /// steps get one, because a launcher makes Enter on the wrong row cheap.
     pub confirm: Option<String>,
+    /// A quick-action control this block's rows carry. The platform table
+    /// names the panes a control hangs from; this is how a declaration names
+    /// one for rows no catalog knows about.
+    pub control: Option<String>,
     /// The file this block was declared in, so the app can show it and reveal
     /// it. Set by the loader; parsing a string alone has no file to name.
     pub source_file: Option<String>,
@@ -311,12 +315,30 @@ impl Block {
     /// block's `then`, never as a top-level row: running `make -C {path} deploy`
     /// with nothing selected would substitute an empty path.
     pub fn needs_row(&self) -> bool {
-        self.producer_text().iter().any(|text| {
-            text.contains(PLACEHOLDER_PARENT)
-                || PLACEHOLDERS
-                    .iter()
-                    .any(|placeholder| text.contains(placeholder))
-        })
+        self.builds_rows_ahead_but_wants_an_arg()
+            || self
+                .producer_text()
+                .iter()
+                .any(|text| mentions_placeholder(text))
+    }
+
+    /// True when this block takes the rest of the typed line as its argument.
+    /// Such a block stays a top-level row: `{arg}` is the line, not a row.
+    ///
+    /// Only a `do` block can. The other producers make their rows ahead of the
+    /// query - on reload for `run`, on the index walk for `dir` and `file` -
+    /// so there is no typed line to take, and `builds_rows_ahead` refuses one.
+    pub fn takes_arg(&self) -> bool {
+        matches!(self.producer, Producer::Bundle { .. })
+            && self.producer_text().iter().any(|text| mentions_arg(text))
+    }
+
+    /// Whether a producer asks for an argument it can never be given. Reported
+    /// at load, and the block is kept out of the index: a `run` command naming
+    /// `{arg}` would otherwise be executed with the braces still in it.
+    pub fn builds_rows_ahead_but_wants_an_arg(&self) -> bool {
+        !matches!(self.producer, Producer::Bundle { .. })
+            && self.producer_text().iter().any(|text| mentions_arg(text))
     }
 
     /// Whether this block declared itself an action on rows like this one.
@@ -352,6 +374,7 @@ struct RawBlock {
     enabled: Option<bool>,
     preview: Option<String>,
     confirm: Option<String>,
+    control: Option<String>,
 
     #[serde(rename = "do")]
     steps: Option<Vec<String>>,
@@ -416,7 +439,15 @@ pub fn parse_file(contents: &str) -> Result<ParsedFile, String> {
             }
         };
         match build(id, raw) {
-            Ok(block) => parsed.blocks.push(block),
+            Ok(block) => {
+                if block.builds_rows_ahead_but_wants_an_arg() {
+                    parsed.problems.push(format!(
+                        "[{id}]: {{arg}} in a producer that makes its rows before you type. \
+                         Only a `do` block can take the rest of the line"
+                    ));
+                }
+                parsed.blocks.push(block);
+            }
             Err(message) => parsed.problems.push(format!("[{id}]: {message}")),
         }
     }
@@ -490,6 +521,7 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
         enabled: raw.enabled.unwrap_or(true),
         preview: raw.preview,
         confirm: raw.confirm.filter(|question| !question.trim().is_empty()),
+        control: raw.control.filter(|control| !control.trim().is_empty()),
         source_file: None,
         unknown_keys: raw.extra.keys().cloned().collect(),
     })
@@ -1040,6 +1072,53 @@ run = "git -C {path} branch"
         // A fixed directory names no row, so the block stands on its own.
         let fixed = one("[scripts]\nrun = \"npm run\"\ncwd = \"~/dev/look\"\n");
         assert!(!fixed.needs_row());
+    }
+
+    #[test]
+    fn a_block_that_takes_the_line_stays_a_top_level_row() {
+        // `{query}` demotes a block to a `then` target, because it means "the
+        // query that found the row". `{arg}` is the line itself, so a block
+        // using it is exactly the row the user is typing at.
+        let block =
+            one("[newnote]\naliases = [\"nn\"]\ndo = [\"open myapp://new?name={arg:url}\"]\n");
+        assert!(block.takes_arg());
+        assert!(!block.needs_row());
+
+        let by_query = one("[old]\ndo = [\"open myapp://new?name={query}\"]\n");
+        assert!(!by_query.takes_arg());
+        assert!(by_query.needs_row());
+    }
+
+    #[test]
+    fn a_producer_that_makes_rows_ahead_cannot_take_an_argument() {
+        // `run` rows are produced on reload, so there is no typed line yet.
+        // Left as a top-level block, the refresh would execute the braces.
+        let parsed = parse_file("[lookup]\nrun = \"lookup {arg}\"\n").expect("parses");
+        assert!(
+            parsed.problems[0].contains("before you type"),
+            "{:?}",
+            parsed.problems
+        );
+
+        // Reported, never fatal: the block still loads, it just cannot be run
+        // against nothing.
+        let block = &parsed.blocks[0];
+        assert!(!block.takes_arg());
+        assert!(block.needs_row(), "so the refresh skips it");
+
+        // A `do` block is the one that can: it runs when you press Enter.
+        let steps = one("[newnote]\ndo = [\"note {arg}\"]\n");
+        assert!(steps.takes_arg());
+        assert!(!steps.needs_row());
+    }
+
+    #[test]
+    fn the_url_form_of_a_placeholder_also_names_a_row() {
+        // `{path:url}` does not contain `{path}`, so a substring check on the
+        // plain spellings alone would index this as a top-level row and then
+        // run it against literal text.
+        let block = one("[open]\ndo = [\"open myapp://x?p={path:url}\"]\n");
+        assert!(block.needs_row());
     }
 
     #[test]

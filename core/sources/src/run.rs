@@ -121,6 +121,9 @@ pub struct RowContext {
     pub path: String,
     /// What the user had typed when they picked the row.
     pub query: String,
+    /// What the user typed AFTER the word that named the block, for a block
+    /// that takes an argument (`{arg}`). Empty for every other row.
+    pub arg: String,
     /// Rows this one was drilled from, NEAREST first: `{parent.id}` is
     /// `parents[0]`, and each further `parent.` steps one out.
     pub parents: Vec<ParentRow>,
@@ -167,6 +170,11 @@ pub const PLACEHOLDER_TITLE: &str = "{title}";
 pub const PLACEHOLDER_PATH: &str = "{path}";
 pub const PLACEHOLDER_DIR: &str = "{dir}";
 pub const PLACEHOLDER_QUERY: &str = "{query}";
+/// The rest of the query, for a block the user types into (`newnote <title>`).
+/// NOT in `PLACEHOLDERS`: it is the line itself, needs no row, and that is what
+/// keeps such a block a top-level row.
+pub const PLACEHOLDER_ARG: &str = "{arg}";
+pub const PLACEHOLDER_ARG_URL: &str = "{arg:url}";
 /// Opens an ancestor placeholder (`{parent.id}`), which also means a producer
 /// mentioning one needs a row.
 pub const PLACEHOLDER_PARENT: &str = "{parent.";
@@ -177,6 +185,49 @@ pub const PLACEHOLDERS: [&str; 5] = [
     PLACEHOLDER_DIR,
     PLACEHOLDER_QUERY,
 ];
+
+/// The same five, percent-encoded on substitution. Spelt out so the list a
+/// reader greps for is the list the code uses.
+pub const PLACEHOLDERS_URL: [&str; 5] = [
+    "{id:url}",
+    "{title:url}",
+    "{path:url}",
+    "{dir:url}",
+    "{query:url}",
+];
+
+/// Whether a template asks for the rest of the query.
+pub fn mentions_arg(text: &str) -> bool {
+    text.contains(PLACEHOLDER_ARG) || text.contains(PLACEHOLDER_ARG_URL)
+}
+
+/// What `Block::needs_row` asks, kept here so it cannot drift from `expand`.
+pub fn mentions_placeholder(text: &str) -> bool {
+    text.contains(PLACEHOLDER_PARENT)
+        || PLACEHOLDERS.iter().any(|name| text.contains(name))
+        || PLACEHOLDERS_URL.iter().any(|name| text.contains(name))
+}
+
+/// Percent-encoding, which shell quoting cannot do: an `&` in a filename ends
+/// the query string whatever the shell thinks. Everything outside RFC 3986's
+/// unreserved set is escaped, `/` included.
+///
+/// The output is `%HH` pairs, and on Windows `cmd` expands `%NAME%` with no way
+/// to escape it (see `look_tools::cmd_quote`). A value would have to encode to
+/// a pair of percents around the name of a variable that actually exists, so it
+/// is the same unfixable hole quoting already has, not a new one.
+fn url_encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(byte as char);
+            }
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
+}
 
 /// Substitutes `{id}`, `{title}`, `{path}`, `{dir}`, and `{query}`.
 ///
@@ -215,19 +266,27 @@ fn substitute(template: &str, row: &RowContext, transform: fn(&str) -> String) -
             ),
             None => ("", "", ""),
         };
-        out = out
-            .replace(&format!("{{{prefix}id}}"), &transform(id))
-            .replace(&format!("{{{prefix}title}}"), &transform(title))
-            .replace(&format!("{{{prefix}path}}"), &transform(path))
-            .replace(&format!("{{{prefix}dir}}"), &transform(&parent_dir(path)));
+        out = put(out, &format!("{prefix}id"), id, transform);
+        out = put(out, &format!("{prefix}title"), title, transform);
+        out = put(out, &format!("{prefix}path"), path, transform);
+        out = put(out, &format!("{prefix}dir"), &parent_dir(path), transform);
     }
 
     let dir = parent_dir(&row.path);
-    out.replace(PLACEHOLDER_ID, &transform(&row.id))
-        .replace(PLACEHOLDER_TITLE, &transform(&row.title))
-        .replace(PLACEHOLDER_PATH, &transform(&row.path))
-        .replace(PLACEHOLDER_DIR, &transform(&dir))
-        .replace(PLACEHOLDER_QUERY, &transform(&row.query))
+    out = put(out, "id", &row.id, transform);
+    out = put(out, "title", &row.title, transform);
+    out = put(out, "path", &row.path, transform);
+    out = put(out, "dir", &dir, transform);
+    out = put(out, "arg", &row.arg, transform);
+    put(out, "query", &row.query, transform)
+}
+
+/// One placeholder, both forms. The `:url` form is NOT quoted: encoding left
+/// nothing a shell reads as punctuation, and a URL is already written inside
+/// quotes, where a second set would land in the URL as literal characters.
+fn put(out: String, name: &str, value: &str, transform: fn(&str) -> String) -> String {
+    out.replace(&format!("{{{name}:url}}"), &url_encode(value))
+        .replace(&format!("{{{name}}}"), &transform(value))
 }
 
 /// The word an ancestor placeholder repeats, without the brace.
@@ -630,6 +689,7 @@ mod tests {
             id: "build".into(),
             title: "build".into(),
             query: String::new(),
+            arg: String::new(),
             path: String::new(),
             parents: parents
                 .iter()
@@ -640,6 +700,75 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+
+    #[test]
+    fn the_arg_form_carries_the_rest_of_the_line() {
+        let mut row = row("");
+        row.query = "newnote Meeting with Bob".into();
+        row.arg = "Meeting with Bob".into();
+        assert_eq!(
+            expand("open \"myapp://new?name={arg:url}\"", &row),
+            "open \"myapp://new?name=Meeting%20with%20Bob\""
+        );
+        assert_eq!(
+            expand("note {arg}", &row),
+            format!("note {}", q("Meeting with Bob"))
+        );
+    }
+
+    #[test]
+    fn the_arg_form_is_empty_rather_than_the_whole_query() {
+        // A row reached by search has no argument half, and the command must
+        // not silently receive the query that found it.
+        let row = row("/x");
+        assert_eq!(expand("note {arg}", &row), format!("note {}", q("")));
+    }
+
+    #[test]
+    fn the_url_form_encodes_what_quoting_cannot_protect() {
+        // Shell-quoting makes `&` inert as shell text; it does nothing about
+        // `&` ending a query string, which is the bug this form exists for.
+        let row = row("/notes/Notes & ideas (draft).md");
+        assert_eq!(
+            expand("open \"obsidian://open?path={path:url}\"", &row),
+            "open \"obsidian://open?path=%2Fnotes%2FNotes%20%26%20ideas%20%28draft%29.md\""
+        );
+    }
+
+    #[test]
+    fn both_forms_of_one_placeholder_coexist() {
+        let row = row("/a b");
+        assert_eq!(
+            expand("{path} {path:url}", &row),
+            format!("{} %2Fa%20b", q("/a b"))
+        );
+    }
+
+    #[test]
+    fn the_url_form_reaches_an_ancestor_too() {
+        let row = drilled(&[("child", "/w x")]);
+        assert_eq!(expand("{parent.path:url}", &row), "%2Fw%20x");
+    }
+
+    #[test]
+    fn the_url_form_leaves_unreserved_characters_alone() {
+        let mut row = row("");
+        row.query = "a-b_c.d~e".into();
+        assert_eq!(expand("{query:url}", &row), "a-b_c.d~e");
+    }
+
+    #[test]
+    fn the_url_form_encodes_non_ascii_per_byte() {
+        let mut row = row("");
+        row.title = "cafe\u{301}".into();
+        assert_eq!(expand("{title:url}", &row), "cafe%CC%81");
+    }
+
+    #[test]
+    fn a_path_for_the_filesystem_is_not_url_encoded_by_the_plain_form() {
+        let row = row("/a b");
+        assert_eq!(expand_path("{path}", &row), "/a b");
     }
 
     #[test]

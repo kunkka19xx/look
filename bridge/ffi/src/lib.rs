@@ -321,6 +321,7 @@ pub extern "C" fn look_source_block_json(
     row_id: *const c_char,
     row_title: *const c_char,
     row_path: *const c_char,
+    query: *const c_char,
     ancestors_json: *const c_char,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -329,6 +330,7 @@ pub extern "C" fn look_source_block_json(
             row_id,
             row_title,
             row_path,
+            query,
             ancestors_json,
         )
     }))
@@ -468,6 +470,7 @@ pub extern "C" fn look_source_preview_json(
     row_id: *const c_char,
     row_title: *const c_char,
     row_path: *const c_char,
+    query: *const c_char,
     ancestors_json: *const c_char,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -476,6 +479,7 @@ pub extern "C" fn look_source_preview_json(
             row_id,
             row_title,
             row_path,
+            query,
             ancestors_json,
         )
     }))

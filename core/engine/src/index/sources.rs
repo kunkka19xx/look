@@ -16,9 +16,7 @@ use std::sync::mpsc::SyncSender;
 use std::time::UNIX_EPOCH;
 
 use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
-use look_sources::{
-    Block, Producer, RowFormat, SourceRow, collect, expand_home, load_dir, sources_dir,
-};
+use look_sources::{Block, Producer, RowFormat, SourceRow, collect, expand_home};
 
 use crate::index::run_cache;
 
@@ -33,7 +31,7 @@ pub fn declared_blocks() -> Vec<Block> {
     let Some(home) = crate::config::user_home_dir() else {
         return Vec::new();
     };
-    load_dir(&sources_dir(Path::new(&home))).blocks
+    crate::sources::declared(Path::new(&home)).blocks
 }
 
 pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
@@ -41,7 +39,7 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
         return;
     };
     let home = Path::new(&home);
-    let loaded = load_dir(&sources_dir(home));
+    let loaded = crate::sources::declared(home);
 
     for problem in &loaded.problems {
         eprintln!(
@@ -52,6 +50,15 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
     }
 
     for block in &loaded.blocks {
+        // Silent at the row, so it is said once here instead.
+        if let Some(problem) = block
+            .control
+            .as_deref()
+            .and_then(crate::qactions::declared_control_problem)
+        {
+            eprintln!("look sources: [{}] {problem}", block.id);
+        }
+
         // A block whose producer refers to a row (`make -C {path} deploy`) is
         // only reachable through another block's `then`. Indexing it as a
         // top-level row would offer to run it against nothing.

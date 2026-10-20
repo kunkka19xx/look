@@ -38,6 +38,9 @@ pub const BIAS_FILE: i64 = -20;
 /// A user declared this row by hand and named it, so a match on that name is
 /// deliberate in a way a file path match is not. Sits with apps, not below them.
 pub const BIAS_ACTION: i64 = 200;
+/// Score for the row the typed line explicitly named, as in `newnote <title>`.
+/// Above every ranked row, because nothing it competes with was named at all.
+pub const PIN_ARG_ROW: i64 = i64::MAX / 2;
 /// On an empty query the launchpad already covers routines, so bundles sit
 /// between apps and folders rather than leading the browse list.
 pub const BROWSE_BOOST_ACTION: i64 = 300;

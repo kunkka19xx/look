@@ -125,11 +125,14 @@ This document tracks what `look` supports today and what is planned next.
 - `then` targets reached with `Cmd+K` / `Ctrl+K`: a target that performs steps is an action, a target that produces rows is a drill-down (levels stack 5 deep, `Esc` walks back)
 - `applies` on a `do` block makes it an action on rows it did not produce: `"files"` / `"dirs"` / `"paths"` / `"apps"`, or `{ ext = [...] }` / `{ match = [...] }`, so a verb joins the `Cmd+K` menu of every matching row the index already found. Appended after the built-in verbs, capped at 10 per row, ordered by `bias`
 - placeholders in every declared command (`{id}`, `{title}`, `{path}`, `{dir}`, `{query}`, `{parent.*}`), shell-escaped on substitution, plus `LOOK_ID` / `LOOK_TITLE` / `LOOK_PATH` in the environment
+- `{arg}` in a producer makes the block one you type into: `newnote Meeting with Bob` runs it with `Meeting with Bob` as the argument, the row leads the results and shows what it will use. The opening word is the block's name or an alias
+- `:url` on any placeholder (`{path:url}`) percent-encodes the value for a command that builds a URL, since shell quoting protects the shell and not the query string: a file called `Notes & ideas (draft).md` would otherwise end the URL early. An encoded value is the one thing not shell-quoted, because the encoding already left nothing a shell reads as punctuation, so the URL can be written inside quotes as it must be
 - `confirm` question before a destructive block acts; `preview` command whose output fills the right panel for the selected row
 - row wire formats: tab-separated lines (`id<TAB>title<TAB>subtitle`) or `format = "json"` for per-row `path` and `icon`
 - an executable dropped in the sources directory is a `run` block with everything inferred, no declaration needed
 - `aliases`, `bias`, `icon`, and `enabled` per block; unknown keys reported, never fatal
 - `run` rows are refreshed on reload (`Cmd+Shift+;`) and cached in `~/.look/cache/rows/`, so a failed command keeps the last good rows and their ranking
+- a second directory, `~/.look/connectors/`, read with the same schema, for manifests an app installs rather than ones you write. A manifest's blocks are namespaced by its file name (`[notes]` in `myapp.toml` is `myapp.notes`), so an app cannot collide with your own blocks and uninstalling it is one file. `LOOK_CONNECTORS_DIR` repoints it
 - shared `core/sources` engine on macOS, Linux, and Windows. See [`docs/user-sources.md`](user-sources.md), and [lookbook](https://github.com/kunkka19xx/lookbook) for ready-made sources to copy
 
 ### Settings and runtime config

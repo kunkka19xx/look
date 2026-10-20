@@ -234,6 +234,26 @@ erDiagram
     CANDIDATES ||--o{ USAGE_EVENTS : candidate_id
 ```
 
+### Storage ownership
+
+`look.db` and everything under `~/.look/` are **private to `look`**. Another
+program reads them through a contract, never directly:
+
+- rows and actions come from the user-declared sources contract
+  (`core/sources`, documented in `user-sources.md`), which is the public,
+  versioned surface,
+- inside the repo, `core/storage` owns the schema and every other crate goes
+  through it,
+- `LOOK_CONFIG_PATH`, `LOOK_DB_PATH` and `LOOK_SOURCES_DIR` exist for tests and
+  for dotfiles kept elsewhere. They are not an integration point.
+
+This is a decision, not an accident. The schema moves with the index: candidate
+ids are namespaced per source block, stale rows are pruned by a `seen` set
+rather than a timestamp, and the clipboard table is capacity-bound. The first
+outside program to read it would freeze all of that. A companion app that wants
+to show or act on `look`'s data declares a source block, which is a contract we
+can keep, rather than a table we would then have to keep forever.
+
 ---
 
 ## 5) Ranking, actions, and feedback loop
