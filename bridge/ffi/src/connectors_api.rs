@@ -83,8 +83,12 @@ fn schedule_read() {
                 let mut next = NEXT_ALLOWED.lock().unwrap_or_else(|err| err.into_inner());
                 *next = Some(Instant::now() + FLOOR);
             }
+            // Released before the check
+            QUEUED.store(false, Ordering::Release);
             if !ARRIVED.load(Ordering::Acquire) {
-                QUEUED.store(false, Ordering::Release);
+                return;
+            }
+            if QUEUED.swap(true, Ordering::AcqRel) {
                 return;
             }
             wait = until_allowed(&NEXT_ALLOWED);
