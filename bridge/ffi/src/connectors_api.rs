@@ -24,6 +24,12 @@ pub(crate) fn start() {
     );
 }
 
+/// Respawns any connector that died. Called when the launcher opens, which is
+/// what "restarted on next use" means in practice.
+pub(crate) fn restart_dead() {
+    look_engine::connectors::restart_dead(Arc::new(|_block: &str| mark_index_dirty()));
+}
+
 pub(crate) fn stop() {
     look_engine::connectors::stop();
 }

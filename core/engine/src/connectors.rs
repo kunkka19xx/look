@@ -73,6 +73,32 @@ pub fn start(home: &Path, on_rows: OnRows) {
     }
 }
 
+/// Respawns connectors that died, and nothing else.
+///
+/// Cheap on purpose: it reads no directories, so the shell can call it every
+/// time the launcher opens. Noticing a manifest installed since launch is what
+/// `start` is for, and a reload is when that happens.
+pub fn restart_dead(on_rows: OnRows) {
+    let mut running = running().lock().unwrap_or_else(|err| err.into_inner());
+    let dead: Vec<(String, String)> = running
+        .iter_mut()
+        .filter_map(|(id, alive)| {
+            matches!(alive.child.try_wait(), Ok(Some(_)) | Err(_))
+                .then(|| (id.clone(), alive.command.clone()))
+        })
+        .collect();
+
+    for (id, command) in dead {
+        running.remove(&id);
+        match spawn(&id, &command, on_rows.clone()) {
+            Ok(child) => {
+                running.insert(id, Running { child, command });
+            }
+            Err(message) => eprintln!("look connectors: [{id}] {message}"),
+        }
+    }
+}
+
 /// Ends every connector. The rows they sent stay cached, which is what a user
 /// who quit mid-sync should see on the way back in.
 pub fn stop() {

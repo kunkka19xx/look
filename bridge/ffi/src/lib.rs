@@ -146,6 +146,10 @@ pub extern "C" fn look_seed_uwp_apps_json(json: *const c_char) -> bool {
 #[unsafe(no_mangle)]
 pub extern "C" fn look_request_index_refresh() -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // Opening the launcher is "next use", so a connector that died since
+        // the last one comes back here. Reads no directories, so it costs a
+        // lock and a `try_wait` when everything is healthy.
+        connectors_api::restart_dead();
         state::request_background_index_refresh()
     }))
     .unwrap_or(false)

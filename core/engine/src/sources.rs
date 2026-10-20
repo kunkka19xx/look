@@ -996,6 +996,57 @@ mod tests {
         assert!(text.contains("\"Alpha\""), "{text}");
     }
 
+    /// "Restarted on next use": a connector that exited comes back when the
+    /// launcher next opens, without re-reading any directory.
+    #[test]
+    fn a_dead_connector_is_restarted() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("restart", "");
+        let script = fixture.base.join("once");
+        // Sends its rows and exits, which is the shape of a connector that
+        // crashed as far as Look can tell.
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nread _hello\n\
+             printf '{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":\
+             [{\"id\":\"a\",\"title\":\"Alpha\"}]}\\n'\n",
+        )
+        .expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        fixture.manifest(
+            "myapp.toml",
+            &format!("[notes]\nconnect = \"{}\"\n", script.display()),
+        );
+
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = count.clone();
+        let on_rows: crate::connectors::OnRows = std::sync::Arc::new(move |_block: &str| {
+            seen.fetch_add(1, std::sync::atomic::Ordering::Release);
+        });
+
+        let waited = |want: usize| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while count.load(std::sync::atomic::Ordering::Acquire) < want
+                && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+        };
+
+        crate::connectors::start(&fixture.base, on_rows.clone());
+        waited(1);
+        crate::connectors::restart_dead(on_rows);
+        waited(2);
+        crate::connectors::stop();
+
+        assert_eq!(count.load(std::sync::atomic::Ordering::Acquire), 2);
+    }
+
     #[test]
     fn an_installed_manifest_declares_blocks_under_its_own_name() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
