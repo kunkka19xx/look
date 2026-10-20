@@ -32,7 +32,7 @@ pub use load::{
 };
 pub use rows::{SourceRow, parse_rows};
 pub use run::{
-    ENV_ID, ENV_PATH, ENV_TITLE, ParentRow, RowContext, StepOutcome, capture, expand, expand_path,
-    perform, spawn_connector,
+    ENV_ID, ENV_PATH, ENV_TITLE, ParentRow, RowContext, StepOutcome, capture, end_connector,
+    expand, expand_path, perform, spawn_connector,
 };
 pub use tools::{block_declares, resolve_for_row};

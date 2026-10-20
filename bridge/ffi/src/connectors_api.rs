@@ -31,6 +31,8 @@ pub(crate) fn stop() {
 /// floor between two reads however often rows arrive.
 const SETTLE: Duration = Duration::from_millis(300);
 const FLOOR: Duration = Duration::from_secs(2);
+/// How soon to try again when another refresh holds the slot.
+const BUSY_RETRY: Duration = Duration::from_millis(250);
 
 /// Only the declared sources are re-read. Marking the whole index dirty would
 /// make the next launcher open walk the home directory again.
@@ -65,12 +67,23 @@ fn schedule_read() {
     };
 
     thread::spawn(move || {
-        thread::sleep(wait);
-        {
-            let mut next = NEXT_ALLOWED.lock().unwrap_or_else(|err| err.into_inner());
-            *next = Some(Instant::now() + FLOOR);
+        let give_up = Instant::now() + Duration::from_secs(60);
+        let mut wait = wait;
+        loop {
+            thread::sleep(wait);
+            {
+                let mut next = NEXT_ALLOWED.lock().unwrap_or_else(|err| err.into_inner());
+                *next = Some(Instant::now() + FLOOR);
+            }
+            // A refresh already running is not this one: it may have read the
+            // cache before these rows reached it, and with lazy indexing no
+            // other refresh is coming. Dropping the push would leave the rows
+            // unseen until something else happened to ask.
+            if request_sources_refresh() || Instant::now() >= give_up {
+                QUEUED.store(false, Ordering::Release);
+                return;
+            }
+            wait = BUSY_RETRY;
         }
-        QUEUED.store(false, Ordering::Release);
-        request_sources_refresh();
     });
 }

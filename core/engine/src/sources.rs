@@ -1045,8 +1045,17 @@ mod tests {
 
         crate::connectors::start(&fixture.base, on_rows.clone());
         waited(1);
-        crate::connectors::restart_dead(on_rows);
-        waited(2);
+
+        // The frame is handled before the shell has necessarily exited, and
+        // `restart_dead` restarts nothing while it is still alive. Asking once
+        // is a race; asking until it answers is the behaviour being tested.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while count.load(std::sync::atomic::Ordering::Acquire) < 2
+            && std::time::Instant::now() < deadline
+        {
+            crate::connectors::restart_dead(on_rows.clone());
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
         crate::connectors::stop();
 
         assert_eq!(count.load(std::sync::atomic::Ordering::Acquire), 2);

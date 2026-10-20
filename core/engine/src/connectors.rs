@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
-use std::process::Child;
+use std::process::{Child, ChildStdin};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use look_sources::{Ask, PROTOCOL_VERSION, Producer, Say, SourceRow};
@@ -18,10 +18,16 @@ use look_sources::{Ask, PROTOCOL_VERSION, Producer, Say, SourceRow};
 /// index's freshness, the shell does.
 pub type OnRows = Arc<dyn Fn(&str) + Send + Sync>;
 
+/// What a connector needs to be spoken to and ended.
 struct Running {
     child: Child,
+    /// Held open for the connector's lifetime. Dropping it closes the pipe,
+    /// and a connector that reads stdin sees EOF and exits.
+    stdin: Option<ChildStdin>,
     /// What the block declared, to tell a restart from a changed command.
     command: String,
+    /// The file that declared it, which is the namespace it may speak for.
+    manifest: String,
 }
 
 fn running() -> &'static Mutex<BTreeMap<String, Running>> {
@@ -33,33 +39,45 @@ fn running() -> &'static Mutex<BTreeMap<String, Running>> {
 /// block is gone or whose command changed. Safe to call repeatedly: it is how
 /// a reload reaches connectors.
 pub fn start(home: &Path, on_rows: OnRows) {
-    let declared: BTreeMap<String, String> = crate::sources::declared(home)
+    let declared: BTreeMap<String, Declared> = crate::sources::declared(home)
         .blocks
         .into_iter()
         .filter(|block| block.enabled)
-        .filter_map(|block| match block.producer {
-            Producer::Connect { command } => Some((block.id, command)),
-            _ => None,
+        .filter_map(|block| {
+            let manifest = Path::new(block.source_file.as_deref()?)
+                .file_stem()?
+                .to_string_lossy()
+                .into_owned();
+            match block.producer {
+                Producer::Connect { command } => Some((block.id, Declared { command, manifest })),
+                _ => None,
+            }
         })
         .collect();
 
     let mut running = locked();
 
     running.retain(|id, alive| {
-        let still_declared = declared.get(id) == Some(&alive.command);
+        let still_declared = declared.get(id).map(|found| &found.command) == Some(&alive.command);
         let exited = matches!(alive.child.try_wait(), Ok(Some(_)) | Err(_));
         if !still_declared || exited {
-            let _ = alive.child.kill();
+            end(alive);
             return false;
         }
         true
     });
 
-    for (id, command) in declared {
+    for (id, found) in declared {
         if !running.contains_key(&id) {
-            launch(&mut running, id, command, &on_rows);
+            launch(&mut running, id, found, &on_rows);
         }
     }
+}
+
+/// A connector as its block declares it.
+struct Declared {
+    command: String,
+    manifest: String,
 }
 
 /// Respawns connectors that died, and nothing else. Reads no directories, so
@@ -67,17 +85,26 @@ pub fn start(home: &Path, on_rows: OnRows) {
 /// installed since launch is what `start` is for.
 pub fn restart_dead(on_rows: OnRows) {
     let mut running = locked();
-    let dead: Vec<(String, String)> = running
+    let dead: Vec<(String, Declared)> = running
         .iter_mut()
         .filter_map(|(id, alive)| {
-            matches!(alive.child.try_wait(), Ok(Some(_)) | Err(_))
-                .then(|| (id.clone(), alive.command.clone()))
+            matches!(alive.child.try_wait(), Ok(Some(_)) | Err(_)).then(|| {
+                (
+                    id.clone(),
+                    Declared {
+                        command: alive.command.clone(),
+                        manifest: alive.manifest.clone(),
+                    },
+                )
+            })
         })
         .collect();
 
-    for (id, command) in dead {
-        running.remove(&id);
-        launch(&mut running, id, command, &on_rows);
+    for (id, found) in dead {
+        if let Some(mut gone) = running.remove(&id) {
+            end(&mut gone);
+        }
+        launch(&mut running, id, found, &on_rows);
     }
 }
 
@@ -87,10 +114,18 @@ fn locked() -> std::sync::MutexGuard<'static, BTreeMap<String, Running>> {
 
 /// Spawns one and records it. A connector that refuses to run is reported and
 /// left out rather than retried in a loop.
-fn launch(running: &mut BTreeMap<String, Running>, id: String, command: String, on_rows: &OnRows) {
-    match spawn(&id, &command, on_rows.clone()) {
-        Ok(child) => {
-            running.insert(id, Running { child, command });
+fn launch(running: &mut BTreeMap<String, Running>, id: String, found: Declared, on_rows: &OnRows) {
+    match spawn(&id, &found, on_rows.clone()) {
+        Ok((child, stdin)) => {
+            running.insert(
+                id,
+                Running {
+                    child,
+                    stdin,
+                    command: found.command,
+                    manifest: found.manifest,
+                },
+            );
         }
         Err(message) => eprintln!("look connectors: [{id}] {message}"),
     }
@@ -101,15 +136,34 @@ fn launch(running: &mut BTreeMap<String, Running>, id: String, command: String, 
 pub fn stop() {
     let mut running = locked();
     for (_, mut alive) in std::mem::take(&mut *running) {
-        let _ = alive.child.kill();
+        end(&mut alive);
     }
 }
 
-fn spawn(id: &str, command: &str, on_rows: OnRows) -> Result<Child, String> {
-    let mut child = look_sources::spawn_connector(command, None)?;
+/// Says goodbye, then ends the whole process group and reaps it. A connector
+/// leads its own session, so killing the shell alone would leave whatever it
+/// started running after Look is gone.
+fn end(alive: &mut Running) {
+    if let Some(stdin) = alive.stdin.as_mut() {
+        let _ = stdin.write_all(Ask::Bye.line().as_bytes());
+        let _ = stdin.flush();
+    }
+    alive.stdin = None;
+    look_sources::end_connector(&mut alive.child);
+}
+
+fn spawn(
+    id: &str,
+    found: &Declared,
+    on_rows: OnRows,
+) -> Result<(Child, Option<ChildStdin>), String> {
+    let mut child = look_sources::spawn_connector(&found.command, None)?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
 
-    if let Some(mut stdin) = child.stdin.take() {
+    // Kept, not dropped: a connector that reads its stdin, which is how it
+    // would wait for anything Look asks, sees EOF the moment this closes.
+    let mut stdin = child.stdin.take();
+    if let Some(stdin) = stdin.as_mut() {
         let hello = Ask::Hello {
             v: PROTOCOL_VERSION,
             look: env!("CARGO_PKG_VERSION").to_string(),
@@ -120,9 +174,18 @@ fn spawn(id: &str, command: &str, on_rows: OnRows) -> Result<Child, String> {
 
     // One reader per connector, for its lifetime. It ends when the child closes
     // its stdout, which is also how a crash is noticed.
-    let owner = id.to_string();
+    let owner = Owner {
+        block: id.to_string(),
+        manifest: found.manifest.clone(),
+    };
     std::thread::spawn(move || read_frames(&owner, stdout, &on_rows));
-    Ok(child)
+    Ok((child, stdin))
+}
+
+/// Which block a connector is, and which namespace it may speak for.
+struct Owner {
+    block: String,
+    manifest: String,
 }
 
 /// The largest frame a connector may send. `lines()` would read a line of any
@@ -131,7 +194,7 @@ fn spawn(id: &str, command: &str, on_rows: OnRows) -> Result<Child, String> {
 /// message: the connector is dropped and restarted on next use.
 const MAX_FRAME_BYTES: usize = 1 << 20;
 
-fn read_frames(owner: &str, stdout: std::process::ChildStdout, on_rows: &OnRows) {
+fn read_frames(owner: &Owner, stdout: std::process::ChildStdout, on_rows: &OnRows) {
     let mut reader = BufReader::new(stdout);
     let mut frame = Vec::new();
     loop {
@@ -145,7 +208,10 @@ fn read_frames(owner: &str, stdout: std::process::ChildStdout, on_rows: &OnRows)
             // No newline and the cap reached: the line is longer than allowed.
             // Short of the cap it is the last frame before the pipe closed.
             Ok(_) if frame.len() == MAX_FRAME_BYTES && !frame.ends_with(b"\n") => {
-                eprintln!("look connectors: [{owner}] sent a frame over {MAX_FRAME_BYTES} bytes");
+                eprintln!(
+                    "look connectors: [{}] sent a frame over {MAX_FRAME_BYTES} bytes",
+                    owner.block
+                );
                 return;
             }
             Ok(_) => {
@@ -158,14 +224,17 @@ fn read_frames(owner: &str, stdout: std::process::ChildStdout, on_rows: &OnRows)
     }
 }
 
-fn handle(owner: &str, say: Say, on_rows: &OnRows) {
+fn handle(owner: &Owner, say: Say, on_rows: &OnRows) {
     match say {
         Say::Rows { block, rows } => {
             // A connector may only speak for the blocks of its own manifest.
             // Taking any name it offered would let one app rewrite another's
             // rows, which is the same boundary `then` is held to.
             if !speaks_for(owner, &block) {
-                eprintln!("look connectors: [{owner}] tried to send rows for [{block}]");
+                eprintln!(
+                    "look connectors: [{}] tried to send rows for [{block}]",
+                    owner.block
+                );
                 return;
             }
             let rows: Vec<SourceRow> = rows.into_iter().map(SourceRow::from).collect();
@@ -177,21 +246,29 @@ fn handle(owner: &str, say: Say, on_rows: &OnRows) {
             }
         }
         Say::Ready { .. } => {}
-        Say::Error { message } => eprintln!("look connectors: [{owner}] {message}"),
+        Say::Error { message } => {
+            eprintln!("look connectors: [{}] {message}", owner.block)
+        }
     }
 }
 
-/// A connector speaks for its own block, and for others under the same manifest
-/// namespace, so one process may serve every block in the file that declared it.
-fn speaks_for(owner: &str, block: &str) -> bool {
-    if owner == block {
+/// A connector speaks for its own block, and for others from the same manifest,
+/// so one process may serve every block in the file that declared it.
+///
+/// The manifest is carried rather than cut out of the id: a stem may hold dots
+/// (`com.example.app`) and a quoted TOML header may too, so neither the first
+/// dot nor the last reliably separates one from the other.
+fn speaks_for(owner: &Owner, block: &str) -> bool {
+    if owner.block == block {
         return true;
     }
-    match (owner.split_once('.'), block.split_once('.')) {
-        (Some((manifest, _)), Some((other, _))) => manifest == other,
-        _ => false,
-    }
+    let namespace = format!("{}{NAMESPACE}", owner.manifest);
+    owner.block.starts_with(&namespace) && block.starts_with(&namespace)
 }
+
+/// Between a manifest's name and a block's own id, as `load_connectors` joins
+/// them.
+const NAMESPACE: char = '.';
 
 /// Through the row cache, so connector rows are indexed, ranked and kept
 /// exactly like a `run` block's.
@@ -225,13 +302,43 @@ fn store(block: &str, rows: &[SourceRow]) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    fn owner(manifest: &str, block: &str) -> Owner {
+        Owner {
+            block: block.to_string(),
+            manifest: manifest.to_string(),
+        }
+    }
+
     #[test]
     fn a_connector_speaks_only_for_its_own_manifest() {
-        assert!(speaks_for("myapp.notes", "myapp.notes"));
-        assert!(speaks_for("myapp.notes", "myapp.tags"));
-        assert!(!speaks_for("myapp.notes", "other.notes"));
+        let myapp = owner("myapp", "myapp.notes");
+        assert!(speaks_for(&myapp, "myapp.notes"));
+        assert!(speaks_for(&myapp, "myapp.tags"));
+        assert!(!speaks_for(&myapp, "other.notes"));
         // A block the user wrote has no namespace, so nothing reaches it.
-        assert!(!speaks_for("myapp.notes", "projects"));
-        assert!(!speaks_for("projects", "myapp.notes"));
+        assert!(!speaks_for(&myapp, "projects"));
+        assert!(!speaks_for(&owner("mine", "projects"), "myapp.notes"));
+    }
+
+    #[test]
+    fn a_dotted_manifest_name_is_one_namespace_not_its_first_word() {
+        // `com.example.app` and `com.other` share a first word and nothing
+        // else. Cutting at the first dot let one send the other's rows.
+        let app = owner("com.example.app", "com.example.app.notes");
+        assert!(speaks_for(&app, "com.example.app.tags"));
+        assert!(!speaks_for(&app, "com.other.tags"));
+        assert!(!speaks_for(&app, "com.example.appstore.notes"));
+    }
+
+    #[test]
+    fn a_quoted_block_id_may_hold_dots_of_its_own() {
+        // `["notes.v2"]` under `myapp.toml` is `myapp.notes.v2`, so the LAST
+        // dot does not separate manifest from block either.
+        let app = owner("myapp", "myapp.notes.v2");
+        assert!(speaks_for(&app, "myapp.notes.v2"));
+        assert!(speaks_for(&app, "myapp.tags"));
+        // Still the same manifest, dots in the block id or not.
+        assert!(speaks_for(&app, "myapp.notes.other"));
+        assert!(!speaks_for(&app, "myapp2.notes"));
     }
 }

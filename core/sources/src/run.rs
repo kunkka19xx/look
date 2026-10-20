@@ -635,6 +635,16 @@ fn lead_process_group(command: &mut Command) {
 #[cfg(not(unix))]
 fn lead_process_group(_command: &mut Command) {}
 
+/// Ends a connector: the shell, everything it started, and then reaped.
+///
+/// `Child::kill` alone signals the shell pid. A connector leads its own
+/// session, so anything it spawned survives Look rather than dying with it,
+/// and an unreaped child is a zombie for as long as Look runs.
+pub fn end_connector(child: &mut Child) {
+    kill_tree(child);
+    let _ = child.wait();
+}
+
 /// Kills the shell and everything it started.
 ///
 /// `Child::kill` signals the shell alone. A step is usually a pipeline or a
