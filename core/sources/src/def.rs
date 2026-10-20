@@ -189,6 +189,9 @@ pub enum Producer {
     },
     /// Rows from a text file.
     File { path: String, format: RowFormat },
+    /// Rows from a command that stays alive and speaks frames, so what it
+    /// shows can change without a reload. See `crate::connect`.
+    Connect { command: String },
     /// Rows from a command's stdout.
     Run {
         command: String,
@@ -204,6 +207,7 @@ impl Producer {
             Self::Bundle { .. } => KEY_DO,
             Self::Dir { .. } => KEY_DIR,
             Self::File { .. } => KEY_FILE,
+            Self::Connect { .. } => KEY_CONNECT,
             Self::Run { .. } => KEY_RUN,
         }
     }
@@ -213,6 +217,7 @@ pub const KEY_DO: &str = "do";
 pub const KEY_DIR: &str = "dir";
 pub const KEY_FILE: &str = "file";
 pub const KEY_RUN: &str = "run";
+pub const KEY_CONNECT: &str = "connect";
 /// Not a producer: the key that makes a `do` block an action on rows it did
 /// not produce.
 pub const KEY_APPLIES: &str = "applies";
@@ -356,6 +361,7 @@ impl Block {
             Producer::Bundle { steps } => steps.iter().map(String::as_str).collect(),
             Producer::Dir { roots, .. } => roots.iter().map(String::as_str).collect(),
             Producer::File { path, .. } => vec![path.as_str()],
+            Producer::Connect { command } => vec![command.as_str()],
             Producer::Run { command, cwd, .. } => {
                 let mut text = vec![command.as_str()];
                 text.extend(cwd.as_deref());
@@ -394,6 +400,7 @@ struct RawBlock {
     file: Option<String>,
 
     run: Option<String>,
+    connect: Option<String>,
     cwd: Option<String>,
     timeout: Option<String>,
     format: Option<RowFormat>,
@@ -616,6 +623,7 @@ fn producer_from(raw: &RawBlock) -> Result<Producer, String> {
         (KEY_DIR, raw.dir.is_some() || raw.dirs.is_some()),
         (KEY_FILE, raw.file.is_some()),
         (KEY_RUN, raw.run.is_some()),
+        (KEY_CONNECT, raw.connect.is_some()),
     ]
     .into_iter()
     .filter_map(|(key, present)| present.then_some(key))
@@ -623,7 +631,7 @@ fn producer_from(raw: &RawBlock) -> Result<Producer, String> {
 
     match declared.as_slice() {
         [] => Err(format!(
-            "needs one of {KEY_DO}, {KEY_DIR}, {KEY_FILE}, or {KEY_RUN}"
+            "needs one of {KEY_DO}, {KEY_DIR}, {KEY_FILE}, {KEY_RUN}, or {KEY_CONNECT}"
         )),
         [KEY_DO] => {
             let steps: Vec<String> = raw
@@ -649,6 +657,13 @@ fn producer_from(raw: &RawBlock) -> Result<Producer, String> {
             path: raw.file.clone().unwrap_or_default(),
             format: raw.format.unwrap_or_default(),
         }),
+        [KEY_CONNECT] => {
+            let command = raw.connect.clone().unwrap_or_default();
+            if command.trim().is_empty() {
+                return Err(format!("`{KEY_CONNECT}` needs a command"));
+            }
+            Ok(Producer::Connect { command })
+        }
         [KEY_RUN] => Ok(Producer::Run {
             command: raw.run.clone().unwrap_or_default(),
             cwd: raw.cwd.clone(),

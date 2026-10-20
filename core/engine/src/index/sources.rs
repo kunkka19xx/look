@@ -75,6 +75,10 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
             // would put arbitrary user commands on the indexing thread. The
             // shell runs it and hands the rows back (see `run_cache`).
             Producer::Run { format, .. } => emit_cached_rows(block, *format, home, &tx),
+            // A connector's rows arrive on frames while it runs, and the
+            // manager writes each one to the same cache, so the index reads
+            // them the same way and a dead connector keeps its last good rows.
+            Producer::Connect { .. } => emit_cached_rows(block, RowFormat::Json, home, &tx),
         }
     }
 }

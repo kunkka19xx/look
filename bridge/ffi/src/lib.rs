@@ -5,6 +5,7 @@ mod answers_api;
 mod calc_api;
 mod calling_api;
 mod clipboard_api;
+mod connectors_api;
 mod hotkey_api;
 mod lunar_api;
 mod matching_api;
@@ -98,6 +99,20 @@ pub extern "C" fn look_record_usage_json(
         usage_api::look_record_usage_json_impl(candidate_id, action)
     }))
     .unwrap_or(std::ptr::null_mut())
+}
+
+/// Starts every declared connector, and restarts any that died. Safe to call
+/// repeatedly; the shell calls it at launch and after a reload.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_connectors_start() {
+    let _ = std::panic::catch_unwind(connectors_api::start);
+}
+
+/// Ends every connector. Their rows stay cached, so the next launch shows what
+/// they last sent while they start again.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_connectors_stop() {
+    let _ = std::panic::catch_unwind(connectors_api::stop);
 }
 
 #[unsafe(no_mangle)]

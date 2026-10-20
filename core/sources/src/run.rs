@@ -17,7 +17,7 @@
 //! will actually read it.
 
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 
 use serde::Deserialize;
 
@@ -452,6 +452,27 @@ fn spawn(step: &str, row: Option<&RowContext>) -> Result<(), String> {
 /// Runs `command` and returns its stdout, for the producers whose output IS the
 /// answer (a `run` block's rows, a `preview`).
 ///
+/// A connector: the same login shell every step runs in, with its pipes left
+/// open rather than drained once.
+///
+/// Unbounded on purpose, which is the whole difference from `capture`. Nothing
+/// waits on it, so there is no deadline to enforce; what bounds it is that the
+/// caller never blocks on a read and drops the child to end it.
+pub fn spawn_connector(command: &str, cwd: Option<&str>) -> Result<Child, String> {
+    let mut shell = shell_command(command)?;
+    shell
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .current_dir(
+            cwd.filter(|dir| !dir.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(root_dir),
+        );
+    lead_process_group(&mut shell);
+    shell.spawn().map_err(|err| spawn_failure(&shell, err))
+}
+
 /// Bounded three ways, because this is arbitrary user code on a path the user is
 /// waiting on: a timeout, a byte cap, and no stdin. Unlike `perform`, this waits
 /// - the caller is asking for the output, so there is nothing to detach from.

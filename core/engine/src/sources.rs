@@ -946,6 +946,56 @@ mod tests {
 
     /// Also beside the sources tests: a declared control is read from the
     /// sources directory, the state `GUARD` serialises.
+    /// A whole connector: a real child, the hello it answers, the rows it
+    /// pushes, and the cache they land in.
+    #[test]
+    fn a_connector_pushes_rows_into_the_cache() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("connector", "");
+        let script = fixture.base.join("notes-connector");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nread _hello\n\
+             printf '{\"op\":\"ready\",\"capabilities\":[\"rows\"]}\\n'\n\
+             printf '{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":\
+             [{\"id\":\"a\",\"title\":\"Alpha\"}]}\\n'\n\
+             sleep 5\n",
+        )
+        .expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        fixture.manifest(
+            "myapp.toml",
+            &format!("[notes]\nconnect = \"{}\"\n", script.display()),
+        );
+
+        let told = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = told.clone();
+        crate::connectors::start(
+            &fixture.base,
+            std::sync::Arc::new(move |block: &str| {
+                seen.lock().unwrap().push(block.to_string());
+            }),
+        );
+
+        // Nothing blocks on a connector, so the test waits the way the app
+        // does: it carries on and looks again.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while told.lock().unwrap().is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        crate::connectors::stop();
+
+        assert_eq!(told.lock().unwrap().as_slice(), ["myapp.notes"]);
+        let cached = fixture.cache.join("myapp.notes");
+        let text = std::fs::read_to_string(&cached).expect("rows cached");
+        assert!(text.contains("\"Alpha\""), "{text}");
+    }
+
     #[test]
     fn an_installed_manifest_declares_blocks_under_its_own_name() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
