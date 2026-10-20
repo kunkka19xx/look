@@ -154,6 +154,16 @@ pub(crate) fn request_background_index_refresh() -> bool {
     request_background_index_refresh_internal()
 }
 
+/// The user's home, as every path-resolving export needs it. `None` where
+/// there is none to find, which the callers treat as nothing to resolve.
+pub(crate) fn home_dir() -> Option<std::path::PathBuf> {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(std::path::PathBuf::from)
+}
+
 pub(crate) fn mark_index_dirty() {
     INDEX_CHANGE_VERSION.fetch_add(1, Ordering::AcqRel);
 }

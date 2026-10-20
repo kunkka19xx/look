@@ -1,15 +1,12 @@
-//! The processes behind `connect` blocks.
+//! The processes behind `connect` blocks: one child per block, kept alive,
+//! speaking the frames in `look_sources::connect`.
 //!
-//! One child per block, spawned once and kept alive, speaking the frames in
-//! `look_sources::connect`. Rows it sends are written to the same cache a `run`
-//! block uses, so indexing, ranking and the last-good-rows rule all stay where
-//! they are and nothing else had to learn what a connector is.
-//!
-//! Nothing here ever blocks a search. A connector that is slow, silent or dead
-//! simply has no new rows, and the cache still holds the ones it sent before.
+//! Rows it sends go to the same cache a `run` block uses, so indexing, ranking
+//! and the last-good-rows rule all stay where they are. Nothing here blocks a
+//! search: a connector that is slow, silent or dead simply has no new rows.
 
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::Child;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -32,11 +29,9 @@ fn running() -> &'static Mutex<BTreeMap<String, Running>> {
     RUNNING.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
-/// Starts every declared connector that is not already running, and stops any
-/// whose block is gone or whose command changed.
-///
-/// Safe to call repeatedly: it is how a reload reaches connectors, and how a
-/// connector that died comes back.
+/// Starts every declared connector not already running, and stops any whose
+/// block is gone or whose command changed. Safe to call repeatedly: it is how
+/// a reload reaches connectors.
 pub fn start(home: &Path, on_rows: OnRows) {
     let declared: BTreeMap<String, String> = crate::sources::declared(home)
         .blocks
@@ -48,7 +43,7 @@ pub fn start(home: &Path, on_rows: OnRows) {
         })
         .collect();
 
-    let mut running = running().lock().unwrap_or_else(|err| err.into_inner());
+    let mut running = locked();
 
     running.retain(|id, alive| {
         let still_declared = declared.get(id) == Some(&alive.command);
@@ -61,25 +56,17 @@ pub fn start(home: &Path, on_rows: OnRows) {
     });
 
     for (id, command) in declared {
-        if running.contains_key(&id) {
-            continue;
-        }
-        match spawn(&id, &command, on_rows.clone()) {
-            Ok(child) => {
-                running.insert(id, Running { child, command });
-            }
-            Err(message) => eprintln!("look connectors: [{id}] {message}"),
+        if !running.contains_key(&id) {
+            launch(&mut running, id, command, &on_rows);
         }
     }
 }
 
-/// Respawns connectors that died, and nothing else.
-///
-/// Cheap on purpose: it reads no directories, so the shell can call it every
-/// time the launcher opens. Noticing a manifest installed since launch is what
-/// `start` is for, and a reload is when that happens.
+/// Respawns connectors that died, and nothing else. Reads no directories, so
+/// the shell can call it every time the launcher opens; noticing a manifest
+/// installed since launch is what `start` is for.
 pub fn restart_dead(on_rows: OnRows) {
-    let mut running = running().lock().unwrap_or_else(|err| err.into_inner());
+    let mut running = locked();
     let dead: Vec<(String, String)> = running
         .iter_mut()
         .filter_map(|(id, alive)| {
@@ -90,19 +77,29 @@ pub fn restart_dead(on_rows: OnRows) {
 
     for (id, command) in dead {
         running.remove(&id);
-        match spawn(&id, &command, on_rows.clone()) {
-            Ok(child) => {
-                running.insert(id, Running { child, command });
-            }
-            Err(message) => eprintln!("look connectors: [{id}] {message}"),
+        launch(&mut running, id, command, &on_rows);
+    }
+}
+
+fn locked() -> std::sync::MutexGuard<'static, BTreeMap<String, Running>> {
+    running().lock().unwrap_or_else(|err| err.into_inner())
+}
+
+/// Spawns one and records it. A connector that refuses to run is reported and
+/// left out rather than retried in a loop.
+fn launch(running: &mut BTreeMap<String, Running>, id: String, command: String, on_rows: &OnRows) {
+    match spawn(&id, &command, on_rows.clone()) {
+        Ok(child) => {
+            running.insert(id, Running { child, command });
         }
+        Err(message) => eprintln!("look connectors: [{id}] {message}"),
     }
 }
 
 /// Ends every connector. The rows they sent stay cached, which is what a user
 /// who quit mid-sync should see on the way back in.
 pub fn stop() {
-    let mut running = running().lock().unwrap_or_else(|err| err.into_inner());
+    let mut running = locked();
     for (_, mut alive) in std::mem::take(&mut *running) {
         let _ = alive.child.kill();
     }
@@ -122,18 +119,43 @@ fn spawn(id: &str, command: &str, on_rows: OnRows) -> Result<Child, String> {
     }
 
     // One reader per connector, for its lifetime. It ends when the child closes
-    // its stdout, which is also how a crash is noticed: there is nothing to
-    // poll and nothing to time out.
+    // its stdout, which is also how a crash is noticed.
     let owner = id.to_string();
-    std::thread::spawn(move || {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            let Some(say) = look_sources::read_frame(&line) else {
-                continue;
-            };
-            handle(&owner, say, &on_rows);
-        }
-    });
+    std::thread::spawn(move || read_frames(&owner, stdout, &on_rows));
     Ok(child)
+}
+
+/// The largest frame a connector may send. `lines()` would read a line of any
+/// length into memory, so a connector could hand Look a gigabyte and that would
+/// be Look's problem. A frame past the cap is a protocol breach, not a big
+/// message: the connector is dropped and restarted on next use.
+const MAX_FRAME_BYTES: usize = 1 << 20;
+
+fn read_frames(owner: &str, stdout: std::process::ChildStdout, on_rows: &OnRows) {
+    let mut reader = BufReader::new(stdout);
+    let mut frame = Vec::new();
+    loop {
+        frame.clear();
+        let read = reader
+            .by_ref()
+            .take(MAX_FRAME_BYTES as u64)
+            .read_until(b'\n', &mut frame);
+        match read {
+            Ok(0) => return,
+            // No newline and the cap reached: the line is longer than allowed.
+            // Short of the cap it is the last frame before the pipe closed.
+            Ok(_) if frame.len() == MAX_FRAME_BYTES && !frame.ends_with(b"\n") => {
+                eprintln!("look connectors: [{owner}] sent a frame over {MAX_FRAME_BYTES} bytes");
+                return;
+            }
+            Ok(_) => {
+                if let Some(say) = look_sources::read_frame(&String::from_utf8_lossy(&frame)) {
+                    handle(owner, say, on_rows);
+                }
+            }
+            Err(_) => return,
+        }
+    }
 }
 
 fn handle(owner: &str, say: Say, on_rows: &OnRows) {
@@ -149,6 +171,8 @@ fn handle(owner: &str, say: Say, on_rows: &OnRows) {
             let rows: Vec<SourceRow> = rows.into_iter().map(SourceRow::from).collect();
             match store(&block, &rows) {
                 Ok(()) => on_rows(&block),
+                // An empty message is the same rows again, which is not news.
+                Err(message) if message.is_empty() => {}
                 Err(message) => eprintln!("look connectors: [{block}] {message}"),
             }
         }
@@ -169,11 +193,15 @@ fn speaks_for(owner: &str, block: &str) -> bool {
     }
 }
 
-/// Through the row cache, so a connector's rows are indexed, ranked and kept
-/// exactly like a `run` block's, including keeping the last good ones.
+/// Through the row cache, so connector rows are indexed, ranked and kept
+/// exactly like a `run` block's.
 fn store(block: &str, rows: &[SourceRow]) -> Result<(), String> {
+    // Capped here rather than on the way out of the cache: writing rows that
+    // will never be read costs the user disk for nothing, and a connector is
+    // the one producer whose output nothing else bounds.
     let json: Vec<serde_json::Value> = rows
         .iter()
+        .take(look_sources::MAX_ROWS_PER_SOURCE)
         .map(|row| {
             serde_json::json!({
                 "id": row.id,
@@ -185,7 +213,12 @@ fn store(block: &str, rows: &[SourceRow]) -> Result<(), String> {
         })
         .collect();
     let text = serde_json::to_string(&json).map_err(|err| err.to_string())?;
-    crate::index::store_run_rows(block, &text, look_sources::RowFormat::Json).map(|_| ())
+    // The same rows again is the normal state of a connector watching
+    // something unchanged, and should cost nothing beyond this comparison.
+    if crate::index::run_cache_holds(block, &text) {
+        return Err(String::new());
+    }
+    crate::index::store_counted_rows(block, &text, json.len()).map(|_| ())
 }
 
 #[cfg(test)]

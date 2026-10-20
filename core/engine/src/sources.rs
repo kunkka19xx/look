@@ -1004,12 +1004,13 @@ mod tests {
         let fixture = Fixture::new("restart", "");
         let script = fixture.base.join("once");
         // Sends its rows and exits, which is the shape of a connector that
-        // crashed as far as Look can tell.
+        // crashed as far as Look can tell. The rows carry its pid, so the
+        // restart is visible: identical rows would be deduped, correctly.
         std::fs::write(
             &script,
             "#!/bin/sh\nread _hello\n\
              printf '{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":\
-             [{\"id\":\"a\",\"title\":\"Alpha\"}]}\\n'\n",
+             [{\"id\":\"a\",\"title\":\"Alpha %s\"}]}\\n' \"$$\"\n",
         )
         .expect("script");
         #[cfg(unix)]
@@ -1045,6 +1046,88 @@ mod tests {
         crate::connectors::stop();
 
         assert_eq!(count.load(std::sync::atomic::Ordering::Acquire), 2);
+    }
+
+    /// A connector watching something unchanged pushes the same rows over and
+    /// over, and that should cost nothing: no write, and nothing re-read.
+    #[test]
+    fn the_same_rows_again_are_not_news() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("dedupe", "");
+        let script = fixture.base.join("twice");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nread _hello\n\
+             row='{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":\
+             [{\"id\":\"a\",\"title\":\"Alpha\"}]}'\n\
+             printf '%s\\n' \"$row\"\nsleep 0.2\nprintf '%s\\n' \"$row\"\n",
+        )
+        .expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        fixture.manifest(
+            "myapp.toml",
+            &format!("[notes]\nconnect = \"{}\"\n", script.display()),
+        );
+
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = count.clone();
+        crate::connectors::start(
+            &fixture.base,
+            std::sync::Arc::new(move |_block: &str| {
+                seen.fetch_add(1, std::sync::atomic::Ordering::Release);
+            }),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(900));
+        crate::connectors::stop();
+
+        assert_eq!(count.load(std::sync::atomic::Ordering::Acquire), 1);
+    }
+
+    /// `lines()` would read a frame of any length into memory, so a connector
+    /// could hand Look a gigabyte. The cap is the whole defence.
+    #[test]
+    fn an_oversized_frame_ends_the_connector_rather_than_look() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("oversized", "");
+        let script = fixture.base.join("flood");
+        // One frame of two million bytes, with no newline until the end.
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nread _hello\n\
+             printf '{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":[{\"id\":\"a\",\"title\":\"'\n\
+             i=0\nwhile [ $i -lt 2000 ]; do printf '%01000d' 0; i=$((i+1)); done\n\
+             printf '\"}]}\\n'\n",
+        )
+        .expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        fixture.manifest(
+            "myapp.toml",
+            &format!("[notes]\nconnect = \"{}\"\n", script.display()),
+        );
+
+        let fired = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = fired.clone();
+        crate::connectors::start(
+            &fixture.base,
+            std::sync::Arc::new(move |_block: &str| {
+                seen.fetch_add(1, std::sync::atomic::Ordering::Release);
+            }),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(900));
+        crate::connectors::stop();
+
+        // Nothing stored, and Look is still here to assert it.
+        assert_eq!(fired.load(std::sync::atomic::Ordering::Acquire), 0);
     }
 
     #[test]

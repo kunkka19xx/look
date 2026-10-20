@@ -86,7 +86,14 @@ pub(super) fn read(block_id: &str, format: RowFormat) -> Vec<SourceRow> {
 /// user's ranking.
 pub fn write(block_id: &str, output: &str, format: RowFormat) -> Result<usize, String> {
     let (rows, _) = parse_rows(output, MAX_CACHED_ROWS, format)?;
-    if rows.is_empty() {
+    write_counted(block_id, output, rows.len())
+}
+
+/// The same, for a caller that already holds the rows and has counted them.
+/// A connector builds the payload itself, so parsing it back to learn what it
+/// just wrote is work nobody needs.
+pub fn write_counted(block_id: &str, output: &str, rows: usize) -> Result<usize, String> {
+    if rows == 0 {
         return Err("produced no rows; keeping the previous ones".into());
     }
     let Some(path) = cache_path(block_id) else {
@@ -96,7 +103,18 @@ pub fn write(block_id: &str, output: &str, format: RowFormat) -> Result<usize, S
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
     fs::write(&path, output).map_err(|err| err.to_string())?;
-    Ok(rows.len())
+    Ok(rows)
+}
+
+/// Whether the cache already holds exactly this output.
+///
+/// For a connector that pushes the same rows again, which is the normal state
+/// of one watching something unchanged. Asking the cache rather than
+/// remembering what was last written keeps the answer true after a sweep.
+pub fn holds(block_id: &str, output: &str) -> bool {
+    cache_path(block_id)
+        .and_then(|path| fs::read_to_string(path).ok())
+        .is_some_and(|current| current == output)
 }
 
 /// Drops a block's rows, for a block the user deleted or disabled.
