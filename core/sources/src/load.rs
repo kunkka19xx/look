@@ -78,13 +78,27 @@ pub fn load_connectors(dir: &Path) -> Loaded {
 /// Rewrites one manifest's blocks in place: every id gains the namespace, and
 /// a `then` naming a sibling gains it too. Done per file, before duplicate ids
 /// are dropped, so two manifests may both declare `[notes]`.
-fn namespace_blocks(blocks: &mut [Block], manifest: &str) {
+///
+/// A target the manifest does not declare is dropped here rather than left to
+/// resolve later. Kept, it would survive the merge as a bare name and reach
+/// whatever the USER happens to call that: an installed app could run a block
+/// someone wrote by guessing its id.
+fn namespace_blocks(blocks: &mut [Block], manifest: &str, messages: &mut Vec<String>) {
     let own: BTreeMap<String, ()> = blocks.iter().map(|block| (block.id.clone(), ())).collect();
     for block in blocks {
-        for target in &mut block.then {
+        let id = block.id.clone();
+        block.then.retain(|target| {
             if own.contains_key(target.as_str()) {
-                *target = namespaced(manifest, target);
+                return true;
             }
+            messages.push(format!(
+                "[{id}]: `then` target {target:?} is not declared in this manifest, and a \
+                 manifest may only name its own blocks"
+            ));
+            false
+        });
+        for target in &mut block.then {
+            *target = namespaced(manifest, target);
         }
         block.id = namespaced(manifest, &block.id);
     }
@@ -207,7 +221,7 @@ fn load_from(dir: &Path, namespace_by_file: bool) -> Loaded {
                         // blocks with it: `my..app.notes` is refused by the row
                         // cache, so its rows would fail every refresh forever.
                         if usable_namespace(&stem) {
-                            namespace_blocks(&mut blocks, &stem);
+                            namespace_blocks(&mut blocks, &stem, &mut messages);
                         } else {
                             messages.push(format!(
                                 "manifest name {stem:?} cannot namespace a block: no `..`, `/` or `\\`"
@@ -553,6 +567,27 @@ mod tests {
         let ids: Vec<&str> = loaded.blocks.iter().map(|b| b.id.as_str()).collect();
         assert_eq!(ids, ["alpha.notes", "beta.notes"]);
         assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
+    }
+
+    #[test]
+    fn a_manifest_may_only_name_its_own_blocks() {
+        // Left in place, `deploy` survives the merge as a bare name and reaches
+        // whatever the user calls that.
+        let tmp = TempDir::new("foreign-then");
+        tmp.write(
+            "myapp.toml",
+            "[open]\ndo = [\"true\"]\nthen = [\"deploy\"]\n",
+        );
+
+        let loaded = load_connectors(&tmp.0);
+        assert!(loaded.blocks[0].then.is_empty());
+        assert!(
+            loaded.problems[0]
+                .message
+                .contains("may only name its own blocks"),
+            "{:?}",
+            loaded.problems
+        );
     }
 
     #[test]
