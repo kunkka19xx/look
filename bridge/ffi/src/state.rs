@@ -1,6 +1,7 @@
 use crate::runtime_config::{log_error, log_info};
 use look_ai::matcher::Indexed;
 use look_ai::resolve::{EventCandidate, ReminderCandidate, ResolveOutcome, ResolveRequest};
+use look_engine::BootstrapScope;
 use look_engine::QueryEngine;
 use look_engine::config::RuntimeConfig;
 use notify::event::{ModifyKind, RenameMode};
@@ -343,6 +344,44 @@ fn request_background_index_refresh_internal() -> bool {
                 started_at.elapsed().as_millis()
             ));
         }
+    });
+
+    true
+}
+
+/// Re-walks the declared sources and nothing else, for rows a connector just
+/// sent.
+///
+/// Deliberately NOT `mark_index_dirty`: that makes the next launcher open run
+/// a full bootstrap, walking apps, files and settings, so a connector pushing
+/// on a timer would have made every open re-walk the user's home directory.
+/// Connector rows change one id prefix, so one prefix is what gets re-read.
+///
+/// Coalesced by the same in-progress slot a full refresh uses, so a chatty
+/// connector cannot queue work: while one is running the next push is dropped,
+/// and its rows are already in the cache for the one after it.
+pub(crate) fn request_sources_refresh() -> bool {
+    let _ = engine_cache();
+    if !try_acquire_index_refresh_slot() {
+        return false;
+    }
+
+    thread::spawn(move || {
+        let _refresh_slot = IndexRefreshGuard;
+        let started_at = Instant::now();
+        let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+            let path = default_db_path();
+            match QueryEngine::bootstrap_sqlite_scoped(&path, BootstrapScope::SOURCES_ONLY) {
+                Ok(()) => {
+                    refresh_engine_cache();
+                    log_info(&format!(
+                        "sources refresh ok elapsed_ms={}",
+                        started_at.elapsed().as_millis()
+                    ));
+                }
+                Err(err) => log_error(&format!("sources refresh failed error={err}")),
+            }
+        }));
     });
 
     true

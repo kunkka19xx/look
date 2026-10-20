@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::state::mark_index_dirty;
+use crate::state::request_sources_refresh;
 
 /// Starts every declared connector, and restarts any that died. Called at
 /// launch and on reload, since a reload is how a newly installed manifest is
@@ -18,16 +18,21 @@ pub(crate) fn start() {
     };
     look_engine::connectors::start(
         &home,
-        // Rows arriving are an index change like any other: the shell decides
-        // when to act on it, and the next search picks them up.
-        Arc::new(|_block: &str| mark_index_dirty()),
+        // Only the declared sources are re-read. Marking the whole index
+        // dirty would make the next launcher open walk the home directory
+        // again, which a connector pushing on a timer would do all day.
+        Arc::new(|_block: &str| {
+            request_sources_refresh();
+        }),
     );
 }
 
 /// Respawns any connector that died. Called when the launcher opens, which is
 /// what "restarted on next use" means in practice.
 pub(crate) fn restart_dead() {
-    look_engine::connectors::restart_dead(Arc::new(|_block: &str| mark_index_dirty()));
+    look_engine::connectors::restart_dead(Arc::new(|_block: &str| {
+        request_sources_refresh();
+    }));
 }
 
 pub(crate) fn stop() {
