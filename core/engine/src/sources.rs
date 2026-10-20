@@ -948,6 +948,9 @@ mod tests {
     /// sources directory, the state `GUARD` serialises.
     /// A whole connector: a real child, the hello it answers, the rows it
     /// pushes, and the cache they land in.
+    // The fixture connector is a shell script, and a connector is spawned
+    // through the platform's own shell, which on Windows is `cmd`.
+    #[cfg(unix)]
     #[test]
     fn a_connector_pushes_rows_into_the_cache() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
@@ -998,6 +1001,7 @@ mod tests {
 
     /// "Restarted on next use": a connector that exited comes back when the
     /// launcher next opens, without re-reading any directory.
+    #[cfg(unix)]
     #[test]
     fn a_dead_connector_is_restarted() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
@@ -1050,6 +1054,7 @@ mod tests {
 
     /// A connector watching something unchanged pushes the same rows over and
     /// over, and that should cost nothing: no write, and nothing re-read.
+    #[cfg(unix)]
     #[test]
     fn the_same_rows_again_are_not_news() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
@@ -1090,6 +1095,7 @@ mod tests {
 
     /// `lines()` would read a frame of any length into memory, so a connector
     /// could hand Look a gigabyte. The cap is the whole defence.
+    #[cfg(unix)]
     #[test]
     fn an_oversized_frame_ends_the_connector_rather_than_look() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
