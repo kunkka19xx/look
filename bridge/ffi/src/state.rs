@@ -381,7 +381,9 @@ pub(crate) fn refresh_sources_now() -> bool {
 
     let _refresh_slot = IndexRefreshGuard;
     let started_at = Instant::now();
-    let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+    // `true` means the rows were read, not that the attempt was made: a
+    // failure here is the caller's cue to keep them queued and try again.
+    panic::catch_unwind(AssertUnwindSafe(|| {
         let path = default_db_path();
         match QueryEngine::bootstrap_sqlite_scoped(&path, BootstrapScope::SOURCES_ONLY) {
             Ok(()) => {
@@ -390,12 +392,15 @@ pub(crate) fn refresh_sources_now() -> bool {
                     "sources refresh ok elapsed_ms={}",
                     started_at.elapsed().as_millis()
                 ));
+                true
             }
-            Err(err) => log_error(&format!("sources refresh failed error={err}")),
+            Err(err) => {
+                log_error(&format!("sources refresh failed error={err}"));
+                false
+            }
         }
-    }));
-
-    true
+    }))
+    .unwrap_or(false)
 }
 
 fn refresh_allowed_by_dirty_mode(lazy_indexing_enabled: bool, index_dirty: bool) -> bool {

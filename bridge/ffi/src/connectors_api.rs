@@ -69,8 +69,8 @@ fn schedule_read() {
             // Before the walk, never after: a push during it sets this again.
             ARRIVED.store(false, Ordering::Release);
 
-            // Waited out, not given up on: nothing else is coming to ask, so a
-            // deadline here would lose the rows.
+            // A busy slot or a failed walk: waited out, not given up on, since
+            // nothing else is coming to ask and a deadline would lose the rows.
             if !refresh_sources_now() {
                 busy += 1;
                 wait = if busy > 8 { FLOOR } else { BUSY_RETRY };
