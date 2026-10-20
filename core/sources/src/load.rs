@@ -72,53 +72,22 @@ fn configured_dir(env_key: &str, home: &Path, name: &str) -> PathBuf {
 /// declared key so uninstalling is still one file, and `then` is rewritten with
 /// it so a manifest keeps naming its own blocks plainly.
 pub fn load_connectors(dir: &Path) -> Loaded {
-    let mut loaded = load_dir(dir);
-
-    // A stem that cannot be half of a usable id takes its blocks down with it.
-    // `my..app.toml` would namespace to `my..app.notes`, and the row cache
-    // refuses a name holding `..`, so its `run` rows would fail every refresh
-    // and never appear. Better to say so once than to fail quietly forever.
-    let (kept, unusable): (Vec<Block>, Vec<Block>) = loaded
-        .blocks
-        .into_iter()
-        .partition(|block| manifest_of(block).is_none_or(|stem| usable_namespace(&stem)));
-    for block in unusable {
-        let file = PathBuf::from(block.source_file.unwrap_or_default());
-        loaded.problems.push(Problem {
-            message: format!(
-                "manifest name {:?} cannot namespace a block: no `..`, `/` or `\\`",
-                file.file_stem().unwrap_or_default()
-            ),
-            file,
-        });
-    }
-    loaded.blocks = kept;
-
-    let owners: BTreeMap<String, String> = loaded
-        .blocks
-        .iter()
-        .filter_map(|block| Some((block.id.clone(), manifest_of(block)?)))
-        .collect();
-
-    for block in &mut loaded.blocks {
-        let Some(manifest) = manifest_of(block) else {
-            continue;
-        };
-        for target in &mut block.then {
-            if owners.get(target.as_str()) == Some(&manifest) {
-                *target = namespaced(&manifest, target);
-            }
-        }
-        block.id = namespaced(&manifest, &block.id);
-    }
-    loaded
+    load_from(dir, true)
 }
 
-/// The file name that declared a block, without its extension.
-fn manifest_of(block: &Block) -> Option<String> {
-    Path::new(block.source_file.as_deref()?)
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().into_owned())
+/// Rewrites one manifest's blocks in place: every id gains the namespace, and
+/// a `then` naming a sibling gains it too. Done per file, before duplicate ids
+/// are dropped, so two manifests may both declare `[notes]`.
+fn namespace_blocks(blocks: &mut [Block], manifest: &str) {
+    let own: BTreeMap<String, ()> = blocks.iter().map(|block| (block.id.clone(), ())).collect();
+    for block in blocks {
+        for target in &mut block.then {
+            if own.contains_key(target.as_str()) {
+                *target = namespaced(manifest, target);
+            }
+        }
+        block.id = namespaced(manifest, &block.id);
+    }
 }
 
 fn namespaced(manifest: &str, id: &str) -> String {
@@ -141,20 +110,43 @@ impl Loaded {
             .iter()
             .map(|block| (block.id.as_str(), ()))
             .collect();
-        let (kept, shadowed): (Vec<Block>, Vec<Block>) = other
+        let (mut kept, shadowed): (Vec<Block>, Vec<Block>) = other
             .blocks
             .into_iter()
             .partition(|block| !taken.contains_key(block.id.as_str()));
 
+        let mut dropped: BTreeMap<String, PathBuf> = BTreeMap::new();
         for block in shadowed {
+            let file = PathBuf::from(block.source_file.unwrap_or_default());
             self.problems.push(Problem {
-                file: PathBuf::from(block.source_file.unwrap_or_default()),
+                file: file.clone(),
                 message: format!(
                     "block [{}] is already declared elsewhere; this one is not loaded",
                     block.id
                 ),
             });
+            dropped.insert(block.id, file);
         }
+
+        // A sibling's `then` still names the block that was dropped, and that
+        // name now belongs to someone else's. Reaching it would run a block
+        // the manifest never meant, so the reference goes with it.
+        for block in &mut kept {
+            block.then.retain(|target| {
+                let Some(file) = dropped.get(target.as_str()) else {
+                    return true;
+                };
+                self.problems.push(Problem {
+                    file: file.clone(),
+                    message: format!(
+                        "[{}] drops its `then` target {target:?}: that block was not loaded",
+                        block.id
+                    ),
+                });
+                false
+            });
+        }
+
         self.blocks.extend(kept);
         self.problems.extend(other.problems);
     }
@@ -163,6 +155,10 @@ impl Loaded {
 /// Loads every block in `dir`. A directory that does not exist is not a problem
 /// to report: it is the ordinary state of a user who has not made one.
 pub fn load_dir(dir: &Path) -> Loaded {
+    load_from(dir, false)
+}
+
+fn load_from(dir: &Path, namespace_by_file: bool) -> Loaded {
     let mut loaded = Loaded::default();
     let Ok(entries) = fs::read_dir(dir) else {
         return loaded;
@@ -200,13 +196,30 @@ pub fn load_dir(dir: &Path) -> Loaded {
         match fs::read_to_string(path) {
             Ok(contents) => match parse_file(&contents) {
                 Ok(parsed) => {
-                    loaded
-                        .blocks
-                        .extend(parsed.blocks.into_iter().map(|mut block| {
-                            block.source_file = Some(path.to_string_lossy().into_owned());
-                            block
-                        }));
-                    for message in parsed.problems {
+                    let mut blocks = parsed.blocks;
+                    let mut messages = parsed.problems;
+                    if namespace_by_file {
+                        let stem = path
+                            .file_stem()
+                            .map(|stem| stem.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        // A stem that cannot be half of a usable id takes its
+                        // blocks with it: `my..app.notes` is refused by the row
+                        // cache, so its rows would fail every refresh forever.
+                        if usable_namespace(&stem) {
+                            namespace_blocks(&mut blocks, &stem);
+                        } else {
+                            messages.push(format!(
+                                "manifest name {stem:?} cannot namespace a block: no `..`, `/` or `\\`"
+                            ));
+                            blocks.clear();
+                        }
+                    }
+                    loaded.blocks.extend(blocks.into_iter().map(|mut block| {
+                        block.source_file = Some(path.to_string_lossy().into_owned());
+                        block
+                    }));
+                    for message in messages {
                         loaded.problems.push(Problem {
                             file: path.clone(),
                             message,
@@ -226,6 +239,17 @@ pub fn load_dir(dir: &Path) -> Loaded {
     }
 
     for (stem, path) in &executables {
+        if namespace_by_file {
+            // An app ships a manifest. A bare executable has nothing to be
+            // namespaced by except itself, which would read as `foo.foo`.
+            loaded.problems.push(Problem {
+                file: path.clone(),
+                message:
+                    "an executable here has no manifest to namespace it; declare it in a .toml"
+                        .into(),
+            });
+            continue;
+        }
         let mut block = inferred(stem, &executable_command(path));
         block.source_file = Some(path.to_string_lossy().into_owned());
         loaded.blocks.push(block);
@@ -515,6 +539,47 @@ mod tests {
             .find(|b| b.id == "myapp.notes")
             .unwrap();
         assert_eq!(notes.then, ["myapp.archive"]);
+    }
+
+    #[test]
+    fn two_manifests_may_each_declare_the_same_block() {
+        // Deduping before namespacing dropped the second app's block, although
+        // `alpha.notes` and `beta.notes` were never the same id.
+        let tmp = TempDir::new("two-manifests");
+        tmp.write("alpha.toml", "[notes]\ndo = [\"true\"]\n");
+        tmp.write("beta.toml", "[notes]\ndo = [\"true\"]\n");
+
+        let loaded = load_connectors(&tmp.0);
+        let ids: Vec<&str> = loaded.blocks.iter().map(|b| b.id.as_str()).collect();
+        assert_eq!(ids, ["alpha.notes", "beta.notes"]);
+        assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
+    }
+
+    #[test]
+    fn a_then_target_goes_with_the_block_it_named() {
+        // The user's own block takes the id, so the manifest's is dropped. A
+        // sibling pointing at it would otherwise reach the user's block.
+        let user = TempDir::new("user-shadow");
+        user.write("mine.toml", "[\"myapp.notes\"]\ndo = [\"true\"]\n");
+        let apps = TempDir::new("app-shadow");
+        apps.write(
+            "myapp.toml",
+            "[notes]\ndo = [\"true\"]\n\n[open]\ndo = [\"true\"]\nthen = [\"notes\"]\n",
+        );
+
+        let mut loaded = load_dir(&user.0);
+        loaded.absorb(load_connectors(&apps.0));
+
+        let open = loaded.blocks.iter().find(|b| b.id == "myapp.open").unwrap();
+        assert!(open.then.is_empty(), "the dangling target is dropped");
+        assert!(
+            loaded
+                .problems
+                .iter()
+                .any(|p| p.message.contains("drops its `then` target")),
+            "{:?}",
+            loaded.problems
+        );
     }
 
     #[test]
