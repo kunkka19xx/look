@@ -360,7 +360,7 @@ fn request_background_index_refresh_internal() -> bool {
 }
 
 /// Re-walks the declared sources and nothing else, for rows a connector just
-/// sent.
+/// sent. Synchronous.
 ///
 /// Deliberately NOT `mark_index_dirty`: that makes the next launcher open run
 /// a full bootstrap, walking apps, files and settings, so a connector pushing
@@ -370,29 +370,30 @@ fn request_background_index_refresh_internal() -> bool {
 /// Coalesced by the same in-progress slot a full refresh uses, so a chatty
 /// connector cannot queue work: while one is running the next push is dropped,
 /// and its rows are already in the cache for the one after it.
-pub(crate) fn request_sources_refresh() -> bool {
+/// Runs on the calling thread, which is already a background one. Returning
+/// only when the walk is done is the point: rows written meanwhile cannot fall
+/// between the read and the caller clearing its flag.
+pub(crate) fn refresh_sources_now() -> bool {
     let _ = engine_cache();
     if !try_acquire_index_refresh_slot() {
         return false;
     }
 
-    thread::spawn(move || {
-        let _refresh_slot = IndexRefreshGuard;
-        let started_at = Instant::now();
-        let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-            let path = default_db_path();
-            match QueryEngine::bootstrap_sqlite_scoped(&path, BootstrapScope::SOURCES_ONLY) {
-                Ok(()) => {
-                    refresh_engine_cache();
-                    log_info(&format!(
-                        "sources refresh ok elapsed_ms={}",
-                        started_at.elapsed().as_millis()
-                    ));
-                }
-                Err(err) => log_error(&format!("sources refresh failed error={err}")),
+    let _refresh_slot = IndexRefreshGuard;
+    let started_at = Instant::now();
+    let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+        let path = default_db_path();
+        match QueryEngine::bootstrap_sqlite_scoped(&path, BootstrapScope::SOURCES_ONLY) {
+            Ok(()) => {
+                refresh_engine_cache();
+                log_info(&format!(
+                    "sources refresh ok elapsed_ms={}",
+                    started_at.elapsed().as_millis()
+                ));
             }
-        }));
-    });
+            Err(err) => log_error(&format!("sources refresh failed error={err}")),
+        }
+    }));
 
     true
 }

@@ -18,15 +18,13 @@ use look_sources::{Ask, PROTOCOL_VERSION, Producer, Say, SourceRow};
 /// index's freshness, the shell does.
 pub type OnRows = Arc<dyn Fn(&str) + Send + Sync>;
 
-/// What a connector needs to be spoken to and ended.
 struct Running {
     child: Child,
-    /// Held open for the connector's lifetime. Dropping it closes the pipe,
-    /// and a connector that reads stdin sees EOF and exits.
+    /// Held open: dropping it is EOF to a connector that reads stdin.
     stdin: Option<ChildStdin>,
-    /// What the block declared, to tell a restart from a changed command.
+    /// To tell a restart from a changed command.
     command: String,
-    /// The file that declared it, which is the namespace it may speak for.
+    /// The file that declared it: the namespace it may speak for.
     manifest: String,
 }
 
@@ -140,9 +138,8 @@ pub fn stop() {
     }
 }
 
-/// Says goodbye, then ends the whole process group and reaps it. A connector
-/// leads its own session, so killing the shell alone would leave whatever it
-/// started running after Look is gone.
+/// Goodbye, then the whole process group, then reaped. A connector leads its
+/// own session, so killing the shell alone leaves its children behind.
 fn end(alive: &mut Running) {
     if let Some(stdin) = alive.stdin.as_mut() {
         let _ = stdin.write_all(Ask::Bye.line().as_bytes());
@@ -160,8 +157,7 @@ fn spawn(
     let mut child = look_sources::spawn_connector(&found.command, None)?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
 
-    // Kept, not dropped: a connector that reads its stdin, which is how it
-    // would wait for anything Look asks, sees EOF the moment this closes.
+    // Kept, not dropped: closing it is EOF to a connector that reads stdin.
     let mut stdin = child.stdin.take();
     if let Some(stdin) = stdin.as_mut() {
         let hello = Ask::Hello {
@@ -252,12 +248,10 @@ fn handle(owner: &Owner, say: Say, on_rows: &OnRows) {
     }
 }
 
-/// A connector speaks for its own block, and for others from the same manifest,
-/// so one process may serve every block in the file that declared it.
-///
-/// The manifest is carried rather than cut out of the id: a stem may hold dots
-/// (`com.example.app`) and a quoted TOML header may too, so neither the first
-/// dot nor the last reliably separates one from the other.
+/// Its own block, and others from the same manifest, so one process can serve
+/// every block in its file. The manifest is carried rather than cut out of the
+/// id: both a stem (`com.example.app`) and a quoted header may hold dots, so
+/// no single dot separates them.
 fn speaks_for(owner: &Owner, block: &str) -> bool {
     if owner.block == block {
         return true;
@@ -266,8 +260,7 @@ fn speaks_for(owner: &Owner, block: &str) -> bool {
     owner.block.starts_with(&namespace) && block.starts_with(&namespace)
 }
 
-/// Between a manifest's name and a block's own id, as `load_connectors` joins
-/// them.
+/// As `load_connectors` joins manifest to block id.
 const NAMESPACE: char = '.';
 
 /// Through the row cache, so connector rows are indexed, ranked and kept

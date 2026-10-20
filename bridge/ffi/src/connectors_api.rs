@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::state::{home_dir, request_sources_refresh};
+use crate::state::{home_dir, refresh_sources_now};
 
 /// Starts every declared connector, and restarts any that died. Called at
 /// launch and on reload, since a reload is how a newly installed manifest is
@@ -51,39 +51,51 @@ fn on_rows() -> look_engine::connectors::OnRows {
 /// when its data changes rather than on a timer.
 fn schedule_read() {
     static QUEUED: AtomicBool = AtomicBool::new(false);
+    static ARRIVED: AtomicBool = AtomicBool::new(false);
     static NEXT_ALLOWED: Mutex<Option<Instant>> = Mutex::new(None);
 
-    // One queued read at a time: the frames arriving while it waits are
-    // already in the cache, so they are what it will read.
+    // Before the queue check, so rows landing mid-read still count.
+    ARRIVED.store(true, Ordering::Release);
     if QUEUED.swap(true, Ordering::AcqRel) {
         return;
     }
 
-    let wait = {
-        let next = NEXT_ALLOWED.lock().unwrap_or_else(|err| err.into_inner());
-        next.map(|at| at.saturating_duration_since(Instant::now()))
-            .unwrap_or_default()
-            .max(SETTLE)
-    };
-
     thread::spawn(move || {
-        let give_up = Instant::now() + Duration::from_secs(60);
-        let mut wait = wait;
+        let mut wait = until_allowed(&NEXT_ALLOWED);
+        let mut busy = 0_u32;
         loop {
             thread::sleep(wait);
+
+            // Before the walk, never after: a push during it sets this again.
+            ARRIVED.store(false, Ordering::Release);
+
+            // Waited out, not given up on: nothing else is coming to ask, so a
+            // deadline here would lose the rows.
+            if !refresh_sources_now() {
+                busy += 1;
+                wait = if busy > 8 { FLOOR } else { BUSY_RETRY };
+                ARRIVED.store(true, Ordering::Release);
+                continue;
+            }
+            busy = 0;
+
             {
                 let mut next = NEXT_ALLOWED.lock().unwrap_or_else(|err| err.into_inner());
                 *next = Some(Instant::now() + FLOOR);
             }
-            // A refresh already running is not this one: it may have read the
-            // cache before these rows reached it, and with lazy indexing no
-            // other refresh is coming. Dropping the push would leave the rows
-            // unseen until something else happened to ask.
-            if request_sources_refresh() || Instant::now() >= give_up {
+            if !ARRIVED.load(Ordering::Acquire) {
                 QUEUED.store(false, Ordering::Release);
                 return;
             }
-            wait = BUSY_RETRY;
+            wait = until_allowed(&NEXT_ALLOWED);
         }
     });
+}
+
+/// How long until another read is allowed, never less than the settle.
+fn until_allowed(next: &Mutex<Option<Instant>>) -> Duration {
+    let next = next.lock().unwrap_or_else(|err| err.into_inner());
+    next.map(|at| at.saturating_duration_since(Instant::now()))
+        .unwrap_or_default()
+        .max(SETTLE)
 }
