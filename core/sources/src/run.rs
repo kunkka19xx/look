@@ -17,7 +17,7 @@
 //! will actually read it.
 
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 
 use serde::Deserialize;
 
@@ -452,6 +452,27 @@ fn spawn(step: &str, row: Option<&RowContext>) -> Result<(), String> {
 /// Runs `command` and returns its stdout, for the producers whose output IS the
 /// answer (a `run` block's rows, a `preview`).
 ///
+/// A connector: the same login shell every step runs in, with its pipes left
+/// open rather than drained once.
+///
+/// Unbounded on purpose, which is the whole difference from `capture`. Nothing
+/// waits on it, so there is no deadline to enforce; what bounds it is that the
+/// caller never blocks on a read and drops the child to end it.
+pub fn spawn_connector(command: &str, cwd: Option<&str>) -> Result<Child, String> {
+    let mut shell = shell_command(command)?;
+    shell
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .current_dir(
+            cwd.filter(|dir| !dir.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(root_dir),
+        );
+    lead_process_group(&mut shell);
+    shell.spawn().map_err(|err| spawn_failure(&shell, err))
+}
+
 /// Bounded three ways, because this is arbitrary user code on a path the user is
 /// waiting on: a timeout, a byte cap, and no stdin. Unlike `perform`, this waits
 /// - the caller is asking for the output, so there is nothing to detach from.
@@ -613,6 +634,16 @@ fn lead_process_group(command: &mut Command) {
 
 #[cfg(not(unix))]
 fn lead_process_group(_command: &mut Command) {}
+
+/// Ends a connector: the shell, everything it started, and then reaped.
+///
+/// `Child::kill` alone signals the shell pid. A connector leads its own
+/// session, so anything it spawned survives Look rather than dying with it,
+/// and an unreaped child is a zombie for as long as Look runs.
+pub fn end_connector(child: &mut Child) {
+    kill_tree(child);
+    let _ = child.wait();
+}
 
 /// Kills the shell and everything it started.
 ///

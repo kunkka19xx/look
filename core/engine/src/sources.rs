@@ -946,6 +946,205 @@ mod tests {
 
     /// Also beside the sources tests: a declared control is read from the
     /// sources directory, the state `GUARD` serialises.
+    /// A whole connector: a real child, the hello it answers, the rows it
+    /// pushes, and the cache they land in.
+    // The fixture connector is a shell script, and a connector is spawned
+    // through the platform's own shell, which on Windows is `cmd`.
+    #[cfg(unix)]
+    #[test]
+    fn a_connector_pushes_rows_into_the_cache() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("connector", "");
+        let script = fixture.base.join("notes-connector");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nread _hello\n\
+             printf '{\"op\":\"ready\",\"capabilities\":[\"rows\"]}\\n'\n\
+             printf '{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":\
+             [{\"id\":\"a\",\"title\":\"Alpha\"}]}\\n'\n\
+             sleep 5\n",
+        )
+        .expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        fixture.manifest(
+            "myapp.toml",
+            &format!("[notes]\nconnect = \"{}\"\n", script.display()),
+        );
+
+        let told = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = told.clone();
+        crate::connectors::start(
+            &fixture.base,
+            std::sync::Arc::new(move |block: &str| {
+                seen.lock().unwrap().push(block.to_string());
+            }),
+        );
+
+        // Nothing blocks on a connector, so the test waits the way the app
+        // does: it carries on and looks again.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while told.lock().unwrap().is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        crate::connectors::stop();
+
+        assert_eq!(told.lock().unwrap().as_slice(), ["myapp.notes"]);
+        let cached = fixture.cache.join("myapp.notes");
+        let text = std::fs::read_to_string(&cached).expect("rows cached");
+        assert!(text.contains("\"Alpha\""), "{text}");
+    }
+
+    /// "Restarted on next use": a connector that exited comes back when the
+    /// launcher next opens, without re-reading any directory.
+    #[cfg(unix)]
+    #[test]
+    fn a_dead_connector_is_restarted() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("restart", "");
+        let script = fixture.base.join("once");
+        // Sends its rows and exits, which is the shape of a connector that
+        // crashed as far as Look can tell. The rows carry its pid, so the
+        // restart is visible: identical rows would be deduped, correctly.
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nread _hello\n\
+             printf '{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":\
+             [{\"id\":\"a\",\"title\":\"Alpha %s\"}]}\\n' \"$$\"\n",
+        )
+        .expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        fixture.manifest(
+            "myapp.toml",
+            &format!("[notes]\nconnect = \"{}\"\n", script.display()),
+        );
+
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = count.clone();
+        let on_rows: crate::connectors::OnRows = std::sync::Arc::new(move |_block: &str| {
+            seen.fetch_add(1, std::sync::atomic::Ordering::Release);
+        });
+
+        let waited = |want: usize| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while count.load(std::sync::atomic::Ordering::Acquire) < want
+                && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+        };
+
+        crate::connectors::start(&fixture.base, on_rows.clone());
+        waited(1);
+
+        // The frame is handled before the shell has necessarily exited, and
+        // `restart_dead` restarts nothing while it is still alive. Asking once
+        // is a race; asking until it answers is the behaviour being tested.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while count.load(std::sync::atomic::Ordering::Acquire) < 2
+            && std::time::Instant::now() < deadline
+        {
+            crate::connectors::restart_dead(on_rows.clone());
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        crate::connectors::stop();
+
+        assert_eq!(count.load(std::sync::atomic::Ordering::Acquire), 2);
+    }
+
+    /// A connector watching something unchanged pushes the same rows over and
+    /// over, and that should cost nothing: no write, and nothing re-read.
+    #[cfg(unix)]
+    #[test]
+    fn the_same_rows_again_are_not_news() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("dedupe", "");
+        let script = fixture.base.join("twice");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nread _hello\n\
+             row='{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":\
+             [{\"id\":\"a\",\"title\":\"Alpha\"}]}'\n\
+             printf '%s\\n' \"$row\"\nsleep 0.2\nprintf '%s\\n' \"$row\"\n",
+        )
+        .expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        fixture.manifest(
+            "myapp.toml",
+            &format!("[notes]\nconnect = \"{}\"\n", script.display()),
+        );
+
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = count.clone();
+        crate::connectors::start(
+            &fixture.base,
+            std::sync::Arc::new(move |_block: &str| {
+                seen.fetch_add(1, std::sync::atomic::Ordering::Release);
+            }),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(900));
+        crate::connectors::stop();
+
+        assert_eq!(count.load(std::sync::atomic::Ordering::Acquire), 1);
+    }
+
+    /// `lines()` would read a frame of any length into memory, so a connector
+    /// could hand Look a gigabyte. The cap is the whole defence.
+    #[cfg(unix)]
+    #[test]
+    fn an_oversized_frame_ends_the_connector_rather_than_look() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("oversized", "");
+        let script = fixture.base.join("flood");
+        // One frame of two million bytes, with no newline until the end.
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nread _hello\n\
+             printf '{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":[{\"id\":\"a\",\"title\":\"'\n\
+             i=0\nwhile [ $i -lt 2000 ]; do printf '%01000d' 0; i=$((i+1)); done\n\
+             printf '\"}]}\\n'\n",
+        )
+        .expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        fixture.manifest(
+            "myapp.toml",
+            &format!("[notes]\nconnect = \"{}\"\n", script.display()),
+        );
+
+        let fired = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = fired.clone();
+        crate::connectors::start(
+            &fixture.base,
+            std::sync::Arc::new(move |_block: &str| {
+                seen.fetch_add(1, std::sync::atomic::Ordering::Release);
+            }),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(900));
+        crate::connectors::stop();
+
+        // Nothing stored, and Look is still here to assert it.
+        assert_eq!(fired.load(std::sync::atomic::Ordering::Acquire), 0);
+    }
+
     #[test]
     fn an_installed_manifest_declares_blocks_under_its_own_name() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());

@@ -10,7 +10,7 @@ use look_sources::ParentRow;
 use serde::Serialize;
 use std::os::raw::c_char;
 
-use crate::state::{cstr_to_string, json_cstring_or_null, mark_index_dirty};
+use crate::state::{cstr_to_string, home_dir, json_cstring_or_null, mark_index_dirty};
 
 /// `{id, name, steps, file, then}` for the block a candidate id belongs to, or
 /// the JSON literal `null` when it is not a block row or no longer exists.
@@ -150,14 +150,6 @@ pub(crate) fn look_config_path_impl(dev: bool) -> *mut c_char {
     };
     let resolved = look_engine::config_path::resolve_home_variant(&home, dev);
     json_cstring_or_null(Some(resolved.path.to_string_lossy().into_owned()))
-}
-
-fn home_dir() -> Option<std::path::PathBuf> {
-    std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .map(std::path::PathBuf::from)
 }
 
 #[cfg(test)]

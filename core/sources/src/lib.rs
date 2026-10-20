@@ -8,6 +8,7 @@
 //! engine's job, and running a user's command is the shell's.
 //!
 mod collect;
+mod connect;
 mod def;
 mod detail;
 mod load;
@@ -18,6 +19,7 @@ mod tools;
 pub use collect::{
     CollectError, Collected, MAX_ROWS_PER_SOURCE, collect, collect_for_row, expand_home,
 };
+pub use connect::{Ask, PROTOCOL_VERSION, Row as ConnectorRow, Say, read as read_frame};
 pub use def::{
     Applies, AppliesOnly, Block, DEFAULT_FOLDER_DEPTH, KEY_APPLIES, KEY_DIR, KEY_DO, KEY_FILE,
     KEY_RUN, Only, ParsedFile, Producer, RowFormat, RowKind, Verbs, inferred, parse_duration,
@@ -30,7 +32,7 @@ pub use load::{
 };
 pub use rows::{SourceRow, parse_rows};
 pub use run::{
-    ENV_ID, ENV_PATH, ENV_TITLE, ParentRow, RowContext, StepOutcome, capture, expand, expand_path,
-    perform,
+    ENV_ID, ENV_PATH, ENV_TITLE, ParentRow, RowContext, StepOutcome, capture, end_connector,
+    expand, expand_path, perform, spawn_connector,
 };
 pub use tools::{block_declares, resolve_for_row};

@@ -73,7 +73,9 @@ pub fn collect(block: &Block, home: &Path) -> Result<Collected, CollectError> {
             collect_folders(&roots, *depth, *only, include, exclude)
         }
         Producer::File { path, format } => collect_list(&expand_home(path, home), *format),
-        Producer::Run { .. } => Err(CollectError::NeedsRunner),
+        // Both need something to run them. A connector's rows arrive on frames
+        // rather than from a walk, and only the engine holds the process.
+        Producer::Run { .. } | Producer::Connect { .. } => Err(CollectError::NeedsRunner),
     }
 }
 
@@ -102,7 +104,9 @@ pub fn collect_for_row(
         Producer::File { path, format } => {
             collect_list(&expand_home(&expand_path(path, row), home), *format)
         }
-        Producer::Bundle { .. } | Producer::Run { .. } => collect(block, home),
+        Producer::Bundle { .. } | Producer::Run { .. } | Producer::Connect { .. } => {
+            collect(block, home)
+        }
     }
 }
 

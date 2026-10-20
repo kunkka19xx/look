@@ -20,6 +20,12 @@ private func look_record_usage_json(_ candidateID: UnsafePointer<CChar>?, _ acti
 nonisolated
 private func look_free_cstring(_ ptr: UnsafeMutablePointer<CChar>?)
 
+@_silgen_name("look_connectors_start")
+private nonisolated func look_connectors_start()
+
+@_silgen_name("look_connectors_stop")
+private nonisolated func look_connectors_stop()
+
 @_silgen_name("look_reload_config")
 nonisolated
 private func look_reload_config() -> Bool
@@ -619,6 +625,19 @@ final class EngineBridge: @unchecked Sendable {
 
     nonisolated func reloadConfig() -> Bool {
         look_reload_config()
+    }
+
+    /// Starts every declared connector, and restarts any that died. Safe to
+    /// call repeatedly: a reload is how a manifest installed since launch is
+    /// noticed. Spawns processes, so call it off the main thread.
+    nonisolated func startConnectors() {
+        look_connectors_start()
+    }
+
+    /// Ends them. Their rows stay cached, so the next launch shows what they
+    /// last sent while they start again.
+    nonisolated func stopConnectors() {
+        look_connectors_stop()
     }
 
     /// Loads the full /todo task set from the shared core backend.

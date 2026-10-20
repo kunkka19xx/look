@@ -13,7 +13,7 @@ No plugin to install, no API to learn. One directory, one file format, four keys
 - [Start here](#start-here)
 - [How a file is organised](#how-a-file-is-organised)
 - [As many files as you like](#as-many-files-as-you-like)
-- [The four kinds of block](#the-four-kinds-of-block)
+- [The five kinds of block](#the-five-kinds-of-block)
 - [Key reference](#key-reference)
 - [Placeholders](#placeholders)
 - [What Enter does](#what-enter-does-verbs)
@@ -133,7 +133,7 @@ reported.
 Uninstalling an app is then one file, and `LOOK_CONNECTORS_DIR` repoints the
 directory the way `LOOK_SOURCES_DIR` repoints yours.
 
-## The four kinds of block
+## The five kinds of block
 
 | Producer | What it makes                         | Use it for                                             |
 | -------- | ------------------------------------- | ------------------------------------------------------ |
@@ -141,6 +141,7 @@ directory the way `LOOK_SOURCES_DIR` repoints yours.
 | `dir`    | one row per child of a directory      | projects, notes, screenshots, anything already on disk |
 | `file`   | one row per line of a text file       | a list you maintain by hand: SSH hosts, bookmarks      |
 | `run`    | one row per line a command prints     | anything that changes: branches, containers, tickets   |
+| `connect` | rows from a program that keeps running | an app showing its own records, updated without a reload |
 
 Declaring two of them in one block is an error. Pick one and the block is unambiguous.
 
@@ -248,6 +249,7 @@ If the command fails, times out, or prints nothing, **the rows it produced last 
 | `exclude` | list of globs              | `dir`         | Drop entry names matching one of these                                                                            |
 | `file`    | string                     | `file`        | Path to the list                                                                                                  |
 | `run`     | string                     | `run`         | The command line                                                                                                  |
+| `connect` | string                     | `connect`     | A program Look keeps running. See [`connect`](#connect---rows-from-a-program-that-stays-running)                  |
 | `cwd`     | string                     | `run`         | Working directory. Default: [the filesystem root](#where-a-command-runs)                                          |
 | `timeout` | duration string            | `run`         | `30s`, `5m`, `1h`, `2d`. Default 5s, capped at 30s                                                                |
 | `format`  | `lines` \| `json`          | `file`, `run` | Default `lines`                                                                                                   |
@@ -255,6 +257,54 @@ If the command fails, times out, or prints nothing, **the rows it produced last 
 A leading `~` in any path key (`dir`, `dirs`, `file`, `cwd`, `icon`, and a JSON row's `path`) is your home directory, on every platform: Look resolves those itself. A `~` anywhere else in the value is left alone, because it is a legal character in a filename. Inside a **command** it is your shell's job instead, which matters on Windows: see [Point a block at your own script](#point-a-block-at-your-own-script).
 
 Keys Look does not recognise are reported and ignored, never fatal: a file written for a newer version still loads on an older one.
+
+### `connect` - rows from a program that stays running
+
+Where `run` asks a command for rows and waits, `connect` starts a program once
+and leaves it running. It sends rows whenever it likes, and they appear without
+a reload.
+
+```toml
+[records]
+name    = "Records"
+icon    = "🗂️"
+connect = "~/.local/bin/myapp-connector"
+```
+
+The program speaks one JSON object per line on stdout. Look opens with a hello
+and then listens:
+
+```json
+{"op":"hello","v":1,"look":"0.7.5"}
+```
+```json
+{"op":"ready","capabilities":["rows"]}
+{"op":"rows","block":"myapp.records","rows":[{"id":"r1","title":"Invoice 204"}]}
+{"op":"error","message":"could not reach the server"}
+```
+
+- a `rows` frame nobody asked for is a **push**: that is how rows change without
+  a reload, and it costs nothing extra
+- an `op` Look does not know is ignored, never fatal, so a program written for a
+  later version still works with this one
+- rows use the same fields a JSON row from a `run` block uses: `id`, and
+  optionally `title`, `subtitle`, `path`, `icon`
+- a program may only send rows for blocks in **its own manifest**. One app
+  cannot rewrite another's rows
+- nothing blocks on it. Slow, silent or dead, it simply has no new rows and the
+  last ones it sent are still there
+- if it exits, the last rows stay and it is started again the next time the
+  launcher opens
+- a frame over 1 MB is a protocol breach rather than a big message: that program
+  is dropped, and restarted the same way
+
+**The cost is mostly yours, not Look's.** Keeping one running costs Look about
+130 KB and a thread. The program itself is the real figure: a small compiled one
+is a fraction of a megabyte, a Python one is 10 to 15 MB before it does
+anything. Push when your data changes rather than on a timer, because every push
+makes Look re-read the declared sources, which it rate-limits but cannot make
+free. A program that sends the same rows again costs nothing at all, so there is
+no need to track what you last sent.
 
 ## Placeholders
 

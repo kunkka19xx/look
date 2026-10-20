@@ -5,6 +5,7 @@ mod answers_api;
 mod calc_api;
 mod calling_api;
 mod clipboard_api;
+mod connectors_api;
 mod hotkey_api;
 mod lunar_api;
 mod matching_api;
@@ -100,6 +101,20 @@ pub extern "C" fn look_record_usage_json(
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// Starts every declared connector, and restarts any that died. Safe to call
+/// repeatedly; the shell calls it at launch and after a reload.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_connectors_start() {
+    let _ = std::panic::catch_unwind(connectors_api::start);
+}
+
+/// Ends every connector. Their rows stay cached, so the next launch shows what
+/// they last sent while they start again.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_connectors_stop() {
+    let _ = std::panic::catch_unwind(connectors_api::stop);
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn look_reload_config() -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -131,6 +146,10 @@ pub extern "C" fn look_seed_uwp_apps_json(json: *const c_char) -> bool {
 #[unsafe(no_mangle)]
 pub extern "C" fn look_request_index_refresh() -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // Opening the launcher is "next use", so a connector that died since
+        // the last one comes back here. Reads no directories, so it costs a
+        // lock and a `try_wait` when everything is healthy.
+        connectors_api::restart_dead();
         state::request_background_index_refresh()
     }))
     .unwrap_or(false)

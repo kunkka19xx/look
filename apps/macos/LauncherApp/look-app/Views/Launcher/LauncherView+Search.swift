@@ -377,6 +377,9 @@ extension LauncherView {
     ) -> Bool {
         let result = themeStore.reloadFromConfig()
         let backendReloaded = bridge.reloadConfig()
+        // A reload is how a manifest installed since launch is noticed, and
+        // spawning is not the main thread's work.
+        Task.detached(priority: .utility) { EngineBridge.shared.startConnectors() }
         let hotkeyWarning = LauncherHotkeyController.shared.reload()
         clipboardStore.reloadFromConfig()
         reloadQueryRetentionPolicy()
