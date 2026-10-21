@@ -82,6 +82,13 @@ const NO_RESULTS: &str = "No results";
 const TRANSLATE_PADDING_Y: f32 = 10.0;
 const TRANSLATE_SECTION_PADDING_Y: f32 = 8.0;
 const TRANSLATE_ICON: f32 = 44.0;
+/// The Open in Browser control under the sections, as the macOS button: a
+/// filled pill with the globe, the label, and the arrow at the far end.
+const TRANSLATE_FOOTER_PADDING_X: f32 = 12.0;
+const TRANSLATE_FOOTER_PADDING_Y: f32 = 8.0;
+const TRANSLATE_FOOTER_GAP: f32 = 8.0;
+const TRANSLATE_FOOTER_ICON: f32 = 14.0;
+const TRANSLATE_FOOTER_ARROW: f32 = 11.0;
 const TRANSLATE_BADGE: &str = "WEB";
 const TRANSLATE_PLACEHOLDER: &str = "Press Enter to translate";
 const TRANSLATING: &str = "Translating\u{2026}";
@@ -2860,37 +2867,50 @@ impl Launcher {
                 let footer = div()
                     .id("translate-open")
                     .mt(px(TRANSLATE_PADDING_Y))
-                    .py(px(TRANSLATE_SECTION_PADDING_Y))
+                    .px(px(TRANSLATE_FOOTER_PADDING_X))
+                    .py(px(TRANSLATE_FOOTER_PADDING_Y))
+                    .rounded(px(th.control_radius()))
+                    .bg(th.control_fill)
                     .flex()
                     .items_center()
-                    .gap(px(theme::SEARCH_GAP))
+                    .gap(px(TRANSLATE_FOOTER_GAP))
                     .text_size(px(th.font_size - 1.0))
-                    .text_color(th.text_secondary)
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(th.accent)
                     .cursor_pointer()
-                    .hover(|s| s.text_color(th.accent))
+                    .hover(|s| s.bg(th.tile_face()))
                     .on_click(cx.listener(move |this, _, _, _| this.open_url(&url)))
                     .child(
                         svg()
-                            .path(glyphs::LINK)
-                            .size(px(theme::SEARCH_ICON))
+                            .path(glyphs::GLOBE)
+                            .size(px(TRANSLATE_FOOTER_ICON))
                             .text_color(th.accent),
                     )
                     .child(div().flex_1().child(OPEN_IN_BROWSER))
                     .child(
                         svg()
-                            .path(glyphs::EXTERNAL_LINK)
-                            .size(px(theme::SEARCH_ICON))
-                            .text_color(th.text_muted),
+                            .path(glyphs::ARROW_UP_RIGHT)
+                            .size(px(TRANSLATE_FOOTER_ARROW))
+                            .text_color(th.accent),
                     );
+                // The sections scroll on their own; the footer stays put under
+                // them, as on macOS.
                 div()
-                    .id("translate")
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
                     .flex()
                     .flex_col()
-                    .child(source)
-                    .children(sections)
+                    .child(
+                        div()
+                            .id("translate")
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .flex()
+                            .flex_col()
+                            .child(source)
+                            .children(sections),
+                    )
                     .child(footer)
                     .into_any_element()
             }

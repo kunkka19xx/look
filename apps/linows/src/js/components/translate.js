@@ -1,6 +1,6 @@
 import * as layout from '../layout.js';
 import { translate, translateLanguages, copyToClipboard } from '../ipc.js';
-import { globeLg, copy as copyIcon, link as linkIcon, externalLink } from '../icons.js';
+import { globeLg, globe, copy as copyIcon, arrowUpRight } from '../icons.js';
 
 // Last resort when the backend call fails; the real list, labels included,
 // comes from `translate_languages`.
@@ -155,11 +155,11 @@ export async function perform(text) {
     });
     footer.innerHTML =
         '<span class="translate-footer-icon">' +
-        linkIcon +
+        globe +
         '</span>' +
         '<span class="translate-footer-text">Open in Browser</span>' +
         '<span class="translate-footer-arrow">' +
-        externalLink +
+        arrowUpRight +
         '</span>';
     panel.appendChild(footer);
     panel.appendChild(hintSlot());
