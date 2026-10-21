@@ -63,8 +63,19 @@ struct ExtendSettingsTab: View {
         .task {
             guard !loaded else { return }
             loaded = true
-            inventory = await Task.detached { EngineBridge.shared.installedInventory() }.value
+            await load()
         }
+        // Reloading is how an edit made from here takes effect, so the list
+        // has to follow it. Otherwise Edit, save, reload leaves the problems
+        // you just fixed still on screen.
+        .onReceive(NotificationCenter.default.publisher(for: .lookConfigReloaded)) { _ in
+            Task { await load() }
+        }
+    }
+
+    @MainActor
+    private func load() async {
+        inventory = await Task.detached { EngineBridge.shared.installedInventory() }.value
     }
 
     private var declarations: [Declaration] {

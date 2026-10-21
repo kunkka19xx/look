@@ -23,6 +23,10 @@ final class AppUIState: ObservableObject {
 
 extension Notification.Name {
     static let lookReloadConfigRequested = Notification.Name("look.reloadConfigRequested")
+    /// Everything a reload does has happened, connectors included, so a screen
+    /// showing what is declared can re-read it. Distinct from the request
+    /// above: an observer of that one races the reload it asked for.
+    static let lookConfigReloaded = Notification.Name("look.configReloaded")
     static let lookRefocusInputRequested = Notification.Name("look.refocusInputRequested")
     /// A row's `then` targets finished loading off the main actor, so the panel
     /// that showed none can build its action list now.
