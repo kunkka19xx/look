@@ -43,10 +43,12 @@ impl RowArgs {
     }
 
     /// The same row without what was typed to reach it. A chord carries no
-    /// query: `{query}` is the search text, and Ctrl+E is not that.
+    /// query: `{query}` is the search text, and Ctrl+E is not that. `{arg}` is
+    /// the rest of that same line, so it goes with it.
     pub fn context_without_query(&self) -> look_sources::RowContext {
         look_sources::RowContext {
             query: String::new(),
+            arg: String::new(),
             ..self.context()
         }
     }

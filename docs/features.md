@@ -119,17 +119,20 @@ This document tracks what `look` supports today and what is planned next.
 - your own rows from TOML files in `~/.look/sources/`, indexed and ranked alongside apps and files, with their own usage history
 - as many `.toml` files as you like in that directory, merged into one set of blocks (ids unique across all of them, `then` resolves across files); `LOOK_SOURCES_DIR` repoints the directory for dotfiles kept elsewhere
 - commands are shell text run by the user's login shell (`$SHELL -lc` on Unix, `cmd /D /S /C` on Windows), so a block can call the user's own script in any language; non-POSIX shells (fish, nu) fall back to `/bin/sh` rather than failing per-command
-- four block kinds, one producer key each: `do` (one row that performs steps), `dir` (children of one or more directories), `file` (lines of a text file), `run` (lines a command prints)
+- five block kinds, one producer key each: `do` (one row that performs steps), `dir` (children of one or more directories), `file` (lines of a text file), `run` (lines a command prints), `connect` (a program Look keeps running, which sends rows whenever it likes so they change without a reload)
 - `dir` rows stay real files and folders, so preview, reveal, copy, and the file verbs keep working on them
 - per-block verbs (`open`, `edit`, `terminal`, `reveal`) overriding the global preferred tools for that block's rows only
 - `then` targets reached with `Cmd+K` / `Ctrl+K`: a target that performs steps is an action, a target that produces rows is a drill-down (levels stack 5 deep, `Esc` walks back)
 - `applies` on a `do` block makes it an action on rows it did not produce: `"files"` / `"dirs"` / `"paths"` / `"apps"`, or `{ ext = [...] }` / `{ match = [...] }`, so a verb joins the `Cmd+K` menu of every matching row the index already found. Appended after the built-in verbs, capped at 10 per row, ordered by `bias`
 - placeholders in every declared command (`{id}`, `{title}`, `{path}`, `{dir}`, `{query}`, `{parent.*}`), shell-escaped on substitution, plus `LOOK_ID` / `LOOK_TITLE` / `LOOK_PATH` in the environment
+- `{arg}` in a producer makes the block one you type into: `newnote Meeting with Bob` runs it with `Meeting with Bob` as the argument, the row leads the results and shows what it will use. The opening word is the block's name or an alias
+- `:url` on any placeholder (`{path:url}`) percent-encodes the value for a command that builds a URL, since shell quoting protects the shell and not the query string: a file called `Notes & ideas (draft).md` would otherwise end the URL early. An encoded value is the one thing not shell-quoted, because the encoding already left nothing a shell reads as punctuation, so the URL can be written inside quotes as it must be
 - `confirm` question before a destructive block acts; `preview` command whose output fills the right panel for the selected row
 - row wire formats: tab-separated lines (`id<TAB>title<TAB>subtitle`) or `format = "json"` for per-row `path` and `icon`
 - an executable dropped in the sources directory is a `run` block with everything inferred, no declaration needed
 - `aliases`, `bias`, `icon`, and `enabled` per block; unknown keys reported, never fatal
 - `run` rows are refreshed on reload (`Cmd+Shift+;`) and cached in `~/.look/cache/rows/`, so a failed command keeps the last good rows and their ranking
+- a second directory, `~/.look/connectors/`, read with the same schema, for manifests an app installs rather than ones you write. A manifest's blocks are namespaced by its file name (`[notes]` in `myapp.toml` is `myapp.notes`), so an app cannot collide with your own blocks and uninstalling it is one file. `LOOK_CONNECTORS_DIR` repoints it
 - shared `core/sources` engine on macOS, Linux, and Windows. See [`docs/user-sources.md`](user-sources.md), and [lookbook](https://github.com/kunkka19xx/lookbook) for ready-made sources to copy
 
 ### Settings and runtime config

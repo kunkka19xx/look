@@ -157,6 +157,9 @@ pub struct Level {
 pub struct PreviewOutcome {
     pub text: String,
     pub error: Option<String>,
+    /// The same output read as a layout, when it is one. `text` is kept beside
+    /// it so a shell that does not draw blocks still shows something.
+    pub blocks: Vec<look_sources::DetailBlock>,
 }
 
 #[derive(Serialize, Default)]
@@ -174,7 +177,7 @@ pub struct RefreshOutcome {
 /// `None` when there is neither, which is every row until someone declares an
 /// `applies` block.
 pub fn block_detail(candidate_id: &str, row: &RowContext) -> Option<BlockDetail> {
-    let blocks = load_dir(&sources_dir(&home_dir()?)).blocks;
+    let blocks = declared(&home_dir()?).blocks;
     let block = CandidateIdKind::source_id_of(candidate_id)
         .and_then(|block_id| blocks.iter().find(|block| block.id == block_id));
 
@@ -322,7 +325,7 @@ pub fn block_summaries() -> Vec<BlockSummary> {
     let Some(home) = home_dir() else {
         return Vec::new();
     };
-    load_dir(&sources_dir(&home))
+    declared(&home)
         .blocks
         .into_iter()
         .map(|block| BlockSummary {
@@ -412,6 +415,9 @@ pub fn level(
         // The parent's own ancestors: inside this call the parent IS the row, so
         // a producer saying `{parent.path}` means the grandparent.
         parents,
+        // A drilled row was picked, not typed into: its block named the row,
+        // so there is no argument half of the line.
+        arg: String::new(),
     };
 
     let Some(home) = home_dir() else {
@@ -511,10 +517,15 @@ pub fn preview(candidate_id: &str, row: &RowContext) -> Option<PreviewOutcome> {
             DEFAULT_CAPTURE_TIMEOUT,
             MAX_CAPTURE_BYTES,
         ) {
-            Ok(text) => PreviewOutcome { text, error: None },
+            Ok(text) => PreviewOutcome {
+                blocks: look_sources::parse_detail(&text).unwrap_or_default(),
+                text,
+                error: None,
+            },
             Err(message) => PreviewOutcome {
                 text: String::new(),
                 error: Some(message),
+                blocks: Vec::new(),
             },
         },
     )
@@ -538,7 +549,7 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
     // failed, a block the time budget could not reach). Anything else in the
     // cache directory belongs to a block that no longer exists.
     let mut keep: BTreeSet<String> = BTreeSet::new();
-    for block in load_dir(&sources_dir(&home)).blocks {
+    for block in declared(&home).blocks {
         let Producer::Run {
             command,
             cwd,
@@ -595,22 +606,37 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
         ));
     }
 
-    // Only once the directory has actually been enumerated. `load_dir` answers
-    // an unreadable directory with zero blocks, exactly as it answers an empty
-    // one, and sweeping on that reading would drop every block's rows. Asking
-    // whether it exists is not the same question: a directory can be there and
-    // still refuse to be read.
-    if std::fs::read_dir(sources_dir(&home)).is_ok() {
+    // Only once the directories have actually been enumerated. `load_dir`
+    // answers an unreadable directory with zero blocks, exactly as it answers
+    // an empty one, and sweeping on that reading would drop every block's rows.
+    // Asking whether it exists is not the same question: a directory can be
+    // there and still refuse to be read. Both directories count, since `keep`
+    // is built from both and a missing connector block looks like a deleted one.
+    let connectors = look_sources::connectors_dir(&home);
+    let readable_enough = std::fs::read_dir(sources_dir(&home)).is_ok()
+        && (!connectors.exists() || std::fs::read_dir(&connectors).is_ok());
+    if readable_enough {
         crate::index::sweep_run_cache(&keep);
     }
 
     outcome
 }
 
+/// Every declared block, from both directories: the user's own in
+/// `~/.look/sources`, and the manifests apps install in `~/.look/connectors`.
+/// One function so a caller cannot read half the blocks by accident.
+pub fn declared(home: &Path) -> look_sources::Loaded {
+    let mut loaded = load_dir(&sources_dir(home));
+    loaded.absorb(look_sources::load_connectors(
+        &look_sources::connectors_dir(home),
+    ));
+    loaded
+}
+
 /// The block `block_id` names, read from the directory rather than a cache so
 /// an edited file takes effect on the next press.
 pub fn find_block(block_id: &str) -> Option<Block> {
-    load_dir(&sources_dir(&home_dir()?))
+    declared(&home_dir()?)
         .blocks
         .into_iter()
         .find(|block| block.id == block_id)
@@ -644,12 +670,45 @@ pub fn row_context(
     query: &str,
     parents: Vec<look_sources::ParentRow>,
 ) -> RowContext {
+    let arg = CandidateIdKind::source_id_of(candidate_id)
+        .and_then(find_block)
+        .filter(Block::takes_arg)
+        .map(|block| arg_of(&block, query))
+        .unwrap_or_default();
+
     RowContext {
         id: CandidateIdKind::source_row_id_of(candidate_id).to_string(),
         title: title.to_string(),
         path: path.to_string(),
         query: query.to_string(),
+        arg,
         parents,
+    }
+}
+
+/// `newnote Meeting with Bob` split in two: the word that names a block, and
+/// the argument after it. `None` when the line is one word, which names no
+/// argument at all.
+pub fn trigger_and_rest(query: &str) -> Option<(String, &str)> {
+    let (head, rest) = query.trim_start().split_once(char::is_whitespace)?;
+    let rest = rest.trim();
+    (!rest.is_empty()).then(|| (head.to_lowercase(), rest))
+}
+
+/// The argument half of a line that opens with one of `block`'s own words.
+///
+/// A line that does not open with one is not an argument at all - the row was
+/// reached by search or by a chord - so it reads as empty rather than as the
+/// whole query, which would create a note named after the search that found it.
+pub fn arg_of(block: &Block, query: &str) -> String {
+    let Some((head, rest)) = trigger_and_rest(query) else {
+        return String::new();
+    };
+    let mut names = std::iter::once(&block.name).chain(block.aliases.iter());
+    if names.any(|name| name.to_lowercase() == head) {
+        rest.to_string()
+    } else {
+        String::new()
     }
 }
 
@@ -809,11 +868,20 @@ mod tests {
             std::fs::create_dir_all(&dir).expect("fixture dir");
             std::fs::create_dir_all(&cache).expect("fixture cache");
             std::fs::write(dir.join("blocks.toml"), declarations).expect("fixture file");
+            let connectors = base.join("connectors");
+            std::fs::create_dir_all(&connectors).expect("fixture connectors");
             unsafe { std::env::set_var(look_sources::SOURCES_DIR_ENV, &dir) };
+            unsafe { std::env::set_var(look_sources::CONNECTORS_DIR_ENV, &connectors) };
             // A refresh sweeps the row cache, so it has to be one of ours: the
             // real one belongs to whoever is running the tests.
             unsafe { std::env::set_var(crate::index::ROWS_CACHE_DIR_ENV, &cache) };
             Self { base, dir, cache }
+        }
+
+        /// A manifest an app installed, in the connectors directory.
+        fn manifest(&self, name: &str, declarations: &str) {
+            let path = self.base.join("connectors").join(name);
+            std::fs::write(path, declarations).expect("manifest file");
         }
 
         /// Rows a `run` block is pretending to have produced earlier.
@@ -836,6 +904,7 @@ mod tests {
     impl Drop for Fixture {
         fn drop(&mut self) {
             unsafe { std::env::remove_var(look_sources::SOURCES_DIR_ENV) };
+            unsafe { std::env::remove_var(look_sources::CONNECTORS_DIR_ENV) };
             unsafe { std::env::remove_var(crate::index::ROWS_CACHE_DIR_ENV) };
             let _ = std::fs::remove_dir_all(&self.base);
         }
@@ -853,6 +922,313 @@ mod tests {
 
     fn descend(block: &str, parent_id: &str, parent_path: &str) -> Level {
         level(block, parent_id, "parent", parent_path, "", Vec::new())
+    }
+
+    #[test]
+    fn a_block_that_takes_the_line_gets_what_follows_its_own_word() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new(
+            "arg",
+            "[newnote]\naliases = [\"nn\"]\ndo = [\"open myapp://new?name={arg:url}\"]\n",
+        );
+        let id = CandidateIdKind::source_row_candidate_id("newnote", &[], "");
+        let arg_of_line = |line: &str| row_context(&id, "New note", "", line, Vec::new()).arg;
+
+        assert_eq!(arg_of_line("newnote Meeting with Bob"), "Meeting with Bob");
+        assert_eq!(arg_of_line("nn Meeting with Bob"), "Meeting with Bob");
+        assert_eq!(arg_of_line("NEWNOTE Meeting with Bob"), "Meeting with Bob");
+        // Found by search rather than typed at: the query that found the row is
+        // not an argument, and handing it over would create a note called
+        // "meeting".
+        assert_eq!(arg_of_line("meeting"), "");
+        assert_eq!(arg_of_line("newnote"), "");
+    }
+
+    /// Also beside the sources tests: a declared control is read from the
+    /// sources directory, the state `GUARD` serialises.
+    /// A whole connector: a real child, the hello it answers, the rows it
+    /// pushes, and the cache they land in.
+    // The fixture connector is a shell script, and a connector is spawned
+    // through the platform's own shell, which on Windows is `cmd`.
+    #[cfg(unix)]
+    #[test]
+    fn a_connector_pushes_rows_into_the_cache() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("connector", "");
+        let script = fixture.base.join("notes-connector");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nread _hello\n\
+             printf '{\"op\":\"ready\",\"capabilities\":[\"rows\"]}\\n'\n\
+             printf '{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":\
+             [{\"id\":\"a\",\"title\":\"Alpha\"}]}\\n'\n\
+             sleep 5\n",
+        )
+        .expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        fixture.manifest(
+            "myapp.toml",
+            &format!("[notes]\nconnect = \"{}\"\n", script.display()),
+        );
+
+        let told = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = told.clone();
+        crate::connectors::start(
+            &fixture.base,
+            std::sync::Arc::new(move |block: &str| {
+                seen.lock().unwrap().push(block.to_string());
+            }),
+        );
+
+        // Nothing blocks on a connector, so the test waits the way the app
+        // does: it carries on and looks again.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while told.lock().unwrap().is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        crate::connectors::stop();
+
+        assert_eq!(told.lock().unwrap().as_slice(), ["myapp.notes"]);
+        let cached = fixture.cache.join("myapp.notes");
+        let text = std::fs::read_to_string(&cached).expect("rows cached");
+        assert!(text.contains("\"Alpha\""), "{text}");
+    }
+
+    /// "Restarted on next use": a connector that exited comes back when the
+    /// launcher next opens, without re-reading any directory.
+    #[cfg(unix)]
+    #[test]
+    fn a_dead_connector_is_restarted() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("restart", "");
+        let script = fixture.base.join("once");
+        // Sends its rows and exits, which is the shape of a connector that
+        // crashed as far as Look can tell. The rows carry its pid, so the
+        // restart is visible: identical rows would be deduped, correctly.
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nread _hello\n\
+             printf '{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":\
+             [{\"id\":\"a\",\"title\":\"Alpha %s\"}]}\\n' \"$$\"\n",
+        )
+        .expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        fixture.manifest(
+            "myapp.toml",
+            &format!("[notes]\nconnect = \"{}\"\n", script.display()),
+        );
+
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = count.clone();
+        let on_rows: crate::connectors::OnRows = std::sync::Arc::new(move |_block: &str| {
+            seen.fetch_add(1, std::sync::atomic::Ordering::Release);
+        });
+
+        let waited = |want: usize| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while count.load(std::sync::atomic::Ordering::Acquire) < want
+                && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+        };
+
+        crate::connectors::start(&fixture.base, on_rows.clone());
+        waited(1);
+
+        // The frame is handled before the shell has necessarily exited, and
+        // `restart_dead` restarts nothing while it is still alive. Asking once
+        // is a race; asking until it answers is the behaviour being tested.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while count.load(std::sync::atomic::Ordering::Acquire) < 2
+            && std::time::Instant::now() < deadline
+        {
+            crate::connectors::restart_dead(on_rows.clone());
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        crate::connectors::stop();
+
+        assert_eq!(count.load(std::sync::atomic::Ordering::Acquire), 2);
+    }
+
+    /// A connector watching something unchanged pushes the same rows over and
+    /// over, and that should cost nothing: no write, and nothing re-read.
+    #[cfg(unix)]
+    #[test]
+    fn the_same_rows_again_are_not_news() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("dedupe", "");
+        let script = fixture.base.join("twice");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nread _hello\n\
+             row='{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":\
+             [{\"id\":\"a\",\"title\":\"Alpha\"}]}'\n\
+             printf '%s\\n' \"$row\"\nsleep 0.2\nprintf '%s\\n' \"$row\"\n",
+        )
+        .expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        fixture.manifest(
+            "myapp.toml",
+            &format!("[notes]\nconnect = \"{}\"\n", script.display()),
+        );
+
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = count.clone();
+        crate::connectors::start(
+            &fixture.base,
+            std::sync::Arc::new(move |_block: &str| {
+                seen.fetch_add(1, std::sync::atomic::Ordering::Release);
+            }),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(900));
+        crate::connectors::stop();
+
+        assert_eq!(count.load(std::sync::atomic::Ordering::Acquire), 1);
+    }
+
+    /// `lines()` would read a frame of any length into memory, so a connector
+    /// could hand Look a gigabyte. The cap is the whole defence.
+    #[cfg(unix)]
+    #[test]
+    fn an_oversized_frame_ends_the_connector_rather_than_look() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("oversized", "");
+        let script = fixture.base.join("flood");
+        // One frame of two million bytes, with no newline until the end.
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nread _hello\n\
+             printf '{\"op\":\"rows\",\"block\":\"myapp.notes\",\"rows\":[{\"id\":\"a\",\"title\":\"'\n\
+             i=0\nwhile [ $i -lt 2000 ]; do printf '%01000d' 0; i=$((i+1)); done\n\
+             printf '\"}]}\\n'\n",
+        )
+        .expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        fixture.manifest(
+            "myapp.toml",
+            &format!("[notes]\nconnect = \"{}\"\n", script.display()),
+        );
+
+        let fired = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = fired.clone();
+        crate::connectors::start(
+            &fixture.base,
+            std::sync::Arc::new(move |_block: &str| {
+                seen.fetch_add(1, std::sync::atomic::Ordering::Release);
+            }),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(900));
+        crate::connectors::stop();
+
+        // Nothing stored, and Look is still here to assert it.
+        assert_eq!(fired.load(std::sync::atomic::Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn an_installed_manifest_declares_blocks_under_its_own_name() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("manifest", "[notes]\ndo = [\"true\"]\n");
+        fixture.manifest("myapp.toml", "[notes]\ndo = [\"true\"]\n");
+        let home = fixture.base.clone();
+
+        let ids: Vec<String> = declared(&home)
+            .blocks
+            .into_iter()
+            .map(|block| block.id)
+            .collect();
+        // The user's `notes` and the app's `notes` are different blocks, which
+        // is the whole point of giving an app its own namespace.
+        assert!(ids.contains(&"notes".to_string()));
+        assert!(ids.contains(&"myapp.notes".to_string()));
+
+        assert!(find_block("myapp.notes").is_some());
+    }
+
+    #[test]
+    fn a_block_may_not_borrow_a_system_control() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new(
+            "control",
+            "[lamp]\ncontrol = \"bluetooth\"\ndo = [\"true\"]\n\n[plain]\ndo = [\"true\"]\n",
+        );
+
+        // Borrowing a system control is refused: the row runs `true` and has
+        // no business offering the machine's Bluetooth.
+        let lamp = CandidateIdKind::source_row_candidate_id("lamp", &[], "");
+        assert!(crate::qactions::descriptors_for(&lamp, "action").is_empty());
+
+        // No table on any platform names a declared row, so a block that says
+        // nothing carries nothing either: the declaration is the whole binding.
+        let plain = CandidateIdKind::source_row_candidate_id("plain", &[], "");
+        assert!(crate::qactions::descriptors_for(&plain, "action").is_empty());
+    }
+
+    /// Lives beside the sources tests because it needs the declarations on
+    /// disk, which is the state `GUARD` serialises.
+    #[test]
+    fn the_row_a_line_names_leads_the_results_and_shows_its_argument() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new(
+            "argsearch",
+            "[newnote]\naliases = [\"nn\"]\ndo = [\"open myapp://new?name={arg:url}\"]\n",
+        );
+        let id = CandidateIdKind::source_row_candidate_id("newnote", &[], "");
+        let mut bundle = look_indexing::Candidate::new(
+            &id,
+            look_indexing::CandidateKind::Action,
+            "New note",
+            "",
+        );
+        // What the indexer gives a bundle row, so the test also shows the
+        // argument replacing it rather than landing on a blank subtitle.
+        bundle.subtitle = Some("1 step".into());
+        let engine = crate::QueryEngine::new(vec![
+            bundle,
+            look_indexing::Candidate::new(
+                "file:/tmp/meeting-notes.md",
+                look_indexing::CandidateKind::File,
+                "meeting-notes.md",
+                "/tmp/meeting-notes.md",
+            ),
+        ]);
+
+        // Scored as one long query, "New note" would lose to the file whose
+        // name actually contains the words.
+        let results = engine.search("newnote Meeting with Bob", 5);
+        assert_eq!(results[0].id, id);
+        assert_eq!(results[0].subtitle.as_deref(), Some("Meeting with Bob"));
+
+        // The shells read the compact payload, which builds its rows straight
+        // from `search_scored`. Decorating only in `search` left the app
+        // showing the block's own subtitle and no sign of the argument.
+        let scored = engine.search_scored("newnote Meeting with Bob", 5);
+        assert_eq!(scored[0].0.subtitle.as_deref(), Some("Meeting with Bob"));
+
+        // The block's own word alone is just its row, found the ordinary way.
+        let plain = engine.search("newnote", 5);
+        assert_eq!(plain[0].id, id);
+        assert_eq!(plain[0].subtitle.as_deref(), Some("1 step"));
     }
 
     #[test]

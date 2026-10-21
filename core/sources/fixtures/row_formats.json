@@ -1,0 +1,76 @@
+{
+  "_": "Golden fixture for the user-declared source row formats. An outside producer can diff against this; a change here is a change to a public contract.",
+  "lines": {
+    "input": "look\nlook-cli\tLook CLI\nbranch\tmain\tcurrent branch\n\n   \n\tno id\nextra\tfields\tare\tdropped\n",
+    "rows": [
+      {
+        "id": "look",
+        "title": "look",
+        "subtitle": null,
+        "path": null,
+        "icon": null
+      },
+      {
+        "id": "look-cli",
+        "title": "Look CLI",
+        "subtitle": null,
+        "path": null,
+        "icon": null
+      },
+      {
+        "id": "branch",
+        "title": "main",
+        "subtitle": "current branch",
+        "path": null,
+        "icon": null
+      },
+      {
+        "id": "extra",
+        "title": "fields",
+        "subtitle": "are",
+        "path": null,
+        "icon": null
+      }
+    ]
+  },
+  "json": {
+    "input": "[{\"id\": \"inv-204\", \"title\": \"Invoice 204\", \"subtitle\": \"unpaid\", \"path\": \"~/Documents/inv-204.pdf\", \"icon\": \"doc.fill\"}, {\"id\": \"inv-205\"}, {\"id\": 4100, \"title\": \"port\"}, \"main\", {\"title\": \"no id\"}, {\"id\": \"x\", \"unknown\": \"ignored\"}]",
+    "rows": [
+      {
+        "id": "inv-204",
+        "title": "Invoice 204",
+        "subtitle": "unpaid",
+        "path": "~/Documents/inv-204.pdf",
+        "icon": "doc.fill"
+      },
+      {
+        "id": "inv-205",
+        "title": "inv-205",
+        "subtitle": null,
+        "path": null,
+        "icon": null
+      },
+      {
+        "id": "4100",
+        "title": "port",
+        "subtitle": null,
+        "path": null,
+        "icon": null
+      },
+      {
+        "id": "main",
+        "title": "main",
+        "subtitle": null,
+        "path": null,
+        "icon": null
+      },
+      {
+        "id": "x",
+        "title": "x",
+        "subtitle": null,
+        "path": null,
+        "icon": null
+      }
+    ]
+  }
+}

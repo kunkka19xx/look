@@ -20,6 +20,12 @@ private func look_record_usage_json(_ candidateID: UnsafePointer<CChar>?, _ acti
 nonisolated
 private func look_free_cstring(_ ptr: UnsafeMutablePointer<CChar>?)
 
+@_silgen_name("look_connectors_start")
+private nonisolated func look_connectors_start()
+
+@_silgen_name("look_connectors_stop")
+private nonisolated func look_connectors_stop()
+
 @_silgen_name("look_reload_config")
 nonisolated
 private func look_reload_config() -> Bool
@@ -270,7 +276,7 @@ private func look_refresh_run_blocks_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_preview_json")
 nonisolated
-private func look_source_preview_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private func look_source_preview_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_blocks_json")
 nonisolated
@@ -282,7 +288,7 @@ private func look_source_rows_json(_ blockID: UnsafePointer<CChar>?, _ parentCan
 
 @_silgen_name("look_source_block_json")
 nonisolated
-private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_perform_block_json")
 nonisolated
@@ -345,6 +351,34 @@ nonisolated struct LunarDate: Decodable {
     let month: Int
     let year: Int
     let leap: Bool
+}
+
+/// The six strings every row-scoped export takes, held as C pointers for one
+/// call. Spelled out per call site it is six nested closures, four times over,
+/// and the way one of them quietly loses an argument.
+private nonisolated func withRowStrings<T>(
+    _ first: String,
+    _ row: RowRef,
+    _ query: String,
+    _ ancestorsJSON: String,
+    _ body: (
+        UnsafePointer<CChar>, UnsafePointer<CChar>, UnsafePointer<CChar>,
+        UnsafePointer<CChar>, UnsafePointer<CChar>, UnsafePointer<CChar>
+    ) -> T
+) -> T {
+    first.withCString { first in
+        row.id.withCString { id in
+            row.title.withCString { title in
+                row.path.withCString { path in
+                    query.withCString { query in
+                        ancestorsJSON.withCString { ancestors in
+                            body(first, id, title, path, query, ancestors)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 final class EngineBridge: @unchecked Sendable {
@@ -595,6 +629,19 @@ final class EngineBridge: @unchecked Sendable {
 
     nonisolated func reloadConfig() -> Bool {
         look_reload_config()
+    }
+
+    /// Starts every declared connector, and restarts any that died. Safe to
+    /// call repeatedly: a reload is how a manifest installed since launch is
+    /// noticed. Spawns processes, so call it off the main thread.
+    nonisolated func startConnectors() {
+        look_connectors_start()
+    }
+
+    /// Ends them. Their rows stay cached, so the next launch shows what they
+    /// last sent while they start again.
+    nonisolated func stopConnectors() {
+        look_connectors_stop()
     }
 
     /// Loads the full /todo task set from the shared core backend.
@@ -1075,19 +1122,13 @@ final class EngineBridge: @unchecked Sendable {
     /// The user-declared block a row belongs to, with the exact steps Enter will
     /// perform, and the actions declared for rows like it. Reads the sources
     /// directory, so call it off the main thread.
+    /// `query` is not a nicety: a block taking `{arg}` expands against it, so
+    /// omitting it previews an empty argument Enter would not run.
     nonisolated func sourceBlock(
-        candidateID: String, row: RowRef, ancestorsJSON: String = "[]"
+        candidateID: String, row: RowRef, query: String = "", ancestorsJSON: String = "[]"
     ) -> SourceBlock? {
-        let ptr = candidateID.withCString { candidate in
-            row.id.withCString { id in
-                row.title.withCString { title in
-                    row.path.withCString { path in
-                        ancestorsJSON.withCString { ancestors in
-                            look_source_block_json(candidate, id, title, path, ancestors)
-                        }
-                    }
-                }
-            }
+        let ptr = withRowStrings(candidateID, row, query, ancestorsJSON) {
+            look_source_block_json($0, $1, $2, $3, $4, $5)
         }
         guard let ptr else { return nil }
         defer { look_free_cstring(ptr) }
@@ -1102,19 +1143,9 @@ final class EngineBridge: @unchecked Sendable {
         blockID: String, parentCandidateID: String, parentTitle: String, parentPath: String,
         query: String, ancestorsJSON: String = "[]"
     ) -> SourceLevel? {
-        let ptr = blockID.withCString { block in
-            parentCandidateID.withCString { parent in
-                parentTitle.withCString { title in
-                    parentPath.withCString { path in
-                        query.withCString { query in
-                            ancestorsJSON.withCString { ancestors in
-                                look_source_rows_json(
-                                    block, parent, title, path, query, ancestors)
-                            }
-                        }
-                    }
-                }
-            }
+        let parent = RowRef(id: parentCandidateID, title: parentTitle, path: parentPath)
+        let ptr = withRowStrings(blockID, parent, query, ancestorsJSON) {
+            look_source_rows_json($0, $1, $2, $3, $4, $5)
         }
         guard let ptr else { return nil }
         defer { look_free_cstring(ptr) }
@@ -1174,18 +1205,10 @@ final class EngineBridge: @unchecked Sendable {
     /// A block's declared `preview`, run against the selected row. Nil when the
     /// block declares none. Runs a command - call off the main thread.
     nonisolated func sourcePreview(
-        candidateID: String, row: RowRef, ancestorsJSON: String = "[]"
+        candidateID: String, row: RowRef, query: String = "", ancestorsJSON: String = "[]"
     ) -> SourcePreview? {
-        let ptr = candidateID.withCString { candidate in
-            row.id.withCString { id in
-                row.title.withCString { title in
-                    row.path.withCString { path in
-                        ancestorsJSON.withCString { ancestors in
-                            look_source_preview_json(candidate, id, title, path, ancestors)
-                        }
-                    }
-                }
-            }
+        let ptr = withRowStrings(candidateID, row, query, ancestorsJSON) {
+            look_source_preview_json($0, $1, $2, $3, $4, $5)
         }
         guard let ptr else { return nil }
         defer { look_free_cstring(ptr) }
@@ -1214,19 +1237,8 @@ final class EngineBridge: @unchecked Sendable {
         ancestorsJSON: String = "[]",
         asTarget: Bool = false
     ) -> PerformBlockOutcome {
-        let ptr = blockID.withCString { block in
-            row.id.withCString { id in
-                row.title.withCString { title in
-                    row.path.withCString { path in
-                        query.withCString { query in
-                            ancestorsJSON.withCString { ancestors in
-                                look_perform_block_json(
-                                    block, id, title, path, query, ancestors, asTarget)
-                            }
-                        }
-                    }
-                }
-            }
+        let ptr = withRowStrings(blockID, row, query, ancestorsJSON) {
+            look_perform_block_json($0, $1, $2, $3, $4, $5, asTarget)
         }
         // A failure carries a reason. An empty `errors` with nothing performed
         // means something else entirely (a block that produces rows), and the
@@ -1578,6 +1590,14 @@ nonisolated struct RowRef {
         title = result.title
         path = result.path
     }
+
+    /// A row the caller already holds as three strings, for the levels: there
+    /// the row is the parent that was drilled from, not a selected result.
+    init(id: String, title: String, path: String) {
+        self.id = id
+        self.title = title
+        self.path = path
+    }
 }
 
 nonisolated struct SourceBlock: Decodable {
@@ -1626,6 +1646,52 @@ nonisolated struct RunBlockRefreshOutcome: Decodable {
 nonisolated struct SourcePreview: Decodable {
     let text: String
     let error: String?
+    /// The same output read as a layout, empty when it was plain text.
+    let blocks: [DetailBlock]
+}
+
+/// One piece of a row's panel, as the core resolved it. The cases are what the
+/// app already draws: fields and items come from a control's info, code from
+/// the steps.
+nonisolated enum DetailBlock: Decodable {
+    case fields([DetailField])
+    case list([DetailItem])
+    case text(String)
+    case code(language: String?, text: String)
+
+    private enum Keys: String, CodingKey {
+        case type, rows, items, text, language
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: Keys.self)
+        switch try container.decode(String.self, forKey: .type) {
+        case "fields":
+            self = .fields(try container.decode([DetailField].self, forKey: .rows))
+        case "list":
+            self = .list(try container.decode([DetailItem].self, forKey: .items))
+        case "text":
+            self = .text(try container.decode(String.self, forKey: .text))
+        case "code":
+            self = .code(
+                language: try container.decodeIfPresent(String.self, forKey: .language),
+                text: try container.decode(String.self, forKey: .text))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .type, in: container, debugDescription: "unknown block \(other)")
+        }
+    }
+}
+
+nonisolated struct DetailField: Decodable, Hashable {
+    let label: String
+    let value: String
+}
+
+nonisolated struct DetailItem: Decodable, Hashable {
+    let id: String?
+    let label: String
+    let on: Bool?
 }
 
 /// How performing a block went. `errors` is empty when every step was spawned;

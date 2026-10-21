@@ -54,6 +54,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // per 12h). Look ships via Homebrew, so this never self-installs - it
         // just surfaces a notice linking to the release page.
         UpdateChecker.shared.checkForUpdates()
+
+        // Connectors are other people's processes, so they start off the main
+        // thread and after everything the user can see is already up.
+        Task.detached(priority: .utility) { EngineBridge.shared.startConnectors() }
+    }
+
+    /// A connector leads its own process group, so it would outlive Look
+    /// rather than being cleaned up with it.
+    func applicationWillTerminate(_ notification: Notification) {
+        EngineBridge.shared.stopConnectors()
     }
 
     /// Build the launcher window in AppKit, host ContentView in it, and leave

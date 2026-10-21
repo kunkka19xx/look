@@ -99,11 +99,15 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # There is no root Cargo.toml, so the default `workspaces: "."` caches
           # nothing and every run recompiles from scratch.
           workspaces: |
             core
             bridge/ffi
+
+      - name: Check core dependency direction
+        run: ./scripts/check-core-deps.sh
 
       - name: Check formatting (core workspace)
         run: cargo fmt --all --manifest-path core/Cargo.toml -- --check
@@ -132,6 +136,8 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
@@ -189,6 +195,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # There is no root Cargo.toml, so the default `workspaces: "."` caches
           # nothing and every run recompiles from scratch.
           workspaces: |
@@ -221,6 +228,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # There is no root Cargo.toml, so the default `workspaces: "."` caches
           # nothing and every run recompiles from scratch.
           workspaces: |
@@ -264,6 +272,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # There is no root Cargo.toml, so the default `workspaces: "."` caches
           # nothing and every run recompiles from scratch.
           workspaces: |
@@ -322,6 +331,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # There is no root Cargo.toml, so the default `workspaces: "."` caches
           # nothing and every run recompiles from scratch.
           workspaces: |
@@ -410,6 +420,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: |
             core
             apps/linows
@@ -455,6 +466,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: apps/linows
           cache-targets: false
 

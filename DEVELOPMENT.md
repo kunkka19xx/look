@@ -213,7 +213,7 @@ ARCHS=x86_64 ./scripts/build-release.sh 1.0.0   # Intel
 
 The Homebrew cask lives in [homebrew/cask](https://github.com/Homebrew/homebrew-cask/blob/main/Casks/l/look.rb). BrewTestBot bumps it automatically after a GitHub release; if it misses one, run `brew bump-cask-pr --version <version> look`. Other changes (artifact names, minimum macOS, zap paths) need a regular pull request editing the cask.
 
-The cask currently has a single `url` and `sha256` pointing at the arm64 asset, so Intel users who run `brew install --cask look` get an arm64 build that cannot launch. Serving them needs `on_arm` and `on_intel` stanzas, which is a manual cask pull request; BrewTestBot's auto-bump keeps working afterwards.
+The cask serves both architectures through an `arch intel: "-x86_64"` stanza: one `url` interpolates `#{arch}` into the asset name, and `sha256` takes an `arm:` and an `intel:` value (the hashes are in `Look-<version>-manifest.txt` and `Look-<version>-manifest-x86_64.txt`). Keep the Intel asset name in step with that suffix, or the cask breaks for Intel users. BrewTestBot's auto-bump updates both hashes.
 
 The Nix package for macOS pins that same asset by hash, so it needs the same bump. `update-nix-darwin.yml` does it for you: it waits for the macOS release workflow to finish, rewrites the version and hash, and opens a PR that the `build-darwin` check verifies before merge. To do it by hand, or to backfill an older release:
 

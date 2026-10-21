@@ -468,11 +468,35 @@ impl QueryEngine {
             self.search_text_query(&parsed_query.normalized_query, kind_filter, fetch)
         };
 
+        // A line opening with an argument-taking block's word names that row
+        // outright, so it leads whatever the text score made of the rest.
+        let named = self.arg_row(query);
+        let indices = match named.as_ref() {
+            Some((named, _)) => {
+                let named = *named;
+                let mut pinned = vec![(named, crate::config::PIN_ARG_ROW)];
+                pinned.extend(indices.into_iter().filter(|(idx, _)| *idx != named));
+                pinned
+            }
+            None => indices,
+        };
+
         // Materialize Candidates only for the final top-K - the hot scoring loop
         // kept everything as (index, score) pairs to avoid per-push clones.
         top_limit(self.drop_source_shadowed(indices), limit)
             .into_iter()
-            .map(|(idx, score)| (self.candidates[idx as usize].candidate.clone(), score))
+            .map(|(idx, score)| {
+                let mut candidate = self.candidates[idx as usize].candidate.clone();
+                // The row says what it will do with the line, so Enter is not
+                // a guess. Here, not in `search`: the compact payload the
+                // shells read builds its rows straight from this.
+                if let Some((named, arg)) = named.as_ref()
+                    && *named == idx
+                {
+                    candidate.subtitle = Some(arg.clone().into());
+                }
+                (candidate, score)
+            })
             .collect()
     }
 
