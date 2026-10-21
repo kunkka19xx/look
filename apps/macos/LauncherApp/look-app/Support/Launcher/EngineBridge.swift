@@ -274,6 +274,9 @@ private func look_refresh_run_blocks_json() -> UnsafeMutablePointer<CChar>?
 nonisolated
 private func look_source_preview_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_installed_json")
+private nonisolated func look_installed_json() -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_source_blocks_json")
 nonisolated
 private func look_source_blocks_json() -> UnsafeMutablePointer<CChar>?
@@ -1191,6 +1194,17 @@ final class EngineBridge: @unchecked Sendable {
         return try? JSONDecoder().decode(SourcePreview.self, from: data)
     }
 
+    /// Everything declared, with the state the Extend screen shows. Reads both
+    /// source directories, so call it when that screen opens.
+    nonisolated func installedInventory() -> Inventory {
+        guard let ptr = look_installed_json() else { return .empty }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return .empty }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return (try? decoder.decode(Inventory.self, from: data)) ?? .empty
+    }
+
     /// Every declared block, for the row-icon cache. Reads the sources
     /// directory, so call it off the main thread.
     nonisolated func sourceBlocks() -> [SourceBlockSummary] {
@@ -1598,6 +1612,36 @@ nonisolated struct SourceBlockTarget: Decodable, Identifiable {
 
 /// A declared block as the row layer needs it: what to call it and what icon it
 /// asked for. Cached per launcher open so rendering a row never touches disk.
+/// What the Extend screen shows: what is declared, and what could not be.
+nonisolated struct Inventory: Decodable {
+    let blocks: [InstalledBlock]
+    let problems: [Reported]
+
+    static let empty = Inventory(blocks: [], problems: [])
+}
+
+/// A file that declared something Look could not use.
+nonisolated struct Reported: Decodable, Identifiable {
+    let file: String
+    let message: String
+    var id: String { "\(file)\u{1}\(message)" }
+}
+
+/// One declared block as the Extend screen lists it.
+nonisolated struct InstalledBlock: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let icon: String?
+    /// `do`, `dir`, `file`, `run` or `connect`.
+    let kind: String
+    let enabled: Bool
+    let file: String
+    /// An app installed it, rather than the user writing it.
+    let fromApp: Bool
+    /// Only meaningful for `connect`: whether its process is up.
+    let running: Bool
+}
+
 nonisolated struct SourceBlockSummary: Decodable {
     let id: String
     let name: String

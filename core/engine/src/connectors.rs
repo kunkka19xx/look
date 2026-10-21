@@ -129,6 +129,16 @@ fn launch(running: &mut BTreeMap<String, Running>, id: String, found: Declared, 
     }
 }
 
+/// The blocks whose connector is running right now, for a screen that lists
+/// what is installed and what is actually up.
+pub fn running_ids() -> std::collections::BTreeSet<String> {
+    let mut running = locked();
+    running
+        .iter_mut()
+        .filter_map(|(id, alive)| matches!(alive.child.try_wait(), Ok(None)).then(|| id.clone()))
+        .collect()
+}
+
 /// Ends every connector. The rows they sent stay cached, which is what a user
 /// who quit mid-sync should see on the way back in.
 pub fn stop() {

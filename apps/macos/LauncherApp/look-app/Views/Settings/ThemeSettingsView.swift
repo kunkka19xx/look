@@ -46,6 +46,7 @@ struct ThemeSettingsView: View {
                 tabButton(title: "Appearance", index: 0)
                 tabButton(title: "Advanced", index: 1)
                 tabButton(title: "Shortcuts", index: 2)
+                tabButton(title: "Extend", index: 3)
             }
 
             Group {
@@ -53,14 +54,21 @@ struct ThemeSettingsView: View {
                     appearanceTab
                 } else if selectedTab == 1 {
                     backgroundTab
-                } else {
+                } else if selectedTab == 2 {
                     shortcutsTab
+                } else {
+                    extendTab
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }
         .overlay(alignment: .bottomTrailing) {
-            saveControls
+            // Nothing on the Extend tab is a setting to save, and a Save
+            // button floating over a read-only list reads as "this did not
+            // take" to anyone who lands there.
+            if selectedTab != 3 {
+                saveControls
+            }
         }
         .onExitCommand {
             closeSettingsPanel()

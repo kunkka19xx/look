@@ -385,6 +385,12 @@ pub extern "C" fn look_source_rows_json(
 }
 
 /// Every declared block as `{id, name, icon}`, for the shell's row-icon cache.
+/// Everything declared, for the Extend screen. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_installed_json() -> *mut c_char {
+    std::panic::catch_unwind(sources_api::look_installed_json_impl).unwrap_or(std::ptr::null_mut())
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn look_source_blocks_json() -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(
