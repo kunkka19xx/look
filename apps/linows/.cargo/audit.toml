@@ -1,0 +1,8 @@
+# RUSTSEC-2026-0194/-0195 (quick-xml <0.41) still enter via wayland-scanner, a
+# build-time proc-macro that parses trusted local protocol XML (no runtime
+# attack surface). wayland-rs has no release or master commit on quick-xml
+# >=0.41 yet. The runtime-exposed path (the Tauri backup -> plist) is fixed by
+# bumping plist to 1.10 (quick-xml 0.41) in the lockfile.
+# Drop these ignores once wayland-rs moves to quick-xml >=0.41.
+[advisories]
+ignore = ["RUSTSEC-2026-0194", "RUSTSEC-2026-0195"]
