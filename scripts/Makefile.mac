@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-XCODE_PROJECT := apps/macos/LauncherApp/look-app.xcodeproj
+XCODE_PROJECT := apps/macos/look-app.xcodeproj
 XCODE_SCHEME := Look
 XCODE_CONFIG := Debug
 XCODE_DERIVED_DATA := .build/xcode
@@ -20,8 +20,8 @@ APP_DEBUG_DYLIB := $(APP_BUNDLE)/Contents/MacOS/Look.debug.dylib
 # dependency bump changes no .rs), deletions (removing a file makes nothing
 # newer), and the CONFIGURATION - the phase copies debug and release output to
 # the SAME path, so switching profiles would otherwise link the wrong one.
-FFI_STATIC_LIB := apps/macos/LauncherApp/RustBuild/liblook_ffi.a
-FFI_STAMP := apps/macos/LauncherApp/RustBuild/.build-identity
+FFI_STATIC_LIB := apps/macos/RustBuild/liblook_ffi.a
+FFI_STAMP := apps/macos/RustBuild/.build-identity
 RUST_SOURCE_DIRS := core bridge
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
@@ -148,7 +148,7 @@ app-install-dev: app-build app-ensure-bundle
 	@# Keep the Apple Events entitlement (Empty Trash via Finder) the re-sign
 	@# would otherwise strip, so dev matches the notarized release.
 	@codesign --force --sign "$(DEV_SIGN_IDENTITY)" --deep \
-		--entitlements apps/macos/LauncherApp/look-app/Look.entitlements \
+		--entitlements apps/macos/look-app/Look.entitlements \
 		"$(DEV_APP_INSTALL_BUNDLE)" >/dev/null
 	@"$(LSREGISTER)" -f "$(DEV_APP_INSTALL_BUNDLE)" >/dev/null
 	@echo "Installed $(DEV_APP_NAME) with bundle id $(DEV_APP_ID), signed by $(DEV_SIGN_IDENTITY)"

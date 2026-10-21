@@ -12,15 +12,15 @@
 #
 # Run standalone (from any cwd) to test:
 #   ARCHS=x86_64 CONFIGURATION=Release \
-#   PROJECT_DIR="$PWD/apps/macos/LauncherApp" ./apps/macos/LauncherApp/build-rust-ffi.sh
+#   PROJECT_DIR="$PWD/apps/macos" ./apps/macos/build-rust-ffi.sh
 
 set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 ARCHS="${ARCHS:-$(uname -m)}"
 
-FFI_MANIFEST="$PROJECT_DIR/../../../bridge/ffi/Cargo.toml"
-FFI_TARGET_DIR="$PROJECT_DIR/../../../bridge/ffi/target"
+FFI_MANIFEST="$PROJECT_DIR/../../bridge/ffi/Cargo.toml"
+FFI_TARGET_DIR="$PROJECT_DIR/../../bridge/ffi/target"
 OUT_LIB="$PROJECT_DIR/RustBuild/liblook_ffi.a"
 CARGO_LOG="$PROJECT_DIR/RustBuild/cargo-ffi-build.log"
 

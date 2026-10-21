@@ -7,8 +7,7 @@ Guide for building Look locally and contributing to the project.
 ```text
 .
 ├── apps/
-│   ├── macos/
-│   │   └── LauncherApp/          # Swift macOS app (Xcode project)
+│   ├── macos/                    # Swift macOS app (Xcode project)
 │   └── linows/                   # gpui app, Linux + Windows
 │       ├── gpui/                 #   The shell: window, screens, keys (lookapp)
 │       ├── backend/              #   Everything that is not drawing (shared)
@@ -107,7 +106,7 @@ make core-build-x86_64   # core workspace for x86_64-apple-darwin (release)
 make ffi-build-x86_64    # ffi crate for x86_64-apple-darwin (release)
 ```
 
-**The Rust FFI phase.** `apps/macos/LauncherApp/build-rust-ffi.sh` builds the ffi crate for whatever `$ARCHS` Xcode is building and leaves the result at `RustBuild/liblook_ffi.a`. When `$ARCHS` is a single arch and it matches your host, which is every Debug dev loop, it builds without `--target` and keeps `bridge/ffi/target/<profile>` as its only cargo cache, so an Apple Silicon dev loop needs no cross target installed and no second cache. Anything else builds per slice with `--target` and `lipo`s them, which is what an Xcode GUI build against "Any Mac" asks for.
+**The Rust FFI phase.** `apps/macos/build-rust-ffi.sh` builds the ffi crate for whatever `$ARCHS` Xcode is building and leaves the result at `RustBuild/liblook_ffi.a`. When `$ARCHS` is a single arch and it matches your host, which is every Debug dev loop, it builds without `--target` and keeps `bridge/ffi/target/<profile>` as its only cargo cache, so an Apple Silicon dev loop needs no cross target installed and no second cache. Anything else builds per slice with `--target` and `lipo`s them, which is what an Xcode GUI build against "Any Mac" asks for.
 
 A failed cross slice is fatal. Only a host-arch Debug build falls back to reusing the previous `liblook_ffi.a`, and it says so:
 
@@ -118,7 +117,7 @@ warning: Rust build skipped; using existing RustBuild/liblook_ffi.a
 If you see that during an `xcodebuild` run, find the real cargo error by running the phase standalone:
 
 ```bash
-cd apps/macos/LauncherApp && CONFIGURATION=Debug PROJECT_DIR="$PWD" ./build-rust-ffi.sh
+cd apps/macos && CONFIGURATION=Debug PROJECT_DIR="$PWD" ./build-rust-ffi.sh
 ```
 
 **Release builds are stripped.** Release sets `STRIP_INSTALLED_PRODUCT` with `STRIP_STYLE = all`, which takes the binary from 28.1 MB to 14.4 MB because `__LINKEDIT` alone was 14.7 MB of local and debug symbols from the Rust staticlib. `DEBUG_INFORMATION_FORMAT` is `dwarf-with-dsym`, so the dSYM in DerivedData is what symbolicates a crash report. Debug builds are not stripped, and `make symbols` inspects the Debug build, so it keeps working. Stripping invalidates a code signature, so Xcode strips before it signs and the release workflow re-signs afterwards.

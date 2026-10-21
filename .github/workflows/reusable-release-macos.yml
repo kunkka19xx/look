@@ -186,7 +186,7 @@ jobs:
           # `codesign --force` drops the entitlements xcodebuild embedded, and
           # without it the notarized build can't automate Finder to empty the
           # Trash (macOS returns errAEEventNotPermitted, no consent prompt).
-          ENTITLEMENTS_PATH="apps/macos/LauncherApp/look-app/Look.entitlements"
+          ENTITLEMENTS_PATH="apps/macos/look-app/Look.entitlements"
           codesign --force --deep --options runtime --timestamp \
             --entitlements "$ENTITLEMENTS_PATH" \
             --sign "$APPLE_DEVELOPER_ID_APPLICATION" "$APP_PATH"

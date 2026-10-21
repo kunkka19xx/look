@@ -90,7 +90,7 @@ The linows contract is the Rust mirror of the same shape (see `apps/linows/backe
 
 ## Reference
 
-Read [`BluetoothControl.swift`](../apps/macos/LauncherApp/look-app/Support/QuickActions/Controls/BluetoothControl.swift) (macOS, quarantines a private API) or [`bluetooth.rs`](../apps/linows/backend/src/qactions/controls/bluetooth.rs) (linows Linux, talks to BlueZ over D-Bus) first: each is a complete, commented adapter and the template every other control follows.
+Read [`BluetoothControl.swift`](../apps/macos/look-app/Support/QuickActions/Controls/BluetoothControl.swift) (macOS, quarantines a private API) or [`bluetooth.rs`](../apps/linows/backend/src/qactions/controls/bluetooth.rs) (linows Linux, talks to BlueZ over D-Bus) first: each is a complete, commented adapter and the template every other control follows.
 
 ### Windows Bluetooth
 
