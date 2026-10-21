@@ -1,28 +1,48 @@
-//! MyMemory translation lookup, shared by macOS (FFI bridge) and Linux/Windows
-//! (Tauri command). Auto-detects the source language and translates to a target
-//! BCP-47-ish code via MyMemory's keyless public API. Best-effort: every failure
-//! path returns a `Translation` with `error` set rather than panicking.
+//! Translation lookup, shared by macOS (FFI bridge) and Linux/Windows (Tauri
+//! command and gpui). Auto-detects the source language and translates to a
+//! target BCP-47-ish code. Two keyless providers, tried in order: Google's
+//! `gtx` endpoint, which is fast and has no daily cap but throttles bursts per
+//! IP, then MyMemory, which is slower and capped at 5000 characters a day per
+//! IP but answers when Google is throttled. Successful results are cached for
+//! the session so a repeated query costs neither a round trip nor quota.
 //!
-//! Each shell formats the result for its own wire shape (macOS surfaces a
-//! `{code, message}` object; linows surfaces just the message), so the error
-//! type exposes both.
+//! Best-effort: every failure path returns a `Translation` with `error` set
+//! rather than panicking. Each shell formats the result for its own wire shape
+//! (macOS surfaces a `{code, message}` object; linows surfaces just the
+//! message), so the error type exposes both.
 
 use crate::http;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
-const URL_PREFIX: &str = "https://api.mymemory.translated.net/get?langpair=Autodetect%7C";
-const URL_MIDDLE: &str = "&q=";
+const GOOGLE_URL_PREFIX: &str =
+    "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=";
+const GOOGLE_URL_MIDDLE: &str = "&dt=t&q=";
+const GOOGLE_TIMEOUT_SECS: u32 = 3;
+// Google rejects an empty/odd User-Agent; present as a browser like the
+// originals did. Accept-Language keeps responses ASCII-stable.
+const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const ACCEPT_LANGUAGE: &str = "Accept-Language: en-US,en;q=0.9";
+
+const MYMEMORY_URL_PREFIX: &str = "https://api.mymemory.translated.net/get?langpair=Autodetect%7C";
+const MYMEMORY_URL_MIDDLE: &str = "&q=";
 // A 500-character query regularly takes 2-4s on MyMemory and sometimes more than
 // 5s, which failed one language in a parallel set with "request failed".
-const TIMEOUT_SECS: u32 = 10;
+const MYMEMORY_TIMEOUT_SECS: u32 = 10;
 // MyMemory rejects a `q` longer than 500 characters (code points) with QUERY
 // LENGTH LIMIT EXCEEDED, so longer input is split and the pieces reassembled.
 // Its spec page says "Max 500 bytes", but this was checked live: a request with
 // 500 three-byte characters (1500 bytes) still translated, so the API counts
 // code points. Keep this in characters, not bytes.
 const MAX_QUERY_CHARS: usize = 500;
-// MyMemory does not inspect the User-Agent, but a browser string keeps it in
-// line with the other sources and avoids any bot filtering.
-const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+/// Where a chunk prefers to end, so the machine translation keeps a whole
+/// sentence of context: these followed by whitespace, or a line break.
+const SENTENCE_ENDS: [char; 6] = ['.', '!', '?', '。', '！', '？'];
+
+/// Session cache size. Once full it is cleared rather than evicted: a launcher
+/// rarely sees this many distinct queries, so LRU bookkeeping buys nothing.
+const CACHE_LIMIT: usize = 256;
+static CACHE: Mutex<Option<HashMap<(String, String), String>>> = Mutex::new(None);
 
 /// Why a translation didn't produce text. `code` is a stable identifier; the
 /// `message` is user-facing.
@@ -77,22 +97,107 @@ impl Translation {
     }
 }
 
+/// A translation backend. Tried in `PROVIDERS` order; any failure moves to the
+/// next one, and the last failure is the one reported.
+#[derive(Debug, Clone, Copy)]
+enum Provider {
+    Google,
+    MyMemory,
+}
+
+const PROVIDERS: [Provider; 2] = [Provider::Google, Provider::MyMemory];
+
 /// Translates `text` into `target_lang`, auto-detecting the source.
 pub fn translate(text: &str, target_lang: &str) -> Translation {
     let text = text.trim().to_string();
     if text.is_empty() {
         return Translation::failed(text, TranslateError::EmptyText);
     }
+    let target_lang = target_lang.trim();
     if !is_valid_lang_code(target_lang) {
         return Translation::failed(text, TranslateError::InvalidTargetLang);
     }
 
-    // MyMemory caps a single query at 500 characters, so longer input is split
-    // into chunks that are translated separately and reassembled in order, keeping
-    // the original whitespace that sat between them. A failure in any chunk
-    // fails the whole translation rather than returning a partial result.
+    let key = (target_lang.to_string(), text.clone());
+    if let Some(translated) = cache_get(&key) {
+        return Translation {
+            original: text,
+            translated,
+            error: None,
+        };
+    }
+
+    let mut error = TranslateError::RequestFailed;
+    for provider in PROVIDERS {
+        match provider.translate(&text, target_lang) {
+            Ok(translated) => {
+                cache_put(key, translated.clone());
+                return Translation {
+                    original: text,
+                    translated,
+                    error: None,
+                };
+            }
+            Err(e) => error = e,
+        }
+    }
+    Translation::failed(text, error)
+}
+
+fn cache_get(key: &(String, String)) -> Option<String> {
+    let slot = CACHE.lock().unwrap_or_else(|p| p.into_inner());
+    slot.as_ref().and_then(|map| map.get(key).cloned())
+}
+
+fn cache_put(key: (String, String), translated: String) {
+    let mut slot = CACHE.lock().unwrap_or_else(|p| p.into_inner());
+    let map = slot.get_or_insert_with(HashMap::new);
+    if map.len() >= CACHE_LIMIT {
+        map.clear();
+    }
+    map.insert(key, translated);
+}
+
+impl Provider {
+    fn translate(self, text: &str, target_lang: &str) -> Result<String, TranslateError> {
+        match self {
+            Self::Google => google(text, target_lang),
+            Self::MyMemory => mymemory(text, target_lang),
+        }
+    }
+}
+
+/// One request to Google's `gtx` endpoint, which takes the whole text.
+fn google(text: &str, target_lang: &str) -> Result<String, TranslateError> {
+    let url = format!(
+        "{GOOGLE_URL_PREFIX}{target_lang}{GOOGLE_URL_MIDDLE}{}",
+        http::encode(text)
+    );
+    let Some(response) = http::get(&url, GOOGLE_TIMEOUT_SECS, USER_AGENT, &[ACCEPT_LANGUAGE])
+    else {
+        return Err(TranslateError::RequestFailed);
+    };
+    // Google answers a throttled caller with an HTML apology page, which would
+    // otherwise read as an unparseable response from a healthy service.
+    if response.is_rate_limited() {
+        return Err(TranslateError::RateLimited);
+    }
+    if !response.is_success() {
+        return Err(TranslateError::RequestFailed);
+    }
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&response.body) else {
+        return Err(TranslateError::ParseFailed);
+    };
+    non_empty(google_text(&parsed))
+}
+
+/// MyMemory caps a single query at 500 characters, so longer input is split
+/// into chunks that are translated separately and reassembled in order, keeping
+/// the original whitespace that sat between them. A failure in any chunk fails
+/// the whole translation rather than returning a partial result.
+fn mymemory(text: &str, target_lang: &str) -> Result<String, TranslateError> {
     let mut translated = String::new();
-    for chunk in split_query(&text) {
+    for chunk in split_query(text) {
         let payload = chunk.trim();
         if payload.is_empty() {
             translated.push_str(chunk);
@@ -100,38 +205,28 @@ pub fn translate(text: &str, target_lang: &str) -> Translation {
         }
         let lead = chunk.len() - chunk.trim_start().len();
         let trail = chunk.len() - chunk.trim_end().len();
-        match fetch_translation(payload, target_lang) {
-            Ok(part) => {
-                translated.push_str(&chunk[..lead]);
-                translated.push_str(&part);
-                if trail > 0 {
-                    translated.push_str(&chunk[chunk.len() - trail..]);
-                }
-            }
-            Err(error) => return Translation::failed(text, error),
+        let part = mymemory_request(payload, target_lang)?;
+        translated.push_str(&chunk[..lead]);
+        translated.push_str(&part);
+        if trail > 0 {
+            translated.push_str(&chunk[chunk.len() - trail..]);
         }
     }
-    Translation {
-        original: text,
-        translated,
-        error: None,
-    }
+    Ok(translated)
 }
 
-/// Sends a single request (already within the character limit) and returns the
-/// translated text, or the error to report. The same-language refusal echoes the
-/// input back as a success.
-fn fetch_translation(text: &str, target_lang: &str) -> Result<String, TranslateError> {
+/// Sends a single MyMemory request (already within the character limit). The
+/// same-language refusal echoes the input back as a success.
+fn mymemory_request(text: &str, target_lang: &str) -> Result<String, TranslateError> {
     let url = format!(
-        "{URL_PREFIX}{}{URL_MIDDLE}{}",
-        target_lang.trim(),
+        "{MYMEMORY_URL_PREFIX}{target_lang}{MYMEMORY_URL_MIDDLE}{}",
         http::encode(text)
     );
-    let Some(response) = http::get(&url, TIMEOUT_SECS, USER_AGENT, &[]) else {
+    let Some(response) = http::get(&url, MYMEMORY_TIMEOUT_SECS, USER_AGENT, &[]) else {
         return Err(TranslateError::RequestFailed);
     };
     // A throttled host answers 429; MyMemory also keeps HTTP 200 while flagging
-    // a spent daily quota in the body, which the parse below catches.
+    // a spent daily quota in the body, which the checks below catch.
     if response.is_rate_limited() {
         return Err(TranslateError::RateLimited);
     }
@@ -152,20 +247,25 @@ fn fetch_translation(text: &str, target_lang: &str) -> Result<String, TranslateE
     if is_same_language(&parsed) {
         return Ok(text.to_string());
     }
-    if let Some(error) = body_error(&parsed) {
+    if let Some(error) = status_error(&parsed) {
         return Err(error);
     }
-    let translated = extract_translation(&parsed);
+    non_empty(mymemory_text(&parsed))
+}
+
+fn non_empty(translated: String) -> Result<String, TranslateError> {
     if translated.trim().is_empty() {
         return Err(TranslateError::EmptyResult);
     }
     Ok(translated)
 }
 
-/// Splits `text` into chunks of at most `MAX_QUERY_CHARS` characters, preferring
-/// to cut at the last whitespace inside the window so a word is not torn apart.
-/// Concatenating the returned chunks reproduces `text` exactly, so the caller
-/// can keep the separators when reassembling.
+/// Splits `text` into chunks of at most `MAX_QUERY_CHARS` characters. Each cut
+/// lands after the last sentence end inside the window, failing that after the
+/// last whitespace, failing that at the limit, so a word is never torn apart
+/// and a sentence only when it is longer than the window. Concatenating the
+/// returned chunks reproduces `text` exactly, so the caller can keep the
+/// separators when reassembling.
 fn split_query(text: &str) -> Vec<&str> {
     if text.chars().count() <= MAX_QUERY_CHARS {
         return vec![text];
@@ -177,14 +277,7 @@ fn split_query(text: &str) -> Vec<&str> {
             .char_indices()
             .nth(MAX_QUERY_CHARS)
             .map_or(rest.len(), |(i, _)| i);
-        let window = &rest[..end];
-        let cut = match window.rfind(char::is_whitespace) {
-            Some(pos) if pos > 0 => {
-                let ws_len = window[pos..].chars().next().map_or(0, char::len_utf8);
-                pos + ws_len
-            }
-            _ => end,
-        };
+        let cut = cut_point(&rest[..end]).unwrap_or(end);
         chunks.push(&rest[..cut]);
         rest = &rest[cut..];
     }
@@ -194,16 +287,58 @@ fn split_query(text: &str) -> Vec<&str> {
     chunks
 }
 
-/// A BCP-47-ish tag accepted by MyMemory (e.g. "en", "vi", "zh-CN").
+/// The byte offset just past the best whitespace to cut `window` at: the last
+/// one that closes a sentence if there is one, otherwise the last one at all.
+/// `None` when the window has no whitespace past its first character.
+fn cut_point(window: &str) -> Option<usize> {
+    let mut sentence = None;
+    let mut whitespace = None;
+    let mut prev = None;
+    for (i, c) in window.char_indices() {
+        if c.is_whitespace() && i > 0 {
+            let after = i + c.len_utf8();
+            if c == '\n' || prev.is_some_and(|p| SENTENCE_ENDS.contains(&p)) {
+                sentence = Some(after);
+            }
+            whitespace = Some(after);
+        }
+        prev = Some(c);
+    }
+    sentence.or(whitespace)
+}
+
+/// A BCP-47-ish tag accepted by both providers (e.g. "en", "vi", "zh-CN").
 fn is_valid_lang_code(code: &str) -> bool {
-    let code = code.trim();
     !code.is_empty()
         && code.len() <= 10
         && code.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
+/// Pulls the concatenated translated segments out of the gtx response shape
+/// `[[[translated, original, ...], ...], ...]`.
+fn google_text(value: &serde_json::Value) -> String {
+    let Some(segments) = value
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|v| v.as_array())
+    else {
+        return String::new();
+    };
+    let mut result = String::new();
+    for group in segments {
+        if let Some(s) = group
+            .as_array()
+            .and_then(|parts| parts.first())
+            .and_then(|v| v.as_str())
+        {
+            result.push_str(s);
+        }
+    }
+    result
+}
+
 /// Pulls `responseData.translatedText` out of the MyMemory response shape.
-fn extract_translation(value: &serde_json::Value) -> String {
+fn mymemory_text(value: &serde_json::Value) -> String {
     value
         .get("responseData")
         .and_then(|data| data.get("translatedText"))
@@ -221,8 +356,7 @@ fn is_same_language(value: &serde_json::Value) -> bool {
     let matches_detail = value
         .get("responseDetails")
         .and_then(|v| v.as_str())
-        .map(|detail| detail.contains(DETAIL))
-        .unwrap_or(false);
+        .is_some_and(|detail| detail.contains(DETAIL));
     matches_detail && matches!(response_status(value), None | Some(200) | Some(403))
 }
 
@@ -234,14 +368,10 @@ fn quota_finished(value: &serde_json::Value) -> bool {
         .unwrap_or(false)
 }
 
-/// Classifies MyMemory's in-body status: `None` when the body looks usable,
-/// otherwise the error to report. The API keeps HTTP 200 while flagging a spent
-/// quota or a rejected request in the body, so the transport status alone would
-/// read as success.
-fn body_error(value: &serde_json::Value) -> Option<TranslateError> {
-    if quota_finished(value) {
-        return Some(TranslateError::RateLimited);
-    }
+/// The error MyMemory's in-body `responseStatus` stands for, `None` when the
+/// body looks usable. The API keeps HTTP 200 while rejecting a request in the
+/// body, so the transport status alone would read as success.
+fn status_error(value: &serde_json::Value) -> Option<TranslateError> {
     match response_status(value) {
         Some(429) => Some(TranslateError::RateLimited),
         Some(200) | None => None,
@@ -277,31 +407,43 @@ mod tests {
     }
 
     #[test]
+    fn cache_round_trips_and_clears_when_full() {
+        let key = ("en".to_string(), "xin chào".to_string());
+        cache_put(key.clone(), "hello".to_string());
+        assert_eq!(cache_get(&key).as_deref(), Some("hello"));
+
+        for i in 0..CACHE_LIMIT {
+            cache_put(("en".to_string(), format!("fill {i}")), String::new());
+        }
+        assert!(cache_get(&key).is_none());
+    }
+
+    #[test]
+    fn reads_google_body() {
+        let body = serde_json::json!([[["Xin ", "Hello "], ["chào", "there"]], null, "en"]);
+        assert_eq!(google_text(&body), "Xin chào");
+        assert_eq!(google_text(&serde_json::json!({})), "");
+    }
+
+    #[test]
     fn reads_mymemory_body() {
         let ok = serde_json::json!({
             "responseData": {"translatedText": "Xin chào"},
             "responseStatus": 200,
             "quotaFinished": false,
         });
-        assert_eq!(extract_translation(&ok), "Xin chào");
+        assert_eq!(mymemory_text(&ok), "Xin chào");
         assert_eq!(response_status(&ok), Some(200));
-        assert_eq!(body_error(&ok), None);
-
-        let spent = serde_json::json!({
-            "responseData": {"translatedText": "MYMEMORY WARNING"},
-            "responseStatus": 200,
-            "quotaFinished": true,
-        });
-        assert_eq!(body_error(&spent), Some(TranslateError::RateLimited));
+        assert_eq!(status_error(&ok), None);
 
         let throttled = serde_json::json!({ "responseStatus": "429" });
-        assert_eq!(body_error(&throttled), Some(TranslateError::RateLimited));
+        assert_eq!(status_error(&throttled), Some(TranslateError::RateLimited));
 
         let rejected = serde_json::json!({
             "responseData": {"translatedText": ""},
             "responseStatus": "403",
         });
-        assert_eq!(body_error(&rejected), Some(TranslateError::RequestFailed));
+        assert_eq!(status_error(&rejected), Some(TranslateError::RequestFailed));
     }
 
     #[test]
@@ -373,14 +515,32 @@ mod tests {
     }
 
     #[test]
-    fn splits_sample_vietnamese_text() {
+    fn prefers_a_sentence_end_over_the_last_space() {
         let text = "Look là một công cụ tìm kiếm và khởi chạy siêu nhanh trên máy tính của bạn. Nó cho phép bạn tìm kiếm ứng dụng, tệp tin, cửa sổ đang mở và nhiều thứ khác chỉ bằng vài thao tác gõ phím đơn giản. Giao diện gọn gàng, phản hồi tức thì, và hoạt động hoàn toàn cục bộ nên dữ liệu của bạn luôn được bảo mật. Bạn có thể tùy chỉnh danh sách ngôn ngữ dịch trong phần cấu hình. Tính năng dịch tự động phát hiện ngôn ngữ nguồn và gửi truy vấn đến máy chủ. Kết quả trả về được hiển thị song song cho từng ngôn ngữ đích đã chọn.";
         assert!(text.chars().count() > MAX_QUERY_CHARS);
         let chunks = split_query(text);
         assert_eq!(chunks.len(), 2);
-        assert_eq!(chunks[0].chars().count(), 500);
-        assert_eq!(chunks[1].chars().count(), 13);
+        assert!(chunks[0].ends_with("máy chủ. "));
+        assert!(chunks[1].starts_with("Kết quả"));
         assert!(chunks.iter().all(|c| c.chars().count() <= MAX_QUERY_CHARS));
+        assert_eq!(chunks.concat(), text);
+    }
+
+    #[test]
+    fn a_line_break_closes_a_sentence() {
+        let line = "a".repeat(300);
+        let text = format!("{line}\n{line} {line}");
+        let chunks = split_query(&text);
+        assert_eq!(chunks[0], format!("{line}\n"));
+        assert_eq!(chunks.concat(), text);
+    }
+
+    #[test]
+    fn falls_back_to_the_last_space_without_a_sentence_end() {
+        let text = "word ".repeat(200);
+        let chunks = split_query(&text);
+        assert!(chunks[0].ends_with("word "));
+        assert_eq!(chunks[0].chars().count(), MAX_QUERY_CHARS);
         assert_eq!(chunks.concat(), text);
     }
 }
