@@ -294,6 +294,7 @@ pub fn clipboard_image_limit() -> usize {
 struct ShowValues {
     layout: LauncherLayout,
     retention_secs: i64,
+    translate_languages: Vec<look_answers::TranslateLanguage>,
 }
 
 static SHOW_VALUES: std::sync::Mutex<Option<ShowValues>> = std::sync::Mutex::new(None);
@@ -305,6 +306,9 @@ fn show_values<T>(pick: impl FnOnce(&ShowValues) -> T) -> T {
         ShowValues {
             layout: parse_launcher_layout(&contents),
             retention_secs: parse_query_retention_seconds(&contents),
+            translate_languages: look_answers::translate_languages(
+                last_value(&contents, TRANSLATE_LANGUAGES_KEY).unwrap_or_default(),
+            ),
         }
     });
     pick(values)
@@ -358,14 +362,11 @@ pub fn query_retention_seconds() -> i64 {
 }
 
 /// Target languages for the `t"` translation panel, parsed from
-/// `translate_languages`. The parsing and the label table live in
-/// `look_answers`, shared by the webview, gpui, and macOS shells.
+/// `translate_languages` and kept with the other show values. The parsing and
+/// the label table live in `look_answers`, shared by the webview, gpui, and
+/// macOS shells.
 pub fn translate_languages() -> Vec<look_answers::TranslateLanguage> {
-    let raw = std::fs::read_to_string(config_file_path())
-        .ok()
-        .and_then(|contents| last_value(&contents, TRANSLATE_LANGUAGES_KEY).map(str::to_string))
-        .unwrap_or_default();
-    look_answers::translate_languages(&raw)
+    show_values(|v| v.translate_languages.clone())
 }
 
 /// A count out of range is a typo, not a request, so the default stands rather
