@@ -130,7 +130,7 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Build
-        run: nix build ./apps/linows#default
+        run: nix build .#default
 
       - name: Verify version
         run: ./result/bin/lookapp --version

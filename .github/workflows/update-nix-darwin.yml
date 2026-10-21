@@ -1,7 +1,7 @@
 name: Update Nix macOS pin
 
 # The macOS Nix package pins a release asset by hash
-# (apps/linows/nix/package-darwin.nix), and a forgotten bump is silent: the old
+# (packaging/nix/package-darwin.nix), and a forgotten bump is silent: the old
 # pin keeps building, CI stays green, and Nix users sit on the previous release
 # until someone notices. So the bump follows the release instead of a checklist.
 on:
@@ -95,7 +95,7 @@ jobs:
             echo "::error::FLAKE_UPDATE_TOKEN is not set (PAT with repo scope)."
             exit 1
           fi
-          if git diff --quiet -- apps/linows/nix/package-darwin.nix; then
+          if git diff --quiet -- packaging/nix/package-darwin.nix; then
             echo "Already pinned to $VERSION."
             exit 0
           fi
@@ -103,17 +103,17 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -C "$BRANCH"
           git commit -m "chore(nix): pin the macOS package to $VERSION" \
-            -- apps/linows/nix/package-darwin.nix
+            -- packaging/nix/package-darwin.nix
           gh auth setup-git
           git push --force origin "$BRANCH"
           if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
             gh pr create --head "$BRANCH" --base main \
               --title "chore(nix): pin the macOS package to $VERSION" \
-              --body "Points \`apps/linows/nix/package-darwin.nix\` at the \`v$VERSION\` release zip, so \`nix profile install\` on macOS stops serving the previous release."
+              --body "Points \`packaging/nix/package-darwin.nix\` at the \`v$VERSION\` release zip, so \`nix profile install\` on macOS stops serving the previous release."
           fi
 
       - name: Report an unpackaged architecture
         if: steps.bump.outputs.unpackaged == '1'
         run: |
-          echo "::error::A macOS release asset exists for an architecture apps/linows/nix/package-darwin.nix does not package. Add the sources entry; the bump step logged the URL."
+          echo "::error::A macOS release asset exists for an architecture packaging/nix/package-darwin.nix does not package. Add the sources entry; the bump step logged the URL."
           exit 1

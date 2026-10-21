@@ -54,29 +54,27 @@ let
 in
 rustPlatform.buildRustPackage {
   pname = "lookapp";
-  version = (builtins.fromTOML (builtins.readFile ../Cargo.toml)).workspace.package.version;
+  version = (builtins.fromTOML (builtins.readFile ../../apps/linows/Cargo.toml)).workspace.package.version;
 
   src = lib.cleanSourceWith {
-    src = ../../..;
+    src = ../..;
     filter =
       path: _type:
       let
-        basePath = toString ../../..;
+        basePath = toString ../..;
         relPath = lib.removePrefix basePath (toString path);
       in
       (
         relPath == "/apps"
         || lib.hasPrefix "/apps/linows" relPath
         || lib.hasPrefix "/core" relPath
+        || relPath == "/packaging"
+        || lib.hasPrefix "/packaging/linux" relPath
       )
-      # Packaging and prose sit inside the copied tree without being build
-      # inputs. Without this, editing a module or a doc changes `src` and every
-      # consumer recompiles the whole workspace for nothing.
-      && !(
-        lib.hasPrefix "/apps/linows/nix" relPath
-        || lib.hasPrefix "/apps/linows/flake" relPath
-        || lib.hasSuffix ".md" relPath
-      );
+      # Prose sits inside the copied tree without being a build input. Without
+      # this, editing a doc changes `src` and every consumer recompiles the
+      # whole workspace for nothing.
+      && !(lib.hasSuffix ".md" relPath);
   };
 
   cargoRoot = "apps/linows";
@@ -88,9 +86,9 @@ rustPlatform.buildRustPackage {
   # needs its own hash here, regenerated when the pin moves with
   #   nix-prefetch-git --url <url> --rev <sha> --fetch-submodules
   cargoDeps = importCargoLock {
-    lockFile = ../Cargo.lock;
+    lockFile = ../../apps/linows/Cargo.lock;
     outputHashes = {
-      # [patch.crates-io] in ../Cargo.toml, the pipeline cache for gpui_ce_wgpu.
+      # [patch.crates-io] in apps/linows/Cargo.toml, the pipeline cache for gpui_ce_wgpu.
       "gpui_ce_wgpu-0.1.0" = "sha256-OXHAJT171ZLPDC0ZXL52eQsQJ8l2tFc3ey+5nc1SXYk=";
     };
   };
@@ -135,7 +133,7 @@ rustPlatform.buildRustPackage {
   '';
 
   postInstall = ''
-    install -Dm644 $src/apps/linows/packaging/lookapp.desktop \
+    install -Dm644 $src/packaging/linux/lookapp.desktop \
       $out/share/applications/lookapp.desktop
     for size in 32 64 128; do
       install -Dm644 $src/apps/linows/icons/''${size}x''${size}.png \
