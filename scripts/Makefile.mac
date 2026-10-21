@@ -44,7 +44,7 @@ REAL_DB_PATH := $(HOME)/Library/Application Support/look/look.db
 DEV_CONFIG_PATH ?= $(HOME)/.look/config.dev
 DEV_OPEN_ENV = env -u LOOK_DB_PATH LOOK_CONFIG_PATH="$(DEV_CONFIG_PATH)" LOOK_DEV_HINT=1 LOOK_LOG_LEVEL=debug LOOK_UI_DEBUG_EVENTS=1
 
-.PHONY: help core-check ffi-check ffi-build ffi-build-release core-build-x86_64 ffi-build-x86_64 ffi-unstale app-build app-ensure-bundle app-stop app-run app-install-dev app-run-dev app-uninstall-dev dev-cli app-logs app-logs-all symbols db-path db-status db-shell db-reset db-refresh
+.PHONY: help audit core-check ffi-check ffi-build ffi-build-release core-build-x86_64 ffi-build-x86_64 ffi-unstale app-build app-ensure-bundle app-stop app-run app-install-dev app-run-dev app-uninstall-dev dev-cli app-logs app-logs-all symbols db-path db-status db-shell db-reset db-refresh
 
 help:
 	@printf "look developer tasks\n\n"
@@ -57,7 +57,8 @@ help:
 	@printf "  make ffi-build-x86_64    - build ffi crate for x86_64-apple-darwin (release)\n"
 	@printf "  make app-build          - xcodebuild app (macOS, includes rust ffi build/link)\n"
 	@printf "  make ffi-unstale        - drop RustBuild/liblook_ffi.a when the Rust build identity changes\n"
-	@printf "  make symbols            - verify ffi symbols in app binary\n\n"
+	@printf "  make symbols            - verify ffi symbols in app binary\n"
+	@printf "  make audit              - cargo audit every lockfile, as CI does (cargo install cargo-audit)\n\n"
 	@printf "run app\n"
 	@printf "  make app-stop     - stop running Look app process\n"
 	@printf "  make app-run      - stop running app, then open local app with dev config\n"
@@ -74,6 +75,12 @@ help:
 	@printf "  make db-shell     - open sqlite shell for real db\n"
 	@printf "  make db-reset     - delete real db file\n"
 	@printf "  make db-refresh   - delete db and rebuild app\n"
+
+# Run from each lockfile's directory so its .cargo/audit.toml ignores apply.
+audit:
+	cd core && cargo audit
+	cd bridge/ffi && cargo audit
+	cd apps/linows && cargo audit
 
 core-check:
 	cargo check --workspace --manifest-path core/Cargo.toml

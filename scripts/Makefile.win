@@ -24,7 +24,7 @@ WITH_VCVARS := scripts\windows\with-vcvars.bat
 REAL_DB_PATH := $(USERPROFILE)\AppData\Local\look\look.db
 DEV_DB_PATH  := $(USERPROFILE)\AppData\Local\look\look.dev.db
 
-.PHONY: help core-check ffi-check ffi-build ffi-build-release \
+.PHONY: help audit core-check ffi-check ffi-build ffi-build-release \
         app-check app-build app-build-release app-run app-run-release \
         app-stop tauri-stop tauri-run tauri-build \
         db-path db-status db-shell db-reset db-refresh \
@@ -41,6 +41,7 @@ help:
 	@echo   make app-check           - cargo check lookapp
 	@echo   make app-build           - cargo build (debug)
 	@echo   make app-build-release   - cargo build (release)
+	@echo   make audit               - cargo audit every lockfile, as CI does (cargo install cargo-audit)
 	@echo.
 	@echo run app
 	@echo   make app-stop            - stop running $(APP_PROCESS).exe
@@ -65,6 +66,12 @@ help:
 	@echo overrides
 	@echo   CONFIG=Release           (default: Debug)
 	@echo   VCVARSALL=^<path^>         (default: VS 2022 BuildTools x64)
+
+# Run from each lockfile's directory so its .cargo/audit.toml ignores apply.
+audit:
+	cd core && cargo audit
+	cd bridge/ffi && cargo audit
+	cd apps/linows && cargo audit
 
 core-check:
 	$(WITH_VCVARS) cargo check --workspace --manifest-path core\Cargo.toml

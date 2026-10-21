@@ -239,6 +239,8 @@ Signing/notarization walkthrough: [docs/apple-developer-release-guide.md](docs/a
   ```bash
   cargo test --workspace --manifest-path core/Cargo.toml
   cargo test --manifest-path bridge/ffi/Cargo.toml
+  # if a Cargo.lock changed (needs `cargo install cargo-audit`):
+  make audit
   # if touching linows:
   cargo clippy --workspace --all-targets --manifest-path apps/linows/Cargo.toml -- -D warnings
   cargo fmt --all --manifest-path apps/linows/Cargo.toml -- --check
