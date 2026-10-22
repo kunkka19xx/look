@@ -653,7 +653,9 @@ fn main() {
     // its summon over and exits.
     match serve_commands(shell.tx.clone(), &summon) {
         Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
-            eprintln!("lookapp: already running, sent {summon}");
+            // The kind only: a launch's text is the user's own input.
+            let kind = summon.split(' ').next().unwrap_or_default();
+            eprintln!("lookapp: already running, sent {kind}");
             return;
         }
         Err(err) => eprintln!("control socket: {err}"),
