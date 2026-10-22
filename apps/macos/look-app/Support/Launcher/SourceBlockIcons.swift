@@ -23,11 +23,13 @@ nonisolated struct SourceBlockRowTargets {
 @MainActor
 enum SourceBlockCatalog {
     private static var iconsByBlockID: [String: String]?
+    private static var listingBlockIDs: Set<String>?
     private static var targetsByCandidateID: [String: SourceBlockRowTargets] = [:]
     private static var targetsInFlight: Set<String> = []
 
     static func invalidate() {
         iconsByBlockID = nil
+        listingBlockIDs = nil
         targetsByCandidateID = [:]
         targetsInFlight = []
         prefill()
@@ -110,8 +112,22 @@ enum SourceBlockCatalog {
                     },
                     uniquingKeysWith: { first, _ in first }
                 )
+                listingBlockIDs = Set(summaries.filter(\.lists).map(\.id))
             }
         }
+    }
+
+    /// Whether Enter on this row descends. A row the block produced is not a
+    /// block's own row, even though both carry its id, so the row half of the
+    /// id has to be empty.
+    ///
+    /// Nil while the catalog is still loading: the caller asks the core rather
+    /// than assume, since assuming wrong runs the block's `open`.
+    static func lists(candidateID: String) -> Bool? {
+        guard let blockID = blockID(fromCandidateID: candidateID),
+            candidateID == "\(AppConstants.Launcher.SourceBlock.idPrefix)\(blockID):"
+        else { return false }
+        return listingBlockIDs.map { $0.contains(blockID) }
     }
 
     /// `src:<block>:<row>` -> `<block>`.

@@ -90,16 +90,24 @@ impl QueryEngine {
         best
     }
 
-    fn kind_matches(
+    /// Both narrowings a query can carry, checked before a candidate is scored
+    /// rather than after. A scope that filtered the ranked list instead would
+    /// lose its block's rows to the cutoff on any common word.
+    fn passes(
         candidate: &crate::IndexedCandidate,
         kind_filter: Option<&CandidateKind>,
+        scope: Option<&str>,
     ) -> bool {
         kind_filter.is_none_or(|kind| &candidate.candidate.kind == kind)
+            && scope.is_none_or(|block| {
+                CandidateIdKind::source_id_of(&candidate.candidate.id) == Some(block)
+            })
     }
 
     fn search_empty_query(
         &self,
         kind_filter: Option<&CandidateKind>,
+        scope: Option<&str>,
         limit: usize,
     ) -> Vec<(u32, i64)> {
         // Empty-query mode is a browse ranking pass: usage + recency, no text matching.
@@ -110,7 +118,7 @@ impl QueryEngine {
 
         let mut top = BinaryHeap::new();
         for (idx, candidate) in self.candidates.iter().enumerate() {
-            if !Self::kind_matches(candidate, kind_filter) {
+            if !Self::passes(candidate, kind_filter, scope) {
                 continue;
             }
             let score = default_browse_score(&candidate.candidate, now_unix_s);
@@ -220,12 +228,20 @@ impl QueryEngine {
         matches
     }
 
-    fn search_recent_query(&self, normalized_query: &str, limit: usize) -> Vec<(u32, i64)> {
+    fn search_recent_query(
+        &self,
+        normalized_query: &str,
+        scope: Option<&str>,
+        limit: usize,
+    ) -> Vec<(u32, i64)> {
         // Recent view: files/folders the user has actually opened (last_used_at
         // set), most-recently-opened first. Apps and never-opened items are
         // excluded. Optional filter text narrows by title/path substring.
         let mut matches: Vec<(u32, i64)> = Vec::new();
         for (idx, candidate) in self.candidates.iter().enumerate() {
+            if !Self::passes(candidate, None, scope) {
+                continue;
+            }
             let kind = &candidate.candidate.kind;
             if *kind != CandidateKind::File && *kind != CandidateKind::Folder {
                 continue;
@@ -267,6 +283,7 @@ impl QueryEngine {
         &self,
         raw_query: Option<&String>,
         kind_filter: Option<&CandidateKind>,
+        scope: Option<&str>,
         limit: usize,
     ) -> Vec<(u32, i64)> {
         // Invalid or oversized regex patterns fail closed to an empty result set.
@@ -282,7 +299,7 @@ impl QueryEngine {
 
         let mut top = BinaryHeap::new();
         for (idx, candidate) in self.candidates.iter().enumerate() {
-            if !Self::kind_matches(candidate, kind_filter) {
+            if !Self::passes(candidate, kind_filter, scope) {
                 continue;
             }
             let title_match = regex.is_match(&candidate.candidate.title);
@@ -323,6 +340,7 @@ impl QueryEngine {
         &self,
         normalized_query: &str,
         kind_filter: Option<&CandidateKind>,
+        scope: Option<&str>,
         limit: usize,
     ) -> Vec<(u32, i64)> {
         // Stage 1: fast retrieval over all candidates into a bounded top-K pool.
@@ -335,7 +353,7 @@ impl QueryEngine {
         let alias_terms = self.alias_terms_for_query(normalized_query, kind_filter);
 
         for (idx, candidate) in self.candidates.iter().enumerate() {
-            if !Self::kind_matches(candidate, kind_filter) {
+            if !Self::passes(candidate, kind_filter, scope) {
                 continue;
             }
             // Use precomputed normalized strings from IndexedCandidate.
@@ -450,6 +468,12 @@ impl QueryEngine {
             return vec![];
         }
 
+        // `obsnote inv` searches obsnote's rows for `inv`. The rest of the
+        // line is the query from here on, so everything below ranks it the
+        // ordinary way and only the final filter knows a scope was named.
+        let scoped = self.scoped(query);
+        let query = scoped.map_or(query, |(_, rest)| rest);
+
         let parsed_query = ParsedQuery::from_input(query);
         let kind_filter = parsed_query.kind_filter.as_ref();
 
@@ -458,19 +482,22 @@ impl QueryEngine {
         // and leave matches below the cutoff unshown. Over-fetch enough to
         // absorb the drops, filter, then truncate.
         let fetch = limit.saturating_mul(SHADOW_OVERFETCH).max(limit);
+        let block = scoped.map(|(block, _)| block);
         let indices = if parsed_query.is_recent {
-            self.search_recent_query(&parsed_query.normalized_query, fetch)
+            self.search_recent_query(&parsed_query.normalized_query, block, fetch)
         } else if parsed_query.normalized_query.is_empty() && !parsed_query.is_regex {
-            self.search_empty_query(kind_filter, fetch)
+            self.search_empty_query(kind_filter, block, fetch)
         } else if parsed_query.is_regex {
-            self.search_regex_query(parsed_query.raw_query.as_ref(), kind_filter, fetch)
+            self.search_regex_query(parsed_query.raw_query.as_ref(), kind_filter, block, fetch)
         } else {
-            self.search_text_query(&parsed_query.normalized_query, kind_filter, fetch)
+            self.search_text_query(&parsed_query.normalized_query, kind_filter, block, fetch)
         };
 
         // A line opening with an argument-taking block's word names that row
         // outright, so it leads whatever the text score made of the rest.
-        let named = self.arg_row(query);
+        // Not inside a scope: the rest of the line is what to match, and
+        // pinning another block's row would put it above the scoped results.
+        let named = scoped.is_none().then(|| self.arg_row(query)).flatten();
         let indices = match named.as_ref() {
             Some((named, _)) => {
                 let named = *named;

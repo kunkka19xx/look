@@ -231,6 +231,7 @@ If the command fails, times out, or prints nothing, **the rows it produced last 
 | `icon`                            | string            | none         | Emoji, SF Symbol name, or an image path                                                                    |
 | `enabled`                         | bool              | `true`       | `false` keeps the file but stops loading the block                                                         |
 | `preview`                         | string            | none         | Command run for the selected row, in that row's folder; its output fills the right panel. Fixed 5s timeout |
+| `scope`                           | bool              | `false`      | The block's words narrow a search to its own rows: `obsnote inv`. See [Searching inside one block](#searching-inside-one-block) |
 | `confirm`                         | string            | none         | Yes/no question asked before the block does anything                                                       |
 | `then`                            | list of block ids | none         | Other blocks a picked row can reach                                                                        |
 | `open` `edit` `terminal` `reveal` | string            | none         | See [What Enter does](#what-enter-does-verbs)                                                              |
@@ -278,7 +279,7 @@ and then listens:
 {"op":"hello","v":1,"look":"0.7.5"}
 ```
 ```json
-{"op":"ready","capabilities":["rows"]}
+{"op":"ready","capabilities":["rows","preview"]}
 {"op":"rows","block":"myapp.records","rows":[{"id":"r1","title":"Invoice 204"}]}
 {"op":"error","message":"could not reach the server"}
 ```
@@ -298,6 +299,35 @@ and then listens:
 - a frame over 1 MB is a protocol breach rather than a big message: that program
   is dropped, and restarted the same way
 
+#### Filling the panel
+
+Select one of its rows and Look asks the program what to show:
+
+```json
+{"op":"preview","block":"myapp.records","id":"r1","req":7}
+```
+
+Answer with the text, what it is, and the `req` you were given:
+
+```json
+{"op":"preview","block":"myapp.records","id":"r1","req":7,"content_type":"markdown","text":"# Invoice 204\n\nDue **3 Nov**."}
+```
+
+- `content_type` is `text` or `markdown`. Leave it out and it is `text`, which
+  is what a program written before this field existed meant
+- a type Look does not know reads as `text`: showing the source beats blanking
+  the panel
+- the panel waits about 400ms. A later answer is not shown, so answer from
+  memory rather than going to the network
+- **echo `req` back.** It is how Look tells your answer from the one before
+  it, so a reply that arrives after its 400ms is not mistaken for the answer
+  to the next look at the same row. An answer without it is dropped, and Look
+  says so on stderr
+- a program may only answer for blocks in its own manifest, the same rule rows
+  are held to
+- declaring a `preview` command in the block overrides this: the command runs
+  instead and nothing is asked over the connection
+
 **The cost is mostly yours, not Look's.** Keeping one running costs Look about
 130 KB and a thread. The program itself is the real figure: a small compiled one
 is a fraction of a megabyte, a Python one is 10 to 15 MB before it does
@@ -305,6 +335,42 @@ anything. Push when your data changes rather than on a timer, because every push
 makes Look re-read the declared sources, which it rate-limits but cannot make
 free. A program that sends the same rows again costs nothing at all, so there is
 no need to track what you last sent.
+
+## Searching inside one block
+
+A block that makes rows can be searched on its own. Two ways, and neither needs
+anything declared for the first one:
+
+**Press Enter on the block's row.** You go into it, the list shows only its
+rows, and what you type filters them. `Esc` comes back. Every block that lists
+(`dir`, `file`, `run`, `connect`) works this way.
+
+**Or name it at the start of a line**, which a block has to opt into:
+
+```toml
+[obsnote]
+name    = "Obsidian"
+aliases = ["obsnote"]
+scope   = true
+dir     = "~/Documents/my-vault"
+```
+
+Now `obsnote invoice` lists only this block's rows matching `invoice`. Any
+single-word `name` or alias opens it; a name with a space in it cannot, since
+only the first word is matched.
+
+- it is **opt-in on purpose**: the word is reserved as the first word of a
+  line, so a block aliased `new` would otherwise swallow every search starting
+  with "new "
+- `obsnote` with nothing after it is not a scope, it is the block's own row
+- a `do` block cannot declare it and Look says so, since it makes no rows to
+  narrow
+- a block that takes `{arg}` keeps that meaning: the word feeds its command
+  rather than filtering
+
+Neither is needed just to find a row. A block whose producer names no
+placeholder is already in the main index, so the rows it makes are findable by
+typing their own names.
 
 ## Placeholders
 

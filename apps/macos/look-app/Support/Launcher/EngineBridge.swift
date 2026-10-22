@@ -1685,6 +1685,8 @@ nonisolated struct SourceBlockSummary: Decodable {
     let id: String
     let name: String
     let icon: String?
+    /// The block lists rows, so its own row is somewhere to go into.
+    let lists: Bool
 }
 
 /// How a `run`-block refresh went. A block that failed kept the rows it had.

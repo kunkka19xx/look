@@ -221,6 +221,7 @@ pub(crate) const KEY_CONNECT: &str = "connect";
 /// Not a producer: the key that makes a `do` block an action on rows it did
 /// not produce.
 pub(crate) const KEY_APPLIES: &str = "applies";
+pub(crate) const KEY_SCOPE: &str = "scope";
 
 /// The standard things a user does to a row. Each has one key across the whole
 /// app, so Cmd+E edits whatever the row is and wherever it came from. A block
@@ -294,6 +295,10 @@ pub struct Block {
     pub bias: i64,
     pub icon: Option<String>,
     pub enabled: bool,
+    /// The block's own words scope a search: `obsnote inv` lists only this
+    /// block's rows matching `inv`. Opt-in, because it reserves those words
+    /// as the first word of a line.
+    pub scope: bool,
     pub preview: Option<String>,
     /// A yes/no question asked before this block performs anything. Destructive
     /// steps get one, because a launcher makes Enter on the wrong row cheap.
@@ -383,6 +388,7 @@ struct RawBlock {
     bias: Option<i64>,
     icon: Option<String>,
     enabled: Option<bool>,
+    scope: Option<bool>,
     preview: Option<String>,
     confirm: Option<String>,
     control: Option<String>,
@@ -502,6 +508,14 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
         ));
     }
 
+    // Reported rather than ignored: a scope with no rows to narrow would do
+    // nothing, and silently doing nothing is how a declaration goes unnoticed.
+    if producer.is_bundle() && raw.scope.unwrap_or(false) {
+        return Err(format!(
+            "`{KEY_SCOPE}` narrows a block's own rows, and a `{KEY_DO}` block makes none"
+        ));
+    }
+
     // A block that produces rows is a list, and a list is not a verb. Letting
     // one declare `applies` would make it an action and a level at once, which
     // is the ambiguity `perform_block`'s `as_target` already exists to settle.
@@ -531,6 +545,7 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
         bias: raw.bias.unwrap_or_default(),
         icon: raw.icon,
         enabled: raw.enabled.unwrap_or(true),
+        scope: raw.scope.unwrap_or(false),
         preview: raw.preview,
         confirm: raw.confirm.filter(|question| !question.trim().is_empty()),
         control: raw.control.filter(|control| !control.trim().is_empty()),

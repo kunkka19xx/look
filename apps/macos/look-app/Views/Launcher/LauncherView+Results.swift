@@ -219,6 +219,31 @@ extension LauncherView {
             showBanner("Couldn't tell which block this row belongs to", style: .error, duration: 2.0)
             return
         }
+        // A listing block's own row is a place, not a deed: Enter goes in and
+        // the level filters as you type. Nil is the catalog still loading, and
+        // the core answers that authoritatively through `producesRows`.
+        let lists = SourceBlockCatalog.lists(candidateID: selected.id)
+        if lists != false {
+            recordOpen(selected, action: AppConstants.Launcher.SourceBlock.usageAction)
+            guard lists == true else {
+                performSourceBlockTarget(blockID: blockID, title: selected.title)
+                return
+            }
+            descendIntoBlock(
+                blockID: blockID,
+                title: selected.title,
+                parent: LevelParentRow(
+                    candidateID: selected.id,
+                    title: selected.title,
+                    path: selected.path,
+                    openedFromQuery: query,
+                    openedFromSelection: selectedResultID
+                ),
+                ancestorsJSON: selectedRowAncestorsJSON,
+                epoch: levelStack.beginRequest()
+            )
+            return
+        }
         recordOpen(selected, action: AppConstants.Launcher.SourceBlock.usageAction)
         hideLauncherWindow(restorePreviousApp: false)
 

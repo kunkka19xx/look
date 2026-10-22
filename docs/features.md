@@ -128,6 +128,7 @@ This document tracks what `look` supports today and what is planned next.
 - `{arg}` in a producer makes the block one you type into: `newnote Meeting with Bob` runs it with `Meeting with Bob` as the argument, the row leads the results and shows what it will use. The opening word is the block's name or an alias
 - `:url` on any placeholder (`{path:url}`) percent-encodes the value for a command that builds a URL, since shell quoting protects the shell and not the query string: a file called `Notes & ideas (draft).md` would otherwise end the URL early. An encoded value is the one thing not shell-quoted, because the encoding already left nothing a shell reads as punctuation, so the URL can be written inside quotes as it must be
 - `confirm` question before a destructive block acts; `preview` command whose output fills the right panel for the selected row
+- `Enter` on a block that lists goes into it and the list filters as you type; `scope = true` also lets its name narrow a search from the main list (`obsnote inv`)
 - row wire formats: tab-separated lines (`id<TAB>title<TAB>subtitle`) or `format = "json"` for per-row `path` and `icon`
 - an executable dropped in the sources directory is a `run` block with everything inferred, no declaration needed
 - `aliases`, `bias`, `icon`, and `enabled` per block; unknown keys reported, never fatal
