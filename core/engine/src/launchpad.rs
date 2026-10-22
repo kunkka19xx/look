@@ -336,6 +336,10 @@ pub struct LayoutPayload {
     pub columns: u8,
     pub rows: u8,
     pub tiles: Vec<LaunchpadTile>,
+    /// Same resolve as `tiles`. Not on the wire: the other shells still ask
+    /// for warnings on their own call.
+    #[serde(skip)]
+    pub warnings: Vec<String>,
 }
 
 impl From<Resolved> for LayoutPayload {
@@ -344,6 +348,7 @@ impl From<Resolved> for LayoutPayload {
             columns: resolved.columns,
             rows: resolved.rows,
             tiles: resolved.tiles,
+            warnings: resolved.warnings,
         }
     }
 }
@@ -1491,8 +1496,6 @@ mnemonic = "Cmd+C"
             resolved.warnings
         );
 
-        // Reported with Look 0.7.4: five tokens, then six. The whole default
-        // comes back, with the structural diagnostic and nothing else.
         let reported = resolve(
             r#"layout = [
                 "lslot       lslot       bluetooth   wifi        battery",

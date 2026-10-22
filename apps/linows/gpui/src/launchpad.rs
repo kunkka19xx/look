@@ -198,12 +198,17 @@ impl DeliveredWarnings {
 
 /// The layout survives the window, so a summon never waits on the file.
 static LAYOUT: Mutex<Option<Arc<LayoutPayload>>> = Mutex::new(None);
-/// Touched only from a live launchpad. A result that arrives after the
-/// window is gone must not count as delivered.
+/// A warning counts as delivered only when a live launchpad shows it.
 static DELIVERED: Mutex<DeliveredWarnings> = Mutex::new(DeliveredWarnings(Vec::new()));
 
 fn cached_layout() -> Option<Arc<LayoutPayload>> {
     LAYOUT.lock().unwrap_or_else(|p| p.into_inner()).clone()
+}
+
+/// Setting on, split layout, and a compositor. Off in classic mode and when
+/// Super Actions is disabled, which is when macOS also stays quiet.
+fn launchpad_shown() -> bool {
+    theme::get().shows_launchpad() && !crate::host::opaque()
 }
 
 pub struct Launchpad {
@@ -384,33 +389,26 @@ impl Launchpad {
     fn load_layout(&mut self, cx: &mut Context<Self>) {
         let token = self.token;
         cx.spawn(async move |this, cx| {
-            // Every summon. Showing them is decided below, on the live
-            // launchpad: recording that here would swallow a warning the
-            // window never got to display.
-            let fresh = bg::blocking(move || {
-                let layout = Arc::new(qactions::launchpad_layout());
-                let warnings = qactions::launchpad_warnings();
-                (layout, warnings)
-            })
-            .get()
-            .await;
+            // Delivery is decided on the live launchpad, from this one read.
+            let fresh = bg::blocking(qactions::launchpad_layout).get().await;
             let _ = this.update(cx, |this, cx| {
-                let (layout, warnings) = fresh;
+                let layout = Arc::new(fresh);
                 *LAYOUT.lock().unwrap_or_else(|p| p.into_inner()) = Some(layout.clone());
                 let first = this.layout.is_none();
                 if first || this.layout.as_deref() != Some(&layout) {
-                    this.layout = Some(layout);
+                    this.layout = Some(layout.clone());
                     this.clear_confirm(cx);
                     if first || this.token == token {
                         this.refresh_all(cx);
                     }
                     cx.notify();
                 }
-                let text = DELIVERED
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner())
-                    .deliver(&warnings);
-                if let Some(text) = text {
+                if launchpad_shown()
+                    && let Some(text) = DELIVERED
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .deliver(&layout.warnings)
+                {
                     this.notify(text, Tone::Warning, NOTICE_WARNING, cx);
                 }
             });
@@ -1818,10 +1816,7 @@ mod tests {
                 .to_string(),
         ];
         let shown = delivered.deliver(&ragged).expect("the invalid summon");
-        assert!(shown.contains("row 2"), "{shown}");
-        assert!(shown.contains("6 tokens"), "{shown}");
-        assert!(shown.contains("row 1 has 5"), "{shown}");
-        assert!(shown.contains("using the default layout"), "{shown}");
+        assert_eq!(shown, ragged[0]);
         assert_eq!(
             delivered.deliver(&ragged),
             None,
