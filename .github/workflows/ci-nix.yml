@@ -6,12 +6,12 @@ on:
       - "core/**"
       - "apps/linows/gpui/**"
       - "apps/linows/icons/**"
-      - "apps/linows/packaging/**"
+      - "packaging/linux/**"
       - "apps/linows/backend/**"
       - "apps/linows/Cargo.*"
-      - "apps/linows/nix/**"
-      - "apps/linows/flake.nix"
-      - "apps/linows/flake.lock"
+      - "packaging/nix/**"
+      - "flake.nix"
+      - "flake.lock"
       # Last match wins in GitHub's own path filter, so this trailing negation
       # drops a docs-only edit. Note it is NOT the syntax ci.yml uses: that one
       # filters with dorny/paths-filter, where rules are OR-ed instead.
@@ -22,12 +22,12 @@ on:
       - "core/**"
       - "apps/linows/gpui/**"
       - "apps/linows/icons/**"
-      - "apps/linows/packaging/**"
+      - "packaging/linux/**"
       - "apps/linows/backend/**"
       - "apps/linows/Cargo.*"
-      - "apps/linows/nix/**"
-      - "apps/linows/flake.nix"
-      - "apps/linows/flake.lock"
+      - "packaging/nix/**"
+      - "flake.nix"
+      - "flake.lock"
       # Last match wins in GitHub's own path filter, so this trailing negation
       # drops a docs-only edit. Note it is NOT the syntax ci.yml uses: that one
       # filters with dorny/paths-filter, where rules are OR-ed instead.
@@ -57,20 +57,20 @@ jobs:
       # NixOS or Home Manager module would only surface in a user's rebuild.
       - name: Evaluate flake modules
         run: |
-          nix eval ./apps/linows#nixosModules.default --apply builtins.isFunction
-          nix eval ./apps/linows#homeModules.default --apply builtins.isFunction
+          nix eval .#nixosModules.default --apply builtins.isFunction
+          nix eval .#homeModules.default --apply builtins.isFunction
 
       # -L streams the derivation's build log. Without it nix buffers the whole
       # compile into one silent block, which makes a slow or stuck build
       # impossible to diagnose from the Actions log.
       - name: Build
-        run: nix build ./apps/linows#default -L
+        run: nix build .#default -L
 
       - name: Verify version
         run: ./result/bin/lookapp --version
 
   # The macOS package installs the signed release bundle instead of building
-  # it (apps/linows/nix/package-darwin.nix), so what can go wrong is a stale
+  # it (packaging/nix/package-darwin.nix), so what can go wrong is a stale
   # hash after a release and a bundle that no longer passes Gatekeeper once
   # it has been through the store. Both are checked here; nothing is compiled.
   build-darwin:
@@ -81,7 +81,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
       - name: Build
-        run: nix build ./apps/linows#packages.aarch64-darwin.default -L
+        run: nix build .#packages.aarch64-darwin.default -L
 
       - name: Verify the bundle
         run: |

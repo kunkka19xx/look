@@ -36,9 +36,9 @@ Tick what you ran. Delete whole blocks that this PR does not touch.
 
 ### Nix package
 
-<!-- Delete this block unless apps/linows/nix/**, the flake, or packaging changed. -->
+<!-- Delete this block unless packaging/nix/**, the flake, or packaging changed. -->
 
-- [ ] `nix build ./apps/linows#default -L`
+- [ ] `nix build .#default -L`
 
 ### macOS app (SwiftUI shell, `apps/macos`)
 

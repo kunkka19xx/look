@@ -23,7 +23,7 @@
         "aarch64-linux"
       ];
       # arm64 only, and the macOS app ships as a signed bundle rather than a
-      # source build. Both reasons live in nix/package-darwin.nix.
+      # source build. Both reasons live in packaging/nix/package-darwin.nix.
       darwinSystems = [ "aarch64-darwin" ];
 
       forLinuxSystems = nixpkgs.lib.genAttrs linuxSystems;
@@ -58,9 +58,9 @@
       lookappFor =
         pkgs:
         if pkgs.stdenv.hostPlatform.isDarwin then
-          pkgs.callPackage ./nix/package-darwin.nix { }
+          pkgs.callPackage ./packaging/nix/package-darwin.nix { }
         else
-          pkgs.callPackage ./nix/package.nix {
+          pkgs.callPackage ./packaging/nix/package.nix {
             rustPlatform = rustPlatformFor pkgs;
           };
     in
@@ -79,12 +79,12 @@
       # Every module defaults `programs.lookapp.package` to `self.packages`, so
       # `enable = true` gets the pinned toolchain and the cached build on Linux,
       # and the signed release bundle on macOS.
-      nixosModules.default = import ./nix/module.nix self;
+      nixosModules.default = import ./packaging/nix/module.nix self;
       # `environment.systemPackages` and `nix.settings` mean the same thing in
       # nix-darwin, and its activation links the bundle into
       # /Applications/Nix Apps, so the one module serves both.
-      darwinModules.default = import ./nix/module.nix self;
-      homeModules.default = import ./nix/home-manager.nix self;
+      darwinModules.default = import ./packaging/nix/module.nix self;
+      homeModules.default = import ./packaging/nix/home-manager.nix self;
 
       # Composed with rust-overlay so `pkgs.lookapp` builds against the pinned
       # toolchain wherever the overlay is applied, not nixpkgs' older rustc.

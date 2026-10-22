@@ -31,7 +31,7 @@ chmod +x linuxdeploy
 
 ./linuxdeploy --appdir AppDir \
     --executable "$BINARY" \
-    --desktop-file "$LINOWS/packaging/lookapp.desktop" \
+    --desktop-file "$REPO_ROOT/packaging/linux/lookapp.desktop" \
     --icon-file "$LINOWS/icons/128x128.png" \
     --icon-filename lookapp
 # The 256px icon beside it, for HiDPI desktops.
