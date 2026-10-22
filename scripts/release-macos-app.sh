@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_DIR="$ROOT_DIR/apps/macos/LauncherApp"
+APP_DIR="$ROOT_DIR/apps/macos"
 SCHEME="Look"
 CONFIGURATION="Release"
 

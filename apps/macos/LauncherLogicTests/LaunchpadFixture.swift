@@ -12,10 +12,10 @@ enum LaunchpadFixture {
     static func customTileJSON() throws -> Data { try fixture("launchpad_custom_tile.json") }
 
     private static func fixture(_ name: String) throws -> Data {
-        // Up from LauncherLogicTests/ to the repo root: LauncherApp, macos,
-        // apps, then the root itself.
+        // Up from LauncherLogicTests/ to the repo root: macos, apps,
+        // then the root itself.
         var root = URL(fileURLWithPath: #filePath)
-        for _ in 0..<5 { root.deleteLastPathComponent() }
+        for _ in 0..<4 { root.deleteLastPathComponent() }
         return try Data(
             contentsOf: root.appendingPathComponent("bridge/ffi/tests/fixtures/\(name)"))
     }
