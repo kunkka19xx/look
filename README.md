@@ -48,7 +48,7 @@ Release builds are signed and notarized - no Gatekeeper bypass needed. Releases 
 **Nix (flake):**
 
 ```bash
-nix profile install 'github:kunkka19xx/look?dir=apps/linows'
+nix profile install 'github:kunkka19xx/look'
 ```
 
 The same signed, notarized bundle Homebrew ships, so the Accessibility and Automation grants survive an update. Apple Silicon only for now. nix-darwin and Home Manager: see [BUILDING.md](apps/linows/BUILDING.md#macos-flake).
@@ -108,13 +108,13 @@ rm Look_*.AppImage
 **NixOS (flake):**
 
 ```bash
-nix profile install 'github:kunkka19xx/look?dir=apps/linows'
+nix profile install 'github:kunkka19xx/look'
 ```
 
 Declarative:
 
 ```nix
-inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
+inputs.look.url = "github:kunkka19xx/look";
 
 # in your nixosSystem modules
 look.nixosModules.default

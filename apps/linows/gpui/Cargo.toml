@@ -24,7 +24,7 @@ depends = "$auto, libvulkan1, xdg-desktop-portal"
 recommends = "mesa-vulkan-drivers, wl-clipboard"
 assets = [
     ["target/release/lookapp", "usr/bin/", "755"],
-    ["../packaging/lookapp.desktop", "usr/share/applications/", "644"],
+    ["../../../packaging/linux/lookapp.desktop", "usr/share/applications/", "644"],
     ["../icons/32x32.png", "usr/share/icons/hicolor/32x32/apps/lookapp.png", "644"],
     ["../icons/64x64.png", "usr/share/icons/hicolor/64x64/apps/lookapp.png", "644"],
     ["../icons/128x128.png", "usr/share/icons/hicolor/128x128/apps/lookapp.png", "644"],
