@@ -15,7 +15,7 @@
 
 let
   # Bumped together with the hashes below; the two are only correct as a pair.
-  # Not read from ../Cargo.toml: that version moves at release prep, before the
+  # Not read from apps/linows/Cargo.toml: that version moves at release prep, before the
   # zip exists, which would break `nix build` on main.
   version = "0.7.4";
 

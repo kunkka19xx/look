@@ -11,8 +11,7 @@ Guide for building Look locally and contributing to the project.
 │   └── linows/                   # gpui app, Linux + Windows
 │       ├── gpui/                 #   The shell: window, screens, keys (lookapp)
 │       ├── backend/              #   Everything that is not drawing (shared)
-│       ├── src-tauri/, src/      #   The Tauri shell, kept as the backup
-│       └── flake.nix             #   NixOS dev shell
+│       └── src-tauri/, src/      #   The Tauri shell, kept as the backup
 ├── core/                         # Shared Rust, consumed by every shell
 │   ├── ai/                       # Routing, planning, lexicon
 │   ├── answers/                  # Platform-agnostic "web answer" features
@@ -32,9 +31,15 @@ Guide for building Look locally and contributing to the project.
 │   └── ffi/                      # Rust FFI bridge (consumed by macOS/Windows native apps)
 ├── tools/
 │   └── perf/                     # Watcher / refresh benchmarks (separate crate, never bundled)
+├── packaging/
+│   ├── nix/                      # Package, NixOS, nix-darwin and Home Manager modules
+│   ├── linux/                    # Desktop entry shared by deb, AppImage and Nix
+│   ├── aur/                      # PKGBUILD for look-bin
+│   └── windows/                  # NSIS installer script
 ├── docs/                         # User guide, architecture, design decisions
 ├── scripts/                      # Build, release, install scripts
-└── assets/                       # Icons, screenshots, demo GIF
+├── assets/                       # Icons, screenshots, demo GIF
+└── flake.nix                     # Nix entry point: packages, modules, the Linux dev shell
 ```
 
 ## Prerequisites

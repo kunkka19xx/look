@@ -123,12 +123,12 @@ cargo run --release   # production profile
 cargo build --locked  # backend + gpui shell
 ```
 
-**NixOS dev shell** (uses flake.nix):
+**NixOS dev shell** (uses the repo-root flake.nix, found from any subdirectory):
 
 ```bash
 nix develop
 nix develop -c cargo run
-nix build ./apps/linows#default -L   # the packaged build, from the repo root
+nix build .#default -L   # the packaged build, from the repo root
 ```
 
 The Tauri backup builds by name: `cargo build -p lookapp-tauri`, `cargo tauri dev`, `cargo tauri build --bundles deb`.

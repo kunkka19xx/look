@@ -146,7 +146,7 @@ git push
 
 **`fatal: pathspec '.SRCINFO' did not match any files`** The Docker container failed silently. Re-run with the `useradd` line - `makepkg` refuses to run as root.
 
-**CI `nix-build` job fails on vendoring** That's the Nix job, not AUR. `apps/linows/nix/package.nix` vendors from the committed `Cargo.lock` via `importCargoLock`, so there is no `cargoHash` to regenerate - check that the lockfile is committed and in sync with the manifests.
+**CI `nix-build` job fails on vendoring** That's the Nix job, not AUR. `packaging/nix/package.nix` vendors from the committed `Cargo.lock` via `importCargoLock`, so there is no `cargoHash` to regenerate - check that the lockfile is committed and in sync with the manifests.
 
 **CI fails with `Could not resolve host: github.com`** DNS or network trouble on the runner, nothing to do with the package. Rerun the job.
 

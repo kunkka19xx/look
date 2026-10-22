@@ -32,7 +32,6 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
       - name: Update the lock
-        working-directory: apps/linows
         run: nix flake update nixpkgs
 
       # A PAT, not GITHUB_TOKEN: PRs opened with GITHUB_TOKEN never trigger CI,
@@ -45,11 +44,11 @@ jobs:
             echo "::error::FLAKE_UPDATE_TOKEN is not set (PAT with repo scope)."
             exit 1
           fi
-          if git diff --quiet -- apps/linows/flake.lock; then
+          if git diff --quiet -- flake.lock; then
             echo "nixpkgs already current."
             exit 0
           fi
-          rev=$(jq -r .nodes.nixpkgs.locked.rev apps/linows/flake.lock)
+          rev=$(jq -r .nodes.nixpkgs.locked.rev flake.lock)
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -C "$BRANCH"
@@ -59,5 +58,5 @@ jobs:
           if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
             gh pr create --head "$BRANCH" --base main \
               --title "chore(nix): update nixpkgs" \
-              --body "Weekly bump of \`apps/linows/flake.lock\` nixpkgs so Cachix builds match current NixOS."
+              --body "Weekly bump of \`flake.lock\` nixpkgs so Cachix builds match current NixOS."
           fi

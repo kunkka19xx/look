@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Point apps/linows/nix/package-darwin.nix at a released macOS build.
+# Point packaging/nix/package-darwin.nix at a released macOS build.
 #
 # Rewrites `version` and the hash of every architecture the file already
 # carries, in one pass, because the two are only ever correct as a pair: a
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-FILE="$ROOT_DIR/apps/linows/nix/package-darwin.nix"
+FILE="$ROOT_DIR/packaging/nix/package-darwin.nix"
 DOWNLOAD_URL="https://github.com/kunkka19xx/look/releases/download"
 
 VERSION="${1:-}"
@@ -85,7 +85,7 @@ if ! grep -q "^  version = \"$VERSION\";$" "$draft"; then
 fi
 
 cp "$draft" "$FILE"
-echo "apps/linows/nix/package-darwin.nix now pins $VERSION"
+echo "packaging/nix/package-darwin.nix now pins $VERSION"
 
 if ((${#unpackaged[@]})); then
   printf 'release asset with no sources entry: %s\n' "${unpackaged[@]}" >&2

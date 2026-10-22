@@ -567,7 +567,7 @@ NixOS / Home Manager users can manage the same file declaratively through the fl
 
 ```nix
 # flake.nix
-inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
+inputs.look.url = "github:kunkka19xx/look";
 
 homeConfigurations."me" = home-manager.lib.homeManagerConfiguration {
   inherit pkgs;

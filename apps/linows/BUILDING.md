@@ -68,7 +68,7 @@ The flake exports a Home Manager module for declarative user configuration. Add 
 ```nix
 # flake.nix
 {
-  inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
+  inputs.look.url = "github:kunkka19xx/look";
 
   outputs = { nixpkgs, home-manager, ... }@inputs: {
     homeConfigurations."me" = home-manager.lib.homeManagerConfiguration {
@@ -249,10 +249,10 @@ yay -S look-bin
 
 ```bash
 # Run directly
-nix run 'github:kunkka19xx/look?dir=apps/linows'
+nix run 'github:kunkka19xx/look'
 
 # Install to profile
-nix profile install 'github:kunkka19xx/look?dir=apps/linows'
+nix profile install 'github:kunkka19xx/look'
 
 # Build locally
 cd apps/linows
@@ -265,7 +265,7 @@ nix build .#default
 ```nix
 # flake.nix
 {
-  inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
+  inputs.look.url = "github:kunkka19xx/look";
 
   outputs = { nixpkgs, look, ... }: {
     nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
@@ -308,7 +308,7 @@ sudo nixos-rebuild switch --flake /path/to/your/flake#hostname
 
 ```nix
 look = {
-  url = "github:kunkka19xx/look?dir=apps/linows";
+  url = "github:kunkka19xx/look";
   inputs.nixpkgs.follows = "nixpkgs";
 };
 ```
@@ -322,10 +322,10 @@ Look then builds locally instead of coming from Cachix.
 **Status:** Available now, Apple Silicon only.
 
 ```bash
-nix profile install 'github:kunkka19xx/look?dir=apps/linows'
+nix profile install 'github:kunkka19xx/look'
 ```
 
-The flake lives here because every Nix output does, but this package is not the `linows` build: it installs the macOS app from `apps/macos`. That one is an Xcode/Swift target and xcodebuild needs Xcode, which is not in nixpkgs, so there is no source build to offer. The derivation takes the signed and notarized `Look.app` from GitHub Releases instead, the same bundle `brew install --cask look` ships. Keeping Apple's signature is the point rather than a shortcut: macOS keys the Accessibility and Automation grants to it, so a locally re-signed bundle would drop every granted permission on each rebuild, silently, with the switches in System Settings still showing as on.
+The flake sits at the repository root because every Nix output does, but this package is not the `linows` build: it installs the macOS app from `apps/macos`. That one is an Xcode/Swift target and xcodebuild needs Xcode, which is not in nixpkgs, so there is no source build to offer. The derivation takes the signed and notarized `Look.app` from GitHub Releases instead, the same bundle `brew install --cask look` ships. Keeping Apple's signature is the point rather than a shortcut: macOS keys the Accessibility and Automation grants to it, so a locally re-signed bundle would drop every granted permission on each rebuild, silently, with the switches in System Settings still showing as on.
 
 It installs as `Applications/Look.app` plus a `bin/lookapp` symlink to the bundle executable, the CLI layout `scripts/install-look.sh` already uses. Started through the symlink the app hands off to the bundle, so `lookapp clipboard` and `lookapp --toggle` work from a profile install.
 
@@ -333,7 +333,7 @@ Declarative with [nix-darwin](https://github.com/nix-darwin/nix-darwin):
 
 ```nix
 # flake.nix
-inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
+inputs.look.url = "github:kunkka19xx/look";
 
 # in your darwinSystem modules
 look.darwinModules.default
