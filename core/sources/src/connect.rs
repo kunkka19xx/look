@@ -18,6 +18,7 @@ use crate::rows::SourceRow;
 pub enum Ask {
     Hello { v: u32, look: String },
     Query { block: String, q: String },
+    Preview { block: String, id: String, req: u64 },
     Bye,
 }
 
@@ -34,9 +35,36 @@ pub enum Say {
         block: String,
         rows: Vec<Row>,
     },
+    Preview {
+        block: String,
+        id: String,
+        /// The `req` of the ask this answers, echoed back. An answer without
+        /// one is dropped: it cannot be told from a late reply to an older
+        /// ask, which is the whole point of the number.
+        #[serde(default)]
+        req: Option<u64>,
+        /// What `text` is, so the panel renders it rather than guessing.
+        /// Absent means plain text, which is what a connector that never
+        /// heard of this field meant.
+        #[serde(default)]
+        content_type: Content,
+        text: String,
+    },
     Error {
         message: String,
     },
+}
+
+/// The content types a preview may carry. An unknown one reads as `text`:
+/// showing the source beats showing nothing, and a connector written against a
+/// later Look must not blank the panel on an older one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Content {
+    Markdown,
+    #[default]
+    #[serde(other)]
+    Text,
 }
 
 /// One row as a connector writes it. The same fields a JSON row already has in
@@ -134,6 +162,69 @@ mod tests {
         assert!(read(r#"{"op":"tile","id":"x"}"#).is_none());
         assert!(read("not json").is_none());
         assert!(read("").is_none());
+    }
+
+    #[test]
+    fn a_preview_carries_its_content_type() {
+        let say = read(
+            r##"{"op":"preview","block":"myapp.notes","id":"n1","req":7,"content_type":"markdown","text":"# T"}"##,
+        )
+        .expect("a preview frame");
+        assert_eq!(
+            say,
+            Say::Preview {
+                block: "myapp.notes".into(),
+                id: "n1".into(),
+                req: Some(7),
+                content_type: Content::Markdown,
+                text: "# T".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_preview_that_omits_the_request_number_still_parses() {
+        // It parses so the engine can say why it dropped it, rather than the
+        // frame vanishing as unreadable.
+        let say = read(r#"{"op":"preview","block":"b","id":"1","text":"x"}"#).expect("frame");
+        let Say::Preview { req, .. } = say else {
+            panic!("expected preview");
+        };
+        assert_eq!(req, None);
+    }
+
+    #[test]
+    fn a_preview_without_a_content_type_is_text() {
+        // What a connector written before the field existed meant.
+        let say = read(r#"{"op":"preview","block":"b","id":"1","text":"plain"}"#).expect("frame");
+        let Say::Preview { content_type, .. } = say else {
+            panic!("expected preview");
+        };
+        assert_eq!(content_type, Content::Text);
+    }
+
+    #[test]
+    fn an_unknown_content_type_reads_as_text() {
+        // Showing the source beats blanking the panel.
+        let say = read(r#"{"op":"preview","block":"b","id":"1","content_type":"html","text":"x"}"#)
+            .expect("frame");
+        let Say::Preview { content_type, .. } = say else {
+            panic!("expected preview");
+        };
+        assert_eq!(content_type, Content::Text);
+    }
+
+    #[test]
+    fn asking_for_a_preview_is_one_line() {
+        assert_eq!(
+            Ask::Preview {
+                block: "myapp.notes".into(),
+                id: "n1".into(),
+                req: 7,
+            }
+            .line(),
+            "{\"op\":\"preview\",\"block\":\"myapp.notes\",\"id\":\"n1\",\"req\":7}\n"
+        );
     }
 
     #[test]

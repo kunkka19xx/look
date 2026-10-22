@@ -19,7 +19,7 @@ mod tools;
 pub use collect::{
     CollectError, Collected, MAX_ROWS_PER_SOURCE, collect, collect_for_row, expand_home,
 };
-pub use connect::{Ask, PROTOCOL_VERSION, Row as ConnectorRow, Say, read as read_frame};
+pub use connect::{Ask, Content, PROTOCOL_VERSION, Row as ConnectorRow, Say, read as read_frame};
 pub use def::{
     Applies, AppliesOnly, Block, Only, ParsedFile, Producer, RowFormat, RowKind, Verbs, inferred,
     parse_duration, parse_file,

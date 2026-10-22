@@ -104,6 +104,9 @@ pub struct BlockSummary {
     pub id: String,
     pub name: String,
     pub icon: Option<String>,
+    /// The block makes rows rather than running steps, so its own row is a
+    /// place to go into rather than a thing to do.
+    pub lists: bool,
 }
 
 /// Everything the Extend screen needs: what is declared, and what could not be.
@@ -235,13 +238,31 @@ pub struct Level {
 /// A block's declared `preview` output, or the reason it could not run. A
 /// failure is carried rather than swallowed: a preview that silently does
 /// nothing reads as the feature being broken.
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 pub struct PreviewOutcome {
     pub text: String,
     pub error: Option<String>,
     /// The same output read as a layout, when it is one. `text` is kept beside
     /// it so a shell that does not draw blocks still shows something.
     pub blocks: Vec<look_sources::DetailBlock>,
+}
+
+impl PreviewOutcome {
+    fn shown(text: String, blocks: Vec<look_sources::DetailBlock>) -> Self {
+        Self {
+            text,
+            error: None,
+            blocks,
+        }
+    }
+
+    fn failed(message: impl Into<String>) -> Self {
+        Self {
+            text: String::new(),
+            error: Some(message.into()),
+            blocks: Vec::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Default)]
@@ -308,7 +329,9 @@ pub fn block_detail(candidate_id: &str, row: &RowContext) -> Option<BlockDetail>
             .map(|question| look_sources::expand(question, row)),
         then,
         globals,
-        has_preview: block.preview.is_some(),
+        // A connector has a preview to give without declaring one: it answers
+        // over its connection rather than by running a command.
+        has_preview: block.preview.is_some() || matches!(block.producer, Producer::Connect { .. }),
     })
 }
 
@@ -411,6 +434,7 @@ pub fn block_summaries() -> Vec<BlockSummary> {
         .blocks
         .into_iter()
         .map(|block| BlockSummary {
+            lists: !block.is_bundle(),
             id: block.id,
             name: block.name,
             icon: block.icon,
@@ -589,7 +613,12 @@ pub fn level(
 pub fn preview(candidate_id: &str, row: &RowContext) -> Option<PreviewOutcome> {
     let block_id = CandidateIdKind::source_id_of(candidate_id)?;
     let block = find_block(block_id)?;
-    let preview = block.preview.as_deref()?;
+    let Some(preview) = block.preview.as_deref() else {
+        if let Producer::Connect { .. } = block.producer {
+            return Some(connector_preview(&block.id, &row.id));
+        }
+        return None;
+    };
 
     let command = look_sources::expand(preview, row);
     Some(
@@ -599,18 +628,38 @@ pub fn preview(candidate_id: &str, row: &RowContext) -> Option<PreviewOutcome> {
             DEFAULT_CAPTURE_TIMEOUT,
             MAX_CAPTURE_BYTES,
         ) {
-            Ok(text) => PreviewOutcome {
-                blocks: look_sources::parse_detail(&text).unwrap_or_default(),
-                text,
-                error: None,
-            },
-            Err(message) => PreviewOutcome {
-                text: String::new(),
-                error: Some(message),
-                blocks: Vec::new(),
-            },
+            Ok(text) => {
+                let blocks = look_sources::parse_detail(&text).unwrap_or_default();
+                PreviewOutcome::shown(text, blocks)
+            }
+            Err(message) => PreviewOutcome::failed(message),
         },
     )
+}
+
+/// How long a panel waits on a connector. Long enough for a local process to
+/// answer, short enough that a dead one costs a beat rather than the frame.
+const CONNECTOR_PREVIEW_WAIT: Duration = Duration::from_millis(400);
+
+/// Asks the connector behind the block for the row, over its connection.
+///
+/// Silence is not an error: a connector that is simply slow has not failed,
+/// and an error line would read as broken. Not running is an error, because
+/// nothing is ever going to arrive.
+fn connector_preview(block: &str, row: &str) -> PreviewOutcome {
+    let Some(req) = crate::connectors::ask_preview(block, row) else {
+        return PreviewOutcome::failed("connector is not running");
+    };
+    let Some(found) = crate::connectors::preview_of(block, row, req, CONNECTOR_PREVIEW_WAIT) else {
+        return PreviewOutcome::default();
+    };
+    let text = found.text.clone();
+    let block = if found.markdown {
+        look_sources::DetailBlock::Markdown { text: found.text }
+    } else {
+        look_sources::DetailBlock::Text { text: found.text }
+    };
+    PreviewOutcome::shown(text, vec![block])
 }
 
 /// Re-runs every enabled `run` block and stores its rows, so the next index pass

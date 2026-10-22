@@ -91,6 +91,9 @@ pub struct QueryEngine {
     /// every single-word name or alias that opens it. Scored as one long query
     /// the row the user explicitly named would not appear at all.
     arg_rows: HashMap<String, u32>,
+    /// Block id for each word that scopes a search, keyed by every single-word
+    /// name or alias of a block that declared `scope`.
+    scope_blocks: HashMap<String, String>,
 }
 
 impl QueryEngine {
@@ -133,6 +136,13 @@ impl QueryEngine {
             .map(|block| (block.id.clone(), block.bias))
             .collect();
 
+        let mut scope_blocks: HashMap<String, String> = HashMap::new();
+        for block in declared.iter().filter(|block| block.scope && block.enabled) {
+            for word in Self::openers(block) {
+                scope_blocks.insert(word, block.id.clone());
+            }
+        }
+
         let mut arg_rows: HashMap<String, u32> = HashMap::new();
         for block in declared.iter().filter(|block| block.takes_arg()) {
             let row_id = CandidateIdKind::source_row_candidate_id(&block.id, &[], "");
@@ -142,9 +152,8 @@ impl QueryEngine {
             else {
                 continue;
             };
-            let openers = std::iter::once(&block.name).chain(block.aliases.iter());
-            for opener in openers.filter(|name| !name.contains(char::is_whitespace)) {
-                arg_rows.insert(opener.to_lowercase(), index as u32);
+            for word in Self::openers(block) {
+                arg_rows.insert(word, index as u32);
             }
         }
 
@@ -153,7 +162,32 @@ impl QueryEngine {
             search_aliases,
             source_biases,
             arg_rows,
+            scope_blocks,
         }
+    }
+
+    /// The single words that can open a line for this block. A name with a
+    /// space in it is skipped: the first word of the line is all we match on.
+    fn openers(block: &look_sources::Block) -> impl Iterator<Item = String> + '_ {
+        std::iter::once(&block.name)
+            .chain(block.aliases.iter())
+            .filter(|name| !name.contains(char::is_whitespace))
+            .map(|name| name.to_lowercase())
+    }
+
+    /// The block whose rows a line narrows to, and the rest of that line.
+    /// `None` when the first word scopes nothing, which is almost every line.
+    pub(crate) fn scoped<'a, 'q>(&'a self, query: &'q str) -> Option<(&'a str, &'q str)> {
+        if self.scope_blocks.is_empty() {
+            return None;
+        }
+        let (head, rest) = sources::trigger_and_rest(query)?;
+        // An argument-taking block already owns its word, and its meaning is
+        // the more specific one: it uses the rest, rather than matching on it.
+        if self.arg_rows.contains_key(&head) {
+            return None;
+        }
+        Some((self.scope_blocks.get(&head)?.as_str(), rest))
     }
 
     /// The row the typed line names and the argument after it. `newnote` alone
@@ -511,6 +545,109 @@ impl BootstrapScope {
 mod tests {
     use super::*;
     use crate::scoring::default_browse_score;
+
+    fn source_row(block: &str, row: &str, title: &str) -> Candidate {
+        Candidate::new(
+            &CandidateIdKind::source_row_candidate_id(block, &[], row),
+            CandidateKind::Action,
+            title,
+            "",
+        )
+    }
+
+    /// `scope` is declared in a TOML the test environment has no business
+    /// reading, so the map it produces is injected instead.
+    fn scoping(engine: &mut QueryEngine, word: &str, block: &str) {
+        engine
+            .scope_blocks
+            .insert(word.to_string(), block.to_string());
+    }
+
+    #[test]
+    fn a_scope_word_narrows_to_its_block() {
+        let mut engine = QueryEngine::new(vec![
+            source_row("obsnote", "n1", "meeting notes"),
+            source_row("obsnote", "n2", "other notes"),
+            source_row("projects", "p1", "notes project"),
+            file_candidate("file:a", "notes.txt", "/tmp/notes.txt", 0),
+        ]);
+        scoping(&mut engine, "obsnote", "obsnote");
+
+        let titles: Vec<String> = engine
+            .search("obsnote notes", 10)
+            .into_iter()
+            .map(|result| result.title)
+            .collect();
+        assert_eq!(titles.len(), 2, "only obsnote's rows, got {titles:?}");
+        assert!(titles.iter().all(|title| title.contains("notes")));
+        assert!(!titles.iter().any(|title| title == "notes project"));
+    }
+
+    #[test]
+    fn a_scope_does_not_pin_another_blocks_argument_row() {
+        // `obsnote newnote Hello` means "search obsnote for newnote Hello",
+        // so newnote's own row must not be lifted above the results.
+        let mut engine = QueryEngine::new(vec![
+            source_row("obsnote", "n1", "newnote draft"),
+            source_row("newnote", "", "New note"),
+        ]);
+        scoping(&mut engine, "obsnote", "obsnote");
+        engine.arg_rows.insert("newnote".into(), 1);
+
+        let titles: Vec<String> = engine
+            .search("obsnote newnote", 10)
+            .into_iter()
+            .map(|result| result.title)
+            .collect();
+        assert_eq!(titles, ["newnote draft"], "got {titles:?}");
+    }
+
+    #[test]
+    fn a_scope_word_alone_is_an_ordinary_search() {
+        // Nothing after the word, so it names the block's own row rather than
+        // narrowing anything.
+        let mut engine = QueryEngine::new(vec![source_row("projects", "p1", "obsnote")]);
+        scoping(&mut engine, "obsnote", "obsnote");
+        assert_eq!(engine.scoped("obsnote"), None);
+        assert_eq!(engine.search("obsnote", 10).len(), 1);
+    }
+
+    #[test]
+    fn an_unscoped_word_searches_everything() {
+        let mut engine = QueryEngine::new(vec![
+            source_row("obsnote", "n1", "meeting notes"),
+            file_candidate("file:a", "notes.txt", "/tmp/notes.txt", 0),
+        ]);
+        scoping(&mut engine, "obsnote", "obsnote");
+        assert_eq!(engine.scoped("whatever notes"), None);
+        assert_eq!(engine.search("notes", 10).len(), 2);
+    }
+
+    #[test]
+    fn a_scope_survives_a_word_that_matches_everything() {
+        // The reason the gate sits in the scoring loop. A hundred better
+        // matches would fill the fetch window first, and filtering the ranked
+        // list afterwards would leave the scope empty.
+        // Two hundred exact matches for `a`, and the scoped row matches it
+        // only fuzzily, so it sits far below the fetch window.
+        let mut candidates: Vec<Candidate> = (0..200)
+            .map(|n| file_candidate(&format!("file:{n}"), "a", "/tmp/a", 0))
+            .collect();
+        candidates.push(source_row("obsnote", "n1", "banana"));
+        let mut engine = QueryEngine::new(candidates);
+        scoping(&mut engine, "obsnote", "obsnote");
+
+        // Unscoped, it is nowhere near the top.
+        let unscoped = engine.search("a", 20);
+        assert!(
+            !unscoped.iter().any(|result| result.title == "banana"),
+            "the decoys must outrank it, or this proves nothing"
+        );
+
+        let found = engine.search("obsnote a", 10);
+        assert_eq!(found.len(), 1, "got {found:?}");
+        assert_eq!(found[0].title, "banana");
+    }
 
     fn file_candidate(id: &str, name: &str, path: &str, modified: i64) -> Candidate {
         let mut c = Candidate::new(id, CandidateKind::File, name, path);
