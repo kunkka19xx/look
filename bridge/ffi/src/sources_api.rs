@@ -30,6 +30,12 @@ pub(crate) fn look_source_block_json_impl(
     json(look_engine::sources::block_detail(&candidate_id, &row))
 }
 
+/// Everything declared and everything that could not be, for the Extend
+/// screen. Reads both source directories, so call it when that screen opens.
+pub(crate) fn look_installed_json_impl() -> *mut c_char {
+    json(home_dir().map(|home| look_engine::sources::inventory(&home)))
+}
+
 /// Every declared block as `{id, name, icon}`. The shell caches this once per
 /// launcher open so a row can show its declared icon without a disk read each
 /// time it renders.

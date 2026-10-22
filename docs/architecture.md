@@ -8,7 +8,7 @@ It intentionally merges architecture explanation and diagrams into one place, so
 
 `look` is a keyboard-first launcher (shipping on macOS, Windows, and Linux) designed for low-latency local search. The architecture separates UI concerns from search/index/ranking concerns (Rust), joined through a small FFI/command boundary. The UI layer is platform-specific:
 
-- **macOS:** Swift / AppKit / SwiftUI under `apps/macos/LauncherApp/` (Xcode project), talking to the Rust core via the C ABI (`bridge/ffi`).
+- **macOS:** Swift / AppKit / SwiftUI under `apps/macos/` (Xcode project), talking to the Rust core via the C ABI (`bridge/ffi`).
 - **Windows + Linux:** a GPU-drawn [gpui](https://www.gpui.rs) shell under `apps/linows/gpui/` (binary `lookapp`), talking to the Rust core through `apps/linows/backend/` in-process, with no browser engine in the process. The Tauri 2 shell in `apps/linows/src-tauri/` is kept only as a fallback. The macOS SwiftUI app is the design source of truth.
 
 Every shell talks to the same Rust core, so search, indexing, ranking, and storage behave identically across platforms.
@@ -50,7 +50,7 @@ flowchart LR
 
 ## 2) Module boundaries and responsibilities
 
-- `apps/macos/LauncherApp/look-app`: launcher window, keyboard input, global hotkey, action dispatch, clipboard/history mode, command mode, theme/settings UX.
+- `apps/macos/look-app`: launcher window, keyboard input, global hotkey, action dispatch, clipboard/history mode, command mode, theme/settings UX.
 - `Support/Launcher/`: launcher-specific services and utilities:
   - `LauncherSearchCoordinator`: debounce + async search lifecycle
   - `LauncherTranslationService`: translation lookup

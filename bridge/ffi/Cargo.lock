@@ -418,6 +418,7 @@ dependencies = [
  "look-engine",
  "look-indexing",
  "look-lunar",
+ "look-markdown",
  "look-matching",
  "look-netspeed",
  "look-qactions",
@@ -443,6 +444,14 @@ name = "look-lunar"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "look-markdown"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

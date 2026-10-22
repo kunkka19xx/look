@@ -11,18 +11,22 @@ nonisolated enum SyntaxHighlighter {
              python, ruby, rust, shell, swift, typescript, yaml, plain
 
         static func from(path: String) -> Language {
-            switch (path as NSString).pathExtension.lowercased() {
-            case "go": return .go
+            from(token: (path as NSString).pathExtension)
+        }
+
+        static func from(token: String) -> Language {
+            switch token.lowercased() {
+            case "go", "golang": return .go
             case "swift": return .swift
-            case "rs": return .rust
-            case "py": return .python
-            case "rb": return .ruby
-            case "js", "mjs", "cjs", "jsx": return .javascript
-            case "ts", "tsx": return .typescript
-            case "c", "h", "m": return .c
-            case "cpp", "cc", "cxx", "hpp", "hh", "hxx", "mm": return .cpp
-            case "java", "kt", "kts", "scala", "groovy": return .java
-            case "sh", "bash", "zsh", "fish": return .shell
+            case "rs", "rust": return .rust
+            case "py", "python": return .python
+            case "rb", "ruby": return .ruby
+            case "js", "mjs", "cjs", "jsx", "javascript": return .javascript
+            case "ts", "tsx", "typescript": return .typescript
+            case "c", "h", "m", "objc", "objective-c": return .c
+            case "cpp", "cc", "cxx", "hpp", "hh", "hxx", "mm", "c++": return .cpp
+            case "java", "kt", "kts", "kotlin", "scala", "groovy": return .java
+            case "sh", "bash", "zsh", "fish", "shell", "console": return .shell
             case "html", "htm", "xml", "svg", "vue", "svelte": return .html
             case "css", "scss", "sass", "less": return .css
             case "json": return .json
@@ -34,7 +38,10 @@ nonisolated enum SyntaxHighlighter {
     }
 
     static func highlight(_ source: String, path: String) -> NSAttributedString {
-        let lang = Language.from(path: path)
+        highlight(source, language: Language.from(path: path))
+    }
+
+    static func highlight(_ source: String, language lang: Language) -> NSAttributedString {
         if lang == .plain { return NSAttributedString(string: source) }
 
         // Build with NSMutableAttributedString + NSRange so each token's

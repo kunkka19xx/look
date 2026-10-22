@@ -36,13 +36,6 @@ pub(crate) fn look_ai_future_leaning_impl(
     look_ai::window::future_leaning(&phrase, resolved_epoch, now_epoch)
 }
 
-pub(crate) fn look_ai_markdown_segments_json_impl(text: *const c_char) -> *mut c_char {
-    let text = state::cstr_to_string(text);
-    let json = look_ai::markdown::segments_json(&text);
-    let cstring = CString::new(json).unwrap_or_else(|_| CString::new("[]").expect("valid"));
-    state::store_json_allocation(cstring)
-}
-
 pub(crate) fn look_ai_plan_start_impl(
     host: *const c_char,
     model: *const c_char,

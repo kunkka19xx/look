@@ -14,10 +14,6 @@ struct TextFilePreview: View {
     let path: String
     let maxHeight: CGFloat
 
-    // NSTextView (used by HighlightedTextView) virtualizes layout via
-    // TextKit, so we can comfortably show larger files than SwiftUI
-    // Text allowed. 64 KB is ≈2000 lines - well over preview needs.
-    nonisolated private static let displayByteCap: Int = 64 * 1024
     // NSAttributedString isn't Sendable but is documented thread-safe
     // for read access; mark the static empty constant nonisolated(unsafe).
     nonisolated(unsafe) private static let empty = NSAttributedString(string: "")
@@ -67,16 +63,9 @@ struct TextFilePreview: View {
                 if Task.isCancelled { return }
 
                 let result = await Task.detached { () -> HighlightResult in
-                    guard let data = try? Data(
-                        contentsOf: URL(fileURLWithPath: p),
-                        options: [.mappedIfSafe]
-                    ) else { return HighlightResult(Self.empty, nil) }
-                    let slice = data.prefix(Self.displayByteCap)
-                    // Lossy UTF-8 decode: never fails on partial codepoints
-                    // or invalid bytes (becomes U+FFFD). The Latin-1
-                    // fallback was wrong for UTF-8 files truncated
-                    // mid-codepoint and produced mojibake for non-ASCII.
-                    let text = String(decoding: slice, as: UTF8.self)
+                    guard let text = QuickLookPreviewService.head(ofFile: p) else {
+                        return HighlightResult(Self.empty, nil)
+                    }
                     let highlighted = SyntaxHighlighter.highlight(text, path: p)
                     let attrs = try? FileManager.default.attributesOfItem(atPath: p)
                     let mtime = attrs?[.modificationDate] as? Date

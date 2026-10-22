@@ -1359,6 +1359,10 @@ struct LauncherView: View {
     @ViewBuilder
     private var panelContent: some View {
         if appUIState.showsThemeSettings {
+            // The reload chord is app-wide, so its banner has to render here
+            // too. The launcher's copy below is out of the hierarchy while
+            // Settings owns the panel, which made a reload look like a no-op.
+            banner
             ThemeSettingsView(settings: $themeStore.settings)
         } else {
             if showsTopRowBar {
@@ -1402,9 +1406,7 @@ struct LauncherView: View {
                 }
             }
 
-            if let bannerMessage {
-                bannerView(message: bannerMessage)
-            }
+            banner
 
             if isCommandMode {
                 commandModeView
@@ -1508,6 +1510,13 @@ struct LauncherView: View {
                     .padding(.top, Self.hintBarInset)
                     .padding(.bottom, windowEdgeHintBottomInset - contentPadding)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var banner: some View {
+        if let bannerMessage {
+            bannerView(message: bannerMessage)
         }
     }
 

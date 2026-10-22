@@ -44,8 +44,8 @@ Tick what you ran. Delete whole blocks that this PR does not touch.
 
 <!-- Delete this block unless apps/macos/** or bridge/ffi/** changed. -->
 
-- [ ] `xcodebuild -project "apps/macos/LauncherApp/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build`
-- [ ] `cd apps/macos/LauncherApp && swift test`
+- [ ] `xcodebuild -project "apps/macos/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build`
+- [ ] `cd apps/macos && swift test`
 
 ### By hand
 

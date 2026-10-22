@@ -15,18 +15,10 @@ struct AICodeBlockView: View {
     var maxVisibleLines: Int? = nil
 
 
-    /// Fence tags that don't match the extensions `SyntaxHighlighter` keys on.
-    private static let tagToExtension: [String: String] = [
-        "python": "py", "rust": "rs", "javascript": "js", "typescript": "ts",
-        "shell": "sh", "bash": "sh", "zsh": "sh", "console": "sh",
-        "c++": "cpp", "objective-c": "m", "objc": "m", "golang": "go",
-        "ruby": "rb", "markdown": "md", "yaml": "yml", "kotlin": "kt",
-    ]
-
     private var highlighted: AttributedString {
         guard let language else { return AttributedString(code) }
-        let ext = Self.tagToExtension[language] ?? language
-        return AttributedString(SyntaxHighlighter.highlight(code, path: "snippet.\(ext)"))
+        return AttributedString(
+            SyntaxHighlighter.highlight(code, language: .from(token: language)))
     }
 
     private var codeText: some View {

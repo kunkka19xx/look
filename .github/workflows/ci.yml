@@ -59,8 +59,8 @@ jobs:
               - 'scripts/release-arch.sh'
               - 'scripts/release-macos-app.sh'
               - 'scripts/build-release.sh'
-              - 'apps/macos/LauncherApp/build-rust-ffi.sh'
-              - 'apps/macos/LauncherApp/look-app.xcodeproj/**'
+              - 'apps/macos/build-rust-ffi.sh'
+              - 'apps/macos/look-app.xcodeproj/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/reusable-release-macos.yml'
             # "!(*.md)" is an extglob inside ONE pattern - every file under
@@ -296,7 +296,7 @@ jobs:
           persist-credentials: false
 
       - name: Build Look app (Debug)
-        run: xcodebuild -project "apps/macos/LauncherApp/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build
+        run: xcodebuild -project "apps/macos/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build
 
   macos-release-smoke:
     name: Release smoke (${{ matrix.arch }})

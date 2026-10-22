@@ -24,7 +24,7 @@ This document tracks what `look` supports today and what is planned next.
 - multi-pick files/folders with `Cmd+P` (toggle); picked set is mirrored to the system pasteboard for paste anywhere. `Cmd+Shift+P` clears the set
 - move selected file/folder (or all picked items) to the Trash with `Cmd+D` - recoverable, no confirmation (macOS only for now)
 - pinned **Trash** quick folder (type `trash`): `Enter` opens it in Finder, its preview shows the item count with an icon that reads empty or full to match (macOS), and `Cmd+D` empties it via Finder (confirmed, since it's permanent)
-- preview pane: text/image file previews, plus folder previews listing the immediate children (folders first, capped at 30, click to open)
+- preview pane: text/image file previews, markdown drawn as headings, lists and fenced code rather than shown as source, plus folder previews listing the immediate children (folders first, capped at 30, click to open)
 - hide the selected app from Look with `Cmd+Shift+H` / `Ctrl+Shift+H` so it stops appearing in results
 - run the selected app as administrator with `Ctrl+Shift+Enter` (Windows only, triggers a UAC prompt)
 - process search with `ps"` prefix: `Enter` measures the selected process's CPU on demand, `Cmd+D` / `Ctrl+D` kills it, `Cmd+C` / `Ctrl+C` copies its PID. Rows show `Port:` for any listening port, and typing a port number matches the process that holds it. Typing scores a cached snapshot, so the process table is walked only on entering the mode and after a kill
@@ -128,6 +128,7 @@ This document tracks what `look` supports today and what is planned next.
 - `{arg}` in a producer makes the block one you type into: `newnote Meeting with Bob` runs it with `Meeting with Bob` as the argument, the row leads the results and shows what it will use. The opening word is the block's name or an alias
 - `:url` on any placeholder (`{path:url}`) percent-encodes the value for a command that builds a URL, since shell quoting protects the shell and not the query string: a file called `Notes & ideas (draft).md` would otherwise end the URL early. An encoded value is the one thing not shell-quoted, because the encoding already left nothing a shell reads as punctuation, so the URL can be written inside quotes as it must be
 - `confirm` question before a destructive block acts; `preview` command whose output fills the right panel for the selected row
+- `Enter` on a block that lists goes into it and the list filters as you type; `scope = true` also lets its name narrow a search from the main list (`obsnote inv`)
 - row wire formats: tab-separated lines (`id<TAB>title<TAB>subtitle`) or `format = "json"` for per-row `path` and `icon`
 - an executable dropped in the sources directory is a `run` block with everything inferred, no declaration needed
 - `aliases`, `bias`, `icon`, and `enabled` per block; unknown keys reported, never fatal

@@ -8,7 +8,9 @@ struct FilePreview: View {
     var maxHeight: CGFloat = .infinity
 
     var body: some View {
-        if QuickLookPreviewService.isTextFile(path: path) {
+        if QuickLookPreviewService.isMarkdownFile(path: path) {
+            MarkdownFilePreview(path: path, maxHeight: maxHeight)
+        } else if QuickLookPreviewService.isTextFile(path: path) {
             TextFilePreview(path: path, maxHeight: maxHeight)
         } else {
             QuickLookPreviewImage(path: path, maxHeight: maxHeight)

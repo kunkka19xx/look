@@ -15,7 +15,7 @@ final class ChordOwnershipTests: XCTestCase {
     /// Every plain `Cmd+<letter>` the menus claim. Shift/Option variants do not
     /// collide with a tile mnemonic, which is `Cmd` alone.
     private func menuClaimedLetters() throws -> Set<String> {
-        // Up from LauncherLogicTests/ to LauncherApp/, which holds look-app/.
+        // Up from LauncherLogicTests/ to apps/macos/, which holds look-app/.
         var root = URL(fileURLWithPath: #filePath)
         for _ in 0..<2 { root.deleteLastPathComponent() }
         let source = try String(

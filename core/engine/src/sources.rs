@@ -104,6 +104,91 @@ pub struct BlockSummary {
     pub id: String,
     pub name: String,
     pub icon: Option<String>,
+    /// The block makes rows rather than running steps, so its own row is a
+    /// place to go into rather than a thing to do.
+    pub lists: bool,
+}
+
+/// Everything the Extend screen needs: what is declared, and what could not be.
+#[derive(Serialize)]
+pub struct Inventory {
+    pub blocks: Vec<InstalledBlock>,
+    pub problems: Vec<Reported>,
+}
+
+/// A file that declared something Look could not use. Reported here because
+/// the alternative is stderr, where nobody launching from the Dock will see it
+/// and a file that declares nothing looks exactly like one that is fine.
+#[derive(Serialize)]
+pub struct Reported {
+    pub file: String,
+    pub message: String,
+}
+
+/// One declared block, as a screen listing what is installed needs it.
+#[derive(Serialize)]
+pub struct InstalledBlock {
+    pub id: String,
+    pub name: String,
+    pub icon: Option<String>,
+    /// `do`, `dir`, `file`, `run` or `connect`.
+    pub kind: &'static str,
+    pub enabled: bool,
+    /// Absolute path of the file that declared it.
+    pub file: String,
+    /// True when an app installed it, false when the user wrote it.
+    pub from_app: bool,
+    /// Only meaningful for a `connect` block: whether its process is up.
+    pub running: bool,
+}
+
+/// Everything declared, from both directories, with the state a management
+/// screen shows. Reads the directories, so call it when the screen opens.
+pub fn inventory(home: &Path) -> Inventory {
+    let connectors = look_sources::connectors_dir(home);
+    let up = crate::connectors::running_ids();
+    let loaded = declared(home);
+
+    let mut problems: Vec<Reported> = loaded
+        .problems
+        .into_iter()
+        .map(|problem| Reported {
+            file: problem.file.to_string_lossy().into_owned(),
+            message: problem.message,
+        })
+        .collect();
+
+    let blocks = loaded
+        .blocks
+        .into_iter()
+        .map(|block| {
+            let file = block.source_file.unwrap_or_default();
+            // A control nothing can offer is the other silent failure: the row
+            // simply shows no control, with the reason on stderr.
+            if let Some(message) = block
+                .control
+                .as_deref()
+                .and_then(crate::qactions::declared_control_problem)
+            {
+                problems.push(Reported {
+                    file: file.clone(),
+                    message: format!("[{}] {message}", block.id),
+                });
+            }
+            InstalledBlock {
+                kind: block.producer.key(),
+                running: up.contains(&block.id),
+                from_app: Path::new(&file).starts_with(&connectors),
+                id: block.id,
+                name: block.name,
+                icon: block.icon,
+                enabled: block.enabled,
+                file,
+            }
+        })
+        .collect();
+
+    Inventory { blocks, problems }
 }
 
 #[derive(Serialize, Default)]
@@ -153,13 +238,31 @@ pub struct Level {
 /// A block's declared `preview` output, or the reason it could not run. A
 /// failure is carried rather than swallowed: a preview that silently does
 /// nothing reads as the feature being broken.
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 pub struct PreviewOutcome {
     pub text: String,
     pub error: Option<String>,
     /// The same output read as a layout, when it is one. `text` is kept beside
     /// it so a shell that does not draw blocks still shows something.
     pub blocks: Vec<look_sources::DetailBlock>,
+}
+
+impl PreviewOutcome {
+    fn shown(text: String, blocks: Vec<look_sources::DetailBlock>) -> Self {
+        Self {
+            text,
+            error: None,
+            blocks,
+        }
+    }
+
+    fn failed(message: impl Into<String>) -> Self {
+        Self {
+            text: String::new(),
+            error: Some(message.into()),
+            blocks: Vec::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Default)]
@@ -226,7 +329,9 @@ pub fn block_detail(candidate_id: &str, row: &RowContext) -> Option<BlockDetail>
             .map(|question| look_sources::expand(question, row)),
         then,
         globals,
-        has_preview: block.preview.is_some(),
+        // A connector has a preview to give without declaring one: it answers
+        // over its connection rather than by running a command.
+        has_preview: block.preview.is_some() || matches!(block.producer, Producer::Connect { .. }),
     })
 }
 
@@ -329,6 +434,7 @@ pub fn block_summaries() -> Vec<BlockSummary> {
         .blocks
         .into_iter()
         .map(|block| BlockSummary {
+            lists: !block.is_bundle(),
             id: block.id,
             name: block.name,
             icon: block.icon,
@@ -507,7 +613,12 @@ pub fn level(
 pub fn preview(candidate_id: &str, row: &RowContext) -> Option<PreviewOutcome> {
     let block_id = CandidateIdKind::source_id_of(candidate_id)?;
     let block = find_block(block_id)?;
-    let preview = block.preview.as_deref()?;
+    let Some(preview) = block.preview.as_deref() else {
+        if let Producer::Connect { .. } = block.producer {
+            return Some(connector_preview(&block.id, &row.id));
+        }
+        return None;
+    };
 
     let command = look_sources::expand(preview, row);
     Some(
@@ -517,18 +628,38 @@ pub fn preview(candidate_id: &str, row: &RowContext) -> Option<PreviewOutcome> {
             DEFAULT_CAPTURE_TIMEOUT,
             MAX_CAPTURE_BYTES,
         ) {
-            Ok(text) => PreviewOutcome {
-                blocks: look_sources::parse_detail(&text).unwrap_or_default(),
-                text,
-                error: None,
-            },
-            Err(message) => PreviewOutcome {
-                text: String::new(),
-                error: Some(message),
-                blocks: Vec::new(),
-            },
+            Ok(text) => {
+                let blocks = look_sources::parse_detail(&text).unwrap_or_default();
+                PreviewOutcome::shown(text, blocks)
+            }
+            Err(message) => PreviewOutcome::failed(message),
         },
     )
+}
+
+/// How long a panel waits on a connector. Long enough for a local process to
+/// answer, short enough that a dead one costs a beat rather than the frame.
+const CONNECTOR_PREVIEW_WAIT: Duration = Duration::from_millis(400);
+
+/// Asks the connector behind the block for the row, over its connection.
+///
+/// Silence is not an error: a connector that is simply slow has not failed,
+/// and an error line would read as broken. Not running is an error, because
+/// nothing is ever going to arrive.
+fn connector_preview(block: &str, row: &str) -> PreviewOutcome {
+    let Some(req) = crate::connectors::ask_preview(block, row) else {
+        return PreviewOutcome::failed("connector is not running");
+    };
+    let Some(found) = crate::connectors::preview_of(block, row, req, CONNECTOR_PREVIEW_WAIT) else {
+        return PreviewOutcome::default();
+    };
+    let text = found.text.clone();
+    let block = if found.markdown {
+        look_sources::DetailBlock::Markdown { text: found.text }
+    } else {
+        look_sources::DetailBlock::Text { text: found.text }
+    };
+    PreviewOutcome::shown(text, vec![block])
 }
 
 /// Re-runs every enabled `run` block and stores its rows, so the next index pass

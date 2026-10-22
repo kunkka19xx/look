@@ -22,7 +22,7 @@ use crate::run::{mentions_arg, mentions_placeholder};
 
 /// Immediate children only. Deep walks belong to the file index, not to a
 /// block the user declared to get one short list.
-pub const DEFAULT_FOLDER_DEPTH: usize = 1;
+pub(crate) const DEFAULT_FOLDER_DEPTH: usize = 1;
 
 const SECONDS_PER_MINUTE: u64 = 60;
 const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE;
@@ -213,14 +213,15 @@ impl Producer {
     }
 }
 
-pub const KEY_DO: &str = "do";
-pub const KEY_DIR: &str = "dir";
-pub const KEY_FILE: &str = "file";
-pub const KEY_RUN: &str = "run";
-pub const KEY_CONNECT: &str = "connect";
+pub(crate) const KEY_DO: &str = "do";
+pub(crate) const KEY_DIR: &str = "dir";
+pub(crate) const KEY_FILE: &str = "file";
+pub(crate) const KEY_RUN: &str = "run";
+pub(crate) const KEY_CONNECT: &str = "connect";
 /// Not a producer: the key that makes a `do` block an action on rows it did
 /// not produce.
-pub const KEY_APPLIES: &str = "applies";
+pub(crate) const KEY_APPLIES: &str = "applies";
+pub(crate) const KEY_SCOPE: &str = "scope";
 
 /// The standard things a user does to a row. Each has one key across the whole
 /// app, so Cmd+E edits whatever the row is and wherever it came from. A block
@@ -294,6 +295,10 @@ pub struct Block {
     pub bias: i64,
     pub icon: Option<String>,
     pub enabled: bool,
+    /// The block's own words scope a search: `obsnote inv` lists only this
+    /// block's rows matching `inv`. Opt-in, because it reserves those words
+    /// as the first word of a line.
+    pub scope: bool,
     pub preview: Option<String>,
     /// A yes/no question asked before this block performs anything. Destructive
     /// steps get one, because a launcher makes Enter on the wrong row cheap.
@@ -310,9 +315,16 @@ pub struct Block {
     pub unknown_keys: Vec<String>,
 }
 
+impl Producer {
+    /// A `do` block: it performs its own steps rather than making rows.
+    pub fn is_bundle(&self) -> bool {
+        matches!(self, Self::Bundle { .. })
+    }
+}
+
 impl Block {
     pub fn is_bundle(&self) -> bool {
-        matches!(self.producer, Producer::Bundle { .. })
+        self.producer.is_bundle()
     }
 
     /// True when this block only makes sense against a selected row, because
@@ -334,16 +346,14 @@ impl Block {
     /// query - on reload for `run`, on the index walk for `dir` and `file` -
     /// so there is no typed line to take, and `builds_rows_ahead` refuses one.
     pub fn takes_arg(&self) -> bool {
-        matches!(self.producer, Producer::Bundle { .. })
-            && self.producer_text().iter().any(|text| mentions_arg(text))
+        self.is_bundle() && self.producer_text().iter().any(|text| mentions_arg(text))
     }
 
     /// Whether a producer asks for an argument it can never be given. Reported
     /// at load, and the block is kept out of the index: a `run` command naming
     /// `{arg}` would otherwise be executed with the braces still in it.
     pub fn builds_rows_ahead_but_wants_an_arg(&self) -> bool {
-        !matches!(self.producer, Producer::Bundle { .. })
-            && self.producer_text().iter().any(|text| mentions_arg(text))
+        !self.is_bundle() && self.producer_text().iter().any(|text| mentions_arg(text))
     }
 
     /// Whether this block declared itself an action on rows like this one.
@@ -378,6 +388,7 @@ struct RawBlock {
     bias: Option<i64>,
     icon: Option<String>,
     enabled: Option<bool>,
+    scope: Option<bool>,
     preview: Option<String>,
     confirm: Option<String>,
     control: Option<String>,
@@ -491,9 +502,17 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
     };
     // A bundle IS the action, so a verb on it would be a second, hidden meaning
     // for Enter.
-    if matches!(producer, Producer::Bundle { .. }) && !verbs.is_empty() {
+    if producer.is_bundle() && !verbs.is_empty() {
         return Err(format!(
             "a `{KEY_DO}` block performs its own steps, so it cannot also declare open/edit/terminal/reveal"
+        ));
+    }
+
+    // Reported rather than ignored: a scope with no rows to narrow would do
+    // nothing, and silently doing nothing is how a declaration goes unnoticed.
+    if producer.is_bundle() && raw.scope.unwrap_or(false) {
+        return Err(format!(
+            "`{KEY_SCOPE}` narrows a block's own rows, and a `{KEY_DO}` block makes none"
         ));
     }
 
@@ -501,7 +520,7 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
     // one declare `applies` would make it an action and a level at once, which
     // is the ambiguity `perform_block`'s `as_target` already exists to settle.
     let applies = match raw.applies {
-        Some(_) if !matches!(producer, Producer::Bundle { .. }) => {
+        Some(_) if !producer.is_bundle() => {
             return Err(format!(
                 "`{KEY_APPLIES}` says which rows an action joins, so only a `{KEY_DO}` block can declare it"
             ));
@@ -526,6 +545,7 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
         bias: raw.bias.unwrap_or_default(),
         icon: raw.icon,
         enabled: raw.enabled.unwrap_or(true),
+        scope: raw.scope.unwrap_or(false),
         preview: raw.preview,
         confirm: raw.confirm.filter(|question| !question.trim().is_empty()),
         control: raw.control.filter(|control| !control.trim().is_empty()),

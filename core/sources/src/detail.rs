@@ -40,6 +40,11 @@ pub enum DetailBlock {
         language: Option<String>,
         text: String,
     },
+    /// Markdown, for a producer that has prose to show rather than a layout to
+    /// declare. The shell parses it (`core/markdown`), so this stays the wire.
+    Markdown {
+        text: String,
+    },
 }
 
 /// Blocks, when the output is a list of them. Anything else is `None` and stays
@@ -57,6 +62,16 @@ pub fn parse(text: &str) -> Option<Vec<DetailBlock>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_markdown_block_parses() {
+        assert_eq!(
+            parse(r##"[{"type":"markdown","text":"# Title"}]"##).expect("blocks"),
+            vec![DetailBlock::Markdown {
+                text: "# Title".into()
+            }]
+        );
+    }
 
     #[test]
     fn a_list_of_blocks_parses() {

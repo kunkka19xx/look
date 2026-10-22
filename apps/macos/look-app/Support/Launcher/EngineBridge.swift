@@ -158,6 +158,10 @@ private func look_ai_future_leaning(_ phrase: UnsafePointer<CChar>?, _ resolvedE
 nonisolated
 private func look_ai_markdown_segments_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_markdown_blocks_json")
+nonisolated
+private func look_markdown_blocks_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_instant_has_match")
 nonisolated
 private func look_instant_has_match(_ query: UnsafePointer<CChar>?) -> Bool
@@ -277,6 +281,9 @@ private func look_refresh_run_blocks_json() -> UnsafeMutablePointer<CChar>?
 @_silgen_name("look_source_preview_json")
 nonisolated
 private func look_source_preview_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_installed_json")
+private nonisolated func look_installed_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_blocks_json")
 nonisolated
@@ -1035,6 +1042,18 @@ final class EngineBridge: @unchecked Sendable {
         return segments
     }
 
+    /// Markdown as blocks, frontmatter already dropped. Rust core
+    /// (core/markdown), so the shells agree on what a heading is.
+    nonisolated func markdownBlocks(_ text: String) -> [MarkdownBlock] {
+        guard let ptr = text.withCString({ look_markdown_blocks_json($0) }) else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let blocks = try? JSONDecoder().decode([MarkdownBlock].self, from: data)
+        else { return [] }
+        return blocks
+    }
+
     nonisolated func fuzzyScore(query: String, title: String) -> Int? {
         let score = query.withCString { queryCstr in
             title.withCString { titleCstr in
@@ -1214,6 +1233,21 @@ final class EngineBridge: @unchecked Sendable {
         defer { look_free_cstring(ptr) }
         guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(SourcePreview.self, from: data)
+    }
+
+    /// Everything declared, with the state the Extend screen shows. Reads both
+    /// source directories, so call it when that screen opens.
+    ///
+    /// Nil is "could not read", which is not the same as nothing installed:
+    /// that screen reports "No problems." and must not say it about an answer
+    /// it never got.
+    nonisolated func installedInventory() -> Inventory? {
+        guard let ptr = look_installed_json() else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try? decoder.decode(Inventory.self, from: data)
     }
 
     /// Every declared block, for the row-icon cache. Reads the sources
@@ -1630,10 +1664,61 @@ nonisolated struct SourceBlockTarget: Decodable, Identifiable {
 
 /// A declared block as the row layer needs it: what to call it and what icon it
 /// asked for. Cached per launcher open so rendering a row never touches disk.
+/// What the Extend screen shows: what is declared, and what could not be.
+nonisolated struct Inventory: Decodable {
+    let blocks: [InstalledBlock]
+    let problems: [Reported]
+}
+
+/// One styled run inside a markdown line. `kind` is text, bold, italic, code
+/// or link; `href` is set only for a link.
+nonisolated struct MarkdownSpan: Decodable, Equatable {
+    let kind: String
+    let text: String
+    let href: String?
+}
+
+/// One markdown block: heading, paragraph, list or code. The fields a kind
+/// does not use are nil, which is what keeps this one decodable type.
+nonisolated struct MarkdownBlock: Decodable, Equatable {
+    let kind: String
+    let level: Int?
+    let spans: [MarkdownSpan]?
+    let ordered: Bool?
+    let start: Int?
+    let items: [[MarkdownSpan]]?
+    let language: String?
+    let text: String?
+}
+
+/// A file that declared something Look could not use.
+nonisolated struct Reported: Decodable, Identifiable {
+    let file: String
+    let message: String
+    var id: String { "\(file)\u{1}\(message)" }
+}
+
+/// One declared block as the Extend screen lists it.
+nonisolated struct InstalledBlock: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let icon: String?
+    /// `do`, `dir`, `file`, `run` or `connect`.
+    let kind: String
+    let enabled: Bool
+    let file: String
+    /// An app installed it, rather than the user writing it.
+    let fromApp: Bool
+    /// Only meaningful for `connect`: whether its process is up.
+    let running: Bool
+}
+
 nonisolated struct SourceBlockSummary: Decodable {
     let id: String
     let name: String
     let icon: String?
+    /// The block lists rows, so its own row is somewhere to go into.
+    let lists: Bool
 }
 
 /// How a `run`-block refresh went. A block that failed kept the rows it had.
@@ -1658,6 +1743,7 @@ nonisolated enum DetailBlock: Decodable {
     case list([DetailItem])
     case text(String)
     case code(language: String?, text: String)
+    case markdown(String)
 
     private enum Keys: String, CodingKey {
         case type, rows, items, text, language
@@ -1676,6 +1762,8 @@ nonisolated enum DetailBlock: Decodable {
             self = .code(
                 language: try container.decodeIfPresent(String.self, forKey: .language),
                 text: try container.decode(String.self, forKey: .text))
+        case "markdown":
+            self = .markdown(try container.decode(String.self, forKey: .text))
         case let other:
             throw DecodingError.dataCorruptedError(
                 forKey: .type, in: container, debugDescription: "unknown block \(other)")
