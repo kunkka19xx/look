@@ -82,9 +82,9 @@ const MAX_STDERR_BYTES: usize = 8 * 1024;
 const DRAIN_CHUNK_BYTES: usize = 8 * 1024;
 
 /// Environment the step can read to know which row it was performed on.
-pub const ENV_ID: &str = "LOOK_ID";
-pub const ENV_TITLE: &str = "LOOK_TITLE";
-pub const ENV_PATH: &str = "LOOK_PATH";
+const ENV_ID: &str = "LOOK_ID";
+const ENV_TITLE: &str = "LOOK_TITLE";
+const ENV_PATH: &str = "LOOK_PATH";
 
 /// What a step was performed with, so a caller can report it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,47 +165,30 @@ pub struct ParentRow {
 /// One list, so `expand` and `Block::needs_row` agree on what a placeholder is.
 /// A brace that opens anything else is not one: a `run` command emitting JSON
 /// is full of them.
-pub const PLACEHOLDER_ID: &str = "{id}";
-pub const PLACEHOLDER_TITLE: &str = "{title}";
-pub const PLACEHOLDER_PATH: &str = "{path}";
-pub const PLACEHOLDER_DIR: &str = "{dir}";
-pub const PLACEHOLDER_QUERY: &str = "{query}";
-/// The rest of the query, for a block the user types into (`newnote <title>`).
-/// NOT in `PLACEHOLDERS`: it is the line itself, needs no row, and that is what
-/// keeps such a block a top-level row.
-pub const PLACEHOLDER_ARG: &str = "{arg}";
-pub const PLACEHOLDER_ARG_URL: &str = "{arg:url}";
 /// Opens an ancestor placeholder (`{parent.id}`), which also means a producer
 /// mentioning one needs a row.
-pub const PLACEHOLDER_PARENT: &str = "{parent.";
-pub const PLACEHOLDERS: [&str; 5] = [
-    PLACEHOLDER_ID,
-    PLACEHOLDER_TITLE,
-    PLACEHOLDER_PATH,
-    PLACEHOLDER_DIR,
-    PLACEHOLDER_QUERY,
-];
+const PLACEHOLDER_PARENT: &str = "{parent.";
 
-/// The same five, percent-encoded on substitution. Spelt out so the list a
-/// reader greps for is the list the code uses.
-pub const PLACEHOLDERS_URL: [&str; 5] = [
-    "{id:url}",
-    "{title:url}",
-    "{path:url}",
-    "{dir:url}",
-    "{query:url}",
-];
+/// The names a row fills. `arg` is deliberately absent: it is the typed line
+/// rather than the row, and that is what keeps a block using it a top-level
+/// row. One list, in both `{name}` and `{name:url}` form, so the set a reader
+/// greps for is the set `substitute` answers.
+const ROW_NAMES: [&str; 5] = ["id", "title", "path", "dir", "query"];
+
+fn mentions(text: &str, name: &str) -> bool {
+    text.contains(&format!("{{{name}}}")) || text.contains(&format!("{{{name}:url}}"))
+}
 
 /// Whether a template asks for the rest of the query.
 pub fn mentions_arg(text: &str) -> bool {
-    text.contains(PLACEHOLDER_ARG) || text.contains(PLACEHOLDER_ARG_URL)
+    mentions(text, ARG_NAME)
 }
+
+const ARG_NAME: &str = "arg";
 
 /// What `Block::needs_row` asks, kept here so it cannot drift from `expand`.
 pub fn mentions_placeholder(text: &str) -> bool {
-    text.contains(PLACEHOLDER_PARENT)
-        || PLACEHOLDERS.iter().any(|name| text.contains(name))
-        || PLACEHOLDERS_URL.iter().any(|name| text.contains(name))
+    text.contains(PLACEHOLDER_PARENT) || ROW_NAMES.iter().any(|name| mentions(text, name))
 }
 
 /// Percent-encoding, which shell quoting cannot do: an `&` in a filename ends
@@ -247,46 +230,78 @@ pub fn expand_path(template: &str, row: &RowContext) -> String {
     substitute(template, row, |value| value.to_string())
 }
 
-/// One pass, so the shell and filesystem forms cannot drift. Ancestors go
-/// deepest prefix first; a missing one reads as empty, like a row with no path.
+/// One scan of the template, left to right.
+///
+/// A value is written straight to the output and never looked at again. The
+/// older form substituted name by name over the whole string, so a value that
+/// happened to contain `{path}` was expanded a second time - and the quotes
+/// around it collapsed, which turned a crafted filename into a second command.
+/// Nothing here can re-enter the scanner, so a value is inert whatever it says.
+///
+/// The `:url` form is NOT quoted: percent-encoding leaves nothing a shell reads
+/// as punctuation, and a URL is already written inside quotes, where a second
+/// set would land in it as literal characters.
 fn substitute(template: &str, row: &RowContext, transform: fn(&str) -> String) -> String {
-    let mut out = template.to_string();
+    let values = row_values(template, row);
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
 
-    // As deep as the row goes OR as deep as the template asks: an ancestor the
-    // row lacks must still be substituted, or the literal text reaches a shell.
-    let deepest = deepest_parent_depth(template).max(row.parents.len()).max(1);
-    for depth in (1..=deepest).rev() {
-        let prefix = PLACEHOLDER_PARENT_WORD.repeat(depth);
-        let parent = row.parents.get(depth - 1);
-        let (id, title, path) = match parent {
-            Some(parent) => (
-                parent.id.as_str(),
-                parent.title.as_str(),
-                parent.path.as_str(),
-            ),
-            None => ("", "", ""),
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        rest = &rest[open + 1..];
+        let Some(close) = rest.find('}') else {
+            // No closing brace, so no placeholder: the rest is literal.
+            out.push('{');
+            continue;
         };
-        out = put(out, &format!("{prefix}id"), id, transform);
-        out = put(out, &format!("{prefix}title"), title, transform);
-        out = put(out, &format!("{prefix}path"), path, transform);
-        out = put(out, &format!("{prefix}dir"), &parent_dir(path), transform);
+        let (name, encode) = match rest[..close].strip_suffix(":url") {
+            Some(bare) => (bare, true),
+            None => (&rest[..close], false),
+        };
+        let Some((_, value)) = values.iter().find(|(key, _)| key == name) else {
+            // A brace that opens anything else is not a placeholder: a `run`
+            // command emitting JSON is full of them.
+            out.push('{');
+            continue;
+        };
+        out.push_str(&if encode {
+            url_encode(value)
+        } else {
+            transform(value)
+        });
+        rest = &rest[close + 1..];
     }
 
-    let dir = parent_dir(&row.path);
-    out = put(out, "id", &row.id, transform);
-    out = put(out, "title", &row.title, transform);
-    out = put(out, "path", &row.path, transform);
-    out = put(out, "dir", &dir, transform);
-    out = put(out, "arg", &row.arg, transform);
-    put(out, "query", &row.query, transform)
+    out.push_str(rest);
+    out
 }
 
-/// One placeholder, both forms. The `:url` form is NOT quoted: encoding left
-/// nothing a shell reads as punctuation, and a URL is already written inside
-/// quotes, where a second set would land in the URL as literal characters.
-fn put(out: String, name: &str, value: &str, transform: fn(&str) -> String) -> String {
-    out.replace(&format!("{{{name}:url}}"), &url_encode(value))
-        .replace(&format!("{{{name}}}"), &transform(value))
+/// Every name this row answers to. Ancestors go as deep as the row reaches OR
+/// as deep as the template asks: one the row lacks must still resolve, or the
+/// literal text reaches a shell.
+fn row_values(template: &str, row: &RowContext) -> Vec<(String, String)> {
+    let mut values = vec![
+        ("id".to_string(), row.id.clone()),
+        ("title".to_string(), row.title.clone()),
+        ("path".to_string(), row.path.clone()),
+        ("dir".to_string(), parent_dir(&row.path)),
+        (ARG_NAME.to_string(), row.arg.clone()),
+        ("query".to_string(), row.query.clone()),
+    ];
+
+    let deepest = deepest_parent_depth(template).max(row.parents.len()).max(1);
+    for depth in 1..=deepest {
+        let prefix = PLACEHOLDER_PARENT_WORD.repeat(depth);
+        let (id, title, path) = match row.parents.get(depth - 1) {
+            Some(parent) => (parent.id.clone(), parent.title.clone(), parent.path.clone()),
+            None => (String::new(), String::new(), String::new()),
+        };
+        values.push((format!("{prefix}dir"), parent_dir(&path)));
+        values.push((format!("{prefix}id"), id));
+        values.push((format!("{prefix}title"), title));
+        values.push((format!("{prefix}path"), path));
+    }
+    values
 }
 
 /// The word an ancestor placeholder repeats, without the brace.
@@ -713,6 +728,33 @@ mod tests {
     /// themselves are asserted by `look_tools`.
     fn q(value: &str) -> String {
         quote(value)
+    }
+
+    #[test]
+    fn a_value_naming_a_placeholder_is_not_expanded_again() {
+        // A file called `{path};rm -rf ~` in a scanned folder. Substituting
+        // name by name over the whole string expanded the `{path}` this value
+        // carries, and the quotes around it collapsed, so the `;` reached the
+        // shell unquoted and a second command ran.
+        let name = "{path};rm -rf ~";
+        let hostile = RowContext {
+            id: name.into(),
+            title: name.into(),
+            path: format!("/vault/{name}"),
+            ..Default::default()
+        };
+        // One value, quoted once, with nothing of the path in it.
+        assert_eq!(expand("echo {id}", &hostile), format!("echo {}", q(name)));
+        assert_eq!(
+            expand("echo {title}", &hostile),
+            format!("echo {}", q(name))
+        );
+        // The path itself still expands where it was actually asked for, and
+        // the `{path}` inside its own value stays literal.
+        assert_eq!(
+            expand("echo {path}", &hostile),
+            format!("echo {}", q(&format!("/vault/{name}")))
+        );
     }
 
     fn drilled(parents: &[(&str, &str)]) -> RowContext {

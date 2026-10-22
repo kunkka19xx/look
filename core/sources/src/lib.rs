@@ -21,9 +21,8 @@ pub use collect::{
 };
 pub use connect::{Ask, PROTOCOL_VERSION, Row as ConnectorRow, Say, read as read_frame};
 pub use def::{
-    Applies, AppliesOnly, Block, DEFAULT_FOLDER_DEPTH, KEY_APPLIES, KEY_DIR, KEY_DO, KEY_FILE,
-    KEY_RUN, Only, ParsedFile, Producer, RowFormat, RowKind, Verbs, inferred, parse_duration,
-    parse_file,
+    Applies, AppliesOnly, Block, Only, ParsedFile, Producer, RowFormat, RowKind, Verbs, inferred,
+    parse_duration, parse_file,
 };
 pub use detail::{DetailBlock, DetailField, DetailItem, parse as parse_detail};
 pub use load::{
@@ -32,7 +31,7 @@ pub use load::{
 };
 pub use rows::{SourceRow, parse_rows};
 pub use run::{
-    ENV_ID, ENV_PATH, ENV_TITLE, ParentRow, RowContext, StepOutcome, capture, end_connector,
-    expand, expand_path, perform, spawn_connector,
+    ParentRow, RowContext, StepOutcome, capture, end_connector, expand, expand_path, perform,
+    spawn_connector,
 };
 pub use tools::{block_declares, resolve_for_row};
