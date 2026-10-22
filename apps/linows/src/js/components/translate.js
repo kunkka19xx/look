@@ -1,37 +1,15 @@
 import * as layout from '../layout.js';
-import { translate, translateLanguages, copyToClipboard } from '../ipc.js';
-import { globeLg, globe, copy as copyIcon, arrowUpRight } from '../icons.js';
+import { translate, copyToClipboard } from '../ipc.js';
+import { globeLg, copy as copyIcon, link as linkIcon, externalLink } from '../icons.js';
 
-// Last resort when the backend call fails; the real list, labels included,
-// comes from `translate_languages`.
-const DEFAULT_LANGUAGES = [
+const LANGUAGES = [
     { code: 'vi', label: 'TIẾNG VIỆT' },
     { code: 'en', label: 'ENGLISH' },
     { code: 'ja', label: '日本語' },
 ];
 
-// The target languages come from `translate_languages` in the config, in order.
-// The backend parses and validates them (dropping empty, duplicate, or
-// unsupported codes, and falling back to the defaults), so every shell shares
-// one table. Labels are uppercased for the section headers.
-async function configuredLanguages() {
-    try {
-        const languages = await translateLanguages();
-        return languages.map((lang) => ({
-            code: lang.code,
-            label: lang.label.toUpperCase(),
-        }));
-    } catch {
-        return DEFAULT_LANGUAGES;
-    }
-}
-
 let container = null;
 let active = false;
-// Monotonic token identifying the newest `perform` call. Overlapping calls
-// bump it, so a stale call can detect it has been superseded and stop before
-// touching the panel.
-let performToken = 0;
 
 export function init(containerEl) {
     container = containerEl;
@@ -68,7 +46,6 @@ export function showPlaceholder() {
 
 export function hide() {
     active = false;
-    performToken += 1;
     const panel = container.querySelector('.translate-panel');
     if (panel) {
         layout.releaseHints();
@@ -78,12 +55,8 @@ export function hide() {
 }
 
 export async function perform(text) {
-    const token = (performToken += 1);
     if (!text.trim()) return;
     active = true;
-
-    const languages = await configuredLanguages();
-    if (token !== performToken) return;
 
     // Remove old panel
     let panel = container.querySelector('.translate-panel');
@@ -112,7 +85,7 @@ export async function perform(text) {
     panel.appendChild(sourceHeader);
 
     // Language sections (show loading state)
-    const sections = languages.map((lang) => {
+    const sections = LANGUAGES.map((lang) => {
         const section = document.createElement('div');
         section.className = 'translate-section';
 
@@ -150,24 +123,23 @@ export async function perform(text) {
     const footer = document.createElement('div');
     footer.className = 'translate-footer';
     footer.addEventListener('click', () => {
-        const url = `https://translate.google.com/?text=${encodeURIComponent(text)}&sl=auto&tl=${encodeURIComponent(languages[0].code)}`;
+        const url = `https://translate.google.com/?text=${encodeURIComponent(text)}&sl=auto&tl=en`;
         window.__TAURI__.core.invoke('open_path', { path: url, kind: 'browser', id: '' });
     });
     footer.innerHTML =
         '<span class="translate-footer-icon">' +
-        globe +
+        linkIcon +
         '</span>' +
         '<span class="translate-footer-text">Open in Browser</span>' +
         '<span class="translate-footer-arrow">' +
-        arrowUpRight +
+        externalLink +
         '</span>';
     panel.appendChild(footer);
     panel.appendChild(hintSlot());
     layout.refresh();
 
-    // Translate every configured language in parallel
-    const results = await Promise.allSettled(languages.map((lang) => translate(text, lang.code)));
-    if (token !== performToken) return;
+    // Translate all 3 in parallel
+    const results = await Promise.allSettled(LANGUAGES.map((lang) => translate(text, lang.code)));
 
     results.forEach((res, i) => {
         const { body, copyBtn } = sections[i];

@@ -146,17 +146,16 @@
     font-style: italic;
 }
 
-/* Footer: Open in Browser, pinned under the sections as a filled control, the
- * macOS button. */
+/* Footer: Open in Browser - pinned to bottom */
 .translate-footer {
     margin-top: auto;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
-    background: var(--control-fill);
+    padding: 8px 10px;
+    border-top: 1px solid var(--divider-color);
     cursor: pointer;
-    border-radius: var(--control-radius);
+    border-radius: var(--chip-radius);
 }
 
 .translate-footer:hover {
@@ -176,6 +175,6 @@
 }
 
 .translate-footer-arrow {
-    color: var(--accent-color);
-    font-size: 11px;
+    color: var(--font-muted);
+    font-size: 14px;
 }

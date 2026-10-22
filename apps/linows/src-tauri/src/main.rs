@@ -656,7 +656,6 @@ fn main() {
             commands::todo_list,
             commands::todo_save,
             commands::translate,
-            commands::translate_languages,
             commands::instant_has_match,
             commands::definitional_entity,
             commands::instant_answer,

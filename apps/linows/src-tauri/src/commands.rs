@@ -474,12 +474,6 @@ pub fn translate(text: String, target_lang: String) -> TranslateResult {
     backend::translate::translate(&text, &target_lang)
 }
 
-/// The validated target languages for the `t"` panel, from `translate_languages`.
-#[tauri::command]
-pub fn translate_languages() -> Vec<backend::look_answers::TranslateLanguage> {
-    backend::config::translate_languages()
-}
-
 // --- AI / web answers ---
 
 #[tauri::command]

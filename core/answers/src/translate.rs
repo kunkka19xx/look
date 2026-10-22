@@ -1,5 +1,5 @@
-//! Translation lookup, shared by macOS (FFI bridge) and Linux/Windows (Tauri
-//! command and gpui). Auto-detects the source language and translates to a
+//! Translation lookup, shared by macOS (FFI bridge) and Linux/Windows (gpui).
+//! Auto-detects the source language and translates to a
 //! target BCP-47-ish code. Two keyless providers, tried in order: Google's
 //! `gtx` endpoint, which is fast and has no daily cap but throttles bursts per
 //! IP, then MyMemory, which is slower and capped at 5000 characters a day per

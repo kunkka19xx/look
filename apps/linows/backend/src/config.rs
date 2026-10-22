@@ -363,8 +363,7 @@ pub fn query_retention_seconds() -> i64 {
 
 /// Target languages for the `t"` translation panel, parsed from
 /// `translate_languages` and kept with the other show values. The parsing and
-/// the label table live in `look_answers`, shared by the webview, gpui, and
-/// macOS shells.
+/// the label table live in `look_answers`, shared by the gpui and macOS shells.
 pub fn translate_languages() -> Vec<look_answers::TranslateLanguage> {
     show_values(|v| v.translate_languages.clone())
 }
