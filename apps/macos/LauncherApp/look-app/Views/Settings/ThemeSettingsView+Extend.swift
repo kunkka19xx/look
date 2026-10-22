@@ -13,8 +13,19 @@ extension ThemeSettingsView {
 struct ExtendSettingsTab: View {
     @EnvironmentObject private var themeStore: ThemeStore
 
-    @State private var inventory: Inventory = .empty
-    @State private var loaded = false
+    /// The three states this screen has. An unread inventory must not render
+    /// as an empty one: every message below is a claim about what is installed,
+    /// and this is the screen someone opens to check exactly that.
+    private enum Reading {
+        case pending
+        case unreadable
+        case ready(Inventory)
+    }
+
+    @State private var reading: Reading = .pending
+    /// Bumped by a reload, which cancels the read in flight and starts a fresh
+    /// one. That is also what stops an older answer from landing last.
+    @State private var reloads = 0
 
     private enum Metrics {
         static let sectionSpacing: CGFloat = 14
@@ -39,46 +50,61 @@ struct ExtendSettingsTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Metrics.sectionSpacing) {
-                section(
-                    "Installed by apps",
-                    "~/.look/connectors",
-                    declarations.filter(\.fromApp),
-                    empty: "No app has installed anything yet."
-                )
-                section(
-                    "Yours",
-                    "~/.look/sources",
-                    declarations.filter { !$0.fromApp },
-                    empty: "Nothing declared yet."
-                )
-
-                if inventory.problems.isEmpty {
-                    Text("No problems.")
-                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
-                        .foregroundStyle(themeStore.mutedTextColor())
+                switch reading {
+                case .pending:
+                    EmptyView()
+                case .unreadable:
+                    Text("Could not read what is installed.")
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                        .foregroundStyle(themeStore.warningColor())
+                case .ready(let inventory):
+                    sections(of: inventory)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .task {
-            guard !loaded else { return }
-            loaded = true
-            await load()
-        }
+        .task(id: reloads) { await read() }
         // Reloading is how an edit made from here takes effect, so the list
         // has to follow it. Otherwise Edit, save, reload leaves the problems
         // you just fixed still on screen.
         .onReceive(NotificationCenter.default.publisher(for: .lookConfigReloaded)) { _ in
-            Task { await load() }
+            reloads += 1
         }
     }
 
     @MainActor
-    private func load() async {
-        inventory = await Task.detached { EngineBridge.shared.installedInventory() }.value
+    private func read() async {
+        let found = await Task.detached { EngineBridge.shared.installedInventory() }.value
+        // A reload cancelled this read and started a newer one, whose answer
+        // is the one that should land.
+        guard !Task.isCancelled else { return }
+        reading = found.map(Reading.ready) ?? .unreadable
     }
 
-    private var declarations: [Declaration] {
+    @ViewBuilder
+    private func sections(of inventory: Inventory) -> some View {
+        let declarations = declarations(of: inventory)
+        section(
+            "Installed by apps",
+            "~/.look/connectors",
+            declarations.filter(\.fromApp),
+            empty: "No app has installed anything yet."
+        )
+        section(
+            "Yours",
+            "~/.look/sources",
+            declarations.filter { !$0.fromApp },
+            empty: "Nothing declared yet."
+        )
+
+        if inventory.problems.isEmpty {
+            Text("No problems.")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                .foregroundStyle(themeStore.mutedTextColor())
+        }
+    }
+
+    private func declarations(of inventory: Inventory) -> [Declaration] {
         var order: [String] = []
         var grouped: [String: [InstalledBlock]] = [:]
         var reported: [String: [Reported]] = [:]

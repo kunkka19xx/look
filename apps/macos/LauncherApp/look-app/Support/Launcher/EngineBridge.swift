@@ -1196,13 +1196,17 @@ final class EngineBridge: @unchecked Sendable {
 
     /// Everything declared, with the state the Extend screen shows. Reads both
     /// source directories, so call it when that screen opens.
-    nonisolated func installedInventory() -> Inventory {
-        guard let ptr = look_installed_json() else { return .empty }
+    ///
+    /// Nil is "could not read", which is not the same as nothing installed:
+    /// that screen reports "No problems." and must not say it about an answer
+    /// it never got.
+    nonisolated func installedInventory() -> Inventory? {
+        guard let ptr = look_installed_json() else { return nil }
         defer { look_free_cstring(ptr) }
-        guard let data = String(cString: ptr).data(using: .utf8) else { return .empty }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return (try? decoder.decode(Inventory.self, from: data)) ?? .empty
+        return try? decoder.decode(Inventory.self, from: data)
     }
 
     /// Every declared block, for the row-icon cache. Reads the sources
@@ -1616,8 +1620,6 @@ nonisolated struct SourceBlockTarget: Decodable, Identifiable {
 nonisolated struct Inventory: Decodable {
     let blocks: [InstalledBlock]
     let problems: [Reported]
-
-    static let empty = Inventory(blocks: [], problems: [])
 }
 
 /// A file that declared something Look could not use.
