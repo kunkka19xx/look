@@ -8,6 +8,7 @@ mod clipboard_api;
 mod connectors_api;
 mod hotkey_api;
 mod lunar_api;
+mod markdown_api;
 mod matching_api;
 mod meeting_api;
 mod modes_api;
@@ -831,7 +832,18 @@ pub extern "C" fn look_ai_future_leaning(
 #[unsafe(no_mangle)]
 pub extern "C" fn look_ai_markdown_segments_json(text: *const c_char) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        ai_api::look_ai_markdown_segments_json_impl(text)
+        markdown_api::look_ai_markdown_segments_json_impl(text)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Markdown block structure for the preview pane: JSON array of
+/// `{kind: "heading"|"paragraph"|"list"|"code", ...}`, YAML frontmatter
+/// dropped. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_markdown_blocks_json(text: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        markdown_api::look_markdown_blocks_json_impl(text)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

@@ -63,6 +63,26 @@ actor QuickLookPreviewService {
         return isTextFile(path: path) ? textFileSizeCap : defaultSizeCap
     }
 
+    /// What a preview reads at most. 64 KB is around 2000 lines, well past
+    /// what any pane shows, and both text previews stop here.
+    nonisolated static let headByteCap = 64 * 1024
+
+    /// The head of a text file, memory-mapped and capped. The decode is lossy
+    /// on purpose: it never fails on a partial codepoint at the cap or on
+    /// invalid bytes, where a strict decode would show nothing at all.
+    nonisolated static func head(ofFile path: String, bytes: Int = headByteCap) -> String? {
+        guard
+            let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: [.mappedIfSafe])
+        else { return nil }
+        return String(decoding: data.prefix(bytes), as: UTF8.self)
+    }
+
+    /// Markdown gets its own preview. `rst` stays text: it is in the list
+    /// above but is a different syntax, and our parser would mangle it.
+    static func isMarkdownFile(path: String) -> Bool {
+        ["md", "markdown"].contains((path as NSString).pathExtension.lowercased())
+    }
+
     static func isTextFile(path: String) -> Bool {
         let ext = (path as NSString).pathExtension.lowercased()
         return textExtensions.contains(ext)

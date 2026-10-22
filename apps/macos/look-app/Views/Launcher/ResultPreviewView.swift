@@ -779,6 +779,9 @@ struct ResultPreviewView: View {
                 themeStore: themeStore,
                 maxVisibleLines: Layout.visibleStepLines
             )
+        case .markdown(let text):
+            MarkdownBlocksView(
+                blocks: EngineBridge.shared.markdownBlocks(text), themeStore: themeStore)
         }
     }
 

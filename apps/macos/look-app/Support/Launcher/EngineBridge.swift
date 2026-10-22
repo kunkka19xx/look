@@ -154,6 +154,10 @@ private func look_ai_future_leaning(_ phrase: UnsafePointer<CChar>?, _ resolvedE
 nonisolated
 private func look_ai_markdown_segments_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_markdown_blocks_json")
+nonisolated
+private func look_markdown_blocks_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_instant_has_match")
 nonisolated
 private func look_instant_has_match(_ query: UnsafePointer<CChar>?) -> Bool
@@ -1013,6 +1017,18 @@ final class EngineBridge: @unchecked Sendable {
         return segments
     }
 
+    /// Markdown as blocks, frontmatter already dropped. Rust core
+    /// (core/markdown), so the shells agree on what a heading is.
+    nonisolated func markdownBlocks(_ text: String) -> [MarkdownBlock] {
+        guard let ptr = text.withCString({ look_markdown_blocks_json($0) }) else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let blocks = try? JSONDecoder().decode([MarkdownBlock].self, from: data)
+        else { return [] }
+        return blocks
+    }
+
     nonisolated func fuzzyScore(query: String, title: String) -> Int? {
         let score = query.withCString { queryCstr in
             title.withCString { titleCstr in
@@ -1622,6 +1638,27 @@ nonisolated struct Inventory: Decodable {
     let problems: [Reported]
 }
 
+/// One styled run inside a markdown line. `kind` is text, bold, italic, code
+/// or link; `href` is set only for a link.
+nonisolated struct MarkdownSpan: Decodable, Equatable {
+    let kind: String
+    let text: String
+    let href: String?
+}
+
+/// One markdown block: heading, paragraph, list or code. The fields a kind
+/// does not use are nil, which is what keeps this one decodable type.
+nonisolated struct MarkdownBlock: Decodable, Equatable {
+    let kind: String
+    let level: Int?
+    let spans: [MarkdownSpan]?
+    let ordered: Bool?
+    let start: Int?
+    let items: [[MarkdownSpan]]?
+    let language: String?
+    let text: String?
+}
+
 /// A file that declared something Look could not use.
 nonisolated struct Reported: Decodable, Identifiable {
     let file: String
@@ -1672,6 +1709,7 @@ nonisolated enum DetailBlock: Decodable {
     case list([DetailItem])
     case text(String)
     case code(language: String?, text: String)
+    case markdown(String)
 
     private enum Keys: String, CodingKey {
         case type, rows, items, text, language
@@ -1690,6 +1728,8 @@ nonisolated enum DetailBlock: Decodable {
             self = .code(
                 language: try container.decodeIfPresent(String.self, forKey: .language),
                 text: try container.decode(String.self, forKey: .text))
+        case "markdown":
+            self = .markdown(try container.decode(String.self, forKey: .text))
         case let other:
             throw DecodingError.dataCorruptedError(
                 forKey: .type, in: container, debugDescription: "unknown block \(other)")
