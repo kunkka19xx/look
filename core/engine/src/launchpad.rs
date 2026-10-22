@@ -1490,6 +1490,20 @@ mnemonic = "Cmd+C"
             "{:?}",
             resolved.warnings
         );
+
+        // Reported with Look 0.7.4: five tokens, then six. The whole default
+        // comes back, with the structural diagnostic and nothing else.
+        let reported = resolve(
+            r#"layout = [
+                "lslot       lslot       bluetooth   wifi        battery",
+                "lslot       lslot       ram       nowplaying  nowplaying  nowplaying",
+            ]"#,
+        );
+        assert!(is_default(&reported));
+        assert_eq!(
+            reported.warnings,
+            ["super-actions.toml row 2 has 6 tokens but row 1 has 5, using the default layout",]
+        );
     }
 
     #[test]

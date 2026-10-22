@@ -6,7 +6,6 @@
 
 use std::collections::HashMap;
 use std::ops::Range;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -174,10 +173,34 @@ const POMO_SUB_MARGIN: f32 = 6.0;
 const SLOT_TIME_LINE_HEIGHT: f32 = 1.05;
 const POMO_ARTIST: &str = "Pomodoro";
 
+/// Diagnostics last shown on a live launchpad. A valid drawing is stored
+/// empty, so the same mistake can be reported again after it is fixed.
+#[derive(Default)]
+struct DeliveredWarnings(Vec<String>);
+
+impl DeliveredWarnings {
+    /// The banner line for a set that has not been shown, remembering it
+    /// either way. A repeat is quiet. Nothing to show also clears what was
+    /// remembered.
+    fn deliver(&mut self, warnings: &[String]) -> Option<String> {
+        if self.0.as_slice() == warnings {
+            return None;
+        }
+        self.0 = warnings.to_vec();
+        let (first, rest) = warnings.split_first()?;
+        Some(if rest.is_empty() {
+            first.clone()
+        } else {
+            format!("{first} (+{} more)", rest.len())
+        })
+    }
+}
+
 /// The layout survives the window, so a summon never waits on the file.
 static LAYOUT: Mutex<Option<Arc<LayoutPayload>>> = Mutex::new(None);
-/// A broken drawing is reported once per process, not once per summon.
-static WARNED: AtomicBool = AtomicBool::new(false);
+/// Touched only from a live launchpad. A result that arrives after the
+/// window is gone must not count as delivered.
+static DELIVERED: Mutex<DeliveredWarnings> = Mutex::new(DeliveredWarnings(Vec::new()));
 
 fn cached_layout() -> Option<Arc<LayoutPayload>> {
     LAYOUT.lock().unwrap_or_else(|p| p.into_inner()).clone()
@@ -361,13 +384,12 @@ impl Launchpad {
     fn load_layout(&mut self, cx: &mut Context<Self>) {
         let token = self.token;
         cx.spawn(async move |this, cx| {
+            // Every summon. Showing them is decided below, on the live
+            // launchpad: recording that here would swallow a warning the
+            // window never got to display.
             let fresh = bg::blocking(move || {
                 let layout = Arc::new(qactions::launchpad_layout());
-                let warnings = if WARNED.swap(true, Ordering::Relaxed) {
-                    Vec::new()
-                } else {
-                    qactions::launchpad_warnings()
-                };
+                let warnings = qactions::launchpad_warnings();
                 (layout, warnings)
             })
             .get()
@@ -384,12 +406,11 @@ impl Launchpad {
                     }
                     cx.notify();
                 }
-                if let Some((first, rest)) = warnings.split_first() {
-                    let text = if rest.is_empty() {
-                        first.clone()
-                    } else {
-                        format!("{first} (+{} more)", rest.len())
-                    };
+                let text = DELIVERED
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .deliver(&warnings);
+                if let Some(text) = text {
                     this.notify(text, Tone::Warning, NOTICE_WARNING, cx);
                 }
             });
@@ -1782,5 +1803,42 @@ mod tests {
     fn user_tiles_may_name_the_built_in_glyphs() {
         assert_eq!(named_glyph("battery"), Some(glyphs::BATTERY));
         assert_eq!(named_glyph("data:image/svg+xml;base64,"), None);
+    }
+
+    /// The decision `load_layout` applies once the launchpad is still alive.
+    /// A dropped entity never calls it, so the next live one can still report.
+    #[test]
+    fn a_new_warning_set_is_announced_and_a_repeat_is_not() {
+        let mut delivered = DeliveredWarnings::default();
+        // A valid first summon remembers nothing.
+        assert_eq!(delivered.deliver(&[]), None);
+
+        let ragged = vec![
+            "super-actions.toml row 2 has 6 tokens but row 1 has 5, using the default layout"
+                .to_string(),
+        ];
+        let shown = delivered.deliver(&ragged).expect("the invalid summon");
+        assert!(shown.contains("row 2"), "{shown}");
+        assert!(shown.contains("6 tokens"), "{shown}");
+        assert!(shown.contains("row 1 has 5"), "{shown}");
+        assert!(shown.contains("using the default layout"), "{shown}");
+        assert_eq!(
+            delivered.deliver(&ragged),
+            None,
+            "the same set does not nag"
+        );
+
+        let other = vec![
+            "super-actions.toml is not valid TOML, using the default layout".to_string(),
+            "super-actions.toml has no `layout` drawing, using the default layout".to_string(),
+        ];
+        assert_eq!(
+            delivered.deliver(&other).as_deref(),
+            Some("super-actions.toml is not valid TOML, using the default layout (+1 more)")
+        );
+
+        // Fixed, then broken the same way: the warning comes back.
+        assert_eq!(delivered.deliver(&[]), None);
+        assert!(delivered.deliver(&ragged).is_some());
     }
 }
