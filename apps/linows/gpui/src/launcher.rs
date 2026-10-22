@@ -403,6 +403,7 @@ impl Launcher {
                     self.commands.active_index(),
                     self.commands.input().read(cx).text().to_string(),
                 )),
+                ai_enabled: self.ai.enabled,
                 ..Default::default()
             }
         } else {
