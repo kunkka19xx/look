@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-use gpui::{Context, Div, Entity, FontWeight, Stateful, div, img, prelude::*, px};
+use gpui::{Context, Div, Entity, FontWeight, ScrollHandle, Stateful, div, img, prelude::*, px};
 use linows_backend::process::{self, KillSnapshot, KillTarget};
 
 use super::{Commands, KeyOutcome};
@@ -52,6 +52,8 @@ pub struct Kill {
     selected: usize,
     /// The pid awaiting Y.
     confirm: Option<u32>,
+    /// The list's, so the selection stays in view.
+    scroll: ScrollHandle,
 }
 
 impl Kill {
@@ -87,6 +89,7 @@ impl Kill {
             .map(|snapshot| snapshot.rank(query))
             .unwrap_or_default();
         self.selected = self.selected.min(self.rows.len().saturating_sub(1));
+        self.scroll.scroll_to_item(self.selected);
         cx.notify();
     }
 
@@ -106,11 +109,11 @@ impl Kill {
             return KeyOutcome::Consumed;
         }
         match key {
-            "down" if !self.rows.is_empty() => {
-                self.selected = (self.selected + 1).min(self.rows.len() - 1);
-            }
-            "up" if !self.rows.is_empty() => {
-                self.selected = self.selected.saturating_sub(1);
+            "down" | "up" if !self.rows.is_empty() => {
+                let delta = if key == "down" { 1 } else { -1 };
+                let len = self.rows.len() as isize;
+                self.selected = (self.selected as isize + delta).rem_euclid(len) as usize;
+                self.scroll.scroll_to_item(self.selected);
             }
             "enter" => {
                 self.confirm = self.rows.get(self.selected).map(|p| p.pid);
@@ -306,6 +309,7 @@ pub fn panel(
                         .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
+                        .track_scroll(&kill.scroll)
                         .flex()
                         .flex_col()
                         .gap(px(1.0))
