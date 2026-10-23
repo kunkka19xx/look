@@ -158,6 +158,14 @@ private func look_ai_future_leaning(_ phrase: UnsafePointer<CChar>?, _ resolvedE
 nonisolated
 private func look_ai_markdown_segments_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_plan_verb_json")
+nonisolated
+private func look_plan_verb_json(_ blockID: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_run_verb_json")
+nonisolated
+private func look_run_verb_json(_ candidateID: UnsafePointer<CChar>?, _ plan: UInt64) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_markdown_blocks_json")
 nonisolated
 private func look_markdown_blocks_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -1042,6 +1050,41 @@ final class EngineBridge: @unchecked Sendable {
         return segments
     }
 
+    /// Asks the connector that owns the row what the verb would do. Spawns no
+    /// process but waits on one, so call it off the main thread.
+    nonisolated func planVerb(
+        blockID: String, candidateID: String, row: RowRef, query: String, ancestorsJSON: String
+    ) -> VerbPlan? {
+        let ptr = blockID.withCString { block in
+            candidateID.withCString { candidate in
+                row.id.withCString { id in
+                    row.title.withCString { title in
+                        row.path.withCString { path in
+                            query.withCString { query in
+                                ancestorsJSON.withCString { ancestors in
+                                    look_plan_verb_json(
+                                        block, candidate, id, title, path, query, ancestors)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(VerbPlan.self, from: data)
+    }
+
+    /// Runs a plan the user confirmed.
+    nonisolated func runVerb(candidateID: String, plan: UInt64) -> VerbRun? {
+        guard let ptr = candidateID.withCString({ look_run_verb_json($0, plan) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(VerbRun.self, from: data)
+    }
+
     /// Markdown as blocks, frontmatter already dropped. Rust core
     /// (core/markdown), so the shells agree on what a heading is.
     nonisolated func markdownBlocks(_ text: String) -> [MarkdownBlock] {
@@ -1658,8 +1701,26 @@ nonisolated struct SourceBlockTarget: Decodable, Identifiable {
     let name: String
     let icon: String?
     let performs: Bool
+    /// A connector works out what this verb would do, so the question comes
+    /// from it rather than from a declared string.
+    let plans: Bool
     /// Already expanded against the row, so it names what will actually happen.
     let confirm: String?
+}
+
+/// What a verb would do, for the question the user confirms.
+nonisolated struct VerbPlan: Decodable {
+    let plan: UInt64
+    let title: String
+    let detail: String?
+    let error: String?
+}
+
+/// How running a confirmed plan went.
+nonisolated struct VerbRun: Decodable {
+    let ok: Bool
+    let summary: String?
+    let error: String?
 }
 
 /// A declared block as the row layer needs it: what to call it and what icon it

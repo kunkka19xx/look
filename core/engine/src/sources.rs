@@ -59,6 +59,10 @@ pub struct ThenTarget {
     pub name: String,
     pub icon: Option<String>,
     pub performs: bool,
+    /// The connector that owns the row works out what this verb would do, so
+    /// the shell asks for a plan rather than performing it. Its confirmation
+    /// is computed, which is why `confirm` is null on one of these.
+    pub plans: bool,
     /// The question to ask before running it, already expanded against the row,
     /// or null when it needs no confirmation.
     pub confirm: Option<String>,
@@ -340,7 +344,8 @@ fn then_target(target: &Block, row: &RowContext) -> ThenTarget {
         id: target.id.clone(),
         name: target.name.clone(),
         icon: target.icon.clone(),
-        performs: target.is_bundle(),
+        performs: target.performs(),
+        plans: matches!(target.producer, Producer::Ask { .. }),
         // Expanded here so the question names the row the user is looking at
         // ("Delete main?"), not the template.
         confirm: target
@@ -459,6 +464,13 @@ pub fn perform_block(block_id: &str, row: &RowContext, as_target: bool) -> Perfo
     // that means descend, reached by Enter it means run the block's `open`.
     let steps: Vec<String> = match &block.producer {
         Producer::Bundle { steps } => steps.clone(),
+        // Loud rather than silent: a verb goes through `plan_verb`, and
+        // reaching here means the shell routed it as an ordinary block.
+        Producer::Ask { .. } => {
+            return failed(vec![format!(
+                "[{block_id}] is a verb, which is planned not performed"
+            )]);
+        }
         _ if as_target => {
             return PerformOutcome {
                 produces_rows: true,
@@ -637,6 +649,111 @@ pub fn preview(candidate_id: &str, row: &RowContext) -> Option<PreviewOutcome> {
     )
 }
 
+/// What a verb would do, for the question the user confirms. `error` is the
+/// reason there is nothing to confirm, which is not the same as a plan that
+/// says it will do nothing.
+#[derive(Serialize, Default)]
+pub struct PlanOutcome {
+    pub plan: u64,
+    pub title: String,
+    pub detail: Option<String>,
+    pub error: Option<String>,
+}
+
+/// How running a confirmed plan went.
+#[derive(Serialize, Default)]
+pub struct RunOutcome {
+    pub ok: bool,
+    pub summary: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Asks the connector that owns the row what `block_id`'s verb would do to it.
+///
+/// The connector is the one behind the row, not behind the verb: a verb is
+/// declared beside the rows it acts on and has no process of its own.
+pub fn plan_verb(block_id: &str, candidate_id: &str, row: &RowContext) -> PlanOutcome {
+    let Some(block) = find_block(block_id) else {
+        return PlanOutcome {
+            error: Some("that block no longer exists".into()),
+            ..Default::default()
+        };
+    };
+    let Producer::Ask { verb } = &block.producer else {
+        return PlanOutcome {
+            error: Some(format!("[{block_id}] is not a verb")),
+            ..Default::default()
+        };
+    };
+    let Some(owner) = owner_of(candidate_id) else {
+        return PlanOutcome {
+            error: Some("that row came from no connector".into()),
+            ..Default::default()
+        };
+    };
+    let Some(plan) = crate::connectors::ask_plan(&owner, verb, vec![row.id.clone()]) else {
+        return PlanOutcome {
+            error: Some("connector is not running".into()),
+            ..Default::default()
+        };
+    };
+    match crate::connectors::planned_of(plan, CONNECTOR_PLAN_WAIT) {
+        Some(found) => PlanOutcome {
+            plan,
+            title: found.title,
+            detail: found.detail,
+            error: None,
+        },
+        None => PlanOutcome {
+            error: Some("connector did not answer".into()),
+            ..Default::default()
+        },
+    }
+}
+
+/// Runs a plan the user confirmed, and waits for the connector to say how it
+/// went. The candidate names the connector, as it did for the plan.
+pub fn run_verb(candidate_id: &str, plan: u64) -> RunOutcome {
+    let Some(owner) = owner_of(candidate_id) else {
+        return RunOutcome {
+            error: Some("that row came from no connector".into()),
+            ..Default::default()
+        };
+    };
+    if !crate::connectors::run_plan(&owner, plan) {
+        return RunOutcome {
+            error: Some("connector is not running".into()),
+            ..Default::default()
+        };
+    }
+    match crate::connectors::result_of(plan, CONNECTOR_RUN_WAIT) {
+        Some(found) => RunOutcome {
+            ok: found.ok,
+            summary: found.summary,
+            error: None,
+        },
+        // It was told to run and may well be running. Saying nothing happened
+        // would be a guess, so this says only that nothing came back.
+        None => RunOutcome {
+            ok: true,
+            summary: None,
+            error: None,
+        },
+    }
+}
+
+/// The connector block a row came from, which is the block half of the
+/// candidate id. The row's own id is what the connector calls it, and is no
+/// use for finding which connector that is.
+fn owner_of(candidate_id: &str) -> Option<String> {
+    CandidateIdKind::source_id_of(candidate_id).map(str::to_string)
+}
+
+/// Running is the user's own action, so it may take longer than a preview the
+/// panel merely wanted.
+const CONNECTOR_PLAN_WAIT: Duration = Duration::from_millis(1_500);
+const CONNECTOR_RUN_WAIT: Duration = Duration::from_secs(5);
+
 /// How long a panel waits on a connector. Long enough for a local process to
 /// answer, short enough that a dead one costs a beat rather than the frame.
 const CONNECTOR_PREVIEW_WAIT: Duration = Duration::from_millis(400);
@@ -650,7 +767,7 @@ fn connector_preview(block: &str, row: &str) -> PreviewOutcome {
     let Some(req) = crate::connectors::ask_preview(block, row) else {
         return PreviewOutcome::failed("connector is not running");
     };
-    let Some(found) = crate::connectors::preview_of(block, row, req, CONNECTOR_PREVIEW_WAIT) else {
+    let Some(found) = crate::connectors::preview_of(req, CONNECTOR_PREVIEW_WAIT) else {
         return PreviewOutcome::default();
     };
     let text = found.text.clone();

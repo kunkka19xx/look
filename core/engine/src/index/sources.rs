@@ -69,6 +69,9 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
             Producer::Bundle { steps } => {
                 let _ = tx.send(bundle_candidate(block, steps.len()));
             }
+            // Never reached: `needs_row` keeps a verb out of the index, since
+            // it is only ever about the row it was picked on.
+            Producer::Ask { .. } => {}
             Producer::Dir { .. } => emit_dir(block, home, &tx),
             Producer::File { .. } => emit_rows(block, home, &tx),
             // A `run` block needs a process, and spawning one per index pass

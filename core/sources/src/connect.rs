@@ -16,9 +16,29 @@ use crate::rows::SourceRow;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Ask {
-    Hello { v: u32, look: String },
-    Query { block: String, q: String },
-    Preview { block: String, id: String, req: u64 },
+    Hello {
+        v: u32,
+        look: String,
+    },
+    Query {
+        block: String,
+        q: String,
+    },
+    Preview {
+        block: String,
+        id: String,
+        req: u64,
+    },
+    Plan {
+        block: String,
+        verb: String,
+        ids: Vec<String>,
+        plan: u64,
+    },
+    Run {
+        block: String,
+        plan: u64,
+    },
     Bye,
 }
 
@@ -49,6 +69,25 @@ pub enum Say {
         #[serde(default)]
         content_type: Content,
         text: String,
+    },
+    /// What the verb would do, worked out by the connector. This is the
+    /// confirmation the user reads, so it names rows rather than asking
+    /// "Archive?" the way a declared `confirm` string has to.
+    Planned {
+        block: String,
+        #[serde(default)]
+        plan: Option<u64>,
+        title: String,
+        #[serde(default)]
+        detail: Option<String>,
+    },
+    Result {
+        block: String,
+        #[serde(default)]
+        plan: Option<u64>,
+        ok: bool,
+        #[serde(default)]
+        summary: Option<String>,
     },
     Error {
         message: String,

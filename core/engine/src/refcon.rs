@@ -31,7 +31,7 @@ fn main() {
 
     say(&serde_json::json!({
         "op": "ready",
-        "capabilities": ["rows", "preview"],
+        "capabilities": ["rows", "preview", "plan"],
     }));
 
     match mode {
@@ -96,6 +96,8 @@ fn serve(block: &str) {
         match ask.get("op").and_then(serde_json::Value::as_str) {
             Some("bye") => return,
             Some("preview") => preview(block, &ask),
+            Some("plan") => plan(block, &ask),
+            Some("run") => run(block, &ask),
             // An op this program does not know is ignored, never fatal. Look
             // holds itself to the same rule.
             _ => {}
@@ -127,6 +129,39 @@ fn preview(block: &str, ask: &serde_json::Value) {
         "req": ask.get("req"),
         "content_type": "markdown",
         "text": text,
+    }));
+}
+
+/// What the verb would do, named row by row. This is the confirmation the
+/// user reads, which is why it beats a declared `confirm` string: that string
+/// cannot know how many rows were picked or what they are called.
+fn plan(block: &str, ask: &serde_json::Value) {
+    let ids: Vec<&str> = ask
+        .get("ids")
+        .and_then(serde_json::Value::as_array)
+        .map(|ids| ids.iter().filter_map(serde_json::Value::as_str).collect())
+        .unwrap_or_default();
+    let verb = ask
+        .get("verb")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("do");
+    say(&serde_json::json!({
+        "op": "planned",
+        "block": block,
+        // Echoed back, or Look cannot tell this plan from the one before it.
+        "plan": ask.get("plan"),
+        "title": format!("{verb} {} row(s)", ids.len()),
+        "detail": ids.join(", "),
+    }));
+}
+
+fn run(block: &str, ask: &serde_json::Value) {
+    say(&serde_json::json!({
+        "op": "result",
+        "block": block,
+        "plan": ask.get("plan"),
+        "ok": true,
+        "summary": "nothing really happened, this is the reference connector",
     }));
 }
 

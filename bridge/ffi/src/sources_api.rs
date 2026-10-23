@@ -113,6 +113,34 @@ pub(crate) fn look_source_preview_json_impl(
     json(look_engine::sources::preview(&candidate_id, &row))
 }
 
+/// Asks the connector that owns the row what `block_id`'s verb would do, and
+/// returns `{plan, title, detail, error}`. The question the user confirms.
+pub(crate) fn look_plan_verb_json_impl(
+    block_id: *const c_char,
+    candidate_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+    query: *const c_char,
+    ancestors_json: *const c_char,
+) -> *mut c_char {
+    let block_id = cstr_to_string(block_id);
+    let candidate_id = cstr_to_string(candidate_id);
+    let query = cstr_to_string(query);
+    let row = row_context(row_id, row_title, row_path, &query, ancestors_json);
+    json(Some(look_engine::sources::plan_verb(
+        &block_id,
+        &candidate_id,
+        &row,
+    )))
+}
+
+/// Runs a plan the user confirmed, returning `{ok, summary, error}`.
+pub(crate) fn look_run_verb_json_impl(candidate_id: *const c_char, plan: u64) -> *mut c_char {
+    let candidate_id = cstr_to_string(candidate_id);
+    json(Some(look_engine::sources::run_verb(&candidate_id, plan)))
+}
+
 /// The selected row as a user's command sees it.
 fn row_context(
     row_id: *const c_char,
