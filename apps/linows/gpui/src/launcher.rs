@@ -1533,6 +1533,12 @@ impl Launcher {
         }
         let languages = config::translate_languages();
         let codes: Vec<&'static str> = languages.iter().map(|lang| lang.code).collect();
+        // The parser falls back to its defaults, so this holds unless the table
+        // itself is empty. Guarding here is what lets the footer read the first
+        // entry rather than carry a target of its own.
+        if codes.is_empty() {
+            return;
+        }
         self.translation = Some(Translation {
             text: text.clone(),
             languages,
@@ -2860,7 +2866,7 @@ impl Launcher {
                         )
                         .child(div().text_color(colour).child(text))
                 });
-                let target = translation.languages.first().map_or("en", |lang| lang.code);
+                let target = translation.languages[0].code;
                 let url = format!(
                     "{TRANSLATE_URL}{target}&text={}",
                     url_encode(&translation.text)

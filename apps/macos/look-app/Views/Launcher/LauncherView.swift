@@ -192,6 +192,9 @@ struct LauncherView: View {
     /// filesystem.
     @State var lastHiddenAt: Date?
     @State var queryRetentionSeconds = AppConstants.Launcher.QueryRetention.defaultSeconds
+    /// Read at launch and on config reload, like the retention policy above, so
+    /// no keystroke on the translation path touches the filesystem.
+    @State var translateLanguages: [TranslateLanguage] = []
     @StateObject var runningAppsService = RunningAppsService()
     @StateObject var processModel = ProcessFinderModel()
 
@@ -927,6 +930,7 @@ struct LauncherView: View {
             focusActiveInput()
             refreshClipboardMonitoringMode()
             reloadQueryRetentionPolicy()
+            reloadTranslateLanguages()
             runningAppsService.refresh()
             actionController.pickedFilePaths = pickedFilePathsForTextOp()
             // A cold `lookapp <mode>`: this process launched to serve it.

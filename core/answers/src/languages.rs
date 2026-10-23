@@ -4,6 +4,10 @@
 //! an unsupported language and is dropped. Each shell reads the raw
 //! `translate_languages` value from the config and hands it here, so the parsing
 //! and the labels live once instead of once per shell.
+//!
+//! The table is deliberately short. Every target costs one request per query,
+//! and the MyMemory daily character quota is per IP and shared across all of
+//! them, so breadth here is paid for in quota rather than in bytes.
 
 use serde::Serialize;
 
@@ -18,73 +22,27 @@ pub struct TranslateLanguage {
 /// The built-in languages, and the allowlist. Codes are lowercase because the
 /// config value is lowercased before lookup (so `zh-CN` reads as `zh-cn`).
 const LANGUAGES: &[(&str, &str)] = &[
-    ("af", "Afrikaans"),
     ("ar", "العربية"),
-    ("az", "Azərbaycan"),
-    ("be", "Беларуская"),
-    ("bg", "Български"),
     ("bn", "বাংলা"),
-    ("ca", "Català"),
-    ("cs", "Čeština"),
-    ("da", "Dansk"),
     ("de", "Deutsch"),
-    ("el", "Ελληνικά"),
     ("en", "English"),
     ("es", "Español"),
-    ("et", "Eesti"),
-    ("eu", "Euskara"),
     ("fa", "فارسی"),
-    ("fi", "Suomi"),
-    ("fil", "Filipino"),
     ("fr", "Français"),
-    ("gl", "Galego"),
-    ("gu", "ગુજરાતી"),
-    ("he", "עברית"),
     ("hi", "हिन्दी"),
-    ("hr", "Hrvatski"),
-    ("hu", "Magyar"),
-    ("hy", "Հայերեն"),
     ("id", "Bahasa Indonesia"),
-    ("is", "Íslenska"),
     ("it", "Italiano"),
     ("ja", "日本語"),
-    ("ka", "ქართული"),
-    ("kk", "Қазақ"),
-    ("km", "ខ្មែរ"),
-    ("kn", "ಕನ್ನಡ"),
     ("ko", "한국어"),
-    ("lo", "ລາວ"),
-    ("lt", "Lietuvių"),
-    ("lv", "Latviešu"),
-    ("mk", "Македонски"),
-    ("ml", "മലയാളം"),
-    ("mn", "Монгол"),
-    ("mr", "मराठी"),
-    ("ms", "Bahasa Melayu"),
-    ("my", "မြန်မာ"),
-    ("ne", "नेपाली"),
     ("nl", "Nederlands"),
-    ("no", "Norsk"),
-    ("pa", "ਪੰਜਾਬੀ"),
     ("pl", "Polski"),
     ("pt", "Português"),
     ("pt-br", "Português (Brasil)"),
-    ("ro", "Română"),
     ("ru", "Русский"),
-    ("si", "සිංහල"),
-    ("sk", "Slovenčina"),
-    ("sl", "Slovenščina"),
-    ("sq", "Shqip"),
-    ("sr", "Српски"),
     ("sv", "Svenska"),
-    ("sw", "Kiswahili"),
-    ("ta", "தமிழ்"),
-    ("te", "తెలుగు"),
     ("th", "ไทย"),
     ("tr", "Türkçe"),
     ("uk", "Українська"),
-    ("ur", "اردو"),
-    ("uz", "Oʻzbek"),
     ("vi", "Tiếng Việt"),
     ("zh", "中文"),
     ("zh-cn", "中文（简体）"),
@@ -94,6 +52,13 @@ const LANGUAGES: &[(&str, &str)] = &[
 /// The fallback when the config key is absent, empty, or entirely invalid.
 const DEFAULTS: &[&str] = &["vi", "en", "ja"];
 
+/// How many targets a query may fan out to. Each one is a separate request, and
+/// the MyMemory quota is shared, so a longer list spends the day's budget
+/// proportionally faster. Extras are dropped rather than refused: a too-long
+/// list is still a usable one.
+pub(crate) const MAX_TARGETS: usize = 3;
+const _: () = assert!(DEFAULTS.len() <= MAX_TARGETS, "defaults exceed the cap");
+
 fn lookup(code: &str) -> Option<TranslateLanguage> {
     LANGUAGES
         .iter()
@@ -102,9 +67,10 @@ fn lookup(code: &str) -> Option<TranslateLanguage> {
 }
 
 /// Parses the raw `translate_languages` config value into the ordered, validated
-/// target languages. Empty entries, duplicates, and unknown codes are dropped;
-/// an absent, empty, or all-invalid list falls back to the defaults, so a typo
-/// never blanks the panel.
+/// target languages, at most `MAX_TARGETS` of them. Empty entries, duplicates,
+/// and unknown codes are dropped; an absent, empty, or all-invalid list falls
+/// back to the defaults, so a typo never blanks the panel. The result is never
+/// empty, which is what lets the shells index the first entry.
 pub fn translate_languages(raw: &str) -> Vec<TranslateLanguage> {
     let mut seen = std::collections::HashSet::new();
     let mut languages: Vec<TranslateLanguage> = raw
@@ -120,6 +86,7 @@ pub fn translate_languages(raw: &str) -> Vec<TranslateLanguage> {
     if languages.is_empty() {
         languages = DEFAULTS.iter().filter_map(|code| lookup(code)).collect();
     }
+    languages.truncate(MAX_TARGETS);
     languages
 }
 
@@ -160,6 +127,15 @@ mod tests {
         let languages = translate_languages("ja");
         assert_eq!(languages.len(), 1);
         assert_eq!(languages[0].label, "日本語");
+    }
+
+    #[test]
+    fn keeps_at_most_the_target_cap() {
+        let languages = translate_languages("de,fr,es,it,nl");
+        assert_eq!(
+            languages.iter().map(|l| l.code).collect::<Vec<_>>(),
+            vec!["de", "fr", "es"]
+        );
     }
 
     #[test]

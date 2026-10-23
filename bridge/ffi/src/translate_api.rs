@@ -39,13 +39,10 @@ pub(crate) fn look_translate_json_impl(
 /// table live in `look_answers`, shared with linows.
 pub(crate) fn look_translate_languages_json_impl(raw: *const c_char) -> *mut c_char {
     let raw = cstr_to_string(raw);
-    let payload: Vec<_> = look_answers::translate_languages(&raw)
-        .iter()
-        .map(|lang| serde_json::json!({ "code": lang.code, "label": lang.label }))
-        .collect();
+    let languages = look_answers::translate_languages(&raw);
 
     let json =
-        serde_json::to_string(&payload).unwrap_or_else(|_| JSON_LANGUAGES_FALLBACK.to_string());
+        serde_json::to_string(&languages).unwrap_or_else(|_| JSON_LANGUAGES_FALLBACK.to_string());
     let cstring = CString::new(json)
         .unwrap_or_else(|_| CString::new(JSON_LANGUAGES_FALLBACK).expect("valid"));
     store_json_allocation(cstring)

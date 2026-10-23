@@ -154,8 +154,8 @@ fn default_config_contents() -> String {
          query_retention_seconds=5\n\
          \n\
          # Target languages for the t\" translation panel, comma-separated BCP-47 codes,\n\
-         # shown in this order. Unknown or duplicate codes are dropped; an empty list\n\
-         # falls back to vi,en,ja.\n\
+         # shown in this order, at most 3. Unknown or duplicate codes are dropped and\n\
+         # extras past the third; an empty list falls back to vi,en,ja.\n\
          translate_languages=vi,en,ja\n\
          \n\
          # Clipboard history size (10-100). Out-of-range values fall back to 10.\n\

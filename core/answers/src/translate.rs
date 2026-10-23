@@ -18,7 +18,10 @@ use std::sync::Mutex;
 const GOOGLE_URL_PREFIX: &str =
     "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=";
 const GOOGLE_URL_MIDDLE: &str = "&dt=t&q=";
-const GOOGLE_TIMEOUT_SECS: u32 = 3;
+// Google answers in 300-500ms when it answers at all, so this is headroom
+// rather than a budget: past it the request is not slow, it is not coming, and
+// every extra second here is a second before MyMemory is even asked.
+const GOOGLE_TIMEOUT_SECS: u32 = 2;
 // Google rejects an empty/odd User-Agent; present as a browser like the
 // originals did. Accept-Language keeps responses ASCII-stable.
 const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -35,6 +38,14 @@ const MYMEMORY_TIMEOUT_SECS: u32 = 10;
 // 500 three-byte characters (1500 bytes) still translated, so the API counts
 // code points. Keep this in characters, not bytes.
 const MAX_QUERY_CHARS: usize = 500;
+/// MyMemory's free allowance: characters a day, per IP, shared across every
+/// target language.
+const MYMEMORY_DAILY_CHARS: usize = 5000;
+/// The longest text the MyMemory fallback accepts, the daily allowance split
+/// across the target cap. Without it one long paste spends the whole day, so
+/// the next query of any length fails. Google has no daily cap and is tried
+/// first, so this only ever turns away the fallback.
+const MYMEMORY_MAX_TEXT_CHARS: usize = MYMEMORY_DAILY_CHARS / crate::languages::MAX_TARGETS;
 /// Where a chunk prefers to end, so the machine translation keeps a whole
 /// sentence of context: these followed by whitespace, or a line break.
 const SENTENCE_ENDS: [char; 6] = ['.', '!', '?', '。', '！', '？'];
@@ -54,6 +65,7 @@ pub enum TranslateError {
     RateLimited,
     ParseFailed,
     EmptyResult,
+    TextTooLong,
 }
 
 impl TranslateError {
@@ -65,6 +77,7 @@ impl TranslateError {
             Self::RateLimited => "translate_rate_limited",
             Self::ParseFailed => "translate_parse_failed",
             Self::EmptyResult => "translate_empty_result",
+            Self::TextTooLong => "translate_text_too_long",
         }
     }
 
@@ -76,6 +89,7 @@ impl TranslateError {
             Self::RateLimited => "Translation is rate limited, try again later",
             Self::ParseFailed => "Translation response parse failed",
             Self::EmptyResult => "Translation returned empty result",
+            Self::TextTooLong => "Text too long to translate, try a shorter selection",
         }
     }
 }
@@ -194,8 +208,13 @@ fn google(text: &str, target_lang: &str) -> Result<String, TranslateError> {
 /// MyMemory caps a single query at 500 characters, so longer input is split
 /// into chunks that are translated separately and reassembled in order, keeping
 /// the original whitespace that sat between them. A failure in any chunk fails
-/// the whole translation rather than returning a partial result.
+/// the whole translation rather than returning a partial result. Text past
+/// `MYMEMORY_MAX_TEXT_CHARS` is turned away before any request, because the
+/// chunks would spend a disproportionate share of the daily allowance.
 fn mymemory(text: &str, target_lang: &str) -> Result<String, TranslateError> {
+    if text.chars().count() > MYMEMORY_MAX_TEXT_CHARS {
+        return Err(TranslateError::TextTooLong);
+    }
     let mut translated = String::new();
     for chunk in split_query(text) {
         let payload = chunk.trim();
@@ -481,6 +500,12 @@ mod tests {
         assert!(!quota_finished(
             &serde_json::json!({ "quotaFinished": null })
         ));
+    }
+
+    #[test]
+    fn the_fallback_turns_away_text_that_would_eat_the_daily_quota() {
+        let text = "a".repeat(MYMEMORY_MAX_TEXT_CHARS + 1);
+        assert_eq!(mymemory(&text, "vi"), Err(TranslateError::TextTooLong));
     }
 
     #[test]
