@@ -305,10 +305,13 @@ struct LookupDefinitionPanelView: View {
         if !query.isEmpty {
             components?.queryItems = [
                 URLQueryItem(name: "sl", value: "auto"),
-                URLQueryItem(name: "tl", value: "en"),
                 URLQueryItem(name: "text", value: query),
                 URLQueryItem(name: "op", value: "translate"),
             ]
+            if let target = definition?.browserTargetLanguage {
+                components?.queryItems?.insert(
+                    URLQueryItem(name: "tl", value: target), at: 1)
+            }
         }
 
         guard let url = components?.url else { return }

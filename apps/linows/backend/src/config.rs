@@ -153,6 +153,11 @@ fn default_config_contents() -> String {
          # clears it on every hide; a negative value keeps it indefinitely.\n\
          query_retention_seconds=5\n\
          \n\
+         # Target languages for the t\" translation panel, comma-separated BCP-47 codes,\n\
+         # shown in this order, at most 3. Unknown or duplicate codes are dropped and\n\
+         # extras past the third; an empty list falls back to vi,en,ja.\n\
+         translate_languages=vi,en,ja\n\
+         \n\
          # Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
          clipboard_history_limit=10\n\
          \n\
@@ -207,6 +212,7 @@ pub const CLIPBOARD_IMAGE_LIMIT_DEFAULT: usize = 20;
 pub const CLIPBOARD_IMAGE_LIMIT_MIN: usize = 5;
 pub const CLIPBOARD_IMAGE_LIMIT_MAX: usize = 50;
 const QUERY_RETENTION_SECONDS_KEY: &str = "query_retention_seconds";
+const TRANSLATE_LANGUAGES_KEY: &str = "translate_languages";
 pub const QUERY_RETENTION_SECONDS_DEFAULT: i64 = 5;
 /// The opt-out every negative value normalizes to.
 pub const QUERY_RETENTION_SECONDS_NEVER: i64 = -1;
@@ -288,6 +294,7 @@ pub fn clipboard_image_limit() -> usize {
 struct ShowValues {
     layout: LauncherLayout,
     retention_secs: i64,
+    translate_languages: Vec<look_answers::TranslateLanguage>,
 }
 
 static SHOW_VALUES: std::sync::Mutex<Option<ShowValues>> = std::sync::Mutex::new(None);
@@ -299,6 +306,9 @@ fn show_values<T>(pick: impl FnOnce(&ShowValues) -> T) -> T {
         ShowValues {
             layout: parse_launcher_layout(&contents),
             retention_secs: parse_query_retention_seconds(&contents),
+            translate_languages: look_answers::translate_languages(
+                last_value(&contents, TRANSLATE_LANGUAGES_KEY).unwrap_or_default(),
+            ),
         }
     });
     pick(values)
@@ -349,6 +359,13 @@ fn limit_from_file(key: &str, range: std::ops::RangeInclusive<usize>, default: u
 /// value keeps it indefinitely.
 pub fn query_retention_seconds() -> i64 {
     show_values(|v| v.retention_secs)
+}
+
+/// Target languages for the `t"` translation panel, parsed from
+/// `translate_languages` and kept with the other show values. The parsing and
+/// the label table live in `look_answers`, shared by the gpui and macOS shells.
+pub fn translate_languages() -> Vec<look_answers::TranslateLanguage> {
+    show_values(|v| v.translate_languages.clone())
 }
 
 /// A count out of range is a typo, not a request, so the default stands rather
@@ -673,5 +690,10 @@ mod tests {
     #[test]
     fn reset_template_hides_super_actions() {
         assert!(default_config_contents().contains("\nsuper_actions_enabled=false\n"));
+    }
+
+    #[test]
+    fn reset_template_includes_translate_languages() {
+        assert!(default_config_contents().contains("\ntranslate_languages=vi,en,ja\n"));
     }
 }

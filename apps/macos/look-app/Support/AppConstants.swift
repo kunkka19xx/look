@@ -485,6 +485,20 @@ enum AppConstants {
             static let never = -1
         }
 
+        /// Target languages for the `t"` translation panel. Only the config key
+        /// lives here: parsing, the built-in labels, and the fallback are in
+        /// `look_answers::translate_languages`, shared by every shell.
+        enum Translate {
+            static let languagesConfigKey = "translate_languages"
+            /// How long `tw"` waits after a keystroke before translating. Every
+            /// fire is one request per target against a keyless endpoint that
+            /// throttles bursts per IP, and a partial word is a wasted one: the
+            /// text differs each keystroke, so the session cache never answers
+            /// it. Long enough to pass over a pause mid-word, short enough to
+            /// feel like a preview.
+            static let previewDebounce = Duration.milliseconds(650)
+        }
+
         /// Virtual key codes (`NSEvent.keyCode`). These are physical positions on a
         /// US layout, not characters, so a handler that must follow the printed
         /// letter on other layouts matches `charactersIgnoringModifiers` as well.

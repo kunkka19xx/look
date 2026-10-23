@@ -29,7 +29,7 @@ flowchart LR
     App --> Clipboard[ClipboardHistoryStore\nSupport/Launcher/ in-memory history]
     App --> Theme[ThemeStore\n.look/config + UserDefaults]
     App --> Bridge[EngineBridge.swift\nSupport/Launcher/]
-    App --> Services[LauncherSearchCoordinator\nLauncherTranslationService]
+    App --> Services[LauncherSearchCoordinator]
 
     Bridge --> FFI[bridge/ffi\nC ABI]
     FFI --> Engine[core/engine\nQueryEngine]
@@ -53,7 +53,6 @@ flowchart LR
 - `apps/macos/look-app`: launcher window, keyboard input, global hotkey, action dispatch, clipboard/history mode, command mode, theme/settings UX.
 - `Support/Launcher/`: launcher-specific services and utilities:
   - `LauncherSearchCoordinator`: debounce + async search lifecycle
-  - `LauncherTranslationService`: translation lookup
   - `EngineBridge`: search engine communication
   - `ClipboardHistoryStore`, `KeyboardSelectionMonitor`, `GlobalHotKeyManager`
 - `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid) and semantic color tokens

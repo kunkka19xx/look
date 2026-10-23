@@ -287,8 +287,11 @@ Clipboard mode (`c"`):
 
 Translation mode (`t"`/`tw"`):
 
-- supports EN/VI/JA result sections,
-- translation uses network requests.
+- shows one result section per target language, default VI/EN/JA and configurable via `translate_languages` (see File-only settings below), up to three,
+- translation uses network requests,
+- Google Translate answers first. When it throttles your address, MyMemory steps in: free, but capped at about 5,000 characters per day per IP address, shared across every configured language. A 500-character paste with three targets spends 1,500 of that budget, and once it is spent the sections report a rate-limit message until both services accept requests again. Repeating a query in the same session costs nothing, the result is kept.
+- a text longer than about 1,600 characters is more than the MyMemory fallback will take, because one query of that size would spend most of the day's budget. Google still translates it; if Google is throttling you, the sections ask for a shorter selection instead.
+- the **Open in Browser** link opens the web translator for the first language in `translate_languages` (Vietnamese with the default `vi,en,ja`).
 
 ## Command mode
 
@@ -612,6 +615,7 @@ These keys have no control in the Settings screens. Edit `~/.look/config` direct
 - `launcher_hotkey` (global shortcut that shows and hides Look; modifiers `cmd`/`win`, `ctrl`, `alt`/`option`, `shift` plus one key: a letter, digit, `space`, `enter`, `tab`, `esc`, `f1`-`f20`, or a symbol like `` ` ``. Examples: `ctrl+space`, `alt+shift+space`, `f13`. Default `cmd+space` on macOS, `alt+space` on Windows and Linux. `none` stops Look registering any key, so you can bind `lookapp --toggle` in your desktop or a tool like skhd/AutoHotkey instead; Linux accepts only `none` and applies it on restart. An invalid value falls back to the default and the reload banner says why)
 - `shortcut_<group>_<action>` (macOS, and the gpui build on Linux and Windows; an in-app shortcut, same grammar as `launcher_hotkey` plus Shift-only chords on keys that type nothing, like `shift+enter`. The name follows the row in `Settings > Shortcuts`: `shortcut_main_copy`, `shortcut_view_reload_config`. Several chords for one action are separated by `|`. Only rebound shortcuts appear in the file; a chord Look cannot parse is ignored and the shortcut keeps its default)
 - `query_retention_seconds` (how long the main query survives while Look is hidden, in seconds; the first open past it returns to the empty home screen; default 5, `0` clears on every hide, and any negative value keeps the query indefinitely)
+- `translate_languages` (comma-separated language codes for the `t"` translation panel, shown in this order; default `vi,en,ja`. At most three: each one is a separate request and they share the MyMemory daily budget, so anything past the third is dropped. The built-in set is `ar`, `bn`, `de`, `en`, `es`, `fa`, `fr`, `hi`, `id`, `it`, `ja`, `ko`, `nl`, `pl`, `pt`, `pt-br`, `ru`, `sv`, `th`, `tr`, `uk`, `vi`, `zh`, `zh-cn`, `zh-tw`. A code outside it is a typo or an unsupported language, so it is dropped from both the labels and the result sections; an empty or all-invalid list falls back to the default)
 - `text_editor`, `code_editor`, `terminal`, `file_manager` (the tools `Cmd+E` / `Cmd+T` / `Cmd+F` act through, see [Preferred tools](#preferred-tools); undeclared means the system default)
 - `hints_enabled` (macOS, and the gpui build on Linux and Windows; the hint line along the bottom of the launcher, with its Todo tally, and the author link. Default `true`; `false` hides all of them on every screen)
 - `search_placeholder` (macOS, and the gpui build on Linux and Windows; the text in the empty search field, shown exactly as written. The config file ships with `search_placeholder=Type whatever you want`; leave the value empty to show no placeholder. As with every value, a ` #` starts a comment)

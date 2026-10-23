@@ -324,6 +324,19 @@ extension LauncherView {
             from: ConfigFileLines.keyValues(raw))
     }
 
+    /// Called at launch and on config reload. Parsing, validation, the target
+    /// cap, and the fallback list live in `look_answers` (reached through the
+    /// bridge), so every shell reads one table. An empty result means the bridge
+    /// itself is unavailable, which is also what translating would hit, so the
+    /// panel reports that rather than inventing targets.
+    func reloadTranslateLanguages() {
+        let path = ConfigPathResolver.resolvedPath()
+        let raw = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+        let configured = ConfigFileLines.keyValues(raw)[
+            AppConstants.Launcher.Translate.languagesConfigKey] ?? ""
+        translateLanguages = EngineBridge.shared.translateLanguages(rawConfig: configured)
+    }
+
     /// The stamp is consumed either way, so an early show cannot leave a later
     /// one clearing on a stale hide.
     func clearQueryIfRetentionExpired() {

@@ -390,6 +390,7 @@ extension LauncherView {
         let hotkeyWarning = LauncherHotkeyController.shared.reload()
         clipboardStore.reloadFromConfig()
         reloadQueryRetentionPolicy()
+        reloadTranslateLanguages()
         // Declared block icons and `then` targets are cached for the process, so
         // a reload is the point where an edited file should start showing. The
         // launchpad drawing is cached the same way and for the same reason.

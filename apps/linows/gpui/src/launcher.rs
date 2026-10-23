@@ -18,6 +18,7 @@ use gpui::{
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
+use linows_backend::look_answers::TranslateLanguage;
 use linows_backend::search as engine;
 use linows_backend::{
     clipboard, config, files, launch, paste, process, sources, tools, translate, trash, weburl,
@@ -64,7 +65,9 @@ static HINT_EMPTY: Hint = Hint::new(&[
     Piece::Id(shortcuts::WEB_SEARCH, "Search the web"),
 ]);
 const WEB_SEARCH_URL: &str = "https://www.google.com/search?q=";
-const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=en&text=";
+/// The browser translation page; the target language and the text follow, the
+/// target being the first configured language, as in the webview.
+const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 /// How long a keystroke waits for the next before the query runs; the
 /// webview uses the same.
 const DEBOUNCE: Duration = Duration::from_millis(70);
@@ -79,13 +82,18 @@ const NO_RESULTS: &str = "No results";
 const TRANSLATE_PADDING_Y: f32 = 10.0;
 const TRANSLATE_SECTION_PADDING_Y: f32 = 8.0;
 const TRANSLATE_ICON: f32 = 44.0;
+/// The Open in Browser control under the sections, as the macOS button: a
+/// filled pill with the globe, the label, and the arrow at the far end.
+const TRANSLATE_FOOTER_PADDING_X: f32 = 12.0;
+const TRANSLATE_FOOTER_PADDING_Y: f32 = 8.0;
+const TRANSLATE_FOOTER_GAP: f32 = 8.0;
+const TRANSLATE_FOOTER_ICON: f32 = 14.0;
+const TRANSLATE_FOOTER_ARROW: f32 = 11.0;
 const TRANSLATE_BADGE: &str = "WEB";
 const TRANSLATE_PLACEHOLDER: &str = "Press Enter to translate";
 const TRANSLATING: &str = "Translating\u{2026}";
 const TRANSLATE_FAILED: &str = "Translation failed";
 const OPEN_IN_BROWSER: &str = "Open in Browser";
-/// The three targets, in the panel's order.
-const LANGUAGES: [(&str, &str); 3] = [("vi", "TIẾNG VIỆT"), ("en", "ENGLISH"), ("ja", "日本語")];
 const CLIP_DELETED: &str = "Clipboard item deleted";
 const CLIP_IMAGE_DELETED: &str = "Image removed from history";
 static HINT_LEVEL: Hint = Hint::new(&[
@@ -137,6 +145,8 @@ const USAGE_EXECUTE: &str = "execute";
 /// One translation request and what has come back for each language.
 struct Translation {
     text: String,
+    /// The configured targets, in order, read once when the request starts.
+    languages: Vec<TranslateLanguage>,
     /// None while in flight.
     sections: Vec<Option<Result<String, String>>>,
 }
@@ -1512,7 +1522,8 @@ impl Launcher {
         true
     }
 
-    /// `t"` Enter: the three translations, each landing as it answers.
+    /// `t"` Enter: one translation per configured language, each landing as it
+    /// answers.
     fn translate(&mut self, cx: &mut Context<Self>) {
         let query = self.input.read(cx).text().to_string();
         let (_, term) = Mode::of(&query);
@@ -1520,11 +1531,20 @@ impl Launcher {
         if text.is_empty() {
             return;
         }
+        let languages = config::translate_languages();
+        let codes: Vec<&'static str> = languages.iter().map(|lang| lang.code).collect();
+        // The parser falls back to its defaults, so this holds unless the table
+        // itself is empty. Guarding here is what lets the footer read the first
+        // entry rather than carry a target of its own.
+        if codes.is_empty() {
+            return;
+        }
         self.translation = Some(Translation {
             text: text.clone(),
-            sections: vec![None; LANGUAGES.len()],
+            languages,
+            sections: vec![None; codes.len()],
         });
-        for (i, (code, _)) in LANGUAGES.iter().enumerate() {
+        for (i, code) in codes.into_iter().enumerate() {
             let text = text.clone();
             let wanted = text.clone();
             bg::fetch(
@@ -2774,7 +2794,7 @@ impl Launcher {
                             .text_color(th.accent)
                             .child(TRANSLATE_BADGE),
                     );
-                let sections = LANGUAGES.iter().enumerate().map(|(i, (_, label))| {
+                let sections = translation.languages.iter().enumerate().map(|(i, lang)| {
                     let (text, colour, copy) = match &translation.sections[i] {
                         None => (TRANSLATING.to_string(), th.text_muted, None),
                         Some(Ok(text)) => (text.clone(), th.text, Some(text.clone())),
@@ -2805,7 +2825,7 @@ impl Launcher {
                                         .text_size(px(th.font_size - 2.0))
                                         .font_weight(FontWeight::BOLD)
                                         .text_color(th.text_secondary)
-                                        .child(*label),
+                                        .child(lang.label.to_uppercase()),
                                 )
                                 .when_some(copy, |el, text| {
                                     el.child(
@@ -2846,41 +2866,58 @@ impl Launcher {
                         )
                         .child(div().text_color(colour).child(text))
                 });
-                let url = format!("{TRANSLATE_URL}{}", url_encode(&translation.text));
+                let target = translation.languages[0].code;
+                let url = format!(
+                    "{TRANSLATE_URL}{target}&text={}",
+                    url_encode(&translation.text)
+                );
                 let footer = div()
                     .id("translate-open")
                     .mt(px(TRANSLATE_PADDING_Y))
-                    .py(px(TRANSLATE_SECTION_PADDING_Y))
+                    .px(px(TRANSLATE_FOOTER_PADDING_X))
+                    .py(px(TRANSLATE_FOOTER_PADDING_Y))
+                    .rounded(px(th.control_radius()))
+                    .bg(th.control_fill)
                     .flex()
                     .items_center()
-                    .gap(px(theme::SEARCH_GAP))
+                    .gap(px(TRANSLATE_FOOTER_GAP))
                     .text_size(px(th.font_size - 1.0))
-                    .text_color(th.text_secondary)
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(th.accent)
                     .cursor_pointer()
-                    .hover(|s| s.text_color(th.accent))
+                    .hover(|s| s.bg(th.tile_face()))
                     .on_click(cx.listener(move |this, _, _, _| this.open_url(&url)))
                     .child(
                         svg()
-                            .path(glyphs::LINK)
-                            .size(px(theme::SEARCH_ICON))
+                            .path(glyphs::GLOBE)
+                            .size(px(TRANSLATE_FOOTER_ICON))
                             .text_color(th.accent),
                     )
                     .child(div().flex_1().child(OPEN_IN_BROWSER))
                     .child(
                         svg()
-                            .path(glyphs::EXTERNAL_LINK)
-                            .size(px(theme::SEARCH_ICON))
-                            .text_color(th.text_muted),
+                            .path(glyphs::ARROW_UP_RIGHT)
+                            .size(px(TRANSLATE_FOOTER_ARROW))
+                            .text_color(th.accent),
                     );
+                // The sections scroll on their own; the footer stays put under
+                // them, as on macOS.
                 div()
-                    .id("translate")
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
                     .flex()
                     .flex_col()
-                    .child(source)
-                    .children(sections)
+                    .child(
+                        div()
+                            .id("translate")
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .flex()
+                            .flex_col()
+                            .child(source)
+                            .children(sections),
+                    )
                     .child(footer)
                     .into_any_element()
             }

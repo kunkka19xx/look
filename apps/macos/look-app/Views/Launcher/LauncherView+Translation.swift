@@ -44,6 +44,20 @@ extension LauncherView {
         }
     }
 
+    private func lookupSections(
+        for targets: [TranslateLanguage],
+        results: [String: TranslationResult]
+    ) -> [LookupTranslationSection] {
+        targets.map { target in
+            LookupTranslationSection(
+                label: target.label,
+                translated: results[target.code]?.translated,
+                dictionaryDefinition: results[target.code]?.dictionaryDefinition,
+                failed: results[target.code]?.translated == nil
+            )
+        }
+    }
+
     func handleLookupTranslation(text: String) {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
@@ -51,17 +65,14 @@ extension LauncherView {
             return
         }
 
+        let targets = translateLanguages
         Task {
-            let results = await fetchAllTranslations(for: normalized)
+            let results = await fetchAllTranslations(for: normalized, targets: targets)
             await MainActor.run {
                 lookupDefinition = LookupDefinition(
                     query: normalized,
                     sourceLabel: "Input",
-                    sections: [
-                        LookupTranslationSection(label: "English", translated: results.en.translated, dictionaryDefinition: results.en.dictionaryDefinition, failed: results.en.translated == nil),
-                        LookupTranslationSection(label: "Tiếng Việt", translated: results.vi.translated, dictionaryDefinition: results.vi.dictionaryDefinition, failed: results.vi.translated == nil),
-                        LookupTranslationSection(label: "日本語", translated: results.ja.translated, dictionaryDefinition: results.ja.dictionaryDefinition, failed: results.ja.translated == nil),
-                    ]
+                    sections: lookupSections(for: targets, results: results)
                 )
             }
         }
@@ -83,11 +94,14 @@ extension LauncherView {
         }
 
         let expectedQuery = trimmed
+        let targets = translateLanguages
         lookupPreviewTask = Task {
-            try? await Task.sleep(nanoseconds: 220_000_000)
+            // The one guard that stops a request: a translate call already in
+            // flight cannot be cancelled, so anything past this point is spent.
+            try? await Task.sleep(for: AppConstants.Launcher.Translate.previewDebounce)
             guard !Task.isCancelled else { return }
 
-            let results = await fetchAllTranslations(for: normalizedText)
+            let results = await fetchAllTranslations(for: normalizedText, targets: targets)
 
             guard !Task.isCancelled else { return }
             await MainActor.run {
@@ -96,52 +110,32 @@ extension LauncherView {
                 lookupDefinition = LookupDefinition(
                     query: normalizedText,
                     sourceLabel: "Input",
-                    sections: [
-                        LookupTranslationSection(label: "English", translated: results.en.translated, dictionaryDefinition: results.en.dictionaryDefinition, failed: results.en.translated == nil),
-                        LookupTranslationSection(label: "Tiếng Việt", translated: results.vi.translated, dictionaryDefinition: results.vi.dictionaryDefinition, failed: results.vi.translated == nil),
-                        LookupTranslationSection(label: "日本語", translated: results.ja.translated, dictionaryDefinition: results.ja.dictionaryDefinition, failed: results.ja.translated == nil),
-                    ]
+                    sections: lookupSections(for: targets, results: results)
                 )
             }
         }
     }
 
-    func fetchAllTranslations(for text: String) async -> (en: TranslationResult, vi: TranslationResult, ja: TranslationResult) {
+    func fetchAllTranslations(
+        for text: String,
+        targets: [TranslateLanguage]
+    ) async -> [String: TranslationResult] {
         await withTaskGroup(of: (String, TranslationResult).self) { group in
-            group.addTask {
-                let translated = self.bridge.translate(text: text, targetLang: "en")?.translated
-                let definition = await MainActor.run {
-                    translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+            for code in targets.map(\.code) {
+                group.addTask {
+                    let translated = self.bridge.translate(text: text, targetLang: code)?.translated
+                    let definition = await MainActor.run {
+                        translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+                    }
+                    return (code, TranslationResult(translated: translated, dictionaryDefinition: definition))
                 }
-                return ("en", TranslationResult(translated: translated, dictionaryDefinition: definition))
-            }
-            group.addTask {
-                let translated = self.bridge.translate(text: text, targetLang: "vi")?.translated
-                let definition = await MainActor.run {
-                    translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
-                }
-                return ("vi", TranslationResult(translated: translated, dictionaryDefinition: definition))
-            }
-            group.addTask {
-                let translated = self.bridge.translate(text: text, targetLang: "ja")?.translated
-                let definition = await MainActor.run {
-                    translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
-                }
-                return ("ja", TranslationResult(translated: translated, dictionaryDefinition: definition))
             }
 
-            var en = TranslationResult(translated: nil, dictionaryDefinition: nil)
-            var vi = TranslationResult(translated: nil, dictionaryDefinition: nil)
-            var ja = TranslationResult(translated: nil, dictionaryDefinition: nil)
-            for await (lang, result) in group {
-                switch lang {
-                case "en": en = result
-                case "vi": vi = result
-                case "ja": ja = result
-                default: break
-                }
+            var results: [String: TranslationResult] = [:]
+            for await (code, result) in group {
+                results[code] = result
             }
-            return (en, vi, ja)
+            return results
         }
     }
 
@@ -163,92 +157,97 @@ extension LauncherView {
             return
         }
 
+        let targets = translateLanguages
         lookupDefinition = LookupDefinition(
             query: normalized,
             sourceLabel: "Web",
-            sections: [
-                LookupTranslationSection(label: "Tiếng Việt", translated: nil, dictionaryDefinition: nil, failed: false),
-                LookupTranslationSection(label: "English", translated: nil, dictionaryDefinition: nil, failed: false),
-                LookupTranslationSection(label: "日本語", translated: nil, dictionaryDefinition: nil, failed: false),
-            ]
+            sections: targets.map { target in
+                LookupTranslationSection(
+                    label: target.label,
+                    translated: nil,
+                    dictionaryDefinition: nil,
+                    failed: false
+                )
+            },
+            browserTargetLanguage: targets.first?.code
         )
 
         Task {
-            let results = await fetchNetworkTranslations(for: normalized)
-            await MainActor.run {
-                let hasAnyResult = results.en.translated != nil
-                    || results.vi.translated != nil
-                    || results.ja.translated != nil
-
-                lookupDefinition = LookupDefinition(
-                    query: normalized,
-                    sourceLabel: "Web",
-                    sections: [
-                        LookupTranslationSection(label: "Tiếng Việt", translated: results.vi.translated, dictionaryDefinition: nil, failed: results.vi.translated == nil),
-                        LookupTranslationSection(label: "English", translated: results.en.translated, dictionaryDefinition: nil, failed: results.en.translated == nil),
-                        LookupTranslationSection(label: "日本語", translated: results.ja.translated, dictionaryDefinition: nil, failed: results.ja.translated == nil),
-                    ]
-                )
-
-                if !hasAnyResult {
-                    let message = results.en.errorMessage
-                        ?? results.vi.errorMessage
-                        ?? results.ja.errorMessage
-                        ?? "Translation failed"
-                    showBanner(message, style: .error, duration: 3.2)
+            var results: [String: NetworkTranslationResult] = [:]
+            for await (code, result) in networkTranslations(for: normalized, targets: targets) {
+                results[code] = result
+                await MainActor.run {
+                    landNetworkSection(code, result, query: normalized, targets: targets)
                 }
+            }
+            await MainActor.run {
+                // Every target has answered by here, so a banner is the only
+                // thing left to decide and the panel already shows the rest.
+                guard lookupDefinition?.query == normalized else { return }
+                guard !targets.contains(where: { results[$0.code]?.translated != nil }) else {
+                    return
+                }
+                let firstError = targets.compactMap { results[$0.code]?.errorMessage }.first
+                showBanner(firstError ?? "Translation failed", style: .error, duration: 3.2)
             }
         }
     }
 
-    func fetchNetworkTranslations(for text: String) async -> (en: NetworkTranslationResult, vi: NetworkTranslationResult, ja: NetworkTranslationResult) {
-        await withTaskGroup(of: (String, NetworkTranslationResult).self) { group in
-            group.addTask {
-                let result = self.bridge.translate(text: text, targetLang: "en")
-                let translated = result?.translated.trimmingCharacters(in: .whitespacesAndNewlines)
-                return (
-                    "en",
-                    NetworkTranslationResult(
-                        translated: (translated?.isEmpty == false) ? translated : nil,
-                        errorMessage: result?.error?.userFacingMessage
-                    )
-                )
-            }
-            group.addTask {
-                let result = self.bridge.translate(text: text, targetLang: "vi")
-                let translated = result?.translated.trimmingCharacters(in: .whitespacesAndNewlines)
-                return (
-                    "vi",
-                    NetworkTranslationResult(
-                        translated: (translated?.isEmpty == false) ? translated : nil,
-                        errorMessage: result?.error?.userFacingMessage
-                    )
-                )
-            }
-            group.addTask {
-                let result = self.bridge.translate(text: text, targetLang: "ja")
-                let translated = result?.translated.trimmingCharacters(in: .whitespacesAndNewlines)
-                return (
-                    "ja",
-                    NetworkTranslationResult(
-                        translated: (translated?.isEmpty == false) ? translated : nil,
-                        errorMessage: result?.error?.userFacingMessage
-                    )
-                )
-            }
+    /// Replaces the one section `code` belongs to, leaving the others as they
+    /// are. Does nothing once the panel has moved on to another query, so a
+    /// slow answer cannot write into the definition that replaced it.
+    @MainActor
+    private func landNetworkSection(
+        _ code: String,
+        _ result: NetworkTranslationResult,
+        query normalized: String,
+        targets: [TranslateLanguage]
+    ) {
+        guard lookupDefinition?.query == normalized,
+            let index = targets.firstIndex(where: { $0.code == code }),
+            index < lookupDefinition?.sections.count ?? 0
+        else {
+            return
+        }
+        lookupDefinition?.sections[index] = LookupTranslationSection(
+            label: targets[index].label,
+            translated: result.translated,
+            dictionaryDefinition: nil,
+            failed: result.translated == nil
+        )
+    }
 
-            var en = NetworkTranslationResult(translated: nil, errorMessage: nil)
-            var vi = NetworkTranslationResult(translated: nil, errorMessage: nil)
-            var ja = NetworkTranslationResult(translated: nil, errorMessage: nil)
-            for await (lang, result) in group {
-                switch lang {
-                case "en": en = result
-                case "vi": vi = result
-                case "ja": ja = result
-                default: break
+    /// One request per target, yielded as each answers rather than collected at
+    /// the speed of the slowest. Google replies in about half a second while a
+    /// target that falls through to MyMemory takes three times that, so waiting
+    /// for the set made every translation as slow as its worst language.
+    func networkTranslations(
+        for text: String,
+        targets: [TranslateLanguage]
+    ) -> AsyncStream<(String, NetworkTranslationResult)> {
+        AsyncStream { continuation in
+            let task = Task {
+                await withTaskGroup(of: (String, NetworkTranslationResult).self) { group in
+                    for code in targets.map(\.code) {
+                        group.addTask {
+                            let result = self.bridge.translate(text: text, targetLang: code)
+                            let translated = result?.translated.trimmingCharacters(in: .whitespacesAndNewlines)
+                            return (
+                                code,
+                                NetworkTranslationResult(
+                                    translated: (translated?.isEmpty == false) ? translated : nil,
+                                    errorMessage: result?.error?.userFacingMessage
+                                )
+                            )
+                        }
+                    }
+                    for await pair in group {
+                        continuation.yield(pair)
+                    }
                 }
+                continuation.finish()
             }
-            return (en, vi, ja)
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 }

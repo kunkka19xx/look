@@ -569,6 +569,11 @@ clipboard_history_limit=10\n\
 # it on every hide; a negative value keeps it indefinitely.\n\
 query_retention_seconds=5\n\
 \n\
+# Target languages for the t\" translation panel, comma-separated BCP-47 codes,\n\
+# shown in this order, at most 3. Unknown or duplicate codes are dropped and\n\
+# extras past the third; an empty list falls back to vi,en,ja.\n\
+translate_languages=vi,en,ja\n\
+\n\
 # The hint line along the bottom and the author link. false hides both.\n\
 hints_enabled=true\n\
 \n\
@@ -1185,6 +1190,13 @@ mod tests {
     #[test]
     fn default_config_contents_include_lazy_indexing_enabled() {
         assert!(default_config_contents().contains("lazy_indexing_enabled=true"));
+    }
+
+    /// The trailing blank line is part of the assertion: without it the comment
+    /// for the next key reads as part of this one.
+    #[test]
+    fn default_config_contents_include_translate_languages() {
+        assert!(default_config_contents().contains("\ntranslate_languages=vi,en,ja\n\n"));
     }
 
     fn config_from(contents: &str, label: &str) -> RuntimeConfig {

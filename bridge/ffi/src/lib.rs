@@ -321,6 +321,17 @@ pub extern "C" fn look_translate_json(
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// Parses a raw `translate_languages` config value and returns an owned JSON C
+/// string: an array of `{code, label}` in the configured order. Free the result
+/// with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_translate_languages_json(raw: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        translate_api::look_translate_languages_json_impl(raw)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// Resolves a shared instant answer (currency/weather/crypto) for `query`,
 /// returning an owned JSON C string - an `Answer` object on a hit, or the JSON
 /// literal `null` otherwise. Free the result with `look_free_cstring`.

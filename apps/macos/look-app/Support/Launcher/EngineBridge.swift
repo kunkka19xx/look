@@ -38,6 +38,10 @@ private func look_request_index_refresh() -> Bool
 nonisolated
 private func look_translate_json(_ text: UnsafePointer<CChar>?, _ targetLang: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_translate_languages_json")
+nonisolated
+private func look_translate_languages_json(_ raw: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_fuzzy_score")
 nonisolated
 private func look_fuzzy_score(_ query: UnsafePointer<CChar>?, _ title: UnsafePointer<CChar>?) -> Int64
@@ -747,6 +751,27 @@ final class EngineBridge: @unchecked Sendable {
         }
 
         return try? JSONDecoder().decode(TranslationResult.self, from: data)
+    }
+
+    /// The validated target languages parsed from a raw `translate_languages`
+    /// value, in the configured order; the table and fallback live in
+    /// `look_answers`. Empty only if the bridge call itself fails.
+    nonisolated func translateLanguages(rawConfig: String) -> [TranslateLanguage] {
+        let result = rawConfig.withCString { look_translate_languages_json($0) }
+
+        guard let result else {
+            return []
+        }
+
+        defer {
+            look_free_cstring(result)
+        }
+
+        guard let data = String(cString: result).data(using: .utf8) else {
+            return []
+        }
+
+        return (try? JSONDecoder().decode([TranslateLanguage].self, from: data)) ?? []
     }
 
     /// Shared `core/matching` fuzzy score for `query` vs `title` (identical
@@ -1527,6 +1552,13 @@ nonisolated struct TranslationResult: Decodable {
     let original: String
     let translated: String
     let error: BridgeError?
+}
+
+/// Wire shape of `look_answers::TranslateLanguage`: a validated target
+/// language's lowercase code and display label.
+nonisolated struct TranslateLanguage: Decodable {
+    let code: String
+    let label: String
 }
 
 /// Wire shape of `look_answers::UrlMatch`: the resolved openable URL and how

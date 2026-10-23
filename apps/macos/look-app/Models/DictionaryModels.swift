@@ -5,7 +5,13 @@ import Foundation
 struct LookupDefinition {
     let query: String
     let sourceLabel: String
-    let sections: [LookupTranslationSection]
+    /// Replaced one entry at a time as each target answers, so a fast section
+    /// reaches the panel while a slow one is still in flight.
+    var sections: [LookupTranslationSection]
+    /// Target language code for the "Open in Browser" link: the first configured
+    /// `translate_languages` entry. nil outside web translation, where the link
+    /// is not shown, and the web page then picks its own target.
+    var browserTargetLanguage: String?
 }
 
 struct LookupTranslationSection {
