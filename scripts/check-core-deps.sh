@@ -29,7 +29,11 @@ for manifest in "$root"/core/*/Cargo.toml; do
     esac
     # One pattern per quote style, so an apostrophe inside a double-quoted
     # path cannot end the value early and smuggle the rest past the case.
-  done < <(grep -oE "path[[:space:]]*=[[:space:]]*(\"[^\"]*\"|'[^']*')" "$manifest" \
+    #
+    # awk first keeps only dependency tables: a `[[bin]]` path names a source
+    # file, not a crate, and reading it as one failed the whole check.
+  done < <(awk '/^[[:space:]]*\[/ { deps = ($0 ~ /dependencies/); next } deps' "$manifest" \
+    | grep -oE "path[[:space:]]*=[[:space:]]*(\"[^\"]*\"|'[^']*')" \
     | sed -E "s/path[[:space:]]*=[[:space:]]*.//; s/.$//")
 
   # Declarations only, with comments stripped first: a manifest is allowed to

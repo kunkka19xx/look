@@ -304,26 +304,30 @@ struct Owner {
     manifest: String,
 }
 
-/// The largest frame a connector may send. `lines()` would read a line of any
-/// length into memory, so a connector could hand Look a gigabyte and that would
-/// be Look's problem. A frame past the cap is a protocol breach, not a big
-/// message: the connector is dropped and restarted on next use.
-const MAX_FRAME_BYTES: usize = 1 << 20;
+/// The largest frame a connector may send, not counting the newline that ends
+/// it. `lines()` would read a line of any length into memory, so a connector
+/// could hand Look a gigabyte and that would be Look's problem. A frame past
+/// the cap is a protocol breach, not a big message: the connector is dropped
+/// and restarted on next use.
+pub const MAX_FRAME_BYTES: usize = 1 << 20;
 
 fn read_frames(owner: &Owner, stdout: std::process::ChildStdout, on_rows: &OnRows) {
     let mut reader = BufReader::new(stdout);
     let mut frame = Vec::new();
     loop {
         frame.clear();
+        // One past the cap, so a frame of exactly `MAX_FRAME_BYTES` still has
+        // room for its newline. Budgeting the delimiter inside the cap would
+        // reject a frame the contract allows.
         let read = reader
             .by_ref()
-            .take(MAX_FRAME_BYTES as u64)
+            .take(MAX_FRAME_BYTES as u64 + 1)
             .read_until(b'\n', &mut frame);
         match read {
             Ok(0) => return,
-            // No newline and the cap reached: the line is longer than allowed.
-            // Short of the cap it is the last frame before the pipe closed.
-            Ok(_) if frame.len() == MAX_FRAME_BYTES && !frame.ends_with(b"\n") => {
+            // No newline and past the cap: the line is longer than allowed.
+            // Short of it, this is the last frame before the pipe closed.
+            Ok(_) if frame.len() > MAX_FRAME_BYTES && !frame.ends_with(b"\n") => {
                 eprintln!(
                     "look connectors: [{}] sent a frame over {MAX_FRAME_BYTES} bytes",
                     owner.block

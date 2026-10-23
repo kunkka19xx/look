@@ -287,6 +287,7 @@ Switch in `Settings > Appearance`.
 - 📘 [Docs site](https://noah-code.com/docs/look) - hosted, searchable user guide and reference
 - [User guide (in-repo)](docs/user-guide.md) - full feature reference, shortcuts, configuration, permissions, troubleshooting
 - [Architecture](docs/architecture.md) - how the Swift app + Rust core fit together
+- [Integrating your app](docs/integrating.md) - the connector contract, for shipping an app that puts its own rows in Look
 - [Features](docs/features.md) - what's shipped, what's planned
 - [Contributing](CONTRIBUTING.md) - how to contribute
 - [Your own sources](docs/user-sources.md) - declare custom rows from directories, files, and commands
