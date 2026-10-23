@@ -3063,8 +3063,12 @@ impl Launcher {
         } else {
             theme::ROW_INSET
         };
+        // Takes the row's width, or the card sizes to its text and a long
+        // notice runs off the edge with its Dismiss button.
         let banner = self.banner.render(&th, toast, cx).map(|banner| {
             div()
+                .flex_1()
+                .min_w_0()
                 .on_children_prepainted(move |cards, _, _| mark_cards(&cards, bar_radius))
                 .child(banner)
         });
