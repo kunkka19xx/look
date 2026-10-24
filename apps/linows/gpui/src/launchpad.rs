@@ -30,6 +30,7 @@ use crate::bg;
 use crate::confirm::CONFIRM_FALLBACK;
 use crate::glyphs;
 use crate::icons;
+use crate::launcher;
 use crate::motion;
 use crate::pomo;
 use crate::theme::{self, Theme};
@@ -205,12 +206,6 @@ fn cached_layout() -> Option<Arc<LayoutPayload>> {
     LAYOUT.lock().unwrap_or_else(|p| p.into_inner()).clone()
 }
 
-/// Setting on, split layout, and a compositor. Off in classic mode and when
-/// Super Actions is disabled, which is when macOS also stays quiet.
-fn launchpad_shown() -> bool {
-    theme::get().shows_launchpad() && !crate::host::opaque()
-}
-
 pub struct Launchpad {
     layout: Option<Arc<LayoutPayload>>,
     controls: HashMap<String, Control>,
@@ -313,6 +308,7 @@ impl Launchpad {
         self.shown = shown;
         if shown {
             self.refresh_all(cx);
+            self.report_warnings(cx);
         } else {
             self.clear_confirm(cx);
         }
@@ -396,24 +392,37 @@ impl Launchpad {
                 *LAYOUT.lock().unwrap_or_else(|p| p.into_inner()) = Some(layout.clone());
                 let first = this.layout.is_none();
                 if first || this.layout.as_deref() != Some(&layout) {
-                    this.layout = Some(layout.clone());
+                    this.layout = Some(layout);
                     this.clear_confirm(cx);
                     if first || this.token == token {
                         this.refresh_all(cx);
                     }
                     cx.notify();
                 }
-                if launchpad_shown()
-                    && let Some(text) = DELIVERED
-                        .lock()
-                        .unwrap_or_else(|p| p.into_inner())
-                        .deliver(&layout.warnings)
-                {
-                    this.notify(text, Tone::Warning, NOTICE_WARNING, cx);
-                }
+                this.report_warnings(cx);
             });
         })
         .detach();
+    }
+
+    /// Announces the drawing's warnings only while the bento is on screen. A
+    /// clean drawing clears what was remembered even when hidden, so the same
+    /// mistake made again is reported again.
+    fn report_warnings(&mut self, cx: &mut Context<Self>) {
+        let Some(layout) = self.layout.clone() else {
+            return;
+        };
+        let visible = self.shown && launcher::launchpad_shown(&theme::get());
+        if !visible && !layout.warnings.is_empty() {
+            return;
+        }
+        let text = DELIVERED
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .deliver(&layout.warnings);
+        if let Some(text) = text {
+            self.notify(text, Tone::Warning, NOTICE_WARNING, cx);
+        }
     }
 
     fn refresh_all(&mut self, cx: &mut Context<Self>) {

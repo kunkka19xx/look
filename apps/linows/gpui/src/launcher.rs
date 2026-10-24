@@ -1134,6 +1134,8 @@ impl Launcher {
         self.confirm = None;
         self.translation = None;
         self.command_mode = true;
+        self.launchpad
+            .update(cx, |launchpad, cx| launchpad.set_shown(false, cx));
         self.commands.enter(index, prefill, cx);
         // The screen has its own field; the query that opened it is spent, so
         // the next summon lands on home, as both references do.
@@ -3163,7 +3165,7 @@ fn home_lists() -> bool {
 /// (`superactions.applyEnabled`), the classic panel has no launchpad and lists
 /// the index instead; the config value is left alone, so it comes back by
 /// itself under a compositor.
-fn launchpad_shown(th: &Theme) -> bool {
+pub(crate) fn launchpad_shown(th: &Theme) -> bool {
     th.shows_launchpad() && !classic()
 }
 
