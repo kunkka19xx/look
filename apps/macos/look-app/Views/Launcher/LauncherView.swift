@@ -585,8 +585,10 @@ struct LauncherView: View {
         }
         // An arithmetic expression is a question, and the answer outranks a
         // file that fuzzy-matched some of its digits - above everything,
-        // including the structural URL row.
-        let withCalc = calcResult.map { [$0] + base } ?? base
+        // including the structural URL row. Only an item named exactly what
+        // was typed keeps the top slot.
+        let withCalc =
+            calcResult.map { CalcRowPlacement.merged(calc: $0, query: query, into: base) } ?? base
         // "join" and "call" are requests, not search terms: the meeting the
         // user is late for, or the person they meant to ring, outranks a file
         // whose name happens to contain the word.
