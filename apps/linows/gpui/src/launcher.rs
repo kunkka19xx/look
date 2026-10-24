@@ -19,6 +19,7 @@ use gpui::{
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
 use linows_backend::look_answers::TranslateLanguage;
+use linows_backend::qactions;
 use linows_backend::search as engine;
 use linows_backend::{
     clipboard, config, files, launch, paste, process, sources, tools, translate, trash, weburl,
@@ -1060,17 +1061,32 @@ impl Launcher {
             self.settings.reload(cx);
         }
         self.running.refresh(cx);
+        // The drawing is read here too: it is the file most likely to be
+        // mid-edit when the chord is pressed, and a broken one falls back to
+        // the default, so the banner is the only sign anything happened.
         bg::fetch(
             cx,
-            || engine::reload_config(app_state(), || {}),
-            |this, _, cx| {
+            || {
+                engine::reload_config(app_state(), || {});
+                qactions::launchpad_layout()
+            },
+            |this, layout, cx| {
                 crate::hotkey::set_active(true);
-                this.banner.show(
-                    settings::RELOADED.to_string(),
-                    Tone::Info,
-                    settings::RELOADED_SECS,
-                    cx,
-                );
+                let warning = this
+                    .launchpad
+                    .update(cx, |launchpad, cx| launchpad.reloaded(layout, cx));
+                match warning {
+                    Some(text) => {
+                        this.banner
+                            .show(text, Tone::Warning, launchpad::NOTICE_WARNING, cx)
+                    }
+                    None => this.banner.show(
+                        settings::RELOADED.to_string(),
+                        Tone::Info,
+                        settings::RELOADED_SECS,
+                        cx,
+                    ),
+                }
             },
         );
         cx.notify();

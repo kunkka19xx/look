@@ -100,7 +100,7 @@ const NOTICE_OK: f32 = 1.2;
 const NOTICE_INFO: f32 = 2.2;
 const NOTICE_ERROR: f32 = 1.6;
 /// Long enough to read a config error, which is longer than a toast.
-const NOTICE_WARNING: f32 = 5.0;
+pub(crate) const NOTICE_WARNING: f32 = 5.0;
 
 const PLACEHOLDER: &str = "--";
 const TEMP_PLACEHOLDER: &str = "--°";
@@ -187,6 +187,11 @@ impl DeliveredWarnings {
         if self.0.as_slice() == warnings {
             return None;
         }
+        self.record(warnings)
+    }
+
+    /// The banner line, repeat or not: the reload chord asked to hear it.
+    fn record(&mut self, warnings: &[String]) -> Option<String> {
         self.0 = warnings.to_vec();
         let (first, rest) = warnings.split_first()?;
         Some(if rest.is_empty() {
@@ -388,21 +393,39 @@ impl Launchpad {
             // Delivery is decided on the live launchpad, from this one read.
             let fresh = bg::blocking(qactions::launchpad_layout).get().await;
             let _ = this.update(cx, |this, cx| {
-                let layout = Arc::new(fresh);
-                *LAYOUT.lock().unwrap_or_else(|p| p.into_inner()) = Some(layout.clone());
-                let first = this.layout.is_none();
-                if first || this.layout.as_deref() != Some(&layout) {
-                    this.layout = Some(layout);
-                    this.clear_confirm(cx);
-                    if first || this.token == token {
-                        this.refresh_all(cx);
-                    }
-                    cx.notify();
-                }
+                this.apply_layout(Arc::new(fresh), token, cx);
                 this.report_warnings(cx);
             });
         })
         .detach();
+    }
+
+    /// The reload chord: the drawing was read again off the UI thread and is
+    /// applied here. Its warnings come back as the banner line for the
+    /// caller's one reload banner, repeat or not, and count as delivered.
+    pub fn reloaded(&mut self, layout: LayoutPayload, cx: &mut Context<Self>) -> Option<String> {
+        let layout = Arc::new(layout);
+        self.apply_layout(layout.clone(), self.token, cx);
+        DELIVERED
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .record(&layout.warnings)
+    }
+
+    /// A fresh read replaces the cache and, when the tiles moved, the grid.
+    /// `token` is the refresh generation at the read; a later refresh has
+    /// already covered the new tiles.
+    fn apply_layout(&mut self, layout: Arc<LayoutPayload>, token: u64, cx: &mut Context<Self>) {
+        *LAYOUT.lock().unwrap_or_else(|p| p.into_inner()) = Some(layout.clone());
+        let first = self.layout.is_none();
+        if first || self.layout.as_deref() != Some(&layout) {
+            self.layout = Some(layout);
+            self.clear_confirm(cx);
+            if first || self.token == token {
+                self.refresh_all(cx);
+            }
+            cx.notify();
+        }
     }
 
     /// Announces the drawing's warnings only while the bento is on screen. A
@@ -1830,6 +1853,11 @@ mod tests {
             delivered.deliver(&ragged),
             None,
             "the same set does not nag"
+        );
+        assert_eq!(
+            delivered.record(&ragged).as_deref(),
+            Some(ragged[0].as_str()),
+            "a reload repeats it on request"
         );
 
         let other = vec![
