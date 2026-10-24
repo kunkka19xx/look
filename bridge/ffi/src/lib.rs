@@ -848,6 +848,41 @@ pub extern "C" fn look_ai_markdown_segments_json(text: *const c_char) -> *mut c_
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// What a connector's verb would do against the selected row. JSON
+/// `{plan, title, detail, error}`. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_plan_verb_json(
+    block_id: *const c_char,
+    candidate_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+    query: *const c_char,
+    ancestors_json: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_plan_verb_json_impl(
+            block_id,
+            candidate_id,
+            row_id,
+            row_title,
+            row_path,
+            query,
+            ancestors_json,
+        )
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Runs a plan the user confirmed. JSON `{ok, summary, error}`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_run_verb_json(candidate_id: *const c_char, plan: u64) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_run_verb_json_impl(candidate_id, plan)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// Markdown block structure for the preview pane: JSON array of
 /// `{kind: "heading"|"paragraph"|"list"|"code", ...}`, YAML frontmatter
 /// dropped. Free with `look_free_cstring`.

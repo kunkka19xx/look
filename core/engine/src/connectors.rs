@@ -142,86 +142,174 @@ pub struct Preview {
     pub markdown: bool,
 }
 
-struct Latest {
-    block: String,
-    row: String,
-    req: u64,
-    preview: Preview,
+/// What a verb would do, as the connector worked it out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Planned {
+    pub title: String,
+    pub detail: Option<String>,
 }
 
-/// One slot, not a cache: the panel shows one row at a time, so the answer to
-/// the row before it is already stale. Bounded by construction rather than by
+/// How running one went.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Outcome {
+    pub ok: bool,
+    pub summary: Option<String>,
+}
+
+/// One answer at a time, matched to the ask that wanted it.
+///
+/// Not a cache: the panel asks about one thing at a time, so the answer to the
+/// question before it is already stale. Bounded by construction rather than by
 /// an eviction rule nobody would exercise.
-fn latest() -> &'static (Mutex<Option<Latest>>, Condvar) {
-    static LATEST: OnceLock<(Mutex<Option<Latest>>, Condvar)> = OnceLock::new();
-    LATEST.get_or_init(|| (Mutex::new(None), Condvar::new()))
+struct Slot<T> {
+    held: Mutex<Option<(u64, T)>>,
+    arrived: Condvar,
+}
+
+impl<T: Clone> Slot<T> {
+    const fn new() -> Self {
+        Self {
+            held: Mutex::new(None),
+            arrived: Condvar::new(),
+        }
+    }
+
+    /// Emptied before asking, or the answer to the last identical question is
+    /// still sitting there and `take` returns it without waiting.
+    fn clear(&self) {
+        *self.held.lock().unwrap_or_else(|err| err.into_inner()) = None;
+    }
+
+    fn put(&self, req: u64, value: T) {
+        *self.held.lock().unwrap_or_else(|err| err.into_inner()) = Some((req, value));
+        self.arrived.notify_all();
+    }
+
+    /// Waits up to `wait` for the answer to `req`, and to no other: one that
+    /// came late, or early for somebody else, is not this caller's.
+    fn take(&self, req: u64, wait: Duration) -> Option<T> {
+        let held = self.held.lock().unwrap_or_else(|err| err.into_inner());
+        // Checks before it waits, so an answer already in the slot costs
+        // nothing, and re-checks on every wake, so a spurious one does not end
+        // the wait.
+        let (held, expired) = self
+            .arrived
+            .wait_timeout_while(
+                held,
+                wait,
+                |slot| !matches!(slot.as_ref(), Some((answered, _)) if *answered == req),
+            )
+            .unwrap_or_else(|err| err.into_inner());
+        if expired.timed_out() {
+            return None;
+        }
+        held.as_ref().map(|(_, value)| value.clone())
+    }
+}
+
+static PREVIEWS: Slot<Preview> = Slot::new();
+static PLANS: Slot<Planned> = Slot::new();
+static RESULTS: Slot<Outcome> = Slot::new();
+
+/// One counter for every ask, so a number never means two questions.
+fn next_req() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 /// A preview past this is truncated. The frame cap already bounds one message;
 /// this bounds what a panel is asked to lay out.
 const MAX_PREVIEW_BYTES: usize = 64 * 1024;
 
-/// Asks the connector behind `block` for a row's preview, and gives back the
-/// request number to wait for. None when none is running, which is the
-/// caller's cue not to wait for an answer at all.
+/// Writes one frame to the connector behind `block`, off this thread. False
+/// when none is running, which is the caller's cue not to wait for an answer.
 ///
-/// Never blocks: an undelivered request simply has no answer, which the wait
-/// already handles.
-pub fn ask_preview(block: &str, row: &str) -> Option<u64> {
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-    let req = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-    // Emptied before asking, or the answer to the last look at this same row
-    // is still sitting there and `preview_of` returns it without waiting.
-    *latest().0.lock().unwrap_or_else(|err| err.into_inner()) = None;
-    let handle = locked().get(block).and_then(|alive| alive.stdin.clone())?;
-
-    let line = Ask::Preview {
-        block: block.to_string(),
-        id: row.to_string(),
-        req,
-    }
-    .line();
-
-    // Off this thread: a connector that stopped reading its stdin fills its
-    // pipe, and the write would then block the panel here, before the wait
-    // that is supposed to bound it even starts. `try_lock` holds a stuck
-    // connector to one blocked thread however often it is asked.
+/// Never blocks the caller: a connector that stopped reading its stdin fills
+/// its pipe, and the write would otherwise block the panel before the wait
+/// that is supposed to bound it even starts.
+///
+/// `must_arrive` says what to do when another frame holds the pipe. A preview
+/// gives up, since one is sent per selection and a lost one costs nothing; a
+/// verb waits, because a dropped `run` would be reported as a run that
+/// happened. Verbs are rare and user-initiated, so the thread is too.
+fn tell(block: &str, ask: Ask, must_arrive: bool) -> bool {
+    let Some(handle) = locked().get(block).and_then(|alive| alive.stdin.clone()) else {
+        return false;
+    };
+    let line = ask.line();
     std::thread::spawn(move || {
-        if let Ok(mut stdin) = handle.try_lock() {
+        let pipe = match must_arrive {
+            true => Some(handle.lock().unwrap_or_else(|err| err.into_inner())),
+            false => handle.try_lock().ok(),
+        };
+        if let Some(mut stdin) = pipe {
             let _ = stdin.write_all(line.as_bytes());
             let _ = stdin.flush();
         }
     });
-    Some(req)
+    true
 }
 
-/// The preview for that row, waiting up to `wait` for it to arrive. A
-/// connector that never answers costs exactly this much and nothing more.
-pub fn preview_of(block: &str, row: &str, req: u64, wait: Duration) -> Option<Preview> {
-    let (slot, arrived) = latest();
-    let held = slot.lock().unwrap_or_else(|err| err.into_inner());
-    // Checks before it waits, so an answer already in the slot costs nothing,
-    // and re-checks on every wake, so a spurious one does not end the wait.
-    // An answer to an older ask is somebody else's, and arrives here when a
-    // connector replies after its 400ms was up.
-    let (held, expired) = arrived
-        .wait_timeout_while(held, wait, |slot| {
-            !matches!(
-                slot.as_ref(),
-                Some(found) if found.block == block && found.row == row && found.req >= req
-            )
-        })
-        .unwrap_or_else(|err| err.into_inner());
-    if expired.timed_out() {
-        return None;
-    }
-    held.as_ref().map(|found| found.preview.clone())
+/// Asks for a row's preview, and gives back the number to wait for.
+pub fn ask_preview(block: &str, row: &str) -> Option<u64> {
+    let req = next_req();
+    PREVIEWS.clear();
+    tell(
+        block,
+        Ask::Preview {
+            block: block.to_string(),
+            id: row.to_string(),
+            req,
+        },
+        false,
+    )
+    .then_some(req)
 }
 
-fn store_preview(block: &str, row: &str, req: u64, content: Content, mut text: String) {
-    let (slot, arrived) = latest();
-    let mut held = slot.lock().unwrap_or_else(|err| err.into_inner());
+pub fn preview_of(req: u64, wait: Duration) -> Option<Preview> {
+    PREVIEWS.take(req, wait)
+}
+
+/// Asks what `verb` would do to those rows, and gives back the plan number.
+pub fn ask_plan(block: &str, verb: &str, ids: Vec<String>) -> Option<u64> {
+    let plan = next_req();
+    PLANS.clear();
+    tell(
+        block,
+        Ask::Plan {
+            block: block.to_string(),
+            verb: verb.to_string(),
+            ids,
+            plan,
+        },
+        true,
+    )
+    .then_some(plan)
+}
+
+pub fn planned_of(plan: u64, wait: Duration) -> Option<Planned> {
+    PLANS.take(plan, wait)
+}
+
+/// Runs a plan the connector already described. The same number: it is the
+/// plan the user confirmed, not a new question.
+pub fn run_plan(block: &str, plan: u64) -> bool {
+    RESULTS.clear();
+    tell(
+        block,
+        Ask::Run {
+            block: block.to_string(),
+            plan,
+        },
+        true,
+    )
+}
+
+pub fn result_of(plan: u64, wait: Duration) -> Option<Outcome> {
+    RESULTS.take(plan, wait)
+}
+
+fn store_preview(req: u64, content: Content, mut text: String) {
     if text.len() > MAX_PREVIEW_BYTES {
         // Back off to a boundary: a cut mid-codepoint would panic.
         let at = (0..=MAX_PREVIEW_BYTES)
@@ -230,16 +318,13 @@ fn store_preview(block: &str, row: &str, req: u64, content: Content, mut text: S
             .unwrap_or(0);
         text.truncate(at);
     }
-    *held = Some(Latest {
-        block: block.to_string(),
-        row: row.to_string(),
+    PREVIEWS.put(
         req,
-        preview: Preview {
+        Preview {
             text,
             markdown: content == Content::Markdown,
         },
-    });
-    arrived.notify_all();
+    );
 }
 
 /// The blocks whose connector is running right now, for a screen that lists
@@ -367,29 +452,52 @@ fn handle(owner: &Owner, say: Say, on_rows: &OnRows) {
         }
         Say::Preview {
             block,
-            id,
             req,
             content_type,
             text,
-        } => {
-            // The same boundary rows are held to: a connector may not answer
-            // for another app's block.
-            if !speaks_for(owner, &block) {
-                return;
-            }
-            // Required, not optional: without it a late answer cannot be told
-            // from this one's, and the protocol is new enough to insist.
-            match req {
-                Some(req) => store_preview(&block, &id, req, content_type, text),
-                None => eprintln!(
-                    "look connectors: [{block}] a preview with no `req` cannot be matched to an ask"
-                ),
-            }
-        }
+            ..
+        } => answer(owner, &block, req, "preview", |req| {
+            store_preview(req, content_type, text)
+        }),
+        Say::Planned {
+            block,
+            plan,
+            title,
+            detail,
+        } => answer(owner, &block, plan, "planned", |plan| {
+            PLANS.put(plan, Planned { title, detail })
+        }),
+        Say::Result {
+            block,
+            plan,
+            ok,
+            summary,
+        } => answer(owner, &block, plan, "result", |plan| {
+            RESULTS.put(plan, Outcome { ok, summary })
+        }),
         Say::Ready { .. } => {}
         Say::Error { message } => {
             eprintln!("look connectors: [{}] {message}", owner.block)
         }
+    }
+}
+
+/// The boundary and the number, which every answer has to clear: a connector
+/// may only speak for its own manifest, and an answer with no number cannot be
+/// told from a late reply to an older ask.
+fn answer(owner: &Owner, block: &str, req: Option<u64>, what: &str, store: impl FnOnce(u64)) {
+    if !speaks_for(owner, block) {
+        eprintln!(
+            "look connectors: [{}] tried to answer for [{block}]",
+            owner.block
+        );
+        return;
+    }
+    match req {
+        Some(req) => store(req),
+        None => eprintln!(
+            "look connectors: [{block}] a {what} with no number cannot be matched to an ask"
+        ),
     }
 }
 
@@ -458,23 +566,23 @@ mod tests {
     }
 
     #[test]
-    fn a_stored_preview_is_returned_to_the_row_that_asked() {
+    fn a_stored_answer_goes_to_the_ask_that_wanted_it() {
         let _alone = one_at_a_time();
-        store_preview("myapp.notes", "n1", 1, Content::Markdown, "# Title".into());
-        let found = preview_of("myapp.notes", "n1", 1, Duration::from_millis(0)).expect("preview");
+        store_preview(1, Content::Markdown, "# Title".into());
+        let found = preview_of(1, Duration::from_millis(0)).expect("preview");
         assert_eq!(found.text, "# Title");
         assert!(found.markdown);
-        // The slot holds one answer, and it is not this row's.
-        assert!(preview_of("myapp.notes", "n2", 1, Duration::from_millis(0)).is_none());
-        assert!(preview_of("other.notes", "n1", 1, Duration::from_millis(0)).is_none());
     }
 
     #[test]
     fn a_text_preview_is_not_markdown() {
         let _alone = one_at_a_time();
-        store_preview("b", "r", 1, Content::Text, "plain".into());
-        let found = preview_of("b", "r", 1, Duration::from_millis(0)).expect("preview");
-        assert!(!found.markdown);
+        store_preview(1, Content::Text, "plain".into());
+        assert!(
+            !preview_of(1, Duration::from_millis(0))
+                .expect("preview")
+                .markdown
+        );
     }
 
     #[test]
@@ -482,45 +590,76 @@ mod tests {
         let _alone = one_at_a_time();
         // A cut mid-codepoint would panic on truncate, so the cap has to look
         // for a boundary rather than trust the byte count.
-        let long = "é".repeat(MAX_PREVIEW_BYTES);
-        store_preview("b", "big", 1, Content::Text, long);
-        let found = preview_of("b", "big", 1, Duration::from_millis(0)).expect("preview");
+        store_preview(1, Content::Text, "é".repeat(MAX_PREVIEW_BYTES));
+        let found = preview_of(1, Duration::from_millis(0)).expect("preview");
         assert!(found.text.len() <= MAX_PREVIEW_BYTES);
         assert!(!found.text.is_empty());
     }
 
     #[test]
-    fn waiting_for_a_preview_that_never_comes_gives_up() {
+    fn waiting_for_an_answer_that_never_comes_gives_up() {
         let _alone = one_at_a_time();
-        store_preview("b", "other", 1, Content::Text, "x".into());
+        PREVIEWS.clear();
         let began = std::time::Instant::now();
-        assert!(preview_of("b", "never", 1, Duration::from_millis(30)).is_none());
+        assert!(preview_of(1, Duration::from_millis(30)).is_none());
         assert!(began.elapsed() >= Duration::from_millis(25));
     }
 
     #[test]
     fn asking_again_does_not_hand_back_the_last_answer() {
         let _alone = one_at_a_time();
-        store_preview("b", "r", 1, Content::Text, "old".into());
+        store_preview(1, Content::Text, "old".into());
         ask_preview("b", "r");
-        assert!(preview_of("b", "r", 1, Duration::from_millis(0)).is_none());
+        assert!(preview_of(1, Duration::from_millis(0)).is_none());
     }
 
     #[test]
     fn a_late_answer_to_an_earlier_ask_is_not_taken_for_this_one() {
         let _alone = one_at_a_time();
         // Ask 1 timed out, ask 2 went out, then 1's answer finally arrived.
-        store_preview("b", "r", 1, Content::Text, "stale".into());
-        assert!(preview_of("b", "r", 2, Duration::from_millis(10)).is_none());
-        // 2's own answer is taken.
-        store_preview("b", "r", 2, Content::Text, "fresh".into());
-        let found = preview_of("b", "r", 2, Duration::from_millis(0)).expect("preview");
-        assert_eq!(found.text, "fresh");
+        store_preview(1, Content::Text, "stale".into());
+        assert!(preview_of(2, Duration::from_millis(10)).is_none());
+        store_preview(2, Content::Text, "fresh".into());
+        assert_eq!(
+            preview_of(2, Duration::from_millis(0))
+                .expect("preview")
+                .text,
+            "fresh"
+        );
+    }
+
+    /// The same slot discipline, for the two action answers.
+    #[test]
+    fn a_plan_and_its_result_wait_on_their_own_number() {
+        let _alone = one_at_a_time();
+        PLANS.put(
+            4,
+            Planned {
+                title: "Archive 1 note".into(),
+                detail: Some("a.md".into()),
+            },
+        );
+        assert!(planned_of(5, Duration::from_millis(10)).is_none());
+        let found = planned_of(4, Duration::from_millis(0)).expect("plan");
+        assert_eq!(found.title, "Archive 1 note");
+
+        RESULTS.put(
+            4,
+            Outcome {
+                ok: true,
+                summary: Some("Archived 1 note".into()),
+            },
+        );
+        assert!(result_of(4, Duration::from_millis(0)).expect("result").ok);
     }
 
     #[test]
     fn asking_a_block_with_no_connector_fails_rather_than_waits() {
+        // Asking clears a slot even when nothing is running.
+        let _alone = one_at_a_time();
         assert!(ask_preview("nothing.running", "r1").is_none());
+        assert!(ask_plan("nothing.running", "archive", vec!["r1".into()]).is_none());
+        assert!(!run_plan("nothing.running", 1));
     }
 
     #[test]

@@ -13,7 +13,7 @@ No plugin to install, no API to learn. One directory, one file format, four keys
 - [Start here](#start-here)
 - [How a file is organised](#how-a-file-is-organised)
 - [As many files as you like](#as-many-files-as-you-like)
-- [The five kinds of block](#the-five-kinds-of-block)
+- [The six kinds of block](#the-six-kinds-of-block)
 - [Key reference](#key-reference)
 - [Placeholders](#placeholders)
 - [What Enter does](#what-enter-does-verbs)
@@ -133,7 +133,7 @@ reported.
 Uninstalling an app is then one file, and `LOOK_CONNECTORS_DIR` repoints the
 directory the way `LOOK_SOURCES_DIR` repoints yours.
 
-## The five kinds of block
+## The six kinds of block
 
 | Producer | What it makes                         | Use it for                                             |
 | -------- | ------------------------------------- | ------------------------------------------------------ |
@@ -142,6 +142,7 @@ directory the way `LOOK_SOURCES_DIR` repoints yours.
 | `file`   | one row per line of a text file       | a list you maintain by hand: SSH hosts, bookmarks      |
 | `run`    | one row per line a command prints     | anything that changes: branches, containers, tickets   |
 | `connect` | rows from a program that keeps running | an app showing its own records, updated without a reload |
+| `ask`     | an action a connector plans and runs   | an app's own verb on its own rows, with the question it computed |
 
 Declaring two of them in one block is an error. Pick one and the block is unambiguous.
 
@@ -251,6 +252,7 @@ If the command fails, times out, or prints nothing, **the rows it produced last 
 | `file`    | string                     | `file`        | Path to the list                                                                                                  |
 | `run`     | string                     | `run`         | The command line                                                                                                  |
 | `connect` | string                     | `connect`     | A program Look keeps running. See [`connect`](#connect---rows-from-a-program-that-stays-running)                  |
+| `ask`     | string                     | `ask`         | A verb the connector that owns the selected row is asked to plan and then run. See [Integrating your app](integrating.md#offering-a-verb) |
 | `cwd`     | string                     | `run`         | Working directory. Default: [the filesystem root](#where-a-command-runs)                                          |
 | `timeout` | duration string            | `run`         | `30s`, `5m`, `1h`, `2d`. Default 5s, capped at 30s                                                                |
 | `format`  | `lines` \| `json`          | `file`, `run` | Default `lines`                                                                                                   |

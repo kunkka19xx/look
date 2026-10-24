@@ -39,12 +39,24 @@ impl Fixture {
         Self { base, cache }
     }
 
+    /// The same, plus an `archive` verb the action menu would offer.
+    fn install_with_verb(&self, mode: &str) {
+        self.write(
+            mode,
+            "then = [\"archive\"]\n\n[archive]\nname = \"Archive\"\nask = \"archive\"\n",
+        );
+    }
+
     /// Installs a manifest whose block runs the reference connector in `mode`.
     ///
     /// The path is written as a TOML literal string: a Windows path is full of
     /// backslashes, which a basic string would read as escapes. Inside it the
     /// path is quoted for the shell, since a temp directory may hold a space.
     fn install(&self, mode: &str) {
+        self.write(mode, "");
+    }
+
+    fn write(&self, mode: &str, extra: &str) {
         let exe = Path::new(env!("CARGO_BIN_EXE_refcon"))
             .display()
             .to_string();
@@ -54,7 +66,7 @@ impl Fixture {
         );
         std::fs::write(
             self.base.join("connectors").join("myapp.toml"),
-            format!("[notes]\nconnect = '\"{exe}\" myapp.notes {mode}'\n"),
+            format!("[notes]\nconnect = '\"{exe}\" myapp.notes {mode}'\n{extra}"),
         )
         .expect("manifest");
     }
@@ -145,6 +157,51 @@ fn the_same_rows_again_are_not_news() {
     look_engine::connectors::stop();
 
     assert_eq!(count.load(Ordering::Acquire), 1);
+}
+
+/// A verb is planned before it runs, and the question names the rows: the
+/// whole point, since a declared `confirm` string cannot.
+#[test]
+fn a_verb_is_planned_then_run() {
+    let _alone = alone();
+    let fixture = Fixture::new("verb");
+    fixture.install_with_verb("serve");
+
+    let (count, on_rows) = counter();
+    look_engine::connectors::start(&fixture.base, on_rows);
+    until(&count, 1, Duration::from_secs(10));
+
+    let candidate =
+        look_indexing::CandidateIdKind::source_row_candidate_id("myapp.notes", &[], "n1");
+    let row = look_engine::sources::row_context(&candidate, "Alpha", "", "", Vec::new());
+    // What the connector calls it, not what Look calls it.
+    assert_eq!(row.id, "n1");
+
+    let planned = look_engine::sources::plan_verb("myapp.archive", &candidate, &row);
+    assert_eq!(planned.error, None);
+    assert_eq!(planned.title, "archive 1 row(s)");
+    assert_eq!(planned.detail.as_deref(), Some("n1"));
+
+    let ran = look_engine::sources::run_verb(&candidate, planned.plan);
+    assert_eq!(ran.error, None);
+    assert!(ran.ok);
+    assert!(ran.summary.is_some());
+
+    look_engine::connectors::stop();
+}
+
+/// Nothing to confirm is not the same as a plan that says it will do nothing.
+#[test]
+fn a_verb_with_no_connector_running_says_so() {
+    let _alone = alone();
+    let fixture = Fixture::new("verbdead");
+    fixture.install_with_verb("serve");
+
+    let candidate =
+        look_indexing::CandidateIdKind::source_row_candidate_id("myapp.notes", &[], "n1");
+    let row = look_engine::sources::row_context(&candidate, "Alpha", "", "", Vec::new());
+    let planned = look_engine::sources::plan_verb("myapp.archive", &candidate, &row);
+    assert_eq!(planned.error.as_deref(), Some("connector is not running"));
 }
 
 /// The cap counts the frame, not the newline after it, so a frame of exactly

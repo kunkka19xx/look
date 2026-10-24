@@ -192,6 +192,10 @@ pub enum Producer {
     /// Rows from a command that stays alive and speaks frames, so what it
     /// shows can change without a reload. See `crate::connect`.
     Connect { command: String },
+    /// Not rows at all: a verb the connector that owns the selected row is
+    /// asked to plan and then run. The action menu reaches it through `then`
+    /// or `applies`, exactly as it reaches a `do` block.
+    Ask { verb: String },
     /// Rows from a command's stdout.
     Run {
         command: String,
@@ -209,6 +213,7 @@ impl Producer {
             Self::File { .. } => KEY_FILE,
             Self::Connect { .. } => KEY_CONNECT,
             Self::Run { .. } => KEY_RUN,
+            Self::Ask { .. } => KEY_ASK,
         }
     }
 }
@@ -218,6 +223,7 @@ pub(crate) const KEY_DIR: &str = "dir";
 pub(crate) const KEY_FILE: &str = "file";
 pub(crate) const KEY_RUN: &str = "run";
 pub(crate) const KEY_CONNECT: &str = "connect";
+pub(crate) const KEY_ASK: &str = "ask";
 /// Not a producer: the key that makes a `do` block an action on rows it did
 /// not produce.
 pub(crate) const KEY_APPLIES: &str = "applies";
@@ -320,6 +326,12 @@ impl Producer {
     pub fn is_bundle(&self) -> bool {
         matches!(self, Self::Bundle { .. })
     }
+
+    /// Acts on a row rather than making rows. A `do` block runs its own steps;
+    /// an `ask` block hands the verb to the connector that owns the row.
+    pub fn performs(&self) -> bool {
+        matches!(self, Self::Bundle { .. } | Self::Ask { .. })
+    }
 }
 
 impl Block {
@@ -327,12 +339,20 @@ impl Block {
         self.producer.is_bundle()
     }
 
+    /// Acts on a row rather than making rows.
+    pub fn performs(&self) -> bool {
+        self.producer.performs()
+    }
+
     /// True when this block only makes sense against a selected row, because
     /// what it produces refers to one. Such a block is reachable through another
     /// block's `then`, never as a top-level row: running `make -C {path} deploy`
     /// with nothing selected would substitute an empty path.
     pub fn needs_row(&self) -> bool {
-        self.builds_rows_ahead_but_wants_an_arg()
+        // A verb names no command to scan for placeholders, but it is only
+        // ever about a selected row, so it is never a top-level row either.
+        matches!(self.producer, Producer::Ask { .. })
+            || self.builds_rows_ahead_but_wants_an_arg()
             || self
                 .producer_text()
                 .iter()
@@ -372,6 +392,8 @@ impl Block {
             Producer::Dir { roots, .. } => roots.iter().map(String::as_str).collect(),
             Producer::File { path, .. } => vec![path.as_str()],
             Producer::Connect { command } => vec![command.as_str()],
+            // A verb names no row of its own: the connector is given the row.
+            Producer::Ask { .. } => Vec::new(),
             Producer::Run { command, cwd, .. } => {
                 let mut text = vec![command.as_str()];
                 text.extend(cwd.as_deref());
@@ -412,6 +434,7 @@ struct RawBlock {
 
     run: Option<String>,
     connect: Option<String>,
+    ask: Option<String>,
     cwd: Option<String>,
     timeout: Option<String>,
     format: Option<RowFormat>,
@@ -502,17 +525,17 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
     };
     // A bundle IS the action, so a verb on it would be a second, hidden meaning
     // for Enter.
-    if producer.is_bundle() && !verbs.is_empty() {
+    if producer.performs() && !verbs.is_empty() {
         return Err(format!(
-            "a `{KEY_DO}` block performs its own steps, so it cannot also declare open/edit/terminal/reveal"
+            "a `{KEY_DO}` or `{KEY_ASK}` block acts on a row, so it cannot also declare open/edit/terminal/reveal"
         ));
     }
 
     // Reported rather than ignored: a scope with no rows to narrow would do
     // nothing, and silently doing nothing is how a declaration goes unnoticed.
-    if producer.is_bundle() && raw.scope.unwrap_or(false) {
+    if producer.performs() && raw.scope.unwrap_or(false) {
         return Err(format!(
-            "`{KEY_SCOPE}` narrows a block's own rows, and a `{KEY_DO}` block makes none"
+            "`{KEY_SCOPE}` narrows a block's own rows, and a `{KEY_DO}` or `{KEY_ASK}` block makes none"
         ));
     }
 
@@ -644,6 +667,7 @@ fn producer_from(raw: &RawBlock) -> Result<Producer, String> {
         (KEY_FILE, raw.file.is_some()),
         (KEY_RUN, raw.run.is_some()),
         (KEY_CONNECT, raw.connect.is_some()),
+        (KEY_ASK, raw.ask.is_some()),
     ]
     .into_iter()
     .filter_map(|(key, present)| present.then_some(key))
@@ -651,7 +675,7 @@ fn producer_from(raw: &RawBlock) -> Result<Producer, String> {
 
     match declared.as_slice() {
         [] => Err(format!(
-            "needs one of {KEY_DO}, {KEY_DIR}, {KEY_FILE}, {KEY_RUN}, or {KEY_CONNECT}"
+            "needs one of {KEY_DO}, {KEY_DIR}, {KEY_FILE}, {KEY_RUN}, {KEY_CONNECT}, or {KEY_ASK}"
         )),
         [KEY_DO] => {
             let steps: Vec<String> = raw
@@ -677,6 +701,13 @@ fn producer_from(raw: &RawBlock) -> Result<Producer, String> {
             path: raw.file.clone().unwrap_or_default(),
             format: raw.format.unwrap_or_default(),
         }),
+        [KEY_ASK] => {
+            let verb = raw.ask.clone().unwrap_or_default();
+            if verb.trim().is_empty() {
+                return Err(format!("`{KEY_ASK}` needs a verb"));
+            }
+            Ok(Producer::Ask { verb })
+        }
         [KEY_CONNECT] => {
             let command = raw.connect.clone().unwrap_or_default();
             if command.trim().is_empty() {

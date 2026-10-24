@@ -55,7 +55,9 @@ impl std::fmt::Display for CollectError {
 /// Rows for `def`, with `~` in any declared path resolved against `home`.
 pub fn collect(block: &Block, home: &Path) -> Result<Collected, CollectError> {
     match &block.producer {
-        Producer::Bundle { .. } => Ok(Collected {
+        // Both are one row: themselves. A bundle's steps and a verb's plan are
+        // what Enter performs, not something to pick from.
+        Producer::Bundle { .. } | Producer::Ask { .. } => Ok(Collected {
             // A bundle is one row: itself. Its steps are what Enter performs,
             // not something to pick from.
             rows: vec![SourceRow::new(String::new(), block.name.clone())],
@@ -104,9 +106,10 @@ pub fn collect_for_row(
         Producer::File { path, format } => {
             collect_list(&expand_home(&expand_path(path, row), home), *format)
         }
-        Producer::Bundle { .. } | Producer::Run { .. } | Producer::Connect { .. } => {
-            collect(block, home)
-        }
+        Producer::Bundle { .. }
+        | Producer::Ask { .. }
+        | Producer::Run { .. }
+        | Producer::Connect { .. } => collect(block, home),
     }
 }
 
