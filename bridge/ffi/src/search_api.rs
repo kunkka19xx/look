@@ -124,12 +124,59 @@ pub(crate) fn look_search_files_json_impl(
         end: fq.end,
         locations: fq.locations,
     };
-    let outcome = with_engine(|engine| engine.search_files(&filter, max as usize));
+    let (outcome, apps) = with_engine(|engine| {
+        let outcome = engine.search_files(&filter, max as usize);
+        // Only a bare type word can also be an app's name; anything more
+        // (`photos from last week`) has said it wants files.
+        let apps = if is_type_only(&filter) {
+            engine.search(&query, max as usize)
+        } else {
+            Vec::new()
+        };
+        (outcome, apps)
+    });
     if is_weak_empty_recall(&filter, &outcome.results) {
         return std::ptr::null_mut();
     }
     let relaxed = relaxed_code(outcome.relaxation);
-    store_json_allocation(serialize_full_payload(&query, outcome.results, relaxed))
+    let results = apps_first(&query, apps, outcome.results, max as usize);
+    store_json_allocation(serialize_full_payload(&query, results, relaxed))
+}
+
+/// A recall triggered by type words alone: `photos`, `keynote`, `pdfs`. The
+/// same word is often an app's name, or the start of one while typing.
+fn is_type_only(filter: &look_engine::FileFilter) -> bool {
+    !filter.categories.is_empty()
+        && filter.terms.trim().is_empty()
+        && filter.locations.is_empty()
+        && filter.start.is_none()
+        && filter.end.is_none()
+}
+
+/// Apps named by the query, in the engine's order, ahead of the recalled
+/// files. `photo` lists Photos and PhotoCraft first and recent images below,
+/// so the list doesn't flip from apps to files midway through typing a name.
+/// Named means a word of the title starts with the query: the engine's fuzzy
+/// matches (`excel` finding Accessibility Inspector) would bury the files.
+fn apps_first(
+    query: &str,
+    matched: Vec<LaunchResult>,
+    recalled: Vec<LaunchResult>,
+    limit: usize,
+) -> Vec<LaunchResult> {
+    let query = query.trim().to_lowercase();
+    matched
+        .into_iter()
+        .filter(|r| {
+            r.id.starts_with(look_indexing::CandidateIdKind::PREFIX_APP)
+                && r.title
+                    .to_lowercase()
+                    .split_whitespace()
+                    .any(|word| word.starts_with(&query))
+        })
+        .chain(recalled)
+        .take(limit)
+        .collect()
 }
 
 /// A parse with terms and nothing else was triggered by a bare "file" or
@@ -325,7 +372,7 @@ fn search_error_json_compact(err: SearchError) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::is_weak_empty_recall;
+    use super::{apps_first, is_type_only, is_weak_empty_recall};
     use look_engine::{FileFilter, LaunchResult};
     use look_indexing::{Candidate, CandidateKind};
 
@@ -334,6 +381,90 @@ mod tests {
             &Candidate::new("file:a", CandidateKind::File, "a.pdf", "/tmp/a.pdf"),
             1,
         ))
+    }
+
+    fn row(id: &str, kind: CandidateKind, title: &str) -> LaunchResult {
+        LaunchResult::from((&Candidate::new(id, kind, title, "/x"), 1))
+    }
+
+    fn ids(results: &[LaunchResult]) -> Vec<&str> {
+        results.iter().map(|r| r.id.as_str()).collect()
+    }
+
+    #[test]
+    fn only_a_bare_type_word_is_type_only() {
+        let typed = FileFilter {
+            categories: vec!["image".into()],
+            ..Default::default()
+        };
+        assert!(is_type_only(&typed));
+        assert!(!is_type_only(&FileFilter {
+            start: Some(0),
+            end: Some(1),
+            ..typed
+        }));
+        assert!(!is_type_only(&FileFilter {
+            categories: vec!["image".into()],
+            locations: vec!["downloads".into()],
+            ..Default::default()
+        }));
+        assert!(!is_type_only(&FileFilter {
+            categories: vec!["pdf".into()],
+            terms: "invoice".into(),
+            ..Default::default()
+        }));
+        assert!(!is_type_only(&FileFilter::default()));
+    }
+
+    #[test]
+    fn matching_apps_lead_the_recalled_files() {
+        let matched = vec![
+            row(
+                "app:/system/applications/photos.app",
+                CandidateKind::App,
+                "Photos",
+            ),
+            row("file:/d/photo.jpg", CandidateKind::File, "photo.jpg"),
+            row("setting:icloud", CandidateKind::App, "iCloud"),
+            row(
+                "app:/applications/photocraft.app",
+                CandidateKind::App,
+                "PhotoCraft",
+            ),
+        ];
+        let recalled = vec![
+            row("file:/d/shot.png", CandidateKind::File, "shot.png"),
+            row("file:/d/img.jpeg", CandidateKind::File, "img.jpeg"),
+        ];
+        let out = apps_first("photo", matched, recalled, 10);
+        // Apps only: a settings pane or a file from normal search stays out.
+        assert_eq!(
+            ids(&out),
+            [
+                "app:/system/applications/photos.app",
+                "app:/applications/photocraft.app",
+                "file:/d/shot.png",
+                "file:/d/img.jpeg",
+            ]
+        );
+        assert_eq!(apps_first("photo", Vec::new(), vec![result()], 10).len(), 1);
+    }
+
+    #[test]
+    fn a_fuzzy_app_match_does_not_lead() {
+        let matched = vec![
+            row("app:/excel.app", CandidateKind::App, "Microsoft Excel"),
+            row("app:/ai.app", CandidateKind::App, "Accessibility Inspector"),
+        ];
+        let out = apps_first("Excel", matched, vec![result()], 10);
+        assert_eq!(ids(&out), ["app:/excel.app", "file:a"]);
+    }
+
+    #[test]
+    fn apps_first_respects_the_limit() {
+        let matched = vec![row("app:/a.app", CandidateKind::App, "A")];
+        let out = apps_first("a", matched, vec![result(), result()], 2);
+        assert_eq!(ids(&out), ["app:/a.app", "file:a"]);
     }
 
     #[test]
