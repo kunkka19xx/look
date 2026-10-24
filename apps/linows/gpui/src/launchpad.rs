@@ -26,6 +26,7 @@ use linows_backend::qactions::{
 use linows_backend::weather::{self, WeatherSnapshot};
 use linows_backend::{lunar, sysinfo, todo};
 
+use crate::banner::Message;
 use crate::bg;
 use crate::confirm::CONFIRM_FALLBACK;
 use crate::glyphs;
@@ -126,6 +127,17 @@ pub struct Notice {
     pub text: String,
     pub tone: Tone,
     pub seconds: f32,
+    pub copy: Option<String>,
+}
+
+impl Notice {
+    pub fn message(&self) -> Message {
+        Message {
+            text: self.text.clone(),
+            tone: self.tone,
+            copy: self.copy.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -206,6 +218,16 @@ impl DeliveredWarnings {
 static LAYOUT: Mutex<Option<Arc<LayoutPayload>>> = Mutex::new(None);
 /// A warning counts as delivered only when a live launchpad shows it.
 static DELIVERED: Mutex<DeliveredWarnings> = Mutex::new(DeliveredWarnings(Vec::new()));
+
+/// The summarised line as a banner, with every warning behind its Copy
+/// button: the banner is not a log, and the rest are only on stderr.
+fn warning_message(text: String, warnings: &[String]) -> Message {
+    Message {
+        text,
+        tone: Tone::Warning,
+        copy: Some(warnings.join("\n")),
+    }
+}
 
 fn cached_layout() -> Option<Arc<LayoutPayload>> {
     LAYOUT.lock().unwrap_or_else(|p| p.into_inner()).clone()
@@ -401,15 +423,16 @@ impl Launchpad {
     }
 
     /// The reload chord: the drawing was read again off the UI thread and is
-    /// applied here. Its warnings come back as the banner line for the
-    /// caller's one reload banner, repeat or not, and count as delivered.
-    pub fn reloaded(&mut self, layout: LayoutPayload, cx: &mut Context<Self>) -> Option<String> {
+    /// applied here. Its warnings come back as the caller's one reload
+    /// banner, repeat or not, and count as delivered.
+    pub fn reloaded(&mut self, layout: LayoutPayload, cx: &mut Context<Self>) -> Option<Message> {
         let layout = Arc::new(layout);
         self.apply_layout(layout.clone(), self.token, cx);
         DELIVERED
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .record(&layout.warnings)
+            .map(|text| warning_message(text, &layout.warnings))
     }
 
     /// A fresh read replaces the cache and, when the tiles moved, the grid.
@@ -444,7 +467,13 @@ impl Launchpad {
             .unwrap_or_else(|p| p.into_inner())
             .deliver(&layout.warnings);
         if let Some(text) = text {
-            self.notify(text, Tone::Warning, NOTICE_WARNING, cx);
+            let message = warning_message(text, &layout.warnings);
+            cx.emit(Notice {
+                text: message.text,
+                tone: message.tone,
+                seconds: NOTICE_WARNING,
+                copy: message.copy,
+            });
         }
     }
 
@@ -846,6 +875,7 @@ impl Launchpad {
             text,
             tone,
             seconds,
+            copy: None,
         });
     }
 

@@ -71,6 +71,7 @@ const WEB_SEARCH_URL: &str = "https://www.google.com/search?q=";
 const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 /// How long a keystroke waits for the next before the query runs; the
 /// webview uses the same.
+const COPY_FAILED: &str = "Copy failed";
 const DEBOUNCE: Duration = Duration::from_millis(70);
 /// A row's picture, or the glyph that stands in for it.
 const EMPTY_STATE_H: f32 = 200.0;
@@ -288,7 +289,7 @@ impl Launcher {
         cx.observe(&preview, |_, _, cx| cx.notify()).detach();
         cx.subscribe(&preview, |this, _, notice: &Notice, cx| {
             this.banner
-                .show(notice.text.clone(), notice.tone, notice.seconds, cx)
+                .show_message(notice.message(), notice.seconds, cx)
         })
         .detach();
         cx.subscribe(&preview, |this, _, _: &ClipDeleted, cx| {
@@ -304,7 +305,7 @@ impl Launcher {
         cx.observe(&launchpad, |_, _, cx| cx.notify()).detach();
         cx.subscribe(&launchpad, |this, _, notice: &Notice, cx| {
             this.banner
-                .show(notice.text.clone(), notice.tone, notice.seconds, cx)
+                .show_message(notice.message(), notice.seconds, cx)
         })
         .detach();
         let focus_handle = input.read(cx).focus_handle.clone();
@@ -458,6 +459,7 @@ impl Launcher {
             .set_sticky(health::notice(&issues).map(|text| Message {
                 text,
                 tone: Tone::Warning,
+                copy: None,
             }));
         self.health = issues;
         cx.notify();
@@ -1076,9 +1078,9 @@ impl Launcher {
                     .launchpad
                     .update(cx, |launchpad, cx| launchpad.reloaded(layout, cx));
                 match warning {
-                    Some(text) => {
+                    Some(message) => {
                         this.banner
-                            .show(text, Tone::Warning, launchpad::NOTICE_WARNING, cx)
+                            .show_message(message, launchpad::NOTICE_WARNING, cx)
                     }
                     None => this.banner.show(
                         settings::RELOADED.to_string(),
@@ -1363,6 +1365,13 @@ impl Launcher {
             _ if row.path.is_empty() => return true,
             _ => (row.path.clone(), "Copied to clipboard".to_string()),
         };
+        self.copy_text(text, done, cx);
+        true
+    }
+
+    /// `text` to the clipboard off the UI thread, then `done` or the failure
+    /// as a toast.
+    pub(crate) fn copy_text(&mut self, text: String, done: String, cx: &mut Context<Self>) {
         bg::fetch(
             cx,
             move || clipboard::copy_to_clipboard(&text),
@@ -1370,10 +1379,9 @@ impl Launcher {
                 Ok(()) => this.banner.show(done, Tone::Success, banner::SHORT, cx),
                 Err(_) => this
                     .banner
-                    .show("Copy failed".into(), Tone::Error, banner::MEDIUM, cx),
+                    .show(COPY_FAILED.into(), Tone::Error, banner::MEDIUM, cx),
             },
         );
-        true
     }
 
     fn paste(&mut self, cx: &mut Context<Self>) -> bool {
@@ -2087,14 +2095,12 @@ impl Launcher {
         cx: &mut Context<Self>,
     ) -> Div {
         let radius = th.tile_radius();
-        let bar_radius = th.bar_radius();
         let frosted = th.frosted();
-        let banner = self.banner.render(th, false, cx).map(|banner| {
+        let banner = self.banner.render(th, cx).map(|banner| {
             div()
                 .mx(px(theme::CONTENT_PADDING))
                 .mt(px(theme::CONTENT_PADDING))
                 .flex()
-                .on_children_prepainted(move |cards, _, _| mark_cards(&cards, bar_radius))
                 .child(banner)
         });
         // The focused field (the panel's box, or a row's open field) is where
@@ -2862,7 +2868,7 @@ impl Launcher {
                                                     |this, outcome, cx| {
                                                         let (msg, tone) = match outcome {
                                                             Ok(()) => ("Copied", Tone::Success),
-                                                            Err(_) => ("Copy failed", Tone::Error),
+                                                            Err(_) => (COPY_FAILED, Tone::Error),
                                                         };
                                                         this.banner.show(
                                                             msg.into(),
@@ -3053,7 +3059,6 @@ impl Launcher {
             (false, _, Mode::Translate) => self.translate_panel(seated, &th, cx).into_any_element(),
             (false, _, _) => self.results(seated, &th, cx).into_any_element(),
         };
-        let bar_radius = th.bar_radius();
         // A toast floats over the body just under the bar, so neither the
         // bar nor the rows move; the sticky notice stays until dismissed, so
         // it takes a place in the flow between them instead.
@@ -3065,13 +3070,10 @@ impl Launcher {
         };
         // Takes the row's width, or the card sizes to its text and a long
         // notice runs off the edge with its Dismiss button.
-        let banner = self.banner.render(&th, toast, cx).map(|banner| {
-            div()
-                .flex_1()
-                .min_w_0()
-                .on_children_prepainted(move |cards, _, _| mark_cards(&cards, bar_radius))
-                .child(banner)
-        });
+        let banner = self
+            .banner
+            .render(&th, cx)
+            .map(|banner| div().flex_1().min_w_0().child(banner));
         let (toast_card, sticky_card) = match banner {
             Some(card) if toast => {
                 let top = theme::CONTENT_PADDING
