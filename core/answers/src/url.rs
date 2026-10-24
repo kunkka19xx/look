@@ -16,8 +16,9 @@ use serde::Serialize;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UrlTier {
-    /// Structurally unambiguous: a scheme, a port, a path, or localhost/IP. A
-    /// filename or plain search cannot resemble these, so the UI may rank it top.
+    /// Structurally unambiguous: a scheme, a port, a path, localhost, or a full
+    /// IPv4 address. A filename or plain search cannot resemble these, so the UI
+    /// may rank it top.
     Structural,
     /// A bare `host.tld` on the gTLD allowlist. Plausible but not certain (it can
     /// collide with a filename), so the UI must not let it take the default slot
@@ -84,11 +85,32 @@ pub fn classify_url(query: &str) -> Option<UrlMatch> {
         return None;
     }
 
-    // Tier 1b: localhost or an IP literal, always http://.
-    if host.eq_ignore_ascii_case("localhost") || is_ip_literal(host) {
+    // Tier 1b: localhost or an IPv4 literal, always http://.
+    if host.eq_ignore_ascii_case("localhost") {
         return Some(UrlMatch {
             url: format!("http://{q}"),
             tier: UrlTier::Structural,
+        });
+    }
+    if let Some(parts) = ipv4_parts(host) {
+        // One dot is a decimal unless a port says otherwise: `3.14` and
+        // `183.10/2` stay numbers, `127.1:8080` is an address. A path is no
+        // signal here, since `183.10/2` is a division. `http://127.1` already
+        // returned above.
+        if parts == 2 && port.is_none() {
+            return None;
+        }
+        // Two dots can't be a decimal, but `1.2.3` can be a version folder, so
+        // without a port or path it must not take the top slot. A full address
+        // is certain.
+        let tier = if parts == 4 || port.is_some() || has_path {
+            UrlTier::Structural
+        } else {
+            UrlTier::BareHost
+        };
+        return Some(UrlMatch {
+            url: format!("http://{q}"),
+            tier,
         });
     }
 
@@ -122,11 +144,28 @@ pub fn classify_url(query: &str) -> Option<UrlMatch> {
     None
 }
 
-/// Whether `host` is a bare IPv4-style literal (digits and dots, at least one
-/// dot). Coarse on purpose - it only needs to separate `127.0.0.1` from a
-/// `host.tld` name, not validate octet ranges.
-fn is_ip_literal(host: &str) -> bool {
-    host.contains('.') && host.chars().all(|c| c.is_ascii_digit() || c == '.')
+/// The number of parts in an IPv4 literal, in the shorthand `inet_aton`
+/// accepts: `127.1`, `127.0.1` and `127.0.0.1` are all 127.0.0.1. The last part
+/// fills the remaining bytes, so its ceiling depends on how many came before.
+/// Decimal only; nobody types hex or octal octets into a launcher.
+fn ipv4_parts(host: &str) -> Option<usize> {
+    let parts: Vec<&str> = host.split('.').collect();
+    let last_max: u64 = match parts.len() {
+        2 => 0xFF_FFFF,
+        3 => 0xFFFF,
+        4 => 0xFF,
+        _ => return None,
+    };
+    for (i, part) in parts.iter().enumerate() {
+        if part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        let max = if i + 1 == parts.len() { last_max } else { 0xFF };
+        if part.parse::<u64>().ok()? > max {
+            return None;
+        }
+    }
+    Some(parts.len())
 }
 
 /// A URL port is one or more ASCII digits.
@@ -168,6 +207,44 @@ mod tests {
             url("example.com:8443"),
             Some(("https://example.com:8443".into(), UrlTier::Structural))
         );
+    }
+
+    #[test]
+    fn ipv4_shorthand_needs_a_signal_a_decimal_cannot_give() {
+        let structural = |q: &str, u: &str| {
+            assert_eq!(url(q), Some((u.into(), UrlTier::Structural)), "{q}");
+        };
+        structural("192.168.1.1", "http://192.168.1.1");
+        structural("127.1:8080", "http://127.1:8080");
+        structural("127.0.1:3000", "http://127.0.1:3000");
+        structural("1.2.3/notes", "http://1.2.3/notes");
+        structural("http://127.1", "http://127.1");
+        // Two dots is no decimal, but may be a version folder.
+        assert_eq!(
+            url("127.0.1"),
+            Some(("http://127.0.1".into(), UrlTier::BareHost))
+        );
+        assert_eq!(
+            url("1.2.3"),
+            Some(("http://1.2.3".into(), UrlTier::BareHost))
+        );
+    }
+
+    #[test]
+    fn decimals_are_not_addresses() {
+        for q in [
+            "0.5",
+            "3.14",
+            "999.1",
+            "127.1",
+            "183.10/2",
+            "2.5/2",
+            "1.2.99999",
+            "999.1.1.1",
+            "1.2.3.4.5",
+        ] {
+            assert_eq!(url(q), None, "{q}");
+        }
     }
 
     #[test]
