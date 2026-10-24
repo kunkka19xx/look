@@ -45,6 +45,11 @@ pub const PIN_ARG_ROW: i64 = i64::MAX / 2;
 /// between apps and folders rather than leading the browse list.
 pub const BROWSE_BOOST_ACTION: i64 = 300;
 
+/// An app (or a declared row, which sits with apps) whose name the query
+/// spells out ranks above every file and folder: above any sum of match score,
+/// exact/prefix bonus, usage and bias a file can reach.
+pub const TIER_NAMED_APP: i64 = 5_000;
+
 pub const BIAS_SETTINGS_MATCH: i64 = 420;
 pub const BIAS_APP_ON_SETTINGS_QUERY: i64 = 120;
 pub const BIAS_NON_APP_ON_SETTINGS_QUERY: i64 = -260;

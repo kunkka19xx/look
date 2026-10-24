@@ -3,7 +3,7 @@ use crate::config::*;
 use crate::query::ParsedQuery;
 use crate::scoring::{
     ScoredMatch, contains_match_score, default_browse_score, finalize_top_k, kind_bias,
-    looks_like_settings_query, path_depth_penalty, path_match_score, push_top_k,
+    looks_like_settings_query, named_app_tier, path_depth_penalty, path_match_score, push_top_k,
     query_kind_penalty_with_settings_flag,
 };
 use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
@@ -424,6 +424,11 @@ impl QueryEngine {
                 &candidate.candidate,
                 &candidate.title_search,
             ) + kind_bias(&candidate.candidate)
+                + named_app_tier(
+                    normalized_query,
+                    &candidate.title_search,
+                    &candidate.candidate,
+                )
                 + self.source_bias(&candidate.candidate)
                 // Reuse precomputed query kind to keep this hot loop allocation-free.
                 + query_kind_penalty_with_settings_flag(settings_query, &candidate.candidate)
@@ -659,6 +664,46 @@ mod tests {
             .collect();
 
         assert_eq!(ids, ["src:branches:main"]);
+    }
+
+    #[test]
+    fn an_app_the_query_names_outranks_any_file_or_folder() {
+        // Issue #659: a folder whose name starts with the query (+200 prefix,
+        // or +500 exact) used to tie or beat an app that only contains it.
+        let engine = QueryEngine::new(vec![
+            Candidate::new(
+                "folder:/u/code_challenge",
+                CandidateKind::Folder,
+                "code_challenge",
+                "/u/code_challenge",
+            ),
+            Candidate::new("folder:/u/code", CandidateKind::Folder, "code", "/u/code"),
+            Candidate::new(
+                "app:/applications/visual studio code.app",
+                CandidateKind::App,
+                "Visual Studio Code",
+                "/Applications/Visual Studio Code.app",
+            ),
+        ]);
+        let top = engine.search_scored("code", 10);
+        assert_eq!(&*top[0].0.title, "Visual Studio Code");
+
+        // A fuzzy app hit is not a name: the exact folder keeps first place.
+        let engine = QueryEngine::new(vec![
+            Candidate::new(
+                "folder:/u/excel",
+                CandidateKind::Folder,
+                "excel",
+                "/u/excel",
+            ),
+            Candidate::new(
+                "app:/applications/accessibility inspector.app",
+                CandidateKind::App,
+                "Accessibility Inspector",
+                "/Applications/Accessibility Inspector.app",
+            ),
+        ]);
+        assert_eq!(&*engine.search_scored("excel", 10)[0].0.title, "excel");
     }
 
     #[test]
