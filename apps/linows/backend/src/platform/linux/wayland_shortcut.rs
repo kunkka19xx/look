@@ -638,6 +638,9 @@ fn niri_bind_state_in(root: std::path::PathBuf) -> NiriBind {
     // and the header we read the opt-out off has to be the one it would use.
     let mut pending = std::collections::VecDeque::from([(root, 0u8)]);
     let mut seen = std::collections::HashSet::new();
+    // As within one file: an exempt bind anywhere is a hotkey that works,
+    // so an inhibitable one is only the answer once every file is read.
+    let mut state = NiriBind::Missing;
 
     while let Some((path, depth)) = pending.pop_front() {
         if !seen.insert(path.clone()) {
@@ -646,8 +649,10 @@ fn niri_bind_state_in(root: std::path::PathBuf) -> NiriBind {
         let Ok(config) = std::fs::read_to_string(&path) else {
             continue;
         };
-        if config.contains(DBUS_NAME) {
-            return niri_bind_inhibitable(&config);
+        match niri_bind_in(&config) {
+            NiriBind::Ready => return NiriBind::Ready,
+            NiriBind::Inhibitable => state = NiriBind::Inhibitable,
+            NiriBind::Missing => {}
         }
         if depth < NIRI_INCLUDE_DEPTH {
             let dir = path.parent().unwrap_or(std::path::Path::new(""));
@@ -658,28 +663,54 @@ fn niri_bind_state_in(root: std::path::PathBuf) -> NiriBind {
             );
         }
     }
-    NiriBind::Missing
+    state
 }
 
-/// Whether the bind spawning our D-Bus call opts out of shortcut inhibiting.
-/// KDL keeps a node's properties on its opening line, so the header is the
-/// last `{` line at or above the one naming the bus - a `spawn` argv split
-/// over several lines sits below it. A header we cannot identify reports
-/// `Ready` rather than nagging about a hotkey that may well be fine.
-fn niri_bind_inhibitable(config: &str) -> NiriBind {
+/// What one file binds to our D-Bus call. KDL keeps a node's properties on
+/// its opening line, so a bind's header is the last `{` line at or above the
+/// one naming the bus - a `spawn` argv split over several lines sits below
+/// it. A file can bind the call more than once (a second key, a leftover
+/// from trying keys out): one exempt bind is a hotkey that works, so it wins
+/// over the others. Commented-out lines and `/-` disabled nodes, children
+/// included, count for nothing. A header we cannot identify reports `Ready`
+/// rather than nagging about a hotkey that may well be fine.
+fn niri_bind_in(config: &str) -> NiriBind {
     let mut header = None;
-    for line in config.lines() {
+    let mut state = NiriBind::Missing;
+    // Braces still open on a disabled node, whose children are skipped.
+    let mut disabled = 0usize;
+    for line in config.lines().filter(|line| !is_kdl_comment(line)) {
+        if disabled > 0 {
+            disabled = kdl_depth_after(disabled, line);
+            continue;
+        }
+        if line.trim_start().starts_with(KDL_DISABLED) {
+            disabled = kdl_depth_after(0, line);
+            continue;
+        }
         if line.contains('{') {
             header = Some(line);
         }
         if line.contains(DBUS_NAME) {
-            break;
+            match header {
+                Some(line) if !line.contains(NIRI_NO_INHIBIT) => state = NiriBind::Inhibitable,
+                _ => return NiriBind::Ready,
+            }
         }
     }
-    match header {
-        Some(line) if !line.contains(NIRI_NO_INHIBIT) => NiriBind::Inhibitable,
-        _ => NiriBind::Ready,
-    }
+    state
+}
+
+fn is_kdl_comment(line: &str) -> bool {
+    line.trim_start().starts_with("//")
+}
+
+/// KDL's slash-dash: the node after it is parsed and then dropped.
+const KDL_DISABLED: &str = "/-";
+
+/// `depth` nested braces once `line` is read; never below zero.
+fn kdl_depth_after(depth: usize, line: &str) -> usize {
+    (depth + line.matches('{').count()).saturating_sub(line.matches('}').count())
 }
 
 fn report_niri_keybinding() {
@@ -1344,18 +1375,106 @@ mod tests {
 
     #[test]
     fn a_bind_without_the_opt_out_is_reported_inhibitable() {
-        assert_eq!(
-            niri_bind_inhibitable(&multiline_bind("")),
-            NiriBind::Inhibitable
-        );
+        assert_eq!(niri_bind_in(&multiline_bind("")), NiriBind::Inhibitable);
     }
 
     #[test]
     fn the_opt_out_on_the_bind_header_counts_for_a_multiline_spawn() {
         assert_eq!(
-            niri_bind_inhibitable(&multiline_bind(NIRI_NO_INHIBIT)),
+            niri_bind_in(&multiline_bind(NIRI_NO_INHIBIT)),
             NiriBind::Ready
         );
+    }
+
+    /// Issue #669: a second key bound to the same call, only one of them
+    /// exempt. The exempt one is a working hotkey, so there is nothing to
+    /// nag about.
+    #[test]
+    fn one_exempt_bind_among_several_is_ready() {
+        let config = [
+            "binds {",
+            "    Mod+Space repeat=false {",
+            "        // spawn \"menu\"",
+            &format!("        spawn \"gdbus\" \"call\" \"--dest\" \"{DBUS_NAME}\""),
+            "    }",
+            &format!(
+                "    Alt+Space {NIRI_NO_INHIBIT} {{ spawn \"gdbus\" \"call\" \"--dest\" \"{DBUS_NAME}\"; }}"
+            ),
+            "}",
+        ]
+        .join("\n");
+        assert_eq!(niri_bind_in(&config), NiriBind::Ready);
+        let swapped = [
+            "binds {",
+            &format!(
+                "    Alt+Space {NIRI_NO_INHIBIT} {{ spawn \"gdbus\" \"call\" \"--dest\" \"{DBUS_NAME}\"; }}"
+            ),
+            &format!("    Mod+Space {{ spawn \"gdbus\" \"call\" \"--dest\" \"{DBUS_NAME}\"; }}"),
+            "}",
+        ]
+        .join("\n");
+        assert_eq!(niri_bind_in(&swapped), NiriBind::Ready);
+    }
+
+    /// A commented-out bind is no bind: alone it is `Missing`, and above a
+    /// real one it must not be the header that gets read.
+    #[test]
+    fn commented_out_binds_are_ignored() {
+        let dead = format!("binds {{\n    // Alt+Space {{ spawn \"gdbus\" \"{DBUS_NAME}\"; }}\n}}");
+        assert_eq!(niri_bind_in(&dead), NiriBind::Missing);
+        let live = format!(
+            "{dead}\nbinds {{\n    Alt+Space {NIRI_NO_INHIBIT} {{\n        spawn \"gdbus\" \"{DBUS_NAME}\"\n    }}\n}}"
+        );
+        assert_eq!(niri_bind_in(&live), NiriBind::Ready);
+    }
+
+    /// A `/-` node is no bind either, on one line or with children.
+    #[test]
+    fn disabled_nodes_are_ignored() {
+        let one_line = format!(
+            "binds {{\n    /- Alt+Space {NIRI_NO_INHIBIT} {{ spawn \"gdbus\" \"{DBUS_NAME}\"; }}\n}}"
+        );
+        assert_eq!(niri_bind_in(&one_line), NiriBind::Missing);
+        let children = format!(
+            "binds {{\n    /- Alt+Space {NIRI_NO_INHIBIT} {{\n        spawn \"gdbus\" \"{DBUS_NAME}\"\n    }}\n}}"
+        );
+        assert_eq!(niri_bind_in(&children), NiriBind::Missing);
+        let live = format!(
+            "{children}\nbinds {{\n    Alt+Space {{\n        spawn \"gdbus\" \"{DBUS_NAME}\"\n    }}\n}}"
+        );
+        assert_eq!(niri_bind_in(&live), NiriBind::Inhibitable);
+    }
+
+    /// An exempt bind in an included file is the working hotkey, whatever
+    /// the root file binds; without one the root's inhibitable bind stands.
+    #[test]
+    fn an_exempt_included_bind_wins_over_an_inhibitable_root() {
+        let dir = std::env::temp_dir().join("look-niri-include-fallback-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        std::fs::write(
+            dir.join("config.kdl"),
+            format!(
+                "binds {{ Mod+Space {{ spawn \"gdbus\" \"{DBUS_NAME}\"; }} }}\ninclude \"binds.kdl\"\n"
+            ),
+        )
+        .expect("config");
+        std::fs::write(
+            dir.join("binds.kdl"),
+            format!(
+                "binds {{ Alt+Space {NIRI_NO_INHIBIT} {{ spawn \"gdbus\" \"{DBUS_NAME}\"; }} }}"
+            ),
+        )
+        .expect("binds");
+        assert_eq!(niri_bind_state_in(dir.join("config.kdl")), NiriBind::Ready);
+
+        std::fs::write(dir.join("binds.kdl"), "binds { }").expect("binds");
+        assert_eq!(
+            niri_bind_state_in(dir.join("config.kdl")),
+            NiriBind::Inhibitable
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A bind whose `spawn` argv wraps, so the bus name lands well below the

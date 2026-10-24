@@ -6,7 +6,6 @@
 
 use std::collections::HashMap;
 use std::ops::Range;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -27,10 +26,12 @@ use linows_backend::qactions::{
 use linows_backend::weather::{self, WeatherSnapshot};
 use linows_backend::{lunar, sysinfo, todo};
 
+use crate::banner::Message;
 use crate::bg;
 use crate::confirm::CONFIRM_FALLBACK;
 use crate::glyphs;
 use crate::icons;
+use crate::launcher;
 use crate::motion;
 use crate::pomo;
 use crate::theme::{self, Theme};
@@ -100,7 +101,7 @@ const NOTICE_OK: f32 = 1.2;
 const NOTICE_INFO: f32 = 2.2;
 const NOTICE_ERROR: f32 = 1.6;
 /// Long enough to read a config error, which is longer than a toast.
-const NOTICE_WARNING: f32 = 5.0;
+pub(crate) const NOTICE_WARNING: f32 = 5.0;
 
 const PLACEHOLDER: &str = "--";
 const TEMP_PLACEHOLDER: &str = "--°";
@@ -126,6 +127,17 @@ pub struct Notice {
     pub text: String,
     pub tone: Tone,
     pub seconds: f32,
+    pub copy: Option<String>,
+}
+
+impl Notice {
+    pub fn message(&self) -> Message {
+        Message {
+            text: self.text.clone(),
+            tone: self.tone,
+            copy: self.copy.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -174,10 +186,48 @@ const POMO_SUB_MARGIN: f32 = 6.0;
 const SLOT_TIME_LINE_HEIGHT: f32 = 1.05;
 const POMO_ARTIST: &str = "Pomodoro";
 
+/// Diagnostics last shown on a live launchpad. A valid drawing is stored
+/// empty, so the same mistake can be reported again after it is fixed.
+#[derive(Default)]
+struct DeliveredWarnings(Vec<String>);
+
+impl DeliveredWarnings {
+    /// The banner line for a set that has not been shown, remembering it
+    /// either way. A repeat is quiet. Nothing to show also clears what was
+    /// remembered.
+    fn deliver(&mut self, warnings: &[String]) -> Option<String> {
+        if self.0.as_slice() == warnings {
+            return None;
+        }
+        self.record(warnings)
+    }
+
+    /// The banner line, repeat or not: the reload chord asked to hear it.
+    fn record(&mut self, warnings: &[String]) -> Option<String> {
+        self.0 = warnings.to_vec();
+        let (first, rest) = warnings.split_first()?;
+        Some(if rest.is_empty() {
+            first.clone()
+        } else {
+            format!("{first} (+{} more)", rest.len())
+        })
+    }
+}
+
 /// The layout survives the window, so a summon never waits on the file.
 static LAYOUT: Mutex<Option<Arc<LayoutPayload>>> = Mutex::new(None);
-/// A broken drawing is reported once per process, not once per summon.
-static WARNED: AtomicBool = AtomicBool::new(false);
+/// A warning counts as delivered only when a live launchpad shows it.
+static DELIVERED: Mutex<DeliveredWarnings> = Mutex::new(DeliveredWarnings(Vec::new()));
+
+/// The summarised line as a banner, with every warning behind its Copy
+/// button: the banner is not a log, and the rest are only on stderr.
+fn warning_message(text: String, warnings: &[String]) -> Message {
+    Message {
+        text,
+        tone: Tone::Warning,
+        copy: Some(warnings.join("\n")),
+    }
+}
 
 fn cached_layout() -> Option<Arc<LayoutPayload>> {
     LAYOUT.lock().unwrap_or_else(|p| p.into_inner()).clone()
@@ -285,6 +335,7 @@ impl Launchpad {
         self.shown = shown;
         if shown {
             self.refresh_all(cx);
+            self.report_warnings(cx);
         } else {
             self.clear_confirm(cx);
         }
@@ -361,40 +412,69 @@ impl Launchpad {
     fn load_layout(&mut self, cx: &mut Context<Self>) {
         let token = self.token;
         cx.spawn(async move |this, cx| {
-            let fresh = bg::blocking(move || {
-                let layout = Arc::new(qactions::launchpad_layout());
-                let warnings = if WARNED.swap(true, Ordering::Relaxed) {
-                    Vec::new()
-                } else {
-                    qactions::launchpad_warnings()
-                };
-                (layout, warnings)
-            })
-            .get()
-            .await;
+            // Delivery is decided on the live launchpad, from this one read.
+            let fresh = bg::blocking(qactions::launchpad_layout).get().await;
             let _ = this.update(cx, |this, cx| {
-                let (layout, warnings) = fresh;
-                *LAYOUT.lock().unwrap_or_else(|p| p.into_inner()) = Some(layout.clone());
-                let first = this.layout.is_none();
-                if first || this.layout.as_deref() != Some(&layout) {
-                    this.layout = Some(layout);
-                    this.clear_confirm(cx);
-                    if first || this.token == token {
-                        this.refresh_all(cx);
-                    }
-                    cx.notify();
-                }
-                if let Some((first, rest)) = warnings.split_first() {
-                    let text = if rest.is_empty() {
-                        first.clone()
-                    } else {
-                        format!("{first} (+{} more)", rest.len())
-                    };
-                    this.notify(text, Tone::Warning, NOTICE_WARNING, cx);
-                }
+                this.apply_layout(Arc::new(fresh), token, cx);
+                this.report_warnings(cx);
             });
         })
         .detach();
+    }
+
+    /// The reload chord: the drawing was read again off the UI thread and is
+    /// applied here. Its warnings come back as the caller's one reload
+    /// banner, repeat or not, and count as delivered.
+    pub fn reloaded(&mut self, layout: LayoutPayload, cx: &mut Context<Self>) -> Option<Message> {
+        let layout = Arc::new(layout);
+        self.apply_layout(layout.clone(), self.token, cx);
+        DELIVERED
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .record(&layout.warnings)
+            .map(|text| warning_message(text, &layout.warnings))
+    }
+
+    /// A fresh read replaces the cache and, when the tiles moved, the grid.
+    /// `token` is the refresh generation at the read; a later refresh has
+    /// already covered the new tiles.
+    fn apply_layout(&mut self, layout: Arc<LayoutPayload>, token: u64, cx: &mut Context<Self>) {
+        *LAYOUT.lock().unwrap_or_else(|p| p.into_inner()) = Some(layout.clone());
+        let first = self.layout.is_none();
+        if first || self.layout.as_deref() != Some(&layout) {
+            self.layout = Some(layout);
+            self.clear_confirm(cx);
+            if first || self.token == token {
+                self.refresh_all(cx);
+            }
+            cx.notify();
+        }
+    }
+
+    /// Announces the drawing's warnings only while the bento is on screen. A
+    /// clean drawing clears what was remembered even when hidden, so the same
+    /// mistake made again is reported again.
+    fn report_warnings(&mut self, cx: &mut Context<Self>) {
+        let Some(layout) = self.layout.clone() else {
+            return;
+        };
+        let visible = self.shown && launcher::launchpad_shown(&theme::get());
+        if !visible && !layout.warnings.is_empty() {
+            return;
+        }
+        let text = DELIVERED
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .deliver(&layout.warnings);
+        if let Some(text) = text {
+            let message = warning_message(text, &layout.warnings);
+            cx.emit(Notice {
+                text: message.text,
+                tone: message.tone,
+                seconds: NOTICE_WARNING,
+                copy: message.copy,
+            });
+        }
     }
 
     fn refresh_all(&mut self, cx: &mut Context<Self>) {
@@ -795,6 +875,7 @@ impl Launchpad {
             text,
             tone,
             seconds,
+            copy: None,
         });
     }
 
@@ -1782,5 +1863,44 @@ mod tests {
     fn user_tiles_may_name_the_built_in_glyphs() {
         assert_eq!(named_glyph("battery"), Some(glyphs::BATTERY));
         assert_eq!(named_glyph("data:image/svg+xml;base64,"), None);
+    }
+
+    /// The decision `load_layout` applies once the launchpad is still alive.
+    /// A dropped entity never calls it, so the next live one can still report.
+    #[test]
+    fn a_new_warning_set_is_announced_and_a_repeat_is_not() {
+        let mut delivered = DeliveredWarnings::default();
+        // A valid first summon remembers nothing.
+        assert_eq!(delivered.deliver(&[]), None);
+
+        let ragged = vec![
+            "super-actions.toml row 2 has 6 tokens but row 1 has 5, using the default layout"
+                .to_string(),
+        ];
+        let shown = delivered.deliver(&ragged).expect("the invalid summon");
+        assert_eq!(shown, ragged[0]);
+        assert_eq!(
+            delivered.deliver(&ragged),
+            None,
+            "the same set does not nag"
+        );
+        assert_eq!(
+            delivered.record(&ragged).as_deref(),
+            Some(ragged[0].as_str()),
+            "a reload repeats it on request"
+        );
+
+        let other = vec![
+            "super-actions.toml is not valid TOML, using the default layout".to_string(),
+            "super-actions.toml has no `layout` drawing, using the default layout".to_string(),
+        ];
+        assert_eq!(
+            delivered.deliver(&other).as_deref(),
+            Some("super-actions.toml is not valid TOML, using the default layout (+1 more)")
+        );
+
+        // Fixed, then broken the same way: the warning comes back.
+        assert_eq!(delivered.deliver(&[]), None);
+        assert!(delivered.deliver(&ragged).is_some());
     }
 }

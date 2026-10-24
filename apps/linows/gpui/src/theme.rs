@@ -228,6 +228,21 @@ fn luminance(c: Rgba) -> f32 {
     0.2126 * c.color.red + 0.7152 * c.color.green + 0.0722 * c.color.blue
 }
 
+/// Ink that reads on a solid fill: the dark presets' panel tone on a light
+/// one, white on a dark one.
+pub fn on_fill(fill: Rgba) -> Rgba {
+    if luminance(fill) > 0.5 {
+        Rgba::new(
+            ON_LIGHT_ACCENT[0],
+            ON_LIGHT_ACCENT[1],
+            ON_LIGHT_ACCENT[2],
+            1.0,
+        )
+    } else {
+        Rgba::new(1.0, 1.0, 1.0, 1.0)
+    }
+}
+
 /// The pole a scrim under `text` leans to: black under light text, white
 /// under dark, so the ink keeps its contrast in light themes.
 pub fn scrim_for(text: Rgba) -> Rgba {
@@ -256,16 +271,7 @@ fn custom_preset(text: Rgba) -> Preset {
         text.color.blue,
         CUSTOM_ACCENT_ALPHA,
     );
-    let on_accent = if luminance(accent) > 0.5 {
-        Rgba::new(
-            ON_LIGHT_ACCENT[0],
-            ON_LIGHT_ACCENT[1],
-            ON_LIGHT_ACCENT[2],
-            1.0,
-        )
-    } else {
-        Rgba::new(1.0, 1.0, 1.0, 1.0)
-    };
+    let on_accent = on_fill(accent);
     Preset {
         id: CUSTOM_THEME,
         tint: [0.0; 3],

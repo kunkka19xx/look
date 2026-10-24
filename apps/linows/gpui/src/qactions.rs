@@ -184,6 +184,7 @@ impl Preview {
             text: format!("{verb} {}\u{2026}", item.label),
             tone: Tone::Info,
             seconds: DEVICE_PENDING_SECONDS,
+            copy: None,
         });
         let id = actions.actions[index].descriptor.action_id.clone();
         self.apply(
@@ -390,11 +391,13 @@ fn notice(title: &str, outcome: ActionOutcome) -> Notice {
             text: banner.unwrap_or_else(|| format!("{title} done")),
             tone: Tone::Success,
             seconds: crate::banner::MEDIUM,
+            copy: None,
         },
         ActionOutcome::NeedsPermission { message } => Notice {
             text: message,
             tone: Tone::Info,
             seconds: PERMISSION_SECONDS,
+            copy: None,
         },
         ActionOutcome::Failed { message } => Notice {
             text: if message.is_empty() {
@@ -404,6 +407,7 @@ fn notice(title: &str, outcome: ActionOutcome) -> Notice {
             },
             tone: Tone::Error,
             seconds: crate::banner::LONG,
+            copy: None,
         },
     }
 }
