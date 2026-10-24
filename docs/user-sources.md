@@ -261,6 +261,9 @@ Keys Look does not recognise are reported and ignored, never fatal: a file writt
 
 ### `connect` - rows from a program that stays running
 
+> Shipping an app that installs its own connector? The full contract, limits
+> and a worked example are in [Integrating your app](integrating.md).
+
 Where `run` asks a command for rows and waits, `connect` starts a program once
 and leaves it running. It sends rows whenever it likes, and they appear without
 a reload.
