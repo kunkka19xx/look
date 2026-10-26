@@ -785,7 +785,12 @@ pub fn control(action_id: &str, press: bool) -> ControlState {
             ..Default::default()
         };
     };
-    match crate::connectors::state_of(req, CONNECTOR_CONTROL_WAIT) {
+    let wait = if press {
+        CONNECTOR_PRESS_WAIT
+    } else {
+        CONNECTOR_CONTROL_WAIT
+    };
+    match crate::connectors::state_of(req, wait) {
         Some(on) => ControlState { on, error: None },
         None => ControlState {
             error: Some("connector did not answer".into()),
@@ -797,6 +802,11 @@ pub fn control(action_id: &str, press: bool) -> ControlState {
 /// A control is read on every selection, so it is held to the preview's
 /// budget rather than the verb's.
 const CONNECTOR_CONTROL_WAIT: Duration = Duration::from_millis(400);
+
+/// A press is not a read. It happens once, the user is waiting on it, and it
+/// is not idempotent: giving up early would report a press that landed as one
+/// that did not, and the user would press again and flip it back.
+const CONNECTOR_PRESS_WAIT: Duration = Duration::from_millis(1_500);
 
 /// Running is the user's own action, so it may take longer than a preview the
 /// panel merely wanted.
@@ -1266,12 +1276,15 @@ mod tests {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let _fixture = Fixture::new(
             "control",
-            "[lamp]\ncontrol = \"bluetooth\"\ndo = [\"true\"]\n\n[plain]\ndo = [\"true\"]\n",
+            "[lamp]\ncontrol = { id = \"bluetooth\", title = \"Bluetooth\" }\ndo = [\"true\"]\n\n[plain]\ndo = [\"true\"]\n",
         );
 
         // Borrowing a system control is refused: the row runs `true` and has
         // no business offering the machine's Bluetooth.
         let lamp = CandidateIdKind::source_row_candidate_id("lamp", &[], "");
+        // The block has to be there for the refusal to be what empties the
+        // list: a fixture that fails to parse would pass this on its own.
+        assert!(find_block("lamp").is_some(), "the fixture must load");
         assert!(crate::qactions::descriptors_for(&lamp, "action").is_empty());
 
         // No table on any platform names a declared row, so a block that says

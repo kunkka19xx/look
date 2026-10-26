@@ -208,9 +208,12 @@ pub fn press(name: &str) -> Result<(), String> {
 /// super-actions.toml. Split the way `refresh_defs` is split from `refresh`.
 fn press_def(name: &str, def: &TileDef) -> Result<(), String> {
     // A control answers a press with where it ended up, so there is nothing to
-    // read again afterwards: the answer IS the new value.
+    // read again afterwards: the answer IS the new value. A cache that will
+    // not take it is said separately: the press landed, and reporting it as a
+    // failure would invite a second one that flips the control back.
     if let Some(control) = def.control.as_deref() {
-        return store(name, &control_value(name, control, true)?);
+        let value = control_value(name, control, true)?;
+        return store(name, &value).map_err(|problem| format!("{problem}; it was pressed"));
     }
     let Some(command) = def.press.clone() else {
         return Err(format!("\"{name}\" has no press command"));

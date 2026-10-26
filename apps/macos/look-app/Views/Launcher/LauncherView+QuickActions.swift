@@ -194,17 +194,10 @@ extension LauncherView {
 
         // Show the target immediately for instant feedback; the re-read below
         // confirms (and corrects it if the change did not take). A connector's
-        // control is the reason this matters: its answer is a round trip, and a
-        // switch that waits for one reads as broken.
-        switch (intent, quickActionStates[descriptor.actionId]) {
-        case (.setOn(let on), _):
+        // control is why this matters more than it used to: its answer is a
+        // round trip, and a switch that waits for one reads as broken.
+        if case .setOn(let on) = intent {
             quickActionStates[descriptor.actionId] = on ? .on : .off
-        case (.toggle, .on):
-            quickActionStates[descriptor.actionId] = .off
-        case (.toggle, .off):
-            quickActionStates[descriptor.actionId] = .on
-        default:
-            break
         }
 
         pendingQuickActions.insert(key)

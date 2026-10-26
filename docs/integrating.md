@@ -163,7 +163,8 @@ needed from you: declare it once and it works in both places. See
 | Rows per block | 2,000. The rest are not stored |
 | Preview text | 64 KiB, truncated on a character boundary |
 | Preview answer | about 400ms before the panel gives up on it |
-| Control state or press | about 400ms, since it is read on every selection |
+| Control state | about 400ms, since it is read on every selection |
+| Control press | about 1.5s, since it happens once and the user is waiting |
 | Plan answer | about 1.5s, since the user is waiting on a menu |
 | Run answer | about 5s, after which Look assumes it is still going |
 

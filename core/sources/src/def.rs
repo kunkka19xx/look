@@ -403,6 +403,22 @@ impl Block {
     }
 }
 
+/// A nameless control is a dead one: nothing to ask the connector for and
+/// nothing to put on the pane, so it is dropped the way a blank `confirm` is.
+/// A `#` is refused instead of dropped, because an id is addressed as
+/// `<block>#<control>`: one inside the id would split back into a block that
+/// does not exist, and the press would vanish with a puzzling reason.
+fn control(raw: Option<Control>) -> Result<Option<Control>, String> {
+    let Some(control) = raw.filter(|c| !c.id.trim().is_empty() && !c.title.trim().is_empty())
+    else {
+        return Ok(None);
+    };
+    if control.id.contains('#') {
+        return Err(format!("control id \"{}\" cannot contain '#'", control.id));
+    }
+    Ok(Some(control))
+}
+
 /// A control a declaration supplies. `id` is namespaced by the manifest the
 /// same way a block is, so one app cannot name another's.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -594,11 +610,7 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
         scope: raw.scope.unwrap_or(false),
         preview: raw.preview,
         confirm: raw.confirm.filter(|question| !question.trim().is_empty()),
-        // A nameless control is a dead one: nothing to ask the connector for
-        // and nothing to put on the pane.
-        control: raw
-            .control
-            .filter(|c| !c.id.trim().is_empty() && !c.title.trim().is_empty()),
+        control: control(raw.control)?,
         source_file: None,
         unknown_keys: raw.extra.keys().cloned().collect(),
     })
@@ -1059,6 +1071,21 @@ dir = "~/notes"
             one("[notes]\nconnect = \"c\"\ncontrol = { id = \" \", title = \"Lamp\" }\n")
                 .control
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn a_control_id_holding_a_hash_is_refused() {
+        // It is addressed as `<block>#<control>`, so one inside the id splits
+        // back into a block that does not exist and the press goes nowhere.
+        let parsed =
+            parse_file("[notes]\nconnect = \"c\"\ncontrol = { id = \"a#b\", title = \"B\" }\n")
+                .unwrap();
+        assert!(parsed.blocks.is_empty());
+        assert!(
+            parsed.problems[0].contains("cannot contain"),
+            "{:?}",
+            parsed.problems
         );
     }
 
