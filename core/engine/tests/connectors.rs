@@ -39,6 +39,14 @@ impl Fixture {
         Self { base, cache }
     }
 
+    /// The same, plus a control the rows carry.
+    fn install_with_control(&self) {
+        self.write(
+            "serve",
+            "control = { id = \"lamp\", kind = \"toggle\", title = \"Lamp\", on = \"On\", off = \"Off\" }\n",
+        );
+    }
+
     /// The same, plus an `archive` verb the action menu would offer.
     fn install_with_verb(&self, mode: &str) {
         self.write(
@@ -186,6 +194,60 @@ fn a_verb_is_planned_then_run() {
     assert_eq!(ran.error, None);
     assert!(ran.ok);
     assert!(ran.summary.is_some());
+
+    look_engine::connectors::stop();
+}
+
+/// A press answers with where the control ended up, so a shell never assumes
+/// the connector agreed.
+#[test]
+fn a_control_is_read_and_pressed() {
+    let _alone = alone();
+    let fixture = Fixture::new("control");
+    fixture.install_with_control();
+
+    let (count, on_rows) = counter();
+    look_engine::connectors::start(&fixture.base, on_rows);
+    until(&count, 1, Duration::from_secs(10));
+
+    let action = look_engine::qactions::control_action_id("myapp.notes", "lamp");
+    assert_eq!(look_engine::sources::control(&action, false).error, None);
+    assert!(!look_engine::sources::control(&action, false).on);
+    assert!(
+        look_engine::sources::control(&action, true).on,
+        "press turns it on"
+    );
+    assert!(
+        look_engine::sources::control(&action, false).on,
+        "and it stays"
+    );
+
+    look_engine::connectors::stop();
+}
+
+/// The same control, placed on the strip. A tile and a row control are one
+/// declaration: the drawing only says where it goes.
+#[test]
+fn a_tile_reads_and_presses_the_same_control() {
+    let _alone = alone();
+    let fixture = Fixture::new("tile");
+    fixture.install_with_control();
+
+    let (count, on_rows) = counter();
+    look_engine::connectors::start(&fixture.base, on_rows);
+    until(&count, 1, Duration::from_secs(10));
+
+    let def = look_engine::launchpad::TileDef {
+        control: Some("myapp.notes#lamp".into()),
+        ..Default::default()
+    };
+    // Off, then pressed on, and the tile reads as a toggle rather than as a
+    // readout that happens to say "On".
+    let value = look_engine::launchpad_values::value_for_test("lamp", &def, false).expect("read");
+    assert_eq!(value.state.as_deref(), Some("off"));
+    let value = look_engine::launchpad_values::value_for_test("lamp", &def, true).expect("press");
+    assert_eq!(value.state.as_deref(), Some("on"));
+    assert_eq!(value.value, "On");
 
     look_engine::connectors::stop();
 }

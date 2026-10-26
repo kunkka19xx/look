@@ -848,6 +848,16 @@ pub extern "C" fn look_ai_markdown_segments_json(text: *const c_char) -> *mut c_
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// Reads or presses a control a declaration supplied. JSON `{on, error}`.
+/// Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_control_json(action_id: *const c_char, press: bool) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_control_json_impl(action_id, press)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// What a connector's verb would do against the selected row. JSON
 /// `{plan, title, detail, error}`. Free with `look_free_cstring`.
 #[unsafe(no_mangle)]

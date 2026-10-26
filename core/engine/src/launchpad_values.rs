@@ -110,6 +110,9 @@ fn is_stale(name: &str, def: &TileDef) -> bool {
 
 /// Runs one tile's command and stores what it printed.
 fn run_one(name: &str, def: &TileDef) -> Result<(), String> {
+    if let Some(control) = def.control.as_deref() {
+        return store(name, &control_value(name, control, false)?);
+    }
     // A tile that only acts has nothing to run until it is pressed.
     let Some(command) = def.value.as_deref() else {
         return Ok(());
@@ -133,11 +136,7 @@ fn run_one(name: &str, def: &TileDef) -> Result<(), String> {
     serde_json::from_str::<TileValue>(output.trim())
         .map_err(|err| format!("tile \"{name}\": did not print a tile value ({err})"))?;
 
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    std::fs::write(&path, output.trim())
-        .map_err(|err| format!("tile \"{name}\": could not be cached ({err})"))
+    store(name, output.trim())
 }
 
 /// Runs every stale tile and stores what it prints. Blocking and spawning: call
@@ -208,6 +207,14 @@ pub fn press(name: &str) -> Result<(), String> {
 /// The press, against a given tile, so it can be tested without a
 /// super-actions.toml. Split the way `refresh_defs` is split from `refresh`.
 fn press_def(name: &str, def: &TileDef) -> Result<(), String> {
+    // A control answers a press with where it ended up, so there is nothing to
+    // read again afterwards: the answer IS the new value. A cache that will
+    // not take it is said separately: the press landed, and reporting it as a
+    // failure would invite a second one that flips the control back.
+    if let Some(control) = def.control.as_deref() {
+        let value = control_value(name, control, true)?;
+        return store(name, &value).map_err(|problem| format!("{problem}; it was pressed"));
+    }
     let Some(command) = def.press.clone() else {
         return Err(format!("\"{name}\" has no press command"));
     };
@@ -223,6 +230,48 @@ fn press_def(name: &str, def: &TileDef) -> Result<(), String> {
     // value. A press is detached, so a command still settling lands next time.
     let _ = run_one(name, def);
     Ok(())
+}
+
+/// A control's state as a tile reads it. The same `state` field the built-in
+/// toggles use, so a supplied control is dressed like Bluetooth rather than
+/// like a readout that happens to say "On".
+fn control_value(name: &str, control: &str, press: bool) -> Result<String, String> {
+    let action = crate::qactions::control_action_id_from_ref(control)
+        .ok_or_else(|| format!("tile \"{name}\": \"{control}\" is not a <block>#<control>"))?;
+    let answer = crate::sources::control(&action, press);
+    if let Some(error) = answer.error {
+        return Err(format!("tile \"{name}\": {error}"));
+    }
+    let on = answer.on;
+    serde_json::to_string(&TileValue {
+        value: if on { "On" } else { "Off" }.to_string(),
+        caption: None,
+        lines: Vec::new(),
+        icon: None,
+        state: Some(if on { "on" } else { "off" }.to_string()),
+    })
+    .map_err(|err| format!("tile \"{name}\": {err}"))
+}
+
+/// A control tile's value, without touching the cache. Split out the way
+/// `refresh_defs` is, so a test needs no `super-actions.toml`.
+pub fn value_for_test(name: &str, def: &TileDef, press: bool) -> Result<TileValue, String> {
+    let control = def.control.as_deref().ok_or("not a control tile")?;
+    let text = control_value(name, control, press)?;
+    serde_json::from_str(&text).map_err(|err| err.to_string())
+}
+
+/// The one write: a connector tile and a command tile are cached, read and
+/// swept alike.
+fn store(name: &str, text: &str) -> Result<(), String> {
+    let Some(path) = cache_path(name) else {
+        return Err(format!("tile \"{name}\": not a name that can be cached"));
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(&path, text)
+        .map_err(|err| format!("tile \"{name}\": could not be cached ({err})"))
 }
 
 /// Drops values for tiles the drawing no longer names.

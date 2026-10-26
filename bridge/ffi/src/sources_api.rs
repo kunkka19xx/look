@@ -141,6 +141,13 @@ pub(crate) fn look_run_verb_json_impl(candidate_id: *const c_char, plan: u64) ->
     json(Some(look_engine::sources::run_verb(&candidate_id, plan)))
 }
 
+/// Reads a declared control, or presses it and reads where it ended up.
+/// Returns `{on, error}`.
+pub(crate) fn look_control_json_impl(action_id: *const c_char, press: bool) -> *mut c_char {
+    let action_id = cstr_to_string(action_id);
+    json(Some(look_engine::sources::control(&action_id, press)))
+}
+
 /// The selected row as a user's command sees it.
 fn row_context(
     row_id: *const c_char,

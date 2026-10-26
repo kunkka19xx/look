@@ -210,6 +210,7 @@ impl<T: Clone> Slot<T> {
 static PREVIEWS: Slot<Preview> = Slot::new();
 static PLANS: Slot<Planned> = Slot::new();
 static RESULTS: Slot<Outcome> = Slot::new();
+static STATES: Slot<bool> = Slot::new();
 
 /// One counter for every ask, so a number never means two questions.
 fn next_req() -> u64 {
@@ -307,6 +308,33 @@ pub fn run_plan(block: &str, plan: u64) -> bool {
 
 pub fn result_of(plan: u64, wait: Duration) -> Option<Outcome> {
     RESULTS.take(plan, wait)
+}
+
+/// Asks where a control stands, or presses it, and gives back the number to
+/// wait for. One call for both: a connector answers a press with where it
+/// ended up, so both wait on the same slot for the same answer.
+pub fn ask_control(block: &str, control: &str, press: bool) -> Option<u64> {
+    let req = next_req();
+    let (block, control) = (block.to_string(), control.to_string());
+    let ask = if press {
+        Ask::Press {
+            block: block.clone(),
+            control,
+            req,
+        }
+    } else {
+        Ask::State {
+            block: block.clone(),
+            control,
+            req,
+        }
+    };
+    STATES.clear();
+    tell(&block, ask, true).then_some(req)
+}
+
+pub fn state_of(req: u64, wait: Duration) -> Option<bool> {
+    STATES.take(req, wait)
 }
 
 fn store_preview(req: u64, content: Content, mut text: String) {
@@ -475,6 +503,9 @@ fn handle(owner: &Owner, say: Say, on_rows: &OnRows) {
         } => answer(owner, &block, plan, "result", |plan| {
             RESULTS.put(plan, Outcome { ok, summary })
         }),
+        Say::State { block, req, on, .. } => {
+            answer(owner, &block, req, "state", |req| STATES.put(req, on))
+        }
         Say::Ready { .. } => {}
         Say::Error { message } => {
             eprintln!("look connectors: [{}] {message}", owner.block)

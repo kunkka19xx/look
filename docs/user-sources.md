@@ -234,6 +234,7 @@ If the command fails, times out, or prints nothing, **the rows it produced last 
 | `preview`                         | string            | none         | Command run for the selected row, in that row's folder; its output fills the right panel. Fixed 5s timeout |
 | `scope`                           | bool              | `false`      | The block's words narrow a search to its own rows: `obsnote inv`. See [Searching inside one block](#searching-inside-one-block) |
 | `confirm`                         | string            | none         | Yes/no question asked before the block does anything                                                       |
+| `control`                         | table             | none         | A switch or button this block's rows carry, supplied by the declaration. `{ id, kind, title, on, off }`; a connector answers its state and its press. See [Integrating your app](integrating.md#offering-a-control) |
 | `then`                            | list of block ids | none         | Other blocks a picked row can reach                                                                        |
 | `open` `edit` `terminal` `reveal` | string            | none         | See [What Enter does](#what-enter-does-verbs)                                                              |
 

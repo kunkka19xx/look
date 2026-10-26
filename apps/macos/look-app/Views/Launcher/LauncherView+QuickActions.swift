@@ -193,7 +193,9 @@ extension LauncherView {
         }
 
         // Show the target immediately for instant feedback; the re-read below
-        // confirms (and corrects it if the change did not take).
+        // confirms (and corrects it if the change did not take). A connector's
+        // control is why this matters more than it used to: its answer is a
+        // round trip, and a switch that waits for one reads as broken.
         if case .setOn(let on) = intent {
             quickActionStates[descriptor.actionId] = on ? .on : .off
         }

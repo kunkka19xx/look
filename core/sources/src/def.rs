@@ -309,10 +309,10 @@ pub struct Block {
     /// A yes/no question asked before this block performs anything. Destructive
     /// steps get one, because a launcher makes Enter on the wrong row cheap.
     pub confirm: Option<String>,
-    /// A quick-action control this block's rows carry. The platform table
-    /// names the panes a control hangs from; this is how a declaration names
-    /// one for rows no catalog knows about.
-    pub control: Option<String>,
+    /// A control this block's rows carry, supplied by the declaration rather
+    /// than borrowed from the platform table. Its state and its press go to
+    /// whoever produced the row.
+    pub control: Option<Control>,
     /// The file this block was declared in, so the app can show it and reveal
     /// it. Set by the loader; parsing a string alone has no file to name.
     pub source_file: Option<String>,
@@ -403,6 +403,45 @@ impl Block {
     }
 }
 
+/// A nameless control is a dead one: nothing to ask the connector for and
+/// nothing to put on the pane, so it is dropped the way a blank `confirm` is.
+/// A `#` is refused instead of dropped, because an id is addressed as
+/// `<block>#<control>`: one inside the id would split back into a block that
+/// does not exist, and the press would vanish with a puzzling reason.
+fn control(raw: Option<Control>) -> Result<Option<Control>, String> {
+    let Some(control) = raw.filter(|c| !c.id.trim().is_empty() && !c.title.trim().is_empty())
+    else {
+        return Ok(None);
+    };
+    if control.id.contains('#') {
+        return Err(format!("control id \"{}\" cannot contain '#'", control.id));
+    }
+    Ok(Some(control))
+}
+
+/// A control a declaration supplies. `id` is namespaced by the manifest the
+/// same way a block is, so one app cannot name another's.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Control {
+    pub id: String,
+    #[serde(default)]
+    pub kind: ControlKind,
+    pub title: String,
+    /// Captions for a toggle. Ignored by a button.
+    #[serde(default)]
+    pub on: Option<String>,
+    #[serde(default)]
+    pub off: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ControlKind {
+    #[default]
+    Toggle,
+    Button,
+}
+
 #[derive(Debug, Default, Deserialize)]
 struct RawBlock {
     name: Option<String>,
@@ -413,7 +452,7 @@ struct RawBlock {
     scope: Option<bool>,
     preview: Option<String>,
     confirm: Option<String>,
-    control: Option<String>,
+    control: Option<Control>,
 
     #[serde(rename = "do")]
     steps: Option<Vec<String>>,
@@ -571,7 +610,7 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
         scope: raw.scope.unwrap_or(false),
         preview: raw.preview,
         confirm: raw.confirm.filter(|question| !question.trim().is_empty()),
-        control: raw.control.filter(|control| !control.trim().is_empty()),
+        control: control(raw.control)?,
         source_file: None,
         unknown_keys: raw.extra.keys().cloned().collect(),
     })
@@ -1011,6 +1050,42 @@ dir = "~/notes"
             one("[a]\nconfirm = \"  \"\ndo = [\"true\"]\n")
                 .confirm
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn a_control_carries_its_kind_and_captions() {
+        let block = one(
+            "[notes]\nconnect = \"c\"\ncontrol = { id = \"lamp\", title = \"Lamp\", on = \"Lit\" }\n",
+        );
+        let control = block.control.expect("a control");
+        assert_eq!(control.kind, ControlKind::Toggle, "a toggle by default");
+        assert_eq!(control.on.as_deref(), Some("Lit"));
+        assert_eq!(control.off, None);
+    }
+
+    #[test]
+    fn a_nameless_control_is_no_control() {
+        // Nothing to ask the connector for and nothing to put on the pane.
+        assert!(
+            one("[notes]\nconnect = \"c\"\ncontrol = { id = \" \", title = \"Lamp\" }\n")
+                .control
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_control_id_holding_a_hash_is_refused() {
+        // It is addressed as `<block>#<control>`, so one inside the id splits
+        // back into a block that does not exist and the press goes nowhere.
+        let parsed =
+            parse_file("[notes]\nconnect = \"c\"\ncontrol = { id = \"a#b\", title = \"B\" }\n")
+                .unwrap();
+        assert!(parsed.blocks.is_empty());
+        assert!(
+            parsed.problems[0].contains("cannot contain"),
+            "{:?}",
+            parsed.problems
         );
     }
 

@@ -54,6 +54,8 @@ you  → {"op":"ready","capabilities":["rows","preview"]}
 | `{"op":"preview","block":"myapp.records","id":"r1","req":7}` | a row of yours is selected |
 | `{"op":"plan","block":"...","verb":"archive","ids":["r1"],"plan":7}` | a verb of yours was picked on those rows |
 | `{"op":"run","block":"...","plan":7}` | the user confirmed that plan |
+| `{"op":"state","block":"...","control":"lamp","req":9}` | where a control of yours stands |
+| `{"op":"press","block":"...","control":"lamp","req":10}` | the user pressed it |
 | `{"op":"bye"}` | Look is closing you down |
 
 ### Frames you send
@@ -65,6 +67,7 @@ you  → {"op":"ready","capabilities":["rows","preview"]}
 | `{"op":"preview","block":"...","id":"r1","req":7,"content_type":"markdown","text":"..."}` | the answer to a `preview` ask |
 | `{"op":"planned","block":"...","plan":7,"title":"Archive 2 notes","detail":"a.md, b.md"}` | what the verb would do, which is the question the user reads |
 | `{"op":"result","block":"...","plan":7,"ok":true,"summary":"Archived 2 notes"}` | how running it went |
+| `{"op":"state","block":"...","control":"lamp","req":9,"on":true}` | the answer to either of those |
 | `{"op":"error","message":"could not reach the server"}` | written to Look's stderr |
 
 A row is `{"id": "...", "title": "...", "subtitle": "...", "path": "...", "icon": "..."}`,
@@ -101,6 +104,36 @@ There is no undo. Look does not pretend it can reverse a command you ran on a
 machine it does not own. Plan carefully instead, since the plan is what the
 user agreed to.
 
+### Offering a control
+
+A block's rows can carry a switch or a button that you supply:
+
+```toml
+[records]
+connect = "..."
+control = { id = "sync", kind = "toggle", title = "Syncing", on = "On", off = "Off" }
+```
+
+`kind` is `toggle` or `button`. Look asks you for its state when a row is
+selected, and tells you when it is pressed. **Answer a press with where the
+control ended up**, not with what was asked: you may refuse, and a switch that
+shows a state you never reached is worse than a slow one.
+
+Look moves the switch the moment it is pressed and corrects it when you
+answer, so a round trip does not read as a broken control.
+
+On a row that has nothing else to do, `Enter` presses the control rather than
+failing: the control is the row's purpose.
+
+You may only supply a control Look does not already have. A name the platform
+owns (`bluetooth`, `wifi`, `shutdown`) is refused and said so on stderr, so a
+manifest cannot put the machine's Bluetooth under a row that looks like a note.
+
+A user can also put your control on the home-screen strip, by naming it
+`<block>#<control>` in their own `~/.look/super-actions.toml`. Nothing is
+needed from you: declare it once and it works in both places. See
+[Tiles of your own](user-guide.md#tiles-of-your-own).
+
 ## The rules
 
 - **A `rows` frame nobody asked for is a push.** That is the whole liveness
@@ -130,6 +163,8 @@ user agreed to.
 | Rows per block | 2,000. The rest are not stored |
 | Preview text | 64 KiB, truncated on a character boundary |
 | Preview answer | about 400ms before the panel gives up on it |
+| Control state | about 400ms, since it is read on every selection |
+| Control press | about 1.5s, since it happens once and the user is waiting |
 | Plan answer | about 1.5s, since the user is waiting on a menu |
 | Run answer | about 5s, after which Look assumes it is still going |
 
