@@ -239,6 +239,17 @@ An unrecognised name draws nothing at all rather than a placeholder, so a tile w
 
 **`press` is what a click or the tile's key runs.** A tile with `press` and no `value` is a button: it shows its name and never runs anything until you press it. A tile with `value` and no `press` is a readout. `confirm` arms the tile on the first press and fires on the second, the way Restart and Shut Down do.
 
+**`control` puts a switch an app supplies on the strip.** An app integrated with Look can declare a control on one of its blocks (see [Integrating your app](integrating.md)); naming it here is how you decide where it sits. It takes the place of `value` and `press` - the app answers both - so a tile with all three warns and runs neither command:
+
+```toml
+[tiles.lamp]
+title    = "Lamp"
+control  = "myapp.records#lamp"
+mnemonic = "A"
+```
+
+The name is `<block>#<control>`, exactly as the app's manifest wrote it. The tile shows the state the app reports, lights up when it is on, and presses it with a click or its key. If the app is not running, the tile says so and keeps its last reading, like any other tile that fails.
+
 **Keep the command light.** `value` runs unattended - the point of a live tile - so it is capped: **two seconds**, then it is killed along with anything it started, and 16 KB of output. Within a tile's `refresh` window nothing runs at all, so most opens cost nothing. Read something and print it; a slow command will be cut off and the tile keeps its last good reading. Anything that needs to fetch, build, or wait belongs behind `press`, or in a script that caches to a file the tile just reads.
 
 A tile that fails says so and keeps what it last showed - one broken tile never blanks the strip. Its key follows the same rules as the built-ins: it fires with `Cmd` on macOS and `Alt` on Linux/Windows, a letter already used by a tile on the screen is not given away, `Cmd+Q` belongs to quitting Look, and either way the tile still works, it just has no key.

@@ -88,6 +88,10 @@ pub struct TileDef {
     /// The key that fires it, with Cmd / Alt. Requested, not granted: a
     /// built-in's letter is never given away.
     pub mnemonic: Option<char>,
+    /// A control a connector supplies, as `<block>#<control>`. Stands in for
+    /// both `value` and `press`: the connector answers where it stands, and a
+    /// press goes to the same place. Declared once on the block, placed here.
+    pub control: Option<String>,
 }
 
 /// A user tile, with its mnemonic granted or refused.
@@ -156,9 +160,9 @@ fn custom_tile(
         row_span: 1,
         on_label: None,
         off_label: None,
-        // A tile with no `press` is a readout, like Battery.
-        pressable: def.press.is_some(),
-        has_value: def.value.is_some(),
+        // A tile with no `press` is a readout, like Battery. A control is both.
+        pressable: def.press.is_some() || def.control.is_some(),
+        has_value: def.value.is_some() || def.control.is_some(),
         confirm: def.confirm.clone(),
         icon: def.icon.clone(),
     }
@@ -209,11 +213,21 @@ fn legend(table: &toml::Value) -> (HashMap<String, TileDef>, Vec<String>) {
 
         let value = str_key("value");
         let press = str_key("press");
+        let control = str_key("control");
+
+        // A control already says where it stands and what a press does, so
+        // naming a command too is two answers to one question.
+        if control.is_some() && (value.is_some() || press.is_some()) {
+            warnings.push(format!(
+                "super-actions.toml: [tiles.{name}] has a `control` as well as a `value` or \
+                 `press`; the control already answers both, so the commands are ignored"
+            ));
+        }
 
         // A tile that neither shows anything nor does anything is a blank card
         // the user cannot diagnose by looking at it. One or the other is enough:
         // `value` alone is a readout, `press` alone is a button.
-        if value.is_none() && press.is_none() {
+        if value.is_none() && press.is_none() && control.is_none() {
             warnings.push(format!(
                 "super-actions.toml: [tiles.{name}] has neither a `value` to show nor a `press` to \
                  run, so it is not shown"
@@ -225,7 +239,7 @@ fn legend(table: &toml::Value) -> (HashMap<String, TileDef>, Vec<String>) {
         let icon = str_key("icon");
         // A question nothing ever asks. Not fatal - the tile still shows its
         // value - but the user wrote it expecting to be asked something.
-        if confirm.is_some() && press.is_none() {
+        if confirm.is_some() && press.is_none() && control.is_none() {
             warnings.push(format!(
                 "super-actions.toml: [tiles.{name}] has a `confirm` but no `press`, so nothing asks it"
             ));
@@ -267,6 +281,7 @@ fn legend(table: &toml::Value) -> (HashMap<String, TileDef>, Vec<String>) {
             name.clone(),
             TileDef {
                 value,
+                control,
                 icon,
                 refresh,
                 press,
@@ -1121,6 +1136,49 @@ press = "pmset displaysleepnow"
             resolved.defs["lock"].value.is_none(),
             "and nothing is ever run for it until it is pressed"
         );
+    }
+
+    #[test]
+    fn a_control_tile_is_both_a_readout_and_a_button() {
+        // One declaration on the connector's block; the drawing only says
+        // where it goes, so there is no command here at all.
+        let resolved = resolve(
+            r#"
+layout = ["lamp"]
+
+[tiles.lamp]
+control = "myapp.notes#lamp"
+"#,
+        );
+        assert!(resolved.warnings.is_empty(), "{:?}", resolved.warnings);
+
+        let lamp = tile(&resolved, "lamp").expect("the tile renders");
+        assert!(lamp.pressable, "a press goes to the connector");
+        assert!(lamp.has_value, "and it reports where it stands");
+    }
+
+    #[test]
+    fn a_control_tile_that_also_names_a_command_says_the_command_is_ignored() {
+        let resolved = resolve(
+            r#"
+layout = ["lamp"]
+
+[tiles.lamp]
+control = "myapp.notes#lamp"
+press   = "true"
+"#,
+        );
+        assert!(
+            resolved
+                .warnings
+                .iter()
+                .any(|w| w.contains("already answers both")),
+            "{:?}",
+            resolved.warnings
+        );
+        // Still drawn: the control works, so dropping the tile would punish the
+        // user for a key they can simply delete.
+        assert!(tile(&resolved, "lamp").is_some());
     }
 
     #[test]

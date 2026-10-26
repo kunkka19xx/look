@@ -39,6 +39,16 @@ pub enum Ask {
         block: String,
         plan: u64,
     },
+    State {
+        block: String,
+        control: String,
+        req: u64,
+    },
+    Press {
+        block: String,
+        control: String,
+        req: u64,
+    },
     Bye,
 }
 
@@ -88,6 +98,16 @@ pub enum Say {
         ok: bool,
         #[serde(default)]
         summary: Option<String>,
+    },
+    /// Where a control stands, in answer to `state` or `press`. Echo the
+    /// number: an answer without one cannot be told from a late reply, and is
+    /// dropped. Unasked pushes are not read yet.
+    State {
+        block: String,
+        control: String,
+        #[serde(default)]
+        req: Option<u64>,
+        on: bool,
     },
     Error {
         message: String,

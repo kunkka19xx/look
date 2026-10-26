@@ -162,6 +162,10 @@ private func look_ai_markdown_segments_json(_ text: UnsafePointer<CChar>?) -> Un
 nonisolated
 private func look_plan_verb_json(_ blockID: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_control_json")
+nonisolated
+private func look_control_json(_ actionID: UnsafePointer<CChar>?, _ press: Bool) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_run_verb_json")
 nonisolated
 private func look_run_verb_json(_ candidateID: UnsafePointer<CChar>?, _ plan: UInt64) -> UnsafeMutablePointer<CChar>?
@@ -1077,6 +1081,15 @@ final class EngineBridge: @unchecked Sendable {
         return try? JSONDecoder().decode(VerbPlan.self, from: data)
     }
 
+    /// Reads a declared control, or presses it and reads where it ended up.
+    /// Waits on a connector, so call it off the main thread.
+    nonisolated func control(actionID: String, press: Bool) -> ControlState? {
+        guard let ptr = actionID.withCString({ look_control_json($0, press) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(ControlState.self, from: data)
+    }
+
     /// Runs a plan the user confirmed.
     nonisolated func runVerb(candidateID: String, plan: UInt64) -> VerbRun? {
         guard let ptr = candidateID.withCString({ look_run_verb_json($0, plan) }) else { return nil }
@@ -1323,7 +1336,7 @@ final class EngineBridge: @unchecked Sendable {
         guard let ptr else {
             return PerformBlockOutcome(
                 performed: 0, errors: ["the core did not answer"], producesRows: false,
-                opensPath: false)
+                pressesControl: false, opensPath: false)
         }
         defer { look_free_cstring(ptr) }
         // The core sends snake_case, so `produces_rows` only reaches
@@ -1335,7 +1348,7 @@ final class EngineBridge: @unchecked Sendable {
         else {
             return PerformBlockOutcome(
                 performed: 0, errors: ["the core's answer could not be read"],
-                producesRows: false, opensPath: false)
+                producesRows: false, pressesControl: false, opensPath: false)
         }
         return outcome
     }
@@ -1716,6 +1729,12 @@ nonisolated struct VerbPlan: Decodable {
     let error: String?
 }
 
+/// Where a declared control stands, or why it could not be read.
+nonisolated struct ControlState: Decodable {
+    let on: Bool
+    let error: String?
+}
+
 /// How running a confirmed plan went.
 nonisolated struct VerbRun: Decodable {
     let ok: Bool
@@ -1851,6 +1870,8 @@ nonisolated struct PerformBlockOutcome: Decodable {
     /// The target lists rows to pick from rather than steps to run. An explicit
     /// flag, because "nothing performed" is also what a failure looks like.
     let producesRows: Bool
+    /// The block supplies a control and nothing else, so Enter presses it.
+    let pressesControl: Bool
     /// Nothing declared and the row has a path, so it opens like any file. The
     /// core decides this, not the row's kind.
     let opensPath: Bool

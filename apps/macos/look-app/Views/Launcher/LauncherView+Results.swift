@@ -263,6 +263,15 @@ extension LauncherView {
                     openTargetAsync(row.path)
                     return
                 }
+                // The control is the row's purpose, so Enter is its press.
+                if outcome.pressesControl,
+                    let control = bridge.quickActions(
+                        forResultID: selected.id, kind: selected.kind.rawValue
+                    ).first
+                {
+                    runQuickAction(control, intent: control.control == .toggle ? .toggle : .run)
+                    return
+                }
                 guard let failure = outcome.errors.first else { return }
                 // Steps are detached, so this only fires when one could not be
                 // started at all. A step's own exit code is its business.

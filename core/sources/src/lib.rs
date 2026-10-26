@@ -21,8 +21,8 @@ pub use collect::{
 };
 pub use connect::{Ask, Content, PROTOCOL_VERSION, Row as ConnectorRow, Say, read as read_frame};
 pub use def::{
-    Applies, AppliesOnly, Block, Only, ParsedFile, Producer, RowFormat, RowKind, Verbs, inferred,
-    parse_duration, parse_file,
+    Applies, AppliesOnly, Block, Control, ControlKind, Only, ParsedFile, Producer, RowFormat,
+    RowKind, Verbs, inferred, parse_duration, parse_file,
 };
 pub use detail::{DetailBlock, DetailField, DetailItem, parse as parse_detail};
 pub use load::{

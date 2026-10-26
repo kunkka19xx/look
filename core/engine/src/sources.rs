@@ -171,8 +171,8 @@ pub fn inventory(home: &Path) -> Inventory {
             // simply shows no control, with the reason on stderr.
             if let Some(message) = block
                 .control
-                .as_deref()
-                .and_then(crate::qactions::declared_control_problem)
+                .as_ref()
+                .and_then(|control| crate::qactions::declared_control_problem(&control.id))
             {
                 problems.push(Reported {
                     file: file.clone(),
@@ -203,6 +203,8 @@ pub struct PerformOutcome {
     /// caller should descend into it. An explicit signal, because "nothing was
     /// performed" is also what a failure looks like.
     pub produces_rows: bool,
+    /// The block supplies a control and nothing else, so Enter presses it.
+    pub presses_control: bool,
     /// The block declares no `open` and the row names a path, so the row IS the
     /// thing: the shell opens it the way it opens any file. One rule for Enter,
     /// decided here rather than from the row's kind, which says which producer
@@ -487,6 +489,15 @@ pub fn perform_block(block_id: &str, row: &RowContext, as_target: bool) -> Perfo
                     ..Default::default()
                 };
             }
+            // A row whose block supplies a control and declares nothing else:
+            // the control IS the purpose, so Enter presses it rather than
+            // failing with a verb the block never had.
+            None if block.control.is_some() => {
+                return PerformOutcome {
+                    presses_control: true,
+                    ..Default::default()
+                };
+            }
             None => {
                 return failed(vec![format!(
                     "[{}] declares no `open` for its rows",
@@ -748,6 +759,44 @@ pub fn run_verb(candidate_id: &str, plan: u64) -> RunOutcome {
 fn owner_of(candidate_id: &str) -> Option<String> {
     CandidateIdKind::source_id_of(candidate_id).map(str::to_string)
 }
+
+/// Where a declared control stands, or why it could not be read.
+#[derive(Serialize, Default)]
+pub struct ControlState {
+    pub on: bool,
+    pub error: Option<String>,
+}
+
+/// Reads a control, or presses it and reads where it ended up. One call for
+/// both, because a connector answers a press with the state it reached, and a
+/// shell that assumed instead would show a toggle the connector refused.
+pub fn control(action_id: &str, press: bool) -> ControlState {
+    let Some((block, control)) = crate::qactions::control_parts(action_id) else {
+        return ControlState {
+            error: Some("not a declared control".into()),
+            ..Default::default()
+        };
+    };
+    // The action id carries the block, so a press does not depend on what is
+    // still selected by the time it lands.
+    let Some(req) = crate::connectors::ask_control(block, control, press) else {
+        return ControlState {
+            error: Some("connector is not running".into()),
+            ..Default::default()
+        };
+    };
+    match crate::connectors::state_of(req, CONNECTOR_CONTROL_WAIT) {
+        Some(on) => ControlState { on, error: None },
+        None => ControlState {
+            error: Some("connector did not answer".into()),
+            ..Default::default()
+        },
+    }
+}
+
+/// A control is read on every selection, so it is held to the preview's
+/// budget rather than the verb's.
+const CONNECTOR_CONTROL_WAIT: Duration = Duration::from_millis(400);
 
 /// Running is the user's own action, so it may take longer than a preview the
 /// panel merely wanted.

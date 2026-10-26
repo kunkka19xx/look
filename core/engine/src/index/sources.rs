@@ -53,8 +53,8 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
         // Silent at the row, so it is said once here instead.
         if let Some(problem) = block
             .control
-            .as_deref()
-            .and_then(crate::qactions::declared_control_problem)
+            .as_ref()
+            .and_then(|control| crate::qactions::declared_control_problem(&control.id))
         {
             eprintln!("look sources: [{}] {problem}", block.id);
         }

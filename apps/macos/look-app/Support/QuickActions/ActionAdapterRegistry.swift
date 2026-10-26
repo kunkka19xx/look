@@ -22,7 +22,9 @@ enum ActionAdapterRegistry {
         LaunchpadActionID.screensaver: ScreensaverControl(),
     ]
 
+    /// A declared control has no entry above: it is supplied by whoever
+    /// produced the row, so it falls through to the connector adapter.
     static func adapter(for actionID: String) -> (any SystemControl)? {
-        adapters[actionID]
+        adapters[actionID] ?? ConnectorControl.forAction(actionID)
     }
 }

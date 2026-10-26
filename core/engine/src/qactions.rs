@@ -12,8 +12,7 @@ pub fn descriptors_for(result_id: &str, kind: &str) -> Vec<ActionDescriptor> {
         return native;
     }
     declared_control(result_id)
-        .as_deref()
-        .and_then(look_qactions::descriptor)
+        .map(|control| descriptor_of(&control))
         .into_iter()
         .collect()
 }
@@ -21,36 +20,73 @@ pub fn descriptors_for(result_id: &str, kind: &str) -> Vec<ActionDescriptor> {
 /// A declaration may only offer a control it SUPPLIES, never a system one: a
 /// block that runs `true` could otherwise show the machine's Bluetooth, and a
 /// source copied off the internet could put Shut Down under a row that looks
-/// like a note. Nothing can supply one yet, so today this refuses every
-/// declared control and the seam waits for the one that can.
-pub fn declaration_may_offer(control: &str) -> bool {
+/// like a note.
+fn declaration_may_offer(control: &str) -> bool {
     look_qactions::descriptor(control).is_none()
 }
 
 /// Why a declared control shows nothing, or `None` when it does show.
-///
-/// Refused and unknown are different answers and both are silent at the row,
-/// so the index pass says which one it was. A name nobody supplies is the
-/// ordinary state today, and will stop being one when a declaration can carry
-/// its own descriptor.
 pub fn declared_control_problem(control: &str) -> Option<String> {
-    if !declaration_may_offer(control) {
-        return Some(format!(
+    (!declaration_may_offer(control)).then(|| {
+        format!(
             "cannot offer the system control '{control}'; a declaration may only offer a control it supplies"
-        ));
-    }
-    Some(format!(
-        "declares the control '{control}', which nothing supplies; a declaration cannot carry its own control yet"
-    ))
+        )
+    })
 }
 
-/// The control the producing block declared, if it may offer it. Reads the
-/// sources directory: a per-selection cost, never a per-keystroke one.
-fn declared_control(result_id: &str) -> Option<String> {
-    CandidateIdKind::source_id_of(result_id)
-        .and_then(crate::sources::find_block)
-        .and_then(|block| block.control)
-        .filter(|control| declaration_may_offer(control))
+/// The id a shell sends back when the control is pressed. The block is in it
+/// because the press has to reach whoever produced the row, and the control is
+/// in it because one block may carry more than one in time.
+pub fn control_action_id(block_id: &str, control_id: &str) -> String {
+    format!("{DECLARED}{block_id}{SEP}{control_id}")
+}
+
+/// A drawing names a control as `<block>#<control>`; the id a shell sends back
+/// is the same with the marker on the front.
+pub fn control_action_id_from_ref(reference: &str) -> Option<String> {
+    let (block, control) = reference.rsplit_once(SEP)?;
+    Some(control_action_id(block, control))
+}
+
+/// The block and control halves of one, or None when it is not one.
+pub fn control_parts(action_id: &str) -> Option<(&str, &str)> {
+    action_id.strip_prefix(DECLARED)?.rsplit_once(SEP)
+}
+
+/// Marks an id as supplied rather than native, so a shell can tell at a glance
+/// which adapter runs it.
+const DECLARED: &str = "declared:";
+/// Last, not first: a block id holds dots, and a control id may hold anything
+/// but this.
+const SEP: char = '#';
+
+fn descriptor_of(control: &look_sources::Control) -> ActionDescriptor {
+    ActionDescriptor {
+        action_id: control.id.clone(),
+        title: control.title.clone(),
+        control: match control.kind {
+            look_sources::ControlKind::Toggle => look_qactions::ControlKind::Toggle,
+            look_sources::ControlKind::Button => look_qactions::ControlKind::Button,
+        },
+        on_label: control.on.clone(),
+        off_label: control.off.clone(),
+        // Values come from the connector with the state, not from a native
+        // adapter resolving a key.
+        info: Vec::new(),
+    }
+}
+
+/// The control the producing block declared, with its id already namespaced by
+/// that block. Reads the sources directory: a per-selection cost, never a
+/// per-keystroke one.
+fn declared_control(result_id: &str) -> Option<look_sources::Control> {
+    let block_id = CandidateIdKind::source_id_of(result_id)?;
+    let mut control = crate::sources::find_block(block_id)?.control?;
+    if !declaration_may_offer(&control.id) {
+        return None;
+    }
+    control.id = control_action_id(block_id, &control.id);
+    Some(control)
 }
 
 #[cfg(test)]
@@ -85,11 +121,25 @@ mod tests {
     }
 
     #[test]
-    fn both_kinds_of_dead_control_say_which_they_are() {
+    fn only_a_borrowed_control_is_a_problem() {
         let refused = declared_control_problem(look_qactions::action_id::BLUETOOTH).unwrap();
         assert!(refused.contains("may only offer a control it supplies"));
+        // A name nobody else uses is exactly what a declaration should supply.
+        assert_eq!(declared_control_problem("lamp"), None);
+    }
 
-        let unknown = declared_control_problem("myapp.lamp").unwrap();
-        assert!(unknown.contains("nothing supplies"));
+    #[test]
+    fn an_action_id_carries_the_block_that_must_hear_the_press() {
+        let id = control_action_id("myapp.records", "sync");
+        assert_eq!(control_parts(&id), Some(("myapp.records", "sync")));
+        // What a drawing writes resolves to the same id.
+        assert_eq!(
+            control_action_id_from_ref("myapp.records#sync"),
+            Some(id.clone())
+        );
+        assert_eq!(control_action_id_from_ref("nohash"), None);
+        // A block id holds dots, so the split cannot be on the first one.
+        assert_eq!(control_parts("declared:a.b.c#x"), Some(("a.b.c", "x")));
+        assert_eq!(control_parts("bluetooth"), None);
     }
 }
