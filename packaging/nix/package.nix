@@ -89,7 +89,7 @@ rustPlatform.buildRustPackage {
     lockFile = ../../apps/linows/Cargo.lock;
     outputHashes = {
       # [patch.crates-io] in apps/linows/Cargo.toml, the pipeline cache for gpui_ce_wgpu.
-      "gpui_ce_wgpu-0.1.0" = "sha256-OXHAJT171ZLPDC0ZXL52eQsQJ8l2tFc3ey+5nc1SXYk=";
+      "gpui_ce_wgpu-0.3.0" = "sha256-aEVFQ2Ddl3s2kOIjmyLKUL9FAJwLi2pzRtQpb8nQp+E=";
     };
   };
 
