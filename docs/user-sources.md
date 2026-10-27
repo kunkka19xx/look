@@ -6,27 +6,43 @@ No plugin to install, no API to learn. One directory, one file format, four keys
 
 **In a hurry?** [lookbook](https://github.com/kunkka19xx/lookbook) is a collection of ready-made sources: git branches, SSH hosts, docker containers, project folders. Copy one in, reload, done. Come back here when you want to change it.
 
-> **Needs Look v0.6.12 or newer.** Earlier builds do not read `~/.look/sources/`, so nothing in this guide applies to them. 0.6.12 is not released yet: build from `main` ([DEVELOPMENT.md](../DEVELOPMENT.md)) to use sources today.
+> **Platform note.** Same directory, same format, same parser on macOS, Linux
+> and Windows. Two things differ in this guide: read `Cmd` as `Ctrl` off macOS,
+> and the example commands are macOS ones, so `open {path}` becomes
+> `xdg-open {path}` on Linux or `start "" {path}` on Windows. Placeholders are
+> escaped for whichever shell will actually read them.
 
-> **Platform note.** Sources work identically on macOS, Linux, and Windows: same directory, same format, same parser. Only two things differ. Shortcuts are written here with macOS modifiers, so read `Cmd` as `Ctrl` on Linux and Windows. And the example commands are macOS ones, so `open -a Slack` becomes whatever launches Slack on your system, and `open {path}` becomes `xdg-open {path}` on Linux or `start "" {path}` on Windows. Steps run through `cmd` on Windows and a POSIX shell everywhere else, and placeholders are escaped for whichever shell will actually read them.
+**Writing one**
 
 - [Start here](#start-here)
 - [How a file is organised](#how-a-file-is-organised)
-- [As many files as you like](#as-many-files-as-you-like)
-- [The six kinds of block](#the-six-kinds-of-block)
+- [The four kinds of block](#the-four-kinds-of-block)
 - [Key reference](#key-reference)
+
+**Making it do more**
+
 - [Placeholders](#placeholders)
+- [Typing into a block (`{arg}`)](#typing-into-a-block-arg)
 - [What Enter does](#what-enter-does-verbs)
 - [Chaining blocks with `then`](#chaining-blocks-with-then)
+- [Actions on any row (`applies`)](#actions-on-any-row-applies)
+- [Searching inside one block](#searching-inside-one-block)
 - [Asking before acting](#asking-before-acting-confirm)
 - [Row formats](#row-formats-lines-and-json)
+
+**Commands, and the shell that runs them**
+
 - [A script with no TOML at all](#a-script-with-no-toml-at-all)
 - [Your shell, and your shell config](#your-shell-and-your-shell-config)
+
+**Reference**
+
 - [Ranking and appearance](#ranking-and-appearance)
 - [When things refresh](#when-things-refresh)
 - [Limits](#limits)
 - [Troubleshooting](#troubleshooting)
 - [Recipes](#recipes)
+- [The whole format in one file](#the-whole-format-in-one-file)
 
 ## Start here
 
@@ -76,64 +92,36 @@ dir = "~/dev"
 file = "~/.look/hosts.txt"
 ```
 
-Three things to know:
+Each block needs exactly **one producer key**, which says what kind of block it
+is. That is the only real decision you have to make.
 
-- **The header is the block id.** It namespaces the block's rows, its usage history, and its cache. Keep it short and stable. Renaming it loses that block's ranking history. It cannot contain `:`.
-- **Nothing is file-wide.** There are no global settings at the top of a file. Every block stands alone, so you can move one between files freely.
-- **One file or many, it makes no difference.** Look reads every `.toml` in the directory and merges them. See [As many files as you like](#as-many-files-as-you-like).
+Four things to know:
 
-Each block needs exactly **one producer key**, which is what says what kind of block it is. That is the only decision you have to make.
+- **Keep it short and stable.** It namespaces the block's rows, its usage
+  history, and its cache, so renaming it loses that block's ranking. It cannot
+  contain `:`.
+- **It must be unique across the whole directory**, not just per file. Look
+  reads **every** `.toml` in `~/.look/sources/` and merges them, so two
+  `[projects]` blocks in two files are a collision: the alphabetically-first
+  file wins and the other is reported.
+- **Nothing is file-wide.** No settings at the top of a file, so moving a block
+  between files never changes what it does. Split them by topic or by machine
+  however you like, and turn one off with `enabled = false` or by moving its
+  file out of the directory.
+- **`then` reaches across files.** Targets resolve after every file is loaded,
+  so `[projects]` in `git.toml` may name `[deploy]` in `work.toml`.
 
-## As many files as you like
+Keeping your sources in a dotfiles repo works the way you would expect: point
+`LOOK_SOURCES_DIR` at the directory in the repo, or symlink `~/.look/sources` to
+it. Look reads through symlinks.
 
-There is no main file and no index to keep up to date. Look reads **every** `.toml` in `~/.look/sources/` and merges them into one set of blocks, so the file names are purely for your own benefit:
+> **An app may have installed some too.** `~/.look/connectors/` holds manifests
+> apps write, in this same format, namespaced by file name so they cannot
+> collide with yours: `[notes]` in `myapp.toml` is the block `myapp.notes`.
+> Uninstalling is one file. Everything in this guide applies to both
+> directories.
 
-```
-~/.look/sources/
-├── work.toml          # standups, the deploy bundle, the staging box
-├── git.toml           # projects, branches, worktrees
-├── ssh.toml           # hosts
-└── scratch.toml       # whatever you are trying out today
-```
-
-That buys you a few things:
-
-- **Split by topic, or by machine.** One file per concern is easier to read than one long one, and easier to delete when you stop using it.
-- **Keep a file per source of truth.** A file generated by a script (or synced from your dotfiles repo) can sit next to hand-written ones without either touching the other.
-- **Turn a whole topic off** by moving its file out of the directory, or by adding `enabled = false` to the blocks inside it.
-- **`then` reaches across files.** Targets are resolved after every file is loaded, so `[projects]` in `git.toml` may name `[deploy]` in `work.toml`. Only a genuine typo is reported.
-
-Two things are shared across all of them:
-
-- **Block ids must be unique across the whole directory**, not just per file. Two `[projects]` blocks in two files are a collision: only the first is loaded and the other is reported as a duplicate. The id namespaces the block's rows, its usage history, and its cache, so two blocks answering to one id would quietly share all three. Files are read in alphabetical order, so the winner is the one in the alphabetically-first file, and a `.toml` block always beats an executable of the same name.
-- **Nothing in a file can depend on another file being read first.** That is exactly why nothing is file-wide: every block stands alone, so where you put it never changes what it does.
-
-Keeping your sources in a dotfiles repo works the way you would expect: point `LOOK_SOURCES_DIR` at the directory in the repo, or symlink `~/.look/sources` to it. Look reads through symlinks.
-
-## Where blocks come from
-
-Two directories, same schema, different author:
-
-| Directory | Written by | Block ids |
-| --- | --- | --- |
-| `~/.look/sources/` | you | exactly what you call them |
-| `~/.look/connectors/` | an app, when it installs | namespaced by the manifest's file name |
-
-Everything in this document applies to both. The second one exists so an app can
-install its own rows without asking you to write TOML, and without being able to
-collide with what you wrote: `[notes]` in `myapp.toml` is the block
-`myapp.notes`, so it is a different block from your own `[notes]`. Inside the
-manifest, `then` still names its blocks plainly.
-
-A dot cannot appear in a bare id anyway, since `[myapp.notes]` is a nested table
-in TOML rather than a name, so colliding with a manifest takes deliberate
-quoting. If one does collide, yours is the one that loads and the manifest's is
-reported.
-
-Uninstalling an app is then one file, and `LOOK_CONNECTORS_DIR` repoints the
-directory the way `LOOK_SOURCES_DIR` repoints yours.
-
-## The six kinds of block
+## The four kinds of block
 
 | Producer | What it makes                         | Use it for                                             |
 | -------- | ------------------------------------- | ------------------------------------------------------ |
@@ -141,10 +129,12 @@ directory the way `LOOK_SOURCES_DIR` repoints yours.
 | `dir`    | one row per child of a directory      | projects, notes, screenshots, anything already on disk |
 | `file`   | one row per line of a text file       | a list you maintain by hand: SSH hosts, bookmarks      |
 | `run`    | one row per line a command prints     | anything that changes: branches, containers, tickets   |
-| `connect` | rows from a program that keeps running | an app showing its own records, updated without a reload |
-| `ask`     | an action a connector plans and runs   | an app's own verb on its own rows, with the question it computed |
 
 Declaring two of them in one block is an error. Pick one and the block is unambiguous.
+
+> Two more exist for apps shipping their own rows, `connect` and `ask`, and you
+> are unlikely to write either by hand. They are in
+> [Integrating your app](integrating.md).
 
 ### `do` - one row that does things
 
@@ -264,12 +254,8 @@ Keys Look does not recognise are reported and ignored, never fatal: a file writt
 
 ### `connect` - rows from a program that stays running
 
-> Shipping an app that installs its own connector? The full contract, limits
-> and a worked example are in [Integrating your app](integrating.md).
-
 Where `run` asks a command for rows and waits, `connect` starts a program once
-and leaves it running. It sends rows whenever it likes, and they appear without
-a reload.
+and leaves it running, and it sends rows whenever it likes:
 
 ```toml
 [records]
@@ -278,69 +264,20 @@ icon    = "🗂️"
 connect = "~/.local/bin/myapp-connector"
 ```
 
-The program speaks one JSON object per line on stdout. Look opens with a hello
-and then listens:
+This is the one producer you probably will not write by hand. It exists so an
+app can show its own records, updated without a reload, and the program has to
+speak a line-based JSON protocol. What matters from this side:
 
-```json
-{"op":"hello","v":1,"look":"0.7.5"}
-```
-```json
-{"op":"ready","capabilities":["rows","preview"]}
-{"op":"rows","block":"myapp.records","rows":[{"id":"r1","title":"Invoice 204"}]}
-{"op":"error","message":"could not reach the server"}
-```
+- its rows appear and change **without a reload**, which is the whole point
+- nothing blocks on it. Slow, silent or dead, the last rows it sent are still
+  there, and it is restarted the next time the launcher opens
+- it can fill the panel for its own rows, and offer a verb or a switch on them
+- it may only touch blocks in **its own manifest**, so one app cannot rewrite
+  another's rows
 
-- a `rows` frame nobody asked for is a **push**: that is how rows change without
-  a reload, and it costs nothing extra
-- an `op` Look does not know is ignored, never fatal, so a program written for a
-  later version still works with this one
-- rows use the same fields a JSON row from a `run` block uses: `id`, and
-  optionally `title`, `subtitle`, `path`, `icon`
-- a program may only send rows for blocks in **its own manifest**. One app
-  cannot rewrite another's rows
-- nothing blocks on it. Slow, silent or dead, it simply has no new rows and the
-  last ones it sent are still there
-- if it exits, the last rows stay and it is started again the next time the
-  launcher opens
-- a frame over 1 MB is a protocol breach rather than a big message: that program
-  is dropped, and restarted the same way
-
-#### Filling the panel
-
-Select one of its rows and Look asks the program what to show:
-
-```json
-{"op":"preview","block":"myapp.records","id":"r1","req":7}
-```
-
-Answer with the text, what it is, and the `req` you were given:
-
-```json
-{"op":"preview","block":"myapp.records","id":"r1","req":7,"content_type":"markdown","text":"# Invoice 204\n\nDue **3 Nov**."}
-```
-
-- `content_type` is `text` or `markdown`. Leave it out and it is `text`, which
-  is what a program written before this field existed meant
-- a type Look does not know reads as `text`: showing the source beats blanking
-  the panel
-- the panel waits about 400ms. A later answer is not shown, so answer from
-  memory rather than going to the network
-- **echo `req` back.** It is how Look tells your answer from the one before
-  it, so a reply that arrives after its 400ms is not mistaken for the answer
-  to the next look at the same row. An answer without it is dropped, and Look
-  says so on stderr
-- a program may only answer for blocks in its own manifest, the same rule rows
-  are held to
-- declaring a `preview` command in the block overrides this: the command runs
-  instead and nothing is asked over the connection
-
-**The cost is mostly yours, not Look's.** Keeping one running costs Look about
-130 KB and a thread. The program itself is the real figure: a small compiled one
-is a fraction of a megabyte, a Python one is 10 to 15 MB before it does
-anything. Push when your data changes rather than on a timer, because every push
-makes Look re-read the declared sources, which it rate-limits but cannot make
-free. A program that sends the same rows again costs nothing at all, so there is
-no need to track what you last sent.
+The protocol, its limits, and a worked example you can run are in
+[Integrating your app](integrating.md). Declaring a `preview` command on the
+block overrides whatever the program would have shown.
 
 ## Searching inside one block
 
@@ -393,21 +330,54 @@ Every command a block declares expands against the selected row: `do` steps, the
 | `{parent.id}` `{parent.title}` `{parent.path}` `{parent.dir}` | The same, for the row above. Repeat `parent.` to go further out: `{parent.parent.path}` |
 | `{path:url}`, and `:url` on any of the above                  | The same value, percent-encoded for use inside a URL                                    |
 
-Four rules worth internalising:
+Three rules worth internalising:
 
-- **Never quote a placeholder yourself.** Every value is shell-escaped on substitution. `open {path}` handles a folder called `My Project` correctly, and a row titled `; rm -rf ~` is inert. Writing `open "{path}"` gives you a doubly quoted path that will not resolve.
-- **A block whose producer mentions a placeholder is not a top-level row** (except `{arg}`, which is the line itself: see below)**.** `do = ["make -C {path} deploy"]` only means something against a selected project, so Look keeps it out of the main index and reaches it only through another block's [`then`](#chaining-blocks-with-then). A block with no placeholder (`do = ["open -a Slack"]`) is a row you can type for directly. The producer is the `do` / `dir` / `file` / `run` line **and its `cwd`**, since `run = "npm test"` with `cwd = "{path}"` is the same block as `run = "npm --prefix {path} test"`. The verbs and `preview` do not count: those already act on a row this block produced.
-- **A producer counts one level differently from a command.** When you drill into a block, the row you came from _is_ the row while its rows are being produced, so its `dir` / `file` / `run` line says `{path}`. The commands that then act on a row it produced (`open`, `preview`, the verbs, a `then` target's steps) act on the produced row, so _there_ the row you came from is `{parent.path}`. The [`then` example below](#chaining-blocks-with-then) shows both in one block.
+**1. Never quote a placeholder yourself.** Every value is shell-escaped on
+substitution, so `open {path}` handles a folder called `My Project` and a row
+titled `; rm -rf ~` is inert. Writing `open "{path}"` gives you a doubly quoted
+path that resolves to nothing.
 
-- **A value that lands inside a URL needs `:url`.** Quoting protects the shell and does nothing for the URL, so a note called `Notes & ideas (draft).md` ends the query string early and the app opens the wrong thing, or nothing. `:url` percent-encodes the value first:
+**2. A placeholder in the producer makes the block a `then` target, not a row
+you can type for.** `do = ["make -C {path} deploy"]` only means something
+against a selected project, so Look keeps it out of the main index and reaches
+it through another block's [`then`](#chaining-blocks-with-then). `do = ["open -a
+Slack"]` names nothing, so it is a row you can type for directly. `{arg}` is the
+exception, because it is the line you typed rather than a row: see
+[Typing into a block](#typing-into-a-block-arg).
 
-  ```toml
-  do = ["open \"obsidian://open?path={path:url}\""]
-  ```
+Which lines count:
 
-  Both forms of one placeholder can appear in the same command, since they mean different things: `{path}` for the filesystem and the shell, `{path:url}` for a URL. The encoding covers everything outside the unreserved set, `/` included, so whatever decodes it gets the original string back.
+| Line | Counts as the producer? |
+| ---- | ----------------------- |
+| `do` `dir` `file` `run` | yes |
+| `cwd` | yes. `run = "npm test"` with `cwd = "{path}"` is the same block as `run = "npm --prefix {path} test"` |
+| `open` `edit` `terminal` `reveal` `preview` `confirm` | no. These already act on a row the block produced |
 
-  The `:url` form is the one thing Look does **not** quote, and it does not need to: what comes out is only `A-Za-z0-9-._~%`, which no shell reads as punctuation. That is what lets you write the URL inside quotes, which you have to, since `?` and `&` are shell punctuation.
+And one level trips everyone up once. While a block is **producing** rows, the
+row you drilled in from _is_ the row, so its `run` line says `{path}`. The
+commands that then act on a row it produced are one level further out, so
+_there_ the same project is `{parent.path}`:
+
+```toml
+run  = "git -C {path} branch --format='%(refname:short)'"   # the project
+open = "git -C {parent.path} switch {id}"                   # the branch
+```
+
+**3. A value that lands inside a URL needs `:url`.** Quoting protects the shell
+and does nothing for the URL, so a note called `Notes & ideas (draft).md` ends
+the query string early and the app opens the wrong thing, or nothing. `:url`
+percent-encodes the value first:
+
+```toml
+do = ["open \"obsidian://open?path={path:url}\""]
+```
+
+Both forms can appear in one command, since they mean different things:
+`{path}` for the filesystem, `{path:url}` for a URL. `:url` is the one thing
+Look does **not** shell-quote, and does not need to: what comes out is only
+`A-Za-z0-9-._~%`, which no shell reads as punctuation. That is what lets you
+wrap the URL in quotes, which you have to, since `?` and `&` are shell
+punctuation.
 
 Steps also see the row in their environment, for [a script that would rather read a variable](#point-a-block-at-your-own-script) than take an argument: `LOOK_ID`, `LOOK_TITLE`, `LOOK_PATH`.
 
@@ -501,10 +471,10 @@ run  = "git -C {path} branch --format='%(refname:short)'"
 open = "git -C {parent.path} switch {id}"
 ```
 
-Look at `[branches]` twice, because this is the one thing that trips people up:
-
-- `run` is the **producer**. It is asked for rows while the project is still the selected row, so `{path}` is the project.
-- `open` acts on a **branch row** that `run` produced. That row's parent is the project, so the project is `{parent.path}` and the branch is `{id}`.
+`[branches]` is [the level rule](#placeholders) in one block: `run` is asked for
+rows while the project is still the selected row, so `{path}` is the project,
+and `open` acts on a branch that `run` produced, so there the project is
+`{parent.path}`.
 
 Levels stack up to five deep. If you need six, you have stopped using a launcher.
 

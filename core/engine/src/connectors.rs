@@ -389,6 +389,7 @@ fn end(alive: &mut Running) {
 fn spawn(id: &str, found: &Declared, on_rows: OnRows) -> Result<(Child, Option<Pipe>), String> {
     let mut child = look_sources::spawn_connector(&found.command, None)?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
+    let stderr = child.stderr.take();
 
     // Kept, not dropped: closing it is EOF to a connector that reads stdin.
     let mut stdin = child.stdin.take();
@@ -407,9 +408,46 @@ fn spawn(id: &str, found: &Declared, on_rows: OnRows) -> Result<(Child, Option<P
         block: id.to_string(),
         manifest: found.manifest.clone(),
     };
+
+    // Its own thread: a connector that logs without reading its stdin would
+    // otherwise fill this pipe and wedge waiting for the other to drain.
+    if let Some(stderr) = stderr {
+        let block = id.to_string();
+        std::thread::spawn(move || {
+            log_lines(stderr, |line| {
+                eprintln!("look connectors: [{block}] {line}")
+            });
+        });
+    }
+
     std::thread::spawn(move || read_frames(&owner, stdout, &on_rows));
     Ok((child, stdin.map(|stdin| Arc::new(Mutex::new(stdin)))))
 }
+
+/// A connector's stderr, line by line. Takes any `Read` so the splitting can
+/// be tested without a child process.
+fn log_lines(source: impl Read, mut say: impl FnMut(&str)) {
+    let mut reader = BufReader::new(source);
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        // A long line is cut and continues on the next one. Giving up on the
+        // pipe, the way an over-long frame does, would lose the rest of the log.
+        match reader
+            .by_ref()
+            .take(MAX_LOG_LINE as u64)
+            .read_until(b'\n', &mut line)
+        {
+            Ok(0) | Err(_) => return,
+            Ok(_) => match String::from_utf8_lossy(&line).trim_end() {
+                "" => {}
+                text => say(text),
+            },
+        }
+    }
+}
+
+const MAX_LOG_LINE: usize = 4096;
 
 /// Which block a connector is, and which namespace it may speak for.
 struct Owner {
@@ -578,6 +616,32 @@ fn store(block: &str, rows: &[SourceRow]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn logged(bytes: &[u8]) -> Vec<String> {
+        let mut lines = Vec::new();
+        log_lines(bytes, |line| lines.push(line.to_string()));
+        lines
+    }
+
+    #[test]
+    fn a_connectors_log_is_split_into_lines_worth_printing() {
+        // Blank lines carry nothing, CRLF and padding are formatting, and a
+        // last line with no newline is what a dying connector leaves behind.
+        assert_eq!(
+            logged(b"up\n\n\nwindows\r\npad   \ndied"),
+            ["up", "windows", "pad", "died"]
+        );
+        assert!(logged(b"").is_empty());
+        // Bytes, not text: a panic here would kill the thread.
+        assert_eq!(logged(b"caf\xff\n"), ["caf\u{fffd}"]);
+
+        // A long line is cut and the log carries on past it.
+        let mut long = vec![b'x'; MAX_LOG_LINE + 10];
+        long.extend_from_slice(b"\nstill here\n");
+        let lines = logged(&long);
+        assert_eq!(lines[0].len(), MAX_LOG_LINE);
+        assert_eq!(lines.last().unwrap(), "still here");
+    }
 
     /// The preview slot is global, and tests run in parallel. Without this a
     /// store from one test answers another test's read.

@@ -27,8 +27,9 @@ icon    = "🗂️"
 connect = "/Applications/MyApp.app/Contents/Helpers/look-connector"
 ```
 
-Uninstall by deleting the file. Everything else a block can declare is in
-[Your own sources](user-sources.md#the-keys); `connect` is the only key
+Uninstall by deleting the file. `LOOK_CONNECTORS_DIR` repoints the directory, if
+your tests want one of their own. Everything else a block can declare is in
+[Your own sources](user-sources.md#key-reference); `connect` is the only key
 specific to this document.
 
 A manifest may declare several blocks, and one program may serve all of them.
@@ -36,8 +37,14 @@ A manifest may declare several blocks, and one program may serve all of them.
 ## Speaking
 
 One JSON object per line, on stdin and stdout. Flush after every line: a
-buffered frame is a frame that never arrives. Write your own logging to stderr,
-which Look passes through to its own.
+buffered frame is a frame that never arrives.
+
+Write your own logging to stderr. Look reads it line by line and repeats each
+line in its own log, prefixed with your block, so `starting up` becomes
+`look connectors: [myapp.records] starting up`. Nothing parses it and nothing
+waits on it, so it is yours to use. A line longer than 4 KB continues on the
+next one. Use an `error` frame instead when the user should hear about it:
+stderr is for you, and an `error` is something gone wrong.
 
 Look opens with a hello, and you answer when you have something to say:
 

@@ -478,7 +478,8 @@ pub fn spawn_connector(command: &str, cwd: Option<&str>) -> Result<Child, String
     shell
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        // Piped, not inherited: the engine prefixes each line with the block.
+        .stderr(Stdio::piped())
         .current_dir(
             cwd.filter(|dir| !dir.is_empty())
                 .map(str::to_string)
