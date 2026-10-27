@@ -33,11 +33,11 @@ assets = [
 
 [dependencies]
 linows-backend = { path = "../backend" }
-gpui = { package = "gpui-ce", version = "0.2.2" }
-gpui_platform = { package = "gpui_ce_platform", version = "0.1.0" }
+gpui = { package = "gpui-ce", version = "0.3.0" }
+gpui_platform = { package = "gpui_ce_platform", version = "0.3.0" }
 async-channel = "2"
 anyhow = "1"
-# gpui-ce 0.2.2 exposes palette types directly, so IntoColor is needed for Hsla.
+# gpui-ce exposes palette types directly, so IntoColor is needed for Hsla.
 palette = "0.7"
 chrono = "0.4"
 # Task ids, so a row stays unique across machines once task sync lands.
@@ -59,7 +59,7 @@ windows = { version = "0.62", features = ["Win32_Graphics_Gdi", "Win32_System_Co
 global-hotkey = "0.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-gpui_platform = { package = "gpui_ce_platform", version = "0.1.0", features = ["wayland"] }
+gpui_platform = { package = "gpui_ce_platform", version = "0.3.0", features = ["wayland"] }
 # The same build gpui's Linux platform already links; only the folder dialog
 # calls it here, with no parent window (see pick.rs).
 ashpd = { version = "0.13", default-features = false, features = ["async-io", "file_chooser"] }

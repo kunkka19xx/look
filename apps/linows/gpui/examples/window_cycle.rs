@@ -12,7 +12,7 @@ mod probe {
     use std::time::Duration;
 
     use gpui::{
-        App, Bounds, Context, Render, Window, WindowBackgroundAppearance, WindowBounds, WindowKind,
+        App, Bounds, Context, LinuxWindowBackground, Render, Window, WindowBounds, WindowKind,
         WindowOptions, div, prelude::*, px, rgb, size,
     };
     use gpui_platform::application;
@@ -82,10 +82,11 @@ mod probe {
                                 titlebar: None,
                                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                                 app_id: Some("window_cycle".into()),
-                                window_background: if std::env::var_os("WC_OPAQUE").is_some() {
-                                    WindowBackgroundAppearance::Opaque
+                                linux_window_background: if std::env::var_os("WC_OPAQUE").is_some()
+                                {
+                                    LinuxWindowBackground::Opaque
                                 } else {
-                                    WindowBackgroundAppearance::Transparent
+                                    LinuxWindowBackground::Transparent
                                 },
                                 kind: WindowKind::Normal,
                                 focus: true,

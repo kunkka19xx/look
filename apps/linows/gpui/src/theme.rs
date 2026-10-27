@@ -809,7 +809,7 @@ impl Theme {
             return Vec::new();
         }
         vec![BoxShadow {
-            color: hsla(0.0, 0.0, 0.0, SHADOW_ALPHA),
+            color: hsla(0.0, 0.0, 0.0, SHADOW_ALPHA).into(),
             offset: point(px(0.0), px(SHADOW_OFFSET_Y)),
             blur_radius: px(SHADOW_BLUR),
             spread_radius: px(0.0),

@@ -8,8 +8,8 @@ use std::rc::Rc;
 use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Bounds, CursorStyle, Div, ElementId, FontWeight, HitboxBehavior, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, SharedString, Stateful, Window, canvas,
-    deferred, div, fill, point, px, relative, size,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, SharedString, Stateful,
+    Window, canvas, deferred, div, point, px, relative, size,
 };
 
 use crate::theme::{self, Theme};
@@ -374,25 +374,21 @@ pub fn slider(
                 point(left, mid_y - px(TRACK_H / 2.0)),
                 size(bounds.size.width, px(TRACK_H)),
             );
-            let mut quad = fill(track_bounds, track);
+            let mut quad = PaintQuad::new(track_bounds).background(track);
             quad.corner_radii = gpui::Corners::all(px(TRACK_H / 2.0));
             window.paint_quad(quad);
-            let mut quad = fill(
-                Bounds::new(
-                    track_bounds.origin,
-                    size(thumb_x - left + px(THUMB / 2.0), px(TRACK_H)),
-                ),
-                filled,
-            );
+            let mut quad = PaintQuad::new(Bounds::new(
+                track_bounds.origin,
+                size(thumb_x - left + px(THUMB / 2.0), px(TRACK_H)),
+            ))
+            .background(filled);
             quad.corner_radii = gpui::Corners::all(px(TRACK_H / 2.0));
             window.paint_quad(quad);
-            let mut quad = fill(
-                Bounds::new(
-                    point(thumb_x, mid_y - px(THUMB / 2.0)),
-                    size(px(THUMB), px(THUMB)),
-                ),
-                thumb,
-            );
+            let mut quad = PaintQuad::new(Bounds::new(
+                point(thumb_x, mid_y - px(THUMB / 2.0)),
+                size(px(THUMB), px(THUMB)),
+            ))
+            .background(thumb);
             quad.corner_radii = gpui::Corners::all(px(THUMB / 2.0));
             window.paint_quad(quad);
             window.set_cursor_style(CursorStyle::PointingHand, &hitbox);

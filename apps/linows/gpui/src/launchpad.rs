@@ -312,7 +312,7 @@ impl Launchpad {
             token: 0,
             shown: true,
             pressed: None,
-            bar: cx.new(|_| TransitionState::new(0.0)),
+            bar: cx.new(|_| motion::rest(0.0)),
             bar_fill: 0.0,
             slot_since: None,
             slot_opacity: 1.0,

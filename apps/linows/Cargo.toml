@@ -58,15 +58,18 @@ opt-level = 2
 opt-level = 2
 [profile.dev.package.taffy]
 opt-level = 2
-[profile.dev.package.cosmic-text]
+[profile.dev.package.parley]
+opt-level = 2
+[profile.dev.package.harfrust]
+opt-level = 2
+[profile.dev.package.swash]
 opt-level = 2
 
-# gpui_ce_wgpu 0.1.0 with pipelines cached per device instead of rebuilt per
+# gpui_ce_wgpu 0.3.0 with pipelines cached per device instead of rebuilt per
 # window: avoids a per-window shader recompile that Mesa virgl never frees
 # (~4 MB a summon in QEMU/KVM guests) and makes every window open cheaper.
-# The branch is crates.io 0.1.0 (gpui-ce 99109e3) plus that one commit, and is
-# the proposed upstream change (branch wgpu-pipeline-cache) plus a manifest
-# commit that pins its sibling crates to crates.io so the patch links against
-# the same gpui-ce. Drop once a release ships it.
+# The branch is the published 0.3.0 crate plus that one commit, the proposed
+# upstream change (branch wgpu-pipeline-cache) rebased, so the patch links
+# against the same gpui-ce. Drop once a release ships it.
 [patch.crates-io]
-gpui_ce_wgpu = { git = "https://github.com/kunkka19xx/gpui-ce", branch = "wgpu-pipeline-cache-crates-io" }
+gpui_ce_wgpu = { git = "https://github.com/kunkka19xx/gpui-ce", branch = "wgpu-pipeline-cache-crates-io-0.3.0" }

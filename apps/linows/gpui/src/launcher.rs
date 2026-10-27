@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Div, Entity,
-    FontWeight, KeyDownEvent, Pixels, Render, ScrollStrategy, SharedString, Stateful, Task,
-    Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred, div, fill, img,
+    FontWeight, KeyDownEvent, PaintQuad, Pixels, Render, ScrollStrategy, SharedString, Stateful,
+    Task, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred, div, img,
     point, prelude::*, px, relative, size, svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
@@ -353,7 +353,7 @@ impl Launcher {
             menu_token: 0,
             backdrop_loading: None,
             backdrop_failed: None,
-            pill: cx.new(|_| TransitionState::new(0.0)),
+            pill: cx.new(|_| motion::rest(0.0)),
             follow_pill: Rc::new(Cell::new(false)),
             rows_epoch: 1,
             pill_rows: 0,
@@ -3262,7 +3262,7 @@ fn blur_commit(frosted: bool) -> impl IntoElement {
         move |_, _, _| commit_blur_region(frosted),
         |_, _, _, _| {},
     ))
-    .with_priority(usize::MAX)
+    .priority(usize::MAX)
 }
 
 /// The frame's cards to the compositor; none when the frost is off, so the
@@ -3364,13 +3364,11 @@ impl Launcher {
                 }
                 let offset = handle.offset().y;
                 let y = (f32::from(bounds.origin.y + offset) + top).round();
-                let mut quad = fill(
-                    Bounds::new(
-                        point(bounds.origin.x, px(y)),
-                        size(bounds.size.width, px(theme::ROW_HEIGHT)),
-                    ),
-                    colour,
-                );
+                let mut quad = PaintQuad::new(Bounds::new(
+                    point(bounds.origin.x, px(y)),
+                    size(bounds.size.width, px(theme::ROW_HEIGHT)),
+                ))
+                .background(colour);
                 quad.corner_radii = gpui::Corners::all(px(radius));
                 window.paint_quad(quad);
             },

@@ -7,10 +7,10 @@ use std::ops::Range;
 use std::time::Instant;
 
 use gpui::{
-    App, AppContext, Bounds, Context, Element, ElementInputHandler, Entity, EntityInputHandler,
-    EventEmitter, FocusHandle, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
-    PaintQuad, Pixels, ShapedLine, SharedString, Task, TextAlign, TextRun, Transition,
-    TransitionState, UTF16Selection, UnderlineStyle, Window, fill, point, px, size,
+    App, AppContext, Bounds, CaretPosition, Context, Element, ElementInputHandler, Entity,
+    EntityInputHandler, EventEmitter, FocusHandle, GlobalElementId, InspectorElementId,
+    IntoElement, LayoutId, PaintQuad, Pixels, ShapedLine, SharedString, Task, TextAlign, TextRun,
+    Transition, TransitionState, UTF16Selection, UnderlineStyle, Window, point, px, size,
 };
 
 use crate::motion;
@@ -58,7 +58,7 @@ impl SearchInput {
             anchor: None,
             marked: None,
             caret: Bounds::default(),
-            caret_x: cx.new(|_| TransitionState::new(0.0)),
+            caret_x: cx.new(|_| motion::rest(0.0)),
             caret_on: true,
             blink: None,
             painted: Cell::new(false),
@@ -423,6 +423,13 @@ impl EntityInputHandler for SearchInput {
     }
 }
 
+/// The x of the caret before byte `index`, the line's width past its end.
+fn x_at(line: &ShapedLine, index: usize, line_height: Pixels) -> Pixels {
+    line.platform_layout
+        .caret_bounds(CaretPosition::attached_to_next_cluster(index), line_height)
+        .map_or(line.width(), |caret| caret.origin.x)
+}
+
 /// The start of the word before `offset`: back over spaces, then over the word.
 fn prev_word(s: &str, offset: usize) -> usize {
     let before = &s[..offset];
@@ -583,7 +590,7 @@ impl Element for SearchField {
             let runs = [run(placeholder.len(), muted, None)];
             window
                 .text_system()
-                .shape_line(placeholder, font_size, &runs, None)
+                .shape_line(placeholder, font_size, &runs)
         } else {
             let color = style.color;
             let runs: Vec<TextRun> = match &marked {
@@ -606,19 +613,17 @@ impl Element for SearchField {
             };
             window
                 .text_system()
-                .shape_line(text.clone().into(), font_size, &runs, None)
+                .shape_line(text.clone().into(), font_size, &runs)
         };
 
         let selection = selection.filter(|_| !text.is_empty()).map(|range| {
-            let left = line.x_for_index(range.start);
-            let right = line.x_for_index(range.end);
-            fill(
-                Bounds::new(
-                    point(bounds.left() + left, bounds.top()),
-                    size(right - left, line_height),
-                ),
-                theme::hsla_of(th.selection_fill),
-            )
+            let left = x_at(&line, range.start, line_height);
+            let right = x_at(&line, range.end, line_height);
+            PaintQuad::new(Bounds::new(
+                point(bounds.left() + left, bounds.top()),
+                size(right - left, line_height),
+            ))
+            .background(theme::hsla_of(th.selection_fill))
         });
 
         let focused = input.focus_handle.is_focused(window);
@@ -634,7 +639,7 @@ impl Element for SearchField {
             let goal = if text.is_empty() {
                 0.0
             } else {
-                f32::from(line.x_for_index(cursor))
+                f32::from(x_at(&line, cursor, line_height))
             };
             // The caret glides to its column on a `Transition`, which asks
             // for frames only while it moves; the blink runs on the clock
@@ -652,7 +657,7 @@ impl Element for SearchField {
                 size(px(theme::CARET_WIDTH), caret_h),
             );
             self.input.update(cx, |input, _| input.caret = caret_bounds);
-            on.then(|| fill(caret_bounds, theme::hsla_of(th.accent)))
+            on.then(|| PaintQuad::new(caret_bounds).background(theme::hsla_of(th.accent)))
         } else {
             None
         };

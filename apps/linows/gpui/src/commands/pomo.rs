@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     Animation, AnimationExt, AnyElement, Bounds, Context, Corners, Div, Entity, FontWeight,
-    PathBuilder, Pixels, Rgba, ScrollHandle, SharedString, Stateful, Task, Transformation, Window,
-    canvas, div, fill, point, prelude::*, px, radians, svg,
+    PaintQuad, PathBuilder, Pixels, Rgba, ScrollHandle, SharedString, Stateful, Task,
+    Transformation, Window, canvas, div, point, prelude::*, px, radians, svg,
 };
 
 use super::draw::{Type, paint_dot, paint_ring, paint_text};
@@ -1035,23 +1035,19 @@ impl Face {
         let bar_x = left + (self.size - bar_w) / 2.0;
         let bar_y = top + self.size * MINIMAL_BAR_Y;
         let radii = Corners::all(px(MINIMAL_BAR_H / 2.0));
-        let mut track_quad = fill(
-            Bounds::new(
-                point(px(bar_x), px(bar_y)),
-                gpui::size(px(bar_w), px(MINIMAL_BAR_H)),
-            ),
-            track(RING_TRACK_ALPHA),
-        );
+        let mut track_quad = PaintQuad::new(Bounds::new(
+            point(px(bar_x), px(bar_y)),
+            gpui::size(px(bar_w), px(MINIMAL_BAR_H)),
+        ))
+        .background(track(RING_TRACK_ALPHA));
         track_quad.corner_radii = radii;
         window.paint_quad(track_quad);
         if self.progress > 0.0 {
-            let mut done = fill(
-                Bounds::new(
-                    point(px(bar_x), px(bar_y)),
-                    gpui::size(px(bar_w * self.progress), px(MINIMAL_BAR_H)),
-                ),
-                self.colour,
-            );
+            let mut done = PaintQuad::new(Bounds::new(
+                point(px(bar_x), px(bar_y)),
+                gpui::size(px(bar_w * self.progress), px(MINIMAL_BAR_H)),
+            ))
+            .background(self.colour);
             done.corner_radii = radii;
             window.paint_quad(done);
         }
