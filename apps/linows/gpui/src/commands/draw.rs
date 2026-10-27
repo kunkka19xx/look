@@ -124,7 +124,6 @@ pub fn paint_text(
         SharedString::from(text.to_string()),
         px(style.size),
         &[run],
-        None,
     );
     let line_height = px(style.size * crate::theme::LABEL_LINE_HEIGHT);
     let origin = point(

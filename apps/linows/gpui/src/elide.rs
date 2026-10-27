@@ -147,6 +147,5 @@ fn shape(text: &SharedString, window: &Window) -> ShapedLine {
         text.clone(),
         style.font_size.to_pixels(window.rem_size()),
         &[run],
-        None,
     )
 }

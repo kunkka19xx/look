@@ -309,18 +309,17 @@ fn open(shell: &Shell, cx: &mut App) {
         return;
     }
     let result = cx.open_window(
-        WindowOptions {
+        host::with_background(WindowOptions {
             titlebar: None,
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             app_id: Some("lookapp".into()),
-            window_background: host::BACKGROUND,
             kind: host::kind(),
             focus: true,
             show: true,
             is_movable: false,
             is_resizable: false,
             ..Default::default()
-        },
+        }),
         move |window, cx| {
             host::decorate(window, bounds);
             cx.new(|cx| Launcher::new(for_launcher, window, cx))

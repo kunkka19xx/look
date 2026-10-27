@@ -4,7 +4,7 @@
 use std::net::TcpListener;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use gpui::{App, Bounds, Pixels, Size, Window, WindowBackgroundAppearance, WindowKind};
+use gpui::{App, Bounds, Pixels, Size, Window, WindowKind, WindowOptions, WindowsWindowBackground};
 use linows_backend::platform::windows::window_focus::bring_to_front;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::{HANDLE, HWND, POINT, RECT};
@@ -20,7 +20,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 /// Per-pixel alpha, so the cards' rounded edges stay anti-aliased.
-pub const BACKGROUND: WindowBackgroundAppearance = WindowBackgroundAppearance::Transparent;
+pub fn with_background(options: WindowOptions) -> WindowOptions {
+    WindowOptions {
+        windows_window_background: WindowsWindowBackground::Transparent,
+        ..options
+    }
+}
 
 /// A hide keeps the window and its swap chain: each new one costs ~100 MB that
 /// the D3D runtime keeps after the close, worst under software rendering.

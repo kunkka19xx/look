@@ -253,6 +253,7 @@ pub fn layer(backdrop: Arc<Backdrop>, radius: f32, th: &Theme) -> impl IntoEleme
                         bounds,
                         placement,
                         corners,
+                        0.0,
                         backdrop.image.clone(),
                         0,
                         false,

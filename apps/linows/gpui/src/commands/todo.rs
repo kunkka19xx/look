@@ -9,8 +9,9 @@ use std::time::Duration;
 use chrono::NaiveDate;
 use gpui::{
     Anchor, AnchoredPositionMode, Bounds, ClickEvent, Context, Div, Edges, Entity, FontWeight,
-    HitboxBehavior, MouseMoveEvent, PathBuilder, Pixels, Point, ScrollHandle, SharedString,
-    Stateful, Task, anchored, canvas, deferred, div, fill, point, prelude::*, px, size, svg,
+    HitboxBehavior, MouseMoveEvent, PaintQuad, PathBuilder, Pixels, Point, ScrollHandle,
+    SharedString, Stateful, Task, anchored, canvas, deferred, div, point, prelude::*, px, size,
+    svg,
 };
 
 use super::draw::{Type, paint_circle, paint_dot, paint_ring, paint_text};
@@ -1065,13 +1066,13 @@ fn donut(label: &'static str, (done, total): (usize, usize), th: &Theme) -> Div 
                 cx_,
                 top + DONUT_DONE_Y,
             );
-            window.paint_quad(fill(
-                Bounds::new(
+            window.paint_quad(
+                PaintQuad::new(Bounds::new(
                     point(px(cx_ - DONUT_LINE_HALF), px(top + DONUT_LINE_Y)),
                     size(px(DONUT_LINE_HALF * 2.0), px(1.0)),
-                ),
-                track,
-            ));
+                ))
+                .background(track),
+            );
             paint_text(
                 window,
                 cx,
@@ -1185,13 +1186,13 @@ fn trend_chart(data: Vec<usize>, th: &Theme) -> impl IntoElement {
             let step = (w - TREND_PAD_X * 2.0) / (data.len().max(2) - 1) as f32;
             let x = |i: usize| left + TREND_PAD_X + i as f32 * step;
             let y = |v: usize| top + h - TREND_PAD_Y - (v as f32 / max) * (h - TREND_PAD_Y * 2.0);
-            window.paint_quad(fill(
-                Bounds::new(
+            window.paint_quad(
+                PaintQuad::new(Bounds::new(
                     point(px(left + TREND_PAD_X), px(y(0))),
                     size(px(w - TREND_PAD_X * 2.0), px(1.0)),
-                ),
-                track,
-            ));
+                ))
+                .background(track),
+            );
             let mut line = PathBuilder::stroke(px(TREND_LINE_W));
             for (i, v) in data.iter().enumerate() {
                 let p = point(px(x(i)), px(y(*v)));
@@ -1331,7 +1332,8 @@ fn heatmap(counts: &todo::Counts, th: &Theme, cx: &mut Context<Launcher>) -> imp
                     }
                     let done = counts.get(&day).map_or(0, |c| c.0);
                     let colour = theme::veil(accent, HEAT_OPACITY[todo::heat_level(done)]);
-                    let mut quad = fill(grid.cell_bounds(col, row), theme::hsla_of(colour));
+                    let mut quad = PaintQuad::new(grid.cell_bounds(col, row))
+                        .background(theme::hsla_of(colour));
                     quad.corner_radii = gpui::Corners::all(px(HEAT_RADIUS));
                     window.paint_quad(quad);
                 }

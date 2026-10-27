@@ -21,7 +21,7 @@ use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use gpui::App;
+use gpui::{App, Lerp, TransitionState};
 
 /// `LOOK_MOTION_SCALE=6` stretches every duration, so a frame strip taken
 /// with a slow grabber still catches an animation mid-flight. Dev only.
@@ -41,6 +41,11 @@ pub fn dur(ms: u64) -> Duration {
 /// `ms` in seconds, under the dev scale, for the clock-driven effects.
 pub fn secs(ms: u64) -> f32 {
     dur(ms).as_secs_f32()
+}
+
+/// A transition value at rest; the `Transition` built on it brings the motion of each run.
+pub fn rest<T: Lerp + Clone + PartialEq>(value: T) -> TransitionState<T> {
+    TransitionState::new(value, Duration::ZERO)
 }
 
 pub const ARRIVE_MS: u64 = 340;
