@@ -71,7 +71,7 @@ mod tests {
         let json = json_of(look_calc_inline_json_impl(math.as_ptr()));
         assert!(json.contains("\"display\":\"0.001\""), "{json}");
 
-        let not_math = CString::new("20-05-2026").unwrap();
+        let not_math = CString::new("look 2").unwrap();
         assert_eq!(
             json_of(look_calc_inline_json_impl(not_math.as_ptr())),
             "null"

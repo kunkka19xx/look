@@ -631,6 +631,17 @@ pub fn place_url_row(url: Row, tier: UrlTier, mut ranked: Vec<Row>) -> Vec<Row> 
     ranked
 }
 
+/// The answer leads, unless the best local result is named exactly what was
+/// typed (issue #325: a folder named `20-05-2026`). That item keeps Enter and
+/// the answer sits one below it.
+pub fn place_calc_row(calc: Row, query: &str, mut ranked: Vec<Row>) -> Vec<Row> {
+    let named = ranked.first().is_some_and(|first| {
+        matches!(first.open, Open::Path { .. }) && first.title.eq_ignore_ascii_case(query.trim())
+    });
+    ranked.insert(usize::from(named), calc);
+    ranked
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -653,6 +664,32 @@ mod tests {
             icon: None,
             last_used_at_unix_s: None,
         })
+    }
+
+    fn calc_row() -> Row {
+        Row::calc(
+            "20-05-2026",
+            Calculation {
+                display: "-2,011".into(),
+                raw: "-2011".into(),
+                value: -2011.0,
+            },
+        )
+    }
+
+    #[test]
+    fn the_answer_leads_unless_a_local_result_is_named_exactly_that() {
+        let named = vec![row("20-05-2026", "folder", 900), row("notes", "file", 5)];
+        let out = place_calc_row(calc_row(), "20-05-2026 ", named);
+        assert_eq!(out[0].title, "20-05-2026");
+        assert!(matches!(out[1].open, Open::Calc { .. }));
+
+        let partial = vec![row("20-05-2026 trip", "folder", 900)];
+        let out = place_calc_row(calc_row(), "20-05-2026", partial);
+        assert!(matches!(out[0].open, Open::Calc { .. }));
+
+        let out = place_calc_row(calc_row(), "20-05-2026", Vec::new());
+        assert!(matches!(out[0].open, Open::Calc { .. }));
     }
 
     #[test]

@@ -11,11 +11,9 @@ use look_calc::is_math;
 #[test]
 fn launcher_queries_that_are_not_math() {
     let queries = [
-        // Dates, the case from issue #325
-        "20-05-2026",
-        "2026-08-04",
-        "10-5-26",
-        "3-2-1",
+        // A date followed by words is a search; a bare date is arithmetic (see
+        // `queries_that_are_math`), and a folder named exactly that keeps the
+        // top slot in the shells.
         "2024-01-15 meeting notes",
         // Versions, addresses, encodings
         "1.2.3",
@@ -23,13 +21,6 @@ fn launcher_queries_that_are_not_math() {
         "192.168.1.1",
         "utf-8",
         "covid-19",
-        // Aliases glued to digits: a resolution, a ratio, a time, a paper size
-        "1920x1080",
-        "1024x768",
-        "8.5x11",
-        "16:9",
-        "4:3",
-        "10:30",
         // Names with numbers in them
         "part-1",
         "chapter-2",
@@ -88,6 +79,21 @@ fn queries_that_are_math() {
         "24/7",
         "50/50",
         "1/2",
+        // Shapes that are also something else are still expressions: one rule,
+        // no exceptions. Issue #325's folder wins by its exact name instead.
+        "20-05-2026",
+        "2026-08-04",
+        "10-5-26",
+        "3-2-1",
+        "05/25",
+        "1920x1080",
+        "1024x768",
+        "8.5x11",
+        "16:9",
+        "4:3",
+        "10:30",
+        "238000/9.3",
+        "183.10/2",
     ];
     for q in queries {
         assert!(is_math(q), "{q:?} must be math");
@@ -104,6 +110,9 @@ fn spacing_is_never_the_deciding_factor() {
         ("100*7", "100 * 7"),
         ("2^10", "2 ^ 10"),
         ("50%of200", "50 % of 200"),
+        ("20-05-2026", "20 - 05 - 2026"),
+        ("1920x1080", "1920 x 1080"),
+        ("16:9", "16 : 9"),
     ];
     for (tight, spaced) in pairs {
         assert_eq!(

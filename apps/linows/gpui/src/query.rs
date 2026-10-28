@@ -121,9 +121,10 @@ fn plain(query: &str) -> Vec<Row> {
         );
     }
     // Above everything and takes the selection: an expression is a question,
-    // and the answer outranks a file that fuzzy-matched some of its digits.
+    // and the answer outranks a file that fuzzy-matched some of its digits. Only
+    // an item named exactly what was typed keeps the top slot.
     if let Some(answer) = calc::calc_inline(query) {
-        rows.insert(0, Row::calc(trimmed, answer));
+        rows = rows::place_calc_row(Row::calc(trimmed, answer), trimmed, rows);
     }
     rows
 }

@@ -2,8 +2,10 @@
 //! (linows over IPC, macOS over the FFI bridge).
 //!
 //! [`eval`] answers or errors, never guesses. [`is_math`] decides whether a
-//! query was *meant* as arithmetic, by shape and never by spacing, so a folder
-//! named `20-05-2026` isn't reported as `-2011`.
+//! query is arithmetic by one rule, never by spacing: a complete expression
+//! with an operation is math, whatever else it might also look like. A folder
+//! named `20-05-2026` keeps the top slot by being named exactly that, which the
+//! shells decide, not by a date exception here.
 
 use serde::{Deserialize, Serialize};
 use std::f64::consts;
@@ -33,15 +35,6 @@ pub struct Calculation {
     pub value: f64,
 }
 
-/// Whether `x` and `:` count as operators anywhere, or only standing alone.
-/// [`eval`] is [`Aliases::Free`] (intent already declared); [`is_math`] is
-/// [`Aliases::Standalone`], so `1920x1080` stays a resolution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Aliases {
-    Free,
-    Standalone,
-}
-
 /// Evaluate an expression into its display and clipboard forms.
 pub fn eval(expr: &str) -> Result<Calculation, String> {
     let value = eval_value(expr)?;
@@ -54,9 +47,19 @@ pub fn eval(expr: &str) -> Result<Calculation, String> {
 
 /// The inline path in one call: `None` means leave the search alone. Cheap
 /// enough to run on every keystroke without a debounce.
+///
+/// A trailing `=` declares intent the way the `/calc` panel does, so it skips
+/// [`is_math`]: `2^0.5=` answers even where the gate would stay quiet.
 pub fn eval_query(query: &str) -> Option<Calculation> {
     let expr = normalize(query);
-    is_math(expr).then(|| eval(expr).ok())?
+    (is_declared(query) || is_math(expr)).then(|| eval(expr).ok())?
+}
+
+/// Ends in `=`, ignoring the `?` and spacing [`normalize`] also strips.
+fn is_declared(query: &str) -> bool {
+    query
+        .trim_end_matches(|c: char| c == '?' || c.is_whitespace())
+        .ends_with('=')
 }
 
 /// Strips the punctuation people tack on when expecting an answer: `2+2=?`.
@@ -76,7 +79,7 @@ pub fn eval_value(expr: &str) -> Result<f64, String> {
     if expr.len() > MAX_QUERY_LEN {
         return Err("Expression is too long".into());
     }
-    let tokens = tokenize(expr, Aliases::Free)?;
+    let tokens = tokenize(expr)?;
     if tokens.is_empty() {
         return Err("Empty expression".into());
     }
@@ -94,9 +97,11 @@ pub fn eval_value(expr: &str) -> Result<f64, String> {
     Ok(result)
 }
 
-/// Was this query meant as arithmetic? Shape decides, spacing never does, so
-/// `1/1000` and `1 / 1000` always agree. What rules a query out is looking like
-/// something else: a date, a version, an address, a path, a name with digits.
+/// Was this query meant as arithmetic? One rule: a complete expression with an
+/// operation is math, so `05/25`, `2026-10-03`, `1920x1080` and `16:9` all
+/// answer, and `1/1000` and `1 / 1000` always agree. What rules a query out is
+/// not being an expression: a path, a word, a bare number, a version or address
+/// (a second dot), or a half-typed operator.
 pub fn is_math(query: &str) -> bool {
     let q = query.trim();
     if q.is_empty() || q.len() > MAX_QUERY_LEN {
@@ -106,12 +111,9 @@ pub fn is_math(query: &str) -> bool {
     if q.starts_with('/') || q.starts_with('~') {
         return false;
     }
-    if is_grouped_numeric(q) {
-        return false;
-    }
-    // Unknown words, stray characters, an alias glued to digits: `look 2`,
-    // `part-1`, `1920x1080`.
-    let Ok(tokens) = tokenize(q, Aliases::Standalone) else {
+    // Unknown words, stray characters, a second dot: `look 2`, `part-1`,
+    // `1.2.3`.
+    let Ok(tokens) = tokenize(q) else {
         return false;
     };
     if tokens.is_empty() || !tokens.iter().any(is_operand) {
@@ -160,22 +162,6 @@ fn ends_incomplete(tokens: &[Token]) -> bool {
     depth != 0
 }
 
-/// Whether the character at `i` stands alone between whitespace.
-fn is_spaced(chars: &[char], i: usize) -> bool {
-    let before = i > 0 && chars[i - 1].is_whitespace();
-    let after = chars.get(i + 1).is_some_and(|c| c.is_whitespace());
-    before && after
-}
-
-/// Three or more all-digit groups joined by `-`, `/` or `.`.
-fn is_grouped_numeric(s: &str) -> bool {
-    let parts: Vec<&str> = s.split(['-', '/', '.']).collect();
-    parts.len() >= 3
-        && parts
-            .iter()
-            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
-}
-
 // --- Tokens ---
 
 #[derive(Debug, Clone, PartialEq)]
@@ -193,7 +179,7 @@ enum Token {
 
 // --- Tokenizer ---
 
-fn tokenize(expr: &str, aliases: Aliases) -> Result<Vec<Token>, String> {
+fn tokenize(expr: &str) -> Result<Vec<Token>, String> {
     let chars: Vec<char> = expr.chars().collect();
     let mut tokens = Vec::new();
     let mut i = 0;
@@ -206,7 +192,7 @@ fn tokenize(expr: &str, aliases: Aliases) -> Result<Vec<Token>, String> {
             let (value, next) = scan_number(&chars, i)?;
             tokens.push(Token::Num(value));
             i = next;
-        } else if let Some(token) = punctuation(c, &chars, i, aliases) {
+        } else if let Some(token) = punctuation(c) {
             tokens.push(token);
             i += 1;
         } else if c.is_ascii_alphabetic() {
@@ -223,7 +209,7 @@ fn tokenize(expr: &str, aliases: Aliases) -> Result<Vec<Token>, String> {
     Ok(tokens)
 }
 
-fn punctuation(c: char, chars: &[char], i: usize, aliases: Aliases) -> Option<Token> {
+fn punctuation(c: char) -> Option<Token> {
     Some(match c {
         '+' | '-' | '^' => Token::Op(c),
         '*' => Token::Op('*'),
@@ -232,11 +218,10 @@ fn punctuation(c: char, chars: &[char], i: usize, aliases: Aliases) -> Option<To
         '!' => Token::Factorial,
         '(' => Token::LParen,
         ')' => Token::RParen,
-        // Aliases that double as ordinary characters, so they have to earn it:
-        // `1920x1080` is a resolution and `16:9` a ratio, but `3 x 4` is a
-        // product and `10 : 2` a division.
-        'x' | 'X' if aliases == Aliases::Free => Token::Op('*'),
-        ':' if aliases == Aliases::Free || is_spaced(chars, i) => Token::Op('/'),
+        // Aliases, glued or spaced: `1920x1080` is a product and `16:9` a
+        // ratio's value. A word that starts with `x` still fails as a word.
+        'x' | 'X' => Token::Op('*'),
+        ':' => Token::Op('/'),
         _ => return None,
     })
 }
@@ -247,8 +232,6 @@ fn word_token(word: &str) -> Result<Token, String> {
         "e" => Token::Const(consts::E),
         name @ ("sqrt" | "abs" | "round" | "floor" | "ceil" | "sin" | "cos" | "tan" | "log"
         | "ln") => Token::Func(name.to_string()),
-        // Standalone only; glued to digits it never was an operator.
-        "x" => Token::Op('*'),
         "v" => Token::Func("sqrt".into()),
         _ => return Err(format!("Unknown identifier: {word}")),
     })
@@ -738,13 +721,10 @@ mod tests {
 
     // --- Intent gate ---
 
-    /// The cases that must never be evaluated: things people name files after.
+    /// The cases that must never be evaluated: not expressions at all.
     #[test]
-    fn file_and_date_shapes_are_not_math() {
+    fn non_expressions_are_not_math() {
         for q in [
-            "20-05-2026", // the folder name from issue #325
-            "2026-08-04",
-            "10-5-26",
             "1.2.3",       // version
             "192.168.1.1", // address
             "~/Documents/2",
@@ -753,12 +733,9 @@ mod tests {
             "look 2",
             "chapter-2",
             "hello",
-            "1920x1080", // resolution: the alias is glued to the digits
-            "16:9",      // ratio
-            "10:30",     // time
-            "42",        // a bare number is not a calculation
-            "2 +",       // half-typed
-            "(2 + 3",    // unbalanced
+            "42",     // a bare number is not a calculation
+            "2 +",    // half-typed
+            "(2 + 3", // unbalanced
             "",
         ] {
             assert!(!is_math(q), "{q} should not be math");
@@ -804,6 +781,42 @@ mod tests {
         }
     }
 
+    /// One rule, no exceptions for what an expression might also look like.
+    /// Issue #325's folder keeps the top slot by being named exactly that.
+    #[test]
+    fn date_resolution_and_ratio_shapes_are_math() {
+        for (q, raw) in [
+            ("20-05-2026", "-2011"),
+            ("2026-10-03", "2013"),
+            ("05/25", "0.2"),
+            ("1920x1080", "2073600"),
+            ("16:9", "1.7777777778"),
+            ("238000/9.3", "25591.3978494624"),
+        ] {
+            assert!(is_math(q), "{q} should be math");
+            assert_eq!(eval_query(q).unwrap().raw, raw, "{q}");
+        }
+    }
+
+    #[test]
+    fn trailing_equals_skips_the_gate() {
+        assert_eq!(eval_query("2^0.5=").unwrap().raw, "1.4142135624");
+        assert_eq!(eval_query("42=").unwrap().raw, "42");
+        assert_eq!(
+            eval_query("42=\r\n").unwrap().raw,
+            "42",
+            "a pasted line ending"
+        );
+        assert!(eval_query("42").is_none());
+        assert!(eval_query("42?").is_none(), "only `=` declares intent");
+        assert!(eval_query("hello=").is_none());
+        assert!(
+            eval_query("1.2.3=").is_none(),
+            "a version is not an expression"
+        );
+        assert!(eval_query("=").is_none());
+    }
+
     /// The dedicated /calc panel is past the gate - the user already said this
     /// is a calculation, so the aliases are honoured wherever they land.
     #[test]
@@ -818,7 +831,6 @@ mod tests {
     fn eval_query_answers_or_stays_quiet() {
         assert_eq!(eval_query("1/1000").unwrap().display, "0.001");
         assert_eq!(eval_query("2+2").unwrap().raw, "4");
-        assert!(eval_query("20-05-2026").is_none());
         assert!(eval_query("look 2").is_none());
         assert!(eval_query("2 +").is_none());
     }

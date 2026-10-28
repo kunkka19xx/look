@@ -103,3 +103,20 @@ enum URLRowPlacement {
         return Array(ranked.prefix(1)) + [url] + ranked.dropFirst()
     }
 }
+
+/// Where the synthesized calculator row sits among the results.
+enum CalcRowPlacement {
+    /// The answer leads, unless the best result is a real item named exactly
+    /// what was typed (issue #325: a folder named `20-05-2026`). That item
+    /// keeps Enter and the answer sits one below it.
+    static func merged(
+        calc: LauncherResult, query: String, into ranked: [LauncherResult]
+    ) -> [LauncherResult] {
+        let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = ranked.first,
+            SyntheticRow.classify(resultID: first.id) == nil,
+            first.title.caseInsensitiveCompare(typed) == .orderedSame
+        else { return [calc] + ranked }
+        return [first, calc] + ranked.dropFirst()
+    }
+}
