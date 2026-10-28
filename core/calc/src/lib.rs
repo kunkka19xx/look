@@ -169,7 +169,9 @@ fn is_spaced(chars: &[char], i: usize) -> bool {
 
 /// Three or more all-digit groups joined by `-`, `/` or `.`.
 fn is_grouped_numeric(s: &str) -> bool {
-    let parts: Vec<&str> = s.split(['-', '/', '.']).collect();
+    let parts: Vec<&str> = s
+        .split(|c| matches!(canonical(c), '-' | '/' | '.'))
+        .collect();
     parts.len() >= 3
         && parts
             .iter()
@@ -194,12 +196,13 @@ enum Token {
 // --- Tokenizer ---
 
 fn tokenize(expr: &str, aliases: Aliases) -> Result<Vec<Token>, String> {
-    let chars: Vec<char> = expr.chars().collect();
+    // Up front, so number scanning (`1e−3`) and spacing checks see it too.
+    let chars: Vec<char> = expr.chars().map(canonical).collect();
     let mut tokens = Vec::new();
     let mut i = 0;
 
     while i < chars.len() {
-        let c = canonical(chars[i]);
+        let c = chars[i];
         if c == ' ' || c == '\t' {
             i += 1;
         } else if c.is_ascii_digit() || c == '.' || vulgar_fraction(c).is_some() {
@@ -226,12 +229,15 @@ fn tokenize(expr: &str, aliases: Aliases) -> Result<Vec<Token>, String> {
 /// Typographic operators read as their ASCII forms, so text pasted from a
 /// document or rewritten by the system (`3 × 4`, `10 ÷ 2`, `5 − 1`, `16∶9`)
 /// means what it shows. `∶` stays a ratio colon and keeps `:`'s rules.
+/// Other whitespace, such as a pasted non-breaking space, is a plain space.
 fn canonical(c: char) -> char {
     match c {
         '×' | '⋅' | '∙' => '*',
         '÷' | '∕' | '⁄' => '/',
         '−' => '-',
         '∶' => ':',
+        '\t' => c,
+        c if c.is_whitespace() => ' ',
         _ => c,
     }
 }
@@ -864,6 +870,10 @@ mod tests {
         assert!(is_math("10 ∶ 2"));
         assert!(!is_math("16∶9"), "a glued ratio colon is still a ratio");
         assert!(!is_math("½"), "a bare number is not a calculation");
+        assert_eq!(calc("1e−3"), "0.001", "a typographic exponent sign");
+        assert_eq!(calc("3\u{a0}×\u{a0}4"), "12", "pasted non-breaking spaces");
+        assert!(is_math("3\u{a0}×\u{a0}4"));
+        assert!(!is_math("20−05−2026"), "a date with typographic dashes");
         assert!(
             eval("1.5½").is_err(),
             "a fraction only completes a whole number"
