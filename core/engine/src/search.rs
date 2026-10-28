@@ -3,7 +3,7 @@ use crate::config::*;
 use crate::query::ParsedQuery;
 use crate::scoring::{
     ScoredMatch, contains_match_score, default_browse_score, finalize_top_k, kind_bias,
-    looks_like_settings_query, path_depth_penalty, path_match_score, push_top_k,
+    looks_like_settings_query, named_app_tier, path_depth_penalty, path_match_score, push_top_k,
     query_kind_penalty_with_settings_flag,
 };
 use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
@@ -424,6 +424,11 @@ impl QueryEngine {
                 &candidate.candidate,
                 &candidate.title_search,
             ) + kind_bias(&candidate.candidate)
+                + named_app_tier(
+                    normalized_query,
+                    &candidate.title_search,
+                    &candidate.candidate,
+                )
                 + self.source_bias(&candidate.candidate)
                 // Reuse precomputed query kind to keep this hot loop allocation-free.
                 + query_kind_penalty_with_settings_flag(settings_query, &candidate.candidate)
@@ -453,14 +458,24 @@ impl QueryEngine {
             entry.1 += fuzzy_quality_bonus_prepared(&prepared_query, title_search);
         }
 
-        ranked.sort_by(|a, b| {
-            b.1.cmp(&a.1).then_with(|| {
+        // The rerank bonus grows with query length and is not bounded by the
+        // tier, so the tier is compared first rather than trusted to the sum.
+        let mut keyed: Vec<(bool, (u32, i64))> = ranked
+            .into_iter()
+            .map(|entry| {
+                let c = &self.candidates[entry.0 as usize];
+                let named = named_app_tier(normalized_query, &c.title_search, &c.candidate) > 0;
+                (named, entry)
+            })
+            .collect();
+        keyed.sort_by(|(named_a, a), (named_b, b)| {
+            named_b.cmp(named_a).then(b.1.cmp(&a.1)).then_with(|| {
                 let title_a = &self.candidates[a.0 as usize].candidate.title;
                 let title_b = &self.candidates[b.0 as usize].candidate.title;
                 title_a.cmp(title_b)
             })
         });
-        top_limit(ranked, limit)
+        top_limit(keyed.into_iter().map(|(_, entry)| entry).collect(), limit)
     }
 
     pub fn search_scored(&self, query: &str, limit: usize) -> Vec<(Candidate, i64)> {
@@ -659,6 +674,69 @@ mod tests {
             .collect();
 
         assert_eq!(ids, ["src:branches:main"]);
+    }
+
+    #[test]
+    fn an_app_the_query_names_outranks_any_file_or_folder() {
+        // Issue #659: a folder whose name starts with the query (+200 prefix,
+        // or +500 exact) used to tie or beat an app that only contains it.
+        let engine = QueryEngine::new(vec![
+            Candidate::new(
+                "folder:/u/code_challenge",
+                CandidateKind::Folder,
+                "code_challenge",
+                "/u/code_challenge",
+            ),
+            Candidate::new("folder:/u/code", CandidateKind::Folder, "code", "/u/code"),
+            Candidate::new(
+                "app:/applications/visual studio code.app",
+                CandidateKind::App,
+                "Visual Studio Code",
+                "/Applications/Visual Studio Code.app",
+            ),
+        ]);
+        let top = engine.search_scored("code", 10);
+        assert_eq!(&*top[0].0.title, "Visual Studio Code");
+
+        // A fuzzy app hit is not a name: the exact folder keeps first place.
+        let engine = QueryEngine::new(vec![
+            Candidate::new(
+                "folder:/u/excel",
+                CandidateKind::Folder,
+                "excel",
+                "/u/excel",
+            ),
+            Candidate::new(
+                "app:/applications/accessibility inspector.app",
+                CandidateKind::App,
+                "Accessibility Inspector",
+                "/Applications/Accessibility Inspector.app",
+            ),
+        ]);
+        assert_eq!(&*engine.search_scored("excel", 10)[0].0.title, "excel");
+    }
+
+    #[test]
+    fn a_long_query_cannot_rerank_a_file_above_the_app_it_names() {
+        // The quality rerank grows with query length and skips titles the
+        // query starts, so an exact app gets nothing while a file that holds
+        // the whole query mid-title can gain more than the tier.
+        let engine = QueryEngine::new(vec![
+            Candidate::new(
+                "file:/u/notes visual studio code insiders edition.md",
+                CandidateKind::File,
+                "notes visual studio code insiders edition.md",
+                "/u/notes visual studio code insiders edition.md",
+            ),
+            Candidate::new(
+                "app:/applications/visual studio code insiders edition.app",
+                CandidateKind::App,
+                "Visual Studio Code Insiders Edition",
+                "/Applications/Visual Studio Code Insiders Edition.app",
+            ),
+        ]);
+        let top = engine.search_scored("visual studio code insiders edition", 10);
+        assert_eq!(&*top[0].0.title, "Visual Studio Code Insiders Edition");
     }
 
     #[test]
