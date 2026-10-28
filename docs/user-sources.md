@@ -116,10 +116,17 @@ Keeping your sources in a dotfiles repo works the way you would expect: point
 it. Look reads through symlinks.
 
 > **An app may have installed some too.** `~/.look/connectors/` holds manifests
-> apps write, in this same format, namespaced by file name so they cannot
-> collide with yours: `[notes]` in `myapp.toml` is the block `myapp.notes`.
-> Uninstalling is one file. Everything in this guide applies to both
-> directories.
+> apps write, in this same format. Every key in this guide means the same thing
+> there, with two differences, both because a manifest's blocks are namespaced
+> by its file name: `[notes]` in `myapp.toml` is the block `myapp.notes`, so it
+> cannot collide with your own `[notes]`.
+>
+> - **Its `then` may only name its own blocks.** A target the manifest does not
+>   declare is dropped and reported, rather than resolving against whatever you
+>   happen to call that: otherwise an app could run a block of yours by guessing
+>   its id. Inside the manifest it still writes the plain name.
+> - **Moving a block to another manifest renames it**, since the id follows the
+>   file. That is what makes uninstalling an app one file.
 
 ## The four kinds of block
 

@@ -415,7 +415,10 @@ fn spawn(id: &str, found: &Declared, on_rows: OnRows) -> Result<(Child, Option<P
         let block = id.to_string();
         std::thread::spawn(move || {
             log_lines(stderr, |line| {
-                eprintln!("look connectors: [{block}] {line}")
+                // Not `eprintln!`, which panics when the sink fails. This
+                // thread owns the pipe, so unwinding would close it and the
+                // connector would take an EPIPE for the sake of a log line.
+                let _ = writeln!(std::io::stderr(), "look connectors: [{block}] {line}");
             });
         });
     }

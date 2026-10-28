@@ -43,8 +43,13 @@ Write your own logging to stderr. Look reads it line by line and repeats each
 line in its own log, prefixed with your block, so `starting up` becomes
 `look connectors: [myapp.records] starting up`. Nothing parses it and nothing
 waits on it, so it is yours to use. A line longer than 4 KB continues on the
-next one. Use an `error` frame instead when the user should hear about it:
-stderr is for you, and an `error` is something gone wrong.
+next one.
+
+An `error` frame lands in that same log, written the same way. **Neither
+reaches the user**, who would have to launch Look from a terminal to see
+either, so do not use one to tell somebody their credentials expired. Send an
+`error` when you have no stderr to write to, or when you would rather say it in
+the protocol than in a log line.
 
 Look opens with a hello, and you answer when you have something to say:
 
