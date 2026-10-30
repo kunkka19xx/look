@@ -64,6 +64,39 @@ impl Unready {
     }
 }
 
+/// A declaration read without being installed: what it declares, what would
+/// not parse, and what would have to change here.
+///
+/// The text never reaches disk, which is the whole point. A catalog entry has
+/// to say what an example would do on this machine *before* it is installed,
+/// and installing to find out is the thing that answers.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Review {
+    pub blocks: Vec<Block>,
+    /// Blocks that did parse are still returned alongside these.
+    pub problems: Vec<String>,
+    /// Across every block, in declaration order.
+    pub unready: Vec<Unready>,
+}
+
+/// Parses `contents` and checks every block it declares against this machine.
+///
+/// `Err` only when the text is not a file of blocks at all. A block that is
+/// merely wrong arrives in `problems` with the rest still readable.
+pub fn review(contents: &str, home: &Path) -> Result<Review, String> {
+    let parsed = crate::def::parse_file(contents)?;
+    let unready = parsed
+        .blocks
+        .iter()
+        .flat_map(|block| check(block, home))
+        .collect();
+    Ok(Review {
+        blocks: parsed.blocks,
+        problems: parsed.problems,
+        unready,
+    })
+}
+
 /// Deduplicated while collecting: one program named by six steps is one thing
 /// to install, not six.
 type Found = BTreeSet<(&'static str, String, Reason)>;
@@ -840,6 +873,62 @@ mod tests {
             reasons(&found),
             [("edit", "look-no-such-editor", Reason::MissingProgram)]
         );
+    }
+
+    #[test]
+    fn a_declaration_is_reviewed_without_being_written_anywhere() {
+        let home = TempDir::new("review");
+        let found = review(
+            r#"
+            [notes]
+            dir = "~/Documents/look-not-here"
+
+            [deploy]
+            do = ["look-no-such-program push"]
+            "#,
+            &home.0,
+        )
+        .expect("parses");
+
+        assert_eq!(found.blocks.len(), 2);
+        assert!(found.problems.is_empty(), "{:?}", found.problems);
+        assert_eq!(
+            reasons(&found.unready),
+            [
+                ("do", "look-no-such-program", Reason::MissingProgram),
+                ("dir", "~/Documents/look-not-here", Reason::MissingPath),
+            ]
+        );
+        // Declaration order, which TOML gives alphabetically: deploy, notes.
+        assert_eq!(found.unready[0].block, "deploy");
+        assert_eq!(found.unready[1].block, "notes");
+    }
+
+    #[test]
+    fn a_review_keeps_the_blocks_that_parsed() {
+        let home = TempDir::new("review-partial");
+        let found = review(
+            r#"
+            [good]
+            dir = "~"
+
+            [bad]
+            name = "no producer"
+            "#,
+            &home.0,
+        )
+        .expect("parses");
+
+        assert_eq!(found.blocks.len(), 1);
+        assert_eq!(found.blocks[0].id, "good");
+        assert_eq!(found.problems.len(), 1, "{:?}", found.problems);
+        assert!(found.problems[0].contains("[bad]"), "{:?}", found.problems);
+    }
+
+    #[test]
+    fn text_that_is_not_blocks_at_all_is_an_error_not_a_problem() {
+        let home = TempDir::new("review-garbage");
+        assert!(review("this is not toml {{{", &home.0).is_err());
     }
 
     #[test]

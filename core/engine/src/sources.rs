@@ -142,6 +142,16 @@ pub struct Needed {
     pub message: String,
 }
 
+impl From<&look_sources::Unready> for Needed {
+    fn from(unready: &look_sources::Unready) -> Self {
+        Self {
+            message: unready.message(),
+            key: unready.key.to_string(),
+            value: unready.value.clone(),
+        }
+    }
+}
+
 /// One declared block, as a screen listing what is installed needs it.
 #[derive(Serialize)]
 pub struct InstalledBlock {
@@ -183,12 +193,8 @@ pub fn inventory(home: &Path) -> Inventory {
         .map(|block| {
             // Before `source_file` is moved out from under it.
             let needs: Vec<Needed> = look_sources::check(&block, home)
-                .into_iter()
-                .map(|unready| Needed {
-                    message: unready.message(),
-                    key: unready.key.to_string(),
-                    value: unready.value,
-                })
+                .iter()
+                .map(Needed::from)
                 .collect();
             let file = block.source_file.unwrap_or_default();
             // A control nothing can offer is the other silent failure: the row
