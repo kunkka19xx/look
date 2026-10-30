@@ -337,22 +337,33 @@ const GLYPHS: &[(&str, &[u8])] = &[
     lucide!(CHEVRON_DOWN, r#"<polyline points="6 9 12 15 18 9"/>"#),
 ];
 
+/// The bytes of a user's SVG the backend inlined as a data URL.
+pub fn inline_svg(url: &str) -> Option<Vec<u8>> {
+    let payload = url.strip_prefix(INLINE_SVG_PREFIX)?;
+    base64::engine::general_purpose::STANDARD
+        .decode(payload)
+        .ok()
+}
+
+/// The glyphs, served to gpui's asset registry. The registry is built from
+/// `list` at startup and only ever loads a path it listed, so an unlisted
+/// glyph paints nothing, with no error.
 pub struct Assets;
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
-        if let Some(payload) = path.strip_prefix(INLINE_SVG_PREFIX) {
-            let bytes = base64::engine::general_purpose::STANDARD.decode(payload)?;
-            return Ok(Some(Cow::Owned(bytes)));
-        }
         Ok(GLYPHS
             .iter()
             .find(|(name, _)| *name == path)
             .map(|(_, bytes)| Cow::Borrowed(*bytes)))
     }
 
-    fn list(&self, _path: &str) -> anyhow::Result<Vec<SharedString>> {
-        Ok(Vec::new())
+    fn list(&self, path: &str) -> anyhow::Result<Vec<SharedString>> {
+        Ok(GLYPHS
+            .iter()
+            .map(|(name, _)| SharedString::from(*name))
+            .filter(|name| name.starts_with(path))
+            .collect())
     }
 }
 
@@ -361,14 +372,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_inlined_svg_is_served_decoded() {
+    fn an_inlined_svg_is_decoded() {
         let url = format!(
             "{INLINE_SVG_PREFIX}{}",
             base64::engine::general_purpose::STANDARD.encode(b"<svg/>")
         );
-        let served = Assets.load(&url).expect("decodes").expect("served");
-        assert_eq!(&*served, b"<svg/>");
+        assert_eq!(inline_svg(&url).as_deref(), Some(&b"<svg/>"[..]));
+        assert!(inline_svg("data:image/png;base64,AA==").is_none());
         assert!(Assets.load("icons/none.svg").expect("ok").is_none());
+    }
+
+    #[test]
+    fn every_glyph_is_listed() {
+        let listed = Assets.list("").expect("lists");
+        for (path, _) in GLYPHS {
+            assert!(listed.iter().any(|p| p == path), "{path} not listed");
+            assert!(
+                Assets.load(path).expect("ok").is_some(),
+                "{path} not served"
+            );
+        }
+        assert_eq!(Assets.list("icons/").expect("lists").len(), listed.len());
     }
 
     #[test]

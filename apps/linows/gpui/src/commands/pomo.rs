@@ -112,7 +112,6 @@ const PRESS_PLAY: &str = "(press play)";
 const CHOOSE: &str = "Choose\u{2026}";
 const CLEAR: &str = "Clear";
 const CHOOSE_PROMPT: &str = "Choose";
-const NO_PICKER: &str = "No folder dialog";
 const NAME_BLANK: &str = "A session needs a name";
 const MINUTES_RANGE: &str = "Minutes: 1 to 120, whole";
 
@@ -292,32 +291,17 @@ impl Panel {
     }
 
     fn choose_folder(&mut self, cx: &mut Context<Launcher>) {
-        let picked = pick::folder(CHOOSE_PROMPT, cx);
-        cx.spawn(async move |this, cx| {
-            let folder = match picked.await {
-                Ok(Some(folder)) => folder.to_string_lossy().into_owned(),
-                Ok(None) => return,
-                Err(err) => {
-                    let _ = this.update(cx, |this, cx| {
-                        this.banner.show(
-                            format!("{NO_PICKER}: {err}"),
-                            Tone::Error,
-                            banner::SHORT,
-                            cx,
-                        );
-                    });
-                    return;
-                }
-            };
-            bg::blocking(move || {
-                let tracks = linows_backend::files::scan_music_folder(&folder);
-                pomo::lock().set_music_folder(folder, tracks);
-            })
-            .get()
-            .await;
-            let _ = this.update(cx, |_, cx| cx.notify());
-        })
-        .detach();
+        pick::folder(CHOOSE_PROMPT, cx, |_, folder, cx| {
+            let folder = folder.to_string_lossy().into_owned();
+            bg::fetch(
+                cx,
+                move || {
+                    let tracks = linows_backend::files::scan_music_folder(&folder);
+                    pomo::lock().set_music_folder(folder, tracks);
+                },
+                |_, (), _| {},
+            );
+        });
     }
 }
 

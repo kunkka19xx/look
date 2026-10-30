@@ -7,13 +7,11 @@ use std::path::PathBuf;
 
 use super::{Field, FieldKind, Settings, Slider, Slot, Switch, unit};
 use crate::answers;
-use crate::banner;
 use crate::commands::KeyOutcome;
 use crate::config_list;
 use crate::controls::{self, Option_, Range};
 use crate::elide::middle_elided;
 use crate::launcher::Launcher;
-use crate::launchpad::Tone;
 use crate::pick;
 use crate::search::{Changed, input_for, search_field};
 use crate::theme::{self, BgLayout, Theme};
@@ -38,7 +36,6 @@ const CHOOSE_BG: &str = "Choose Background Image";
 const CLEAR_BG: &str = "Clear";
 const BG_PROMPT: &str = "Choose";
 const DIR_PROMPT: &str = "Add";
-const NO_PICKER: &str = "No file dialog";
 const FRESH_CONFIG: &str = "Create Fresh Config";
 const FRESH_CONFIG_HINT: &str = "Regenerate a fresh default config file";
 const AI_HINT: &str = "Inline answers + Google autocomplete over HTTPS";
@@ -270,26 +267,9 @@ impl Settings {
     }
 
     fn add_dir(&mut self, list: &'static DirList, cx: &mut Context<Launcher>) {
-        let picked = pick::folder(DIR_PROMPT, cx);
-        cx.spawn(async move |this, cx| {
-            let folder = match picked.await {
-                Ok(Some(folder)) => folder,
-                Ok(None) => return,
-                Err(err) => {
-                    let _ = this.update(cx, |this, cx| {
-                        this.banner.show(
-                            format!("{NO_PICKER}: {err}"),
-                            Tone::Error,
-                            banner::SHORT,
-                            cx,
-                        );
-                    });
-                    return;
-                }
-            };
-            let _ = this.update(cx, |this, cx| this.settings.push_dir(list, folder, cx));
-        })
-        .detach();
+        pick::folder(DIR_PROMPT, cx, |this, folder, cx| {
+            this.settings.push_dir(list, folder, cx)
+        });
     }
 
     /// macOS's rules: an extra root may not nest with any scan root, and
@@ -341,30 +321,11 @@ impl Settings {
     }
 
     fn choose_bg(&mut self, cx: &mut Context<Launcher>) {
-        let picked = pick::image(BG_PROMPT, cx);
-        cx.spawn(async move |this, cx| {
-            let image = match picked.await {
-                Ok(Some(image)) => image,
-                Ok(None) => return,
-                Err(err) => {
-                    let _ = this.update(cx, |this, cx| {
-                        this.banner.show(
-                            format!("{NO_PICKER}: {err}"),
-                            Tone::Error,
-                            banner::SHORT,
-                            cx,
-                        );
-                    });
-                    return;
-                }
-            };
-            let _ = this.update(cx, |this, cx| {
-                this.settings
-                    .set(theme::BG_IMAGE_KEY, image.to_string_lossy().into_owned());
-                this.settings.apply(cx);
-            });
-        })
-        .detach();
+        pick::image(BG_PROMPT, cx, |this, image, cx| {
+            this.settings
+                .set(theme::BG_IMAGE_KEY, image.to_string_lossy().into_owned());
+            this.settings.apply(cx);
+        });
     }
 
     fn clear_bg(&mut self, cx: &mut Context<Launcher>) {

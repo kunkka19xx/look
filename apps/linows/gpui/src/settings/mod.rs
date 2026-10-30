@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, Div, Entity, FocusHandle, FontWeight, ScrollHandle, SharedString,
-    deferred, div, px, relative,
+    AnyElement, Context, Div, Entity, FocusHandle, FontWeight, Pixels, Point, ScrollHandle,
+    SharedString, deferred, div, px, relative,
 };
 use linows_backend::config::{self, ConfigUpdate, LauncherLayout};
 use linows_backend::platform::{self, CandidateDrive};
@@ -393,6 +393,14 @@ struct SaveMessage {
     ok: bool,
 }
 
+/// The screen as a hide leaves it, so the next open lands back on it: the
+/// working copy, the tab and how far it is scrolled.
+pub struct Kept {
+    tab: Tab,
+    scroll: Point<Pixels>,
+    entries: HashMap<String, String>,
+}
+
 pub struct Settings {
     pub tab: Tab,
     /// The config as this screen last read it, with its own changes on top.
@@ -443,7 +451,29 @@ impl Settings {
         self.tab = Tab::default();
         self.shortcuts_view = shortcuts::View::default();
         self.scroll.set_offset(Default::default());
-        self.reload(cx);
+        self.load(true, cx);
+        self.fetch_fonts(cx);
+    }
+
+    pub fn kept(&self) -> Kept {
+        Kept {
+            tab: self.tab,
+            scroll: self.scroll.offset(),
+            entries: self.entries.clone(),
+        }
+    }
+
+    /// Back where a hide left it, the working copy standing in for the file.
+    pub fn resume(&mut self, kept: Kept, cx: &mut Context<Launcher>) {
+        self.tab = kept.tab;
+        self.scroll.set_offset(kept.scroll);
+        self.entries = kept.entries;
+        self.load(false, cx);
+        self.fetch_fonts(cx);
+        self.apply(cx);
+    }
+
+    fn fetch_fonts(&mut self, cx: &mut Context<Launcher>) {
         if self.fonts.is_empty() {
             bg::fetch(cx, files::list_fonts, |this, fonts, _| {
                 this.settings.fonts = fonts;
@@ -464,34 +494,46 @@ impl Settings {
     /// their switches read the OS, not the file, and the drives come along
     /// on Windows.
     pub fn reload(&mut self, cx: &mut Context<Launcher>) {
+        self.load(true, cx);
+    }
+
+    /// `read` takes the entries from the file; a resume keeps its own, and
+    /// a change made meanwhile must not be overwritten when the rest lands.
+    fn load(&mut self, read: bool, cx: &mut Context<Launcher>) {
         bg::fetch(
             cx,
-            || {
-                let mut entries = (*theme::entries()).clone();
-                let flag = |on: bool| if on { "true" } else { "false" }.to_string();
-                entries.insert(
-                    advanced::LAUNCH_AT_LOGIN.key.to_string(),
-                    flag(autostart::get_autostart()),
-                );
-                if cfg!(windows) {
-                    entries.insert(
-                        advanced::ADD_TO_PATH.key.to_string(),
-                        flag(cli_path::get_cli_path()),
-                    );
-                }
+            move || {
                 (
-                    entries,
+                    read.then(Self::read_entries),
                     platform::list_candidate_drives(),
                     hotkey::launcher_hotkey_state(),
                 )
             },
             |this, (entries, drives, hotkey), _| {
-                this.settings.entries = entries;
+                if let Some(entries) = entries {
+                    this.settings.entries = entries;
+                }
                 this.settings.drives = drives;
                 this.settings.recorder.state = Some(hotkey);
                 this.settings.recorder.refresh();
             },
         );
+    }
+
+    fn read_entries() -> HashMap<String, String> {
+        let mut entries = (*theme::entries()).clone();
+        let flag = |on: bool| if on { "true" } else { "false" }.to_string();
+        entries.insert(
+            advanced::LAUNCH_AT_LOGIN.key.to_string(),
+            flag(autostart::get_autostart()),
+        );
+        if cfg!(windows) {
+            entries.insert(
+                advanced::ADD_TO_PATH.key.to_string(),
+                flag(cli_path::get_cli_path()),
+            );
+        }
+        entries
     }
 
     pub fn hint(&self) -> Option<SharedString> {
