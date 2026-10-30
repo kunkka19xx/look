@@ -59,6 +59,16 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
             eprintln!("look sources: [{}] {problem}", block.id);
         }
 
+        // A block that parsed but cannot work here: a folder the example's
+        // author had and this machine does not, a program that is not
+        // installed. Said for a `then` target too, which never reaches the
+        // index of its own but is just as broken when its command is missing.
+        if block.enabled {
+            for unready in look_sources::check(block, home) {
+                eprintln!("look sources: [{}] {}", block.id, unready.message());
+            }
+        }
+
         // A block whose producer refers to a row (`make -C {path} deploy`) is
         // only reachable through another block's `then`. Indexing it as a
         // top-level row would offer to run it against nothing.

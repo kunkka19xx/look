@@ -129,6 +129,19 @@ pub struct Reported {
     pub message: String,
 }
 
+/// A declared value that cannot work on this machine, although the file it was
+/// written in is valid. Not a `Reported` problem: nothing failed to load, the
+/// block simply names a folder or a program that is not here, which is the one
+/// thing a copied example almost always gets wrong.
+#[derive(Serialize, Debug)]
+pub struct Needed {
+    /// The key to change: a producer key, `cwd`, `preview`, or a verb.
+    pub key: String,
+    /// The declared value as written in the file.
+    pub value: String,
+    pub message: String,
+}
+
 /// One declared block, as a screen listing what is installed needs it.
 #[derive(Serialize)]
 pub struct InstalledBlock {
@@ -144,6 +157,8 @@ pub struct InstalledBlock {
     pub from_app: bool,
     /// Only meaningful for a `connect` block: whether its process is up.
     pub running: bool,
+    /// What to change before this block works here. Empty is the normal case.
+    pub needs: Vec<Needed>,
 }
 
 /// Everything declared, from both directories, with the state a management
@@ -166,6 +181,15 @@ pub fn inventory(home: &Path) -> Inventory {
         .blocks
         .into_iter()
         .map(|block| {
+            // Before `source_file` is moved out from under it.
+            let needs: Vec<Needed> = look_sources::check(&block, home)
+                .into_iter()
+                .map(|unready| Needed {
+                    message: unready.message(),
+                    key: unready.key.to_string(),
+                    value: unready.value,
+                })
+                .collect();
             let file = block.source_file.unwrap_or_default();
             // A control nothing can offer is the other silent failure: the row
             // simply shows no control, with the reason on stderr.
@@ -188,6 +212,7 @@ pub fn inventory(home: &Path) -> Inventory {
                 icon: block.icon,
                 enabled: block.enabled,
                 file,
+                needs,
             }
         })
         .collect();
@@ -1249,6 +1274,56 @@ mod tests {
         // "meeting".
         assert_eq!(arg_of_line("meeting"), "");
         assert_eq!(arg_of_line("newnote"), "");
+    }
+
+    #[test]
+    fn the_inventory_says_what_to_change_in_a_block_that_cannot_work_here() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new(
+            "inventory-needs",
+            "[notes]\ndir = \"~/Documents/look-not-here\"\n",
+        );
+        let found = inventory(&fixture.base);
+
+        // The file is valid, so it is not a problem: it is a line to change.
+        assert!(found.problems.is_empty(), "{:?}", found.problems.len());
+        let block = found
+            .blocks
+            .iter()
+            .find(|one| one.id == "notes")
+            .expect("the block");
+        assert_eq!(block.needs.len(), 1, "{:?}", block.needs);
+        assert_eq!(block.needs[0].key, "dir");
+        assert_eq!(block.needs[0].value, "~/Documents/look-not-here");
+        assert!(
+            block.needs[0].message.contains("is not there"),
+            "{}",
+            block.needs[0].message
+        );
+
+        // The Extend screen decodes these names, and nothing else would fail
+        // if one of them were renamed: a missing key there is a silent screen.
+        let wire = serde_json::to_string(&found).expect("serializes");
+        for key in ["\"needs\":", "\"key\":", "\"value\":", "\"message\":"] {
+            assert!(wire.contains(key), "{key} missing from {wire}");
+        }
+    }
+
+    #[test]
+    fn a_block_whose_paths_are_all_there_needs_nothing() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("inventory-ready", "[notes]\ndir = \"~\"\n");
+        let found = inventory(&fixture.base);
+
+        assert!(
+            found.blocks.iter().all(|one| one.needs.is_empty()),
+            "{:?}",
+            found
+                .blocks
+                .iter()
+                .map(|one| &one.needs)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]

@@ -6,6 +6,8 @@ No plugin to install, no API to learn. One directory, one file format, four keys
 
 **In a hurry?** [lookbook](https://github.com/kunkka19xx/lookbook) is a collection of ready-made sources: git branches, SSH hosts, docker containers, project folders. Copy one in, reload, done. Come back here when you want to change it.
 
+A copied example usually needs one or two lines changed to match your machine, and Look says which. Settings -> Extend lists every declaration it loaded, and under each block the values that cannot work here: a folder that is not there, a command that is not installed, a path left pointing at the author's home directory. Nothing is run to find that out, so a `do` block is read rather than performed.
+
 > **Platform note.** Same directory, same format, same parser on macOS, Linux
 > and Windows. Two things differ in this guide: read `Cmd` as `Ctrl` off macOS,
 > and the example commands are macOS ones, so `open {path}` becomes

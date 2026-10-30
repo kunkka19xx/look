@@ -1778,6 +1778,18 @@ nonisolated struct Reported: Decodable, Identifiable {
     var id: String { "\(file)\u{1}\(message)" }
 }
 
+/// Something to change in a declaration before the block works on this
+/// machine. Not a `Reported` problem: the file is valid, it just names a folder
+/// or a program that is not here, which is what a copied example gets wrong.
+nonisolated struct Needed: Decodable, Identifiable {
+    /// The key to change: a producer key, `cwd`, `preview`, or a verb.
+    let key: String
+    /// The declared value as written in the file.
+    let value: String
+    let message: String
+    var id: String { "\(key)\u{1}\(value)\u{1}\(message)" }
+}
+
 /// One declared block as the Extend screen lists it.
 nonisolated struct InstalledBlock: Decodable, Identifiable {
     let id: String
@@ -1791,6 +1803,8 @@ nonisolated struct InstalledBlock: Decodable, Identifiable {
     let fromApp: Bool
     /// Only meaningful for `connect`: whether its process is up.
     let running: Bool
+    /// What to change before this block works here. Empty is the normal case.
+    let needs: [Needed]
 }
 
 nonisolated struct SourceBlockSummary: Decodable {
