@@ -372,7 +372,7 @@ impl gpui::Render for Parked {
     }
 }
 
-fn hide(cx: &mut App) {
+pub(crate) fn hide(cx: &mut App) {
     let shell = cx.global::<Shell>().clone();
     for handle in cx.windows() {
         let _ = handle.update(cx, |view, window, cx| {
@@ -411,6 +411,11 @@ fn hide(cx: &mut App) {
         .detach();
 }
 
+pub(crate) fn show(cx: &mut App) {
+    let shell = cx.global::<Shell>().clone();
+    open(&shell, cx);
+}
+
 /// Up on screen. A window closed behind the shell's back (Alt+F4) counts as
 /// down, so the next summon opens a new one.
 fn shown(cx: &App) -> bool {
@@ -425,13 +430,17 @@ fn shell_visible(cx: &mut App, visible: bool) {
 
 impl gpui::Global for Shell {}
 
-fn with_launcher(cx: &mut App, f: impl Fn(&mut Launcher, &mut gpui::Context<Launcher>)) {
-    for handle in cx.windows() {
-        let _ = handle.update(cx, |view, _, cx| {
-            if let Ok(launcher) = view.downcast::<Launcher>() {
-                launcher.update(cx, |launcher, cx| f(launcher, cx));
-            }
-        });
+/// The launcher now up, if one is. A hide replaces it, so a handle taken
+/// before one is stale.
+pub(crate) fn launcher(cx: &App) -> Option<gpui::Entity<Launcher>> {
+    cx.windows()
+        .into_iter()
+        .find_map(|handle| handle.downcast::<Launcher>()?.entity(cx).ok())
+}
+
+fn with_launcher(cx: &mut App, f: impl FnOnce(&mut Launcher, &mut gpui::Context<Launcher>)) {
+    if let Some(launcher) = launcher(cx) {
+        launcher.update(cx, f);
     }
 }
 
@@ -571,15 +580,9 @@ fn apply(command: Command, cx: &mut App) {
             };
             let _ = reply.send(taken);
         }
-        Command::Toggle if !shown(cx) => {
-            let shell = cx.global::<Shell>().clone();
-            open(&shell, cx);
-        }
+        Command::Toggle if !shown(cx) => show(cx),
         Command::Toggle | Command::Hide => hide(cx),
-        Command::Show => {
-            let shell = cx.global::<Shell>().clone();
-            open(&shell, cx);
-        }
+        Command::Show => show(cx),
         Command::Quit => {
             // The compositor keybinding this process registered goes with it,
             // as the Tauri shell does on exit.
