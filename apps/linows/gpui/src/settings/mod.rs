@@ -6,7 +6,7 @@
 mod advanced;
 mod shortcuts;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use gpui::prelude::*;
@@ -398,16 +398,21 @@ struct SaveMessage {
 pub struct Kept {
     tab: Tab,
     scroll: Point<Pixels>,
-    /// None while the file is still being read, so the resume reads it
-    /// instead of saving an empty copy over it.
-    entries: Option<HashMap<String, String>>,
+    shortcuts_view: shortcuts::View,
+    entries: HashMap<String, String>,
+    /// False while the file is still being read: the resume reads it again
+    /// rather than save an empty copy over it.
+    loaded: bool,
+    edited: HashSet<String>,
     pending: HashMap<&'static str, String>,
 }
 
 impl Kept {
-    /// The file changed behind the screen's back: the resume reads it again.
+    /// The file changed behind the screen's back: the resume reads it
+    /// again, and edits do not carry across an explicit reload.
     pub fn forget_entries(&mut self) {
-        self.entries = None;
+        self.loaded = false;
+        self.edited.clear();
     }
 }
 
@@ -417,6 +422,9 @@ pub struct Settings {
     entries: HashMap<String, String>,
     /// Whether `entries` has been read from the file since the last request.
     loaded: bool,
+    /// Keys changed while that read was in flight, laid back over it when
+    /// it lands.
+    edited: HashSet<String>,
     fonts: Vec<String>,
     /// Windows: the fixed drives that are not the system's.
     drives: Vec<CandidateDrive>,
@@ -445,6 +453,7 @@ impl Settings {
             tab: Tab::default(),
             entries: HashMap::new(),
             loaded: false,
+            edited: HashSet::new(),
             fonts: Vec::new(),
             drives: Vec::new(),
             recorder: shortcuts::Recorder::default(),
@@ -464,6 +473,7 @@ impl Settings {
         self.tab = Tab::default();
         self.shortcuts_view = shortcuts::View::default();
         self.scroll.set_offset(Default::default());
+        self.edited.clear();
         self.load(true, cx);
         self.fetch_fonts(cx);
     }
@@ -472,7 +482,10 @@ impl Settings {
         Kept {
             tab: self.tab,
             scroll: self.scroll.offset(),
-            entries: self.loaded.then(|| self.entries.clone()),
+            shortcuts_view: self.shortcuts_view.clone(),
+            entries: self.entries.clone(),
+            loaded: self.loaded,
+            edited: self.edited.clone(),
             pending: self.recorder.pending(),
         }
     }
@@ -482,15 +495,15 @@ impl Settings {
     pub fn resume(&mut self, kept: Kept, cx: &mut Context<Launcher>) {
         self.tab = kept.tab;
         self.scroll.set_offset(kept.scroll);
+        self.shortcuts_view = kept.shortcuts_view;
         self.recorder.resume(kept.pending);
-        match kept.entries {
-            Some(entries) => {
-                self.entries = entries;
-                self.loaded = true;
-                self.load(false, cx);
-                self.apply(cx);
-            }
-            None => self.load(true, cx),
+        self.entries = kept.entries;
+        self.edited = kept.edited;
+        if kept.loaded {
+            self.load(false, cx);
+            self.apply(cx);
+        } else {
+            self.load(true, cx);
         }
         self.fetch_fonts(cx);
     }
@@ -516,6 +529,7 @@ impl Settings {
     /// their switches read the OS, not the file, and the drives come along
     /// on Windows.
     pub fn reload(&mut self, cx: &mut Context<Launcher>) {
+        self.edited.clear();
         self.load(true, cx);
     }
 
@@ -534,16 +548,32 @@ impl Settings {
                     hotkey::launcher_hotkey_state(),
                 )
             },
-            |this, (entries, drives, hotkey), _| {
+            |this, (entries, drives, hotkey), cx| {
                 if let Some(entries) = entries {
-                    this.settings.entries = entries;
-                    this.settings.loaded = true;
+                    this.settings.land(entries, cx);
                 }
                 this.settings.drives = drives;
                 this.settings.recorder.state = Some(hotkey);
                 this.settings.recorder.refresh();
             },
         );
+    }
+
+    /// The read in, under whatever was changed while it ran.
+    fn land(&mut self, read: HashMap<String, String>, cx: &mut Context<Launcher>) {
+        let edited = std::mem::take(&mut self.edited);
+        let interim = std::mem::replace(&mut self.entries, read);
+        self.loaded = true;
+        if edited.is_empty() {
+            return;
+        }
+        for key in edited {
+            match interim.get(&key) {
+                Some(value) => self.entries.insert(key, value.clone()),
+                None => self.entries.remove(&key),
+            };
+        }
+        self.apply(cx);
     }
 
     fn read_entries() -> HashMap<String, String> {
@@ -684,6 +714,9 @@ impl Settings {
     /// Set a key on the working copy; empty unsets it.
     fn set(&mut self, key: &str, value: impl Into<String>) {
         let value = value.into();
+        if !self.loaded {
+            self.edited.insert(key.to_string());
+        }
         if value.is_empty() {
             self.entries.remove(key);
         } else {
@@ -860,6 +893,10 @@ impl Settings {
     /// Save Config: the screen's keys, in one write, then the engine reads
     /// the file again and the OS takes the startup switches.
     fn save_all(&mut self, cx: &mut Context<Launcher>) {
+        // Nothing to write until the file has been read.
+        if !self.loaded {
+            return;
+        }
         if let Some(field) = &self.field
             && let FieldKind::Number(spec) = field.kind
         {

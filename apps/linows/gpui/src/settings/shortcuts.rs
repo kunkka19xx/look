@@ -50,7 +50,7 @@ static TIPS: Hint = Hint::new(&[
     Piece::Key("/kill", "force quit apps"),
 ]);
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct View {
     topic: Option<Topic>,
     collapsed: HashSet<&'static str>,
