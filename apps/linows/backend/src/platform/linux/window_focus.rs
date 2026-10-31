@@ -338,7 +338,6 @@ pub fn is_focus_follows_mouse_wm() -> bool {
     if std::env::var("I3SOCK").is_ok() {
         return true;
     }
-    // SWAYSOCK for sway
     if super::wm::is_sway() {
         return true;
     }

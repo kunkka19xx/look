@@ -464,18 +464,18 @@ fn focus_file_handler(path: &str) -> bool {
 
 #[cfg(target_os = "linux")]
 pub fn try_focus_window(wm_class: &str) -> bool {
-    // Sway (Wayland): SWAYSOCK is set, swaymsg shares i3's IPC and CLI but
+    // Sway (Wayland): swaymsg shares i3's IPC and CLI but
     // Wayland-native clients identify by `app_id`, not WM_CLASS. XWayland
     // clients still fall back to class/instance. The x11rb path below can't
     // see Wayland windows at all, so this branch is the only thing that
     // brings non-XWayland browsers (firefox-wayland, brave Wayland) forward.
-    if std::env::var("SWAYSOCK").is_ok() {
+    if crate::platform::linux::wm::is_sway() {
         for criterion in [
             format!("[app_id=\"(?i){wm_class}\"] focus"),
             format!("[class=\"(?i){wm_class}\"] focus"),
             format!("[instance=\"(?i){wm_class}\"] focus"),
         ] {
-            if let Ok(output) = host_command("swaymsg")
+            if let Ok(output) = crate::platform::linux::wm::swaymsg()
                 .arg(&criterion)
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())
@@ -596,7 +596,7 @@ fn try_focus_wayland(desktop_path: &str, candidates: &[&str]) -> bool {
     if crate::platform::linux::wm::is_sway() {
         return candidates.iter().any(|id| try_focus_sway(id));
     }
-    if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
+    if crate::platform::linux::wm::is_hyprland() {
         return candidates.iter().any(|id| try_focus_hyprland(id));
     }
     if crate::platform::linux::wm::is_niri() {
@@ -626,7 +626,7 @@ fn try_focus_sway(app_id: &str) -> bool {
         format!("[app_id=\"(?i){app_id}\"] focus"),
         format!("[class=\"(?i){app_id}\"] focus"),
     ] {
-        if let Ok(output) = host_command("swaymsg")
+        if let Ok(output) = crate::platform::linux::wm::swaymsg()
             .arg(&criteria)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
@@ -669,7 +669,7 @@ fn try_focus_hyprland(class: &str) -> bool {
     if !hyprland_has_client(class) {
         return false;
     }
-    let _ = host_command("hyprctl")
+    let _ = crate::platform::linux::wm::hyprctl()
         .args(["dispatch", "focuswindow", &format!("class:{class}")])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -684,7 +684,7 @@ fn try_focus_hyprland(class: &str) -> bool {
 
 #[cfg(target_os = "linux")]
 fn hyprland_has_client(class: &str) -> bool {
-    let Ok(output) = host_command("hyprctl")
+    let Ok(output) = crate::platform::linux::wm::hyprctl()
         .args(["clients", "-j"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
@@ -700,7 +700,7 @@ fn hyprland_has_client(class: &str) -> bool {
 
 #[cfg(target_os = "linux")]
 fn hyprland_active_class_matches(class: &str) -> bool {
-    let Ok(output) = host_command("hyprctl")
+    let Ok(output) = crate::platform::linux::wm::hyprctl()
         .args(["activewindow", "-j"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
