@@ -198,6 +198,17 @@ impl Recorder {
         self.pending.clear();
         self.refresh();
     }
+
+    /// The unsaved edits, for a hide to keep.
+    pub fn pending(&self) -> HashMap<&'static str, String> {
+        self.pending.clone()
+    }
+
+    /// The edits a hide kept, over the table as it stands now.
+    pub fn resume(&mut self, pending: HashMap<&'static str, String>) {
+        self.pending = pending;
+        self.refresh();
+    }
 }
 
 /// A group after the topic, the search and the filter.

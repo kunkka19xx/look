@@ -548,10 +548,21 @@ fn apply(command: Command, cx: &mut App) {
             with_launcher(cx, |launcher, cx| launcher.reload_config(cx))
         }
         // Hidden: no window to carry the banner; the theme and the bindings
-        // load now for the next open, the engine off the UI thread.
+        // load now for the next open, the engine off the UI thread. A kept
+        // settings screen reads the file again rather than resume its copy.
         Command::ReloadConfig => {
             theme::load();
             bindings::load();
+            if let Some(kept) = cx
+                .global::<Shell>()
+                .retained
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .settings
+                .as_mut()
+            {
+                kept.forget_entries();
+            }
             cx.spawn(async move |cx| {
                 cx.background_executor()
                     .spawn(async {

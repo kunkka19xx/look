@@ -398,13 +398,25 @@ struct SaveMessage {
 pub struct Kept {
     tab: Tab,
     scroll: Point<Pixels>,
-    entries: HashMap<String, String>,
+    /// None while the file is still being read, so the resume reads it
+    /// instead of saving an empty copy over it.
+    entries: Option<HashMap<String, String>>,
+    pending: HashMap<&'static str, String>,
+}
+
+impl Kept {
+    /// The file changed behind the screen's back: the resume reads it again.
+    pub fn forget_entries(&mut self) {
+        self.entries = None;
+    }
 }
 
 pub struct Settings {
     pub tab: Tab,
     /// The config as this screen last read it, with its own changes on top.
     entries: HashMap<String, String>,
+    /// Whether `entries` has been read from the file since the last request.
+    loaded: bool,
     fonts: Vec<String>,
     /// Windows: the fixed drives that are not the system's.
     drives: Vec<CandidateDrive>,
@@ -432,6 +444,7 @@ impl Settings {
         Self {
             tab: Tab::default(),
             entries: HashMap::new(),
+            loaded: false,
             fonts: Vec::new(),
             drives: Vec::new(),
             recorder: shortcuts::Recorder::default(),
@@ -459,18 +472,27 @@ impl Settings {
         Kept {
             tab: self.tab,
             scroll: self.scroll.offset(),
-            entries: self.entries.clone(),
+            entries: self.loaded.then(|| self.entries.clone()),
+            pending: self.recorder.pending(),
         }
     }
 
-    /// Back where a hide left it, the working copy standing in for the file.
+    /// Back where a hide left it, the working copy standing in for the file
+    /// when it had been read; otherwise the read runs again.
     pub fn resume(&mut self, kept: Kept, cx: &mut Context<Launcher>) {
         self.tab = kept.tab;
         self.scroll.set_offset(kept.scroll);
-        self.entries = kept.entries;
-        self.load(false, cx);
+        self.recorder.resume(kept.pending);
+        match kept.entries {
+            Some(entries) => {
+                self.entries = entries;
+                self.loaded = true;
+                self.load(false, cx);
+                self.apply(cx);
+            }
+            None => self.load(true, cx),
+        }
         self.fetch_fonts(cx);
-        self.apply(cx);
     }
 
     fn fetch_fonts(&mut self, cx: &mut Context<Launcher>) {
@@ -500,6 +522,9 @@ impl Settings {
     /// `read` takes the entries from the file; a resume keeps its own, and
     /// a change made meanwhile must not be overwritten when the rest lands.
     fn load(&mut self, read: bool, cx: &mut Context<Launcher>) {
+        if read {
+            self.loaded = false;
+        }
         bg::fetch(
             cx,
             move || {
@@ -512,6 +537,7 @@ impl Settings {
             |this, (entries, drives, hotkey), _| {
                 if let Some(entries) = entries {
                     this.settings.entries = entries;
+                    this.settings.loaded = true;
                 }
                 this.settings.drives = drives;
                 this.settings.recorder.state = Some(hotkey);
