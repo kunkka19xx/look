@@ -68,6 +68,7 @@ Useful actions:
 - `Cmd+C`: copy selected file/folder
 - `Cmd+P`: toggle pick on the selected file/folder (multi-select); the picked set is written to the system pasteboard so you can paste them anywhere in Finder
 - `Cmd+Shift+P`: clear all picked items
+- `Cmd+I` (`Ctrl+I` on Linux and Windows): paste the selected file or folder, or every picked item, straight into the app you came from. A file manager or a chat app gets the items, a text field or terminal gets the paths. Same chord, permissions, and limits as pasting a clip (see [Clipboard and translation](#clipboard-and-translation))
 - `Cmd+D`: move the selected file/folder - or all picked items - to the Trash (macOS only for now). Like Finder's `Cmd+Delete`, this is immediate and unconfirmed because it's recoverable: the items go to the Trash, not permanent deletion. The rows disappear from results right away.
 - `Cmd+Enter`: web search current query (Google)
 
@@ -712,7 +713,7 @@ Every modifier chord below is the default. On macOS, and in the gpui build on Li
 - `Cmd+F`: reveal in Finder, or in the `file_manager` you declared
 - `Cmd+C`: copy selected file/folder
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
-- `Cmd+I` (`Ctrl+I` on Linux, Windows): paste the selected clipboard history item into the app you came from
+- `Cmd+I` (`Ctrl+I` on Linux, Windows): paste the selected clipboard history item, or the selected file/folder (or all picked items), into the app you came from
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
 - `Cmd+O`: flip the selected row's toggle (Bluetooth, Wi-Fi, Do Not Disturb)
 - `Cmd+Shift+,`: toggle settings panel

@@ -440,6 +440,17 @@ impl Row {
         self.icon = declared_icon(self, block_icon, home);
     }
 
+    /// Whether the row's path is something on disk a chord can hand on. A
+    /// file or folder row says so by kind; a declared row's path is where its
+    /// chords act (Ctrl+F, Ctrl+T, Ctrl+C), so it counts once it is there.
+    pub fn on_disk(&self) -> bool {
+        match self.kind.as_str() {
+            "file" | "folder" => true,
+            KIND_ACTION => !self.path.is_empty() && std::path::Path::new(&self.path).exists(),
+            _ => false,
+        }
+    }
+
     /// Whether the row IS the file it names: a branch row is `main`, whose
     /// path is the repo every branch shares, so that folder's icon would lie.
     pub fn is_its_path(&self) -> bool {
@@ -653,6 +664,33 @@ mod tests {
             icon: None,
             last_used_at_unix_s: None,
         })
+    }
+
+    #[test]
+    fn files_and_folders_are_on_disk_by_kind() {
+        assert!(row("gone.txt", "file", 0).on_disk());
+        assert!(row("gone", "folder", 0).on_disk());
+        assert!(!row("Files", "app", 0).on_disk());
+    }
+
+    #[test]
+    fn a_declared_row_is_on_disk_once_its_path_is() {
+        let dir = std::env::temp_dir().join(format!("look-on-disk-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("image.jpg");
+        std::fs::write(&file, b"").unwrap();
+
+        let declared = |title: &str, path: &str| {
+            let mut out = row(title, KIND_ACTION, 0);
+            out.path = path.into();
+            out
+        };
+        assert!(declared("image.jpg", &file.to_string_lossy()).on_disk());
+        assert!(declared("main", &dir.to_string_lossy()).on_disk());
+        assert!(!declared("gone.jpg", &format!("{}.gone", file.display())).on_disk());
+        assert!(!declared("Deploy", "").on_disk());
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
