@@ -1558,8 +1558,9 @@ impl Launcher {
     }
 
     /// What Ctrl+I puts on the clipboard before the chord: the clip under the
-    /// cursor, else every pick, else the file or folder under the cursor. The
-    /// picks outrank the row since picking is how several get chosen at all.
+    /// cursor, else every pick, else whatever the row under the cursor has on
+    /// disk. The picks outrank the row since picking is how several get
+    /// chosen at all.
     fn paste_write(&self) -> Option<ClipWrite> {
         let row = self.selected_row();
         if let Some((work, _)) = row.and_then(|row| clip_write(&row.open)) {
@@ -1568,7 +1569,7 @@ impl Launcher {
         if !self.picked.is_empty() {
             return Some(files_write(self.picked.paths()));
         }
-        row.filter(|row| picked::pickable(row))
+        row.filter(|row| row.on_disk())
             .map(|row| files_write(vec![row.path.clone()]))
     }
 

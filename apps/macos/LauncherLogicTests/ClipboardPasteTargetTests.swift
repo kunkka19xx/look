@@ -76,6 +76,19 @@ final class ClipboardPasteTargetTests: XCTestCase {
             ClipboardPasteTarget.resolve(clipboardResult(), picked: picks), .text("hello"))
     }
 
+    func testADeclaredRowPastesItsPathOnceItIsOnDisk() {
+        let download = pathResult(kind: .action, path: "/tmp/image.jpg")
+        XCTAssertEqual(
+            ClipboardPasteTarget.resolve(download, fileExists: { _ in true }),
+            .files(["/tmp/image.jpg"]))
+        XCTAssertNil(ClipboardPasteTarget.resolve(download, fileExists: { _ in false }))
+        let verb = pathResult(kind: .action, path: "")
+        XCTAssertNil(ClipboardPasteTarget.resolve(verb, fileExists: { _ in true }))
+        // Picks stay files and folders: a declared row is never one.
+        XCTAssertNil(
+            ClipboardPasteTarget.resolve(nil, picked: [download], fileExists: { _ in true }))
+    }
+
     func testAnAppRowResolvesToNothing() {
         let app = pathResult(kind: .app, path: "/Applications/Safari.app")
         XCTAssertNil(ClipboardPasteTarget.resolve(app))

@@ -6,7 +6,7 @@ use gpui::{Context, Div, FontWeight, SharedString, div, img, prelude::*, px, svg
 use crate::glyphs;
 use crate::icons::{IconRequest, IconStore};
 use crate::launcher::Launcher;
-use crate::rows::{KIND_ACTION, Row};
+use crate::rows::Row;
 use crate::theme::{self, Theme};
 
 const HEADER_MARGIN: f32 = 10.0;
@@ -26,18 +26,9 @@ const CLEAR_ALL: &str = "Clear all";
 const REMOVE: &str = "\u{d7}";
 
 /// Only files and folders carry a path worth collecting; an app, a setting
-/// or a clip would leave the panel listing nonsense. A declared row counts
-/// when its path is on disk: a recent download is a file whatever block
-/// listed it, a branch row's repo is not what the row is.
+/// or a clip would leave the panel listing nonsense.
 pub fn pickable(row: &Row) -> bool {
-    if row.is_hint() {
-        return false;
-    }
-    match row.kind.as_str() {
-        "file" | "folder" => true,
-        KIND_ACTION => row.is_its_path() && std::path::Path::new(&row.path).exists(),
-        _ => false,
-    }
+    !row.is_hint() && (row.kind == "file" || row.kind == "folder")
 }
 
 fn same(a: &Row, b: &Row) -> bool {
@@ -262,57 +253,4 @@ pub fn check(th: &Theme) -> impl IntoElement {
         .path(glyphs::CHECK)
         .size(px(theme::SEARCH_ICON))
         .text_color(th.accent)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::pickable;
-    use crate::rows::{Icon, KIND_ACTION, Open, Row};
-
-    fn row(kind: &str, title: &str, path: &str) -> Row {
-        Row {
-            id: format!("{kind}:{path}"),
-            kind: kind.into(),
-            title: title.into(),
-            context: String::new(),
-            kind_label: String::new(),
-            path: path.into(),
-            score: 0,
-            icon: Icon::Glyph(""),
-            open: Open::Path { usage: "open_file" },
-            last_used: None,
-        }
-    }
-
-    #[test]
-    fn files_and_folders_are_pickable_whether_or_not_they_exist() {
-        assert!(pickable(&row("file", "gone.txt", "/nowhere/gone.txt")));
-        assert!(pickable(&row("folder", "gone", "/nowhere/gone")));
-        assert!(!pickable(&row(
-            "app",
-            "Files",
-            "/usr/share/applications/files.desktop"
-        )));
-    }
-
-    #[test]
-    fn a_declared_row_is_pickable_when_it_is_the_file_it_names() {
-        let dir = std::env::temp_dir().join(format!("look-pickable-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("image.jpg");
-        std::fs::write(&file, b"").unwrap();
-        let path = file.to_string_lossy().into_owned();
-
-        assert!(pickable(&row(KIND_ACTION, "image.jpg", &path)));
-        // A branch row: its path is the repo every branch shares.
-        assert!(!pickable(&row(KIND_ACTION, "main", &dir.to_string_lossy())));
-        assert!(!pickable(&row(
-            KIND_ACTION,
-            "gone.jpg",
-            &format!("{path}.gone")
-        )));
-        assert!(!pickable(&row(KIND_ACTION, "Deploy", "")));
-
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
 }

@@ -14,15 +14,27 @@ enum ClipboardPasteTarget: Equatable {
     /// a text field pastes the paths.
     case files([String])
 
-    /// The picks outrank the row since picking is how several get chosen at all.
+    /// The picks outrank the row since picking is how several get chosen at
+    /// all. A declared row's path is where its chords act, so it pastes once
+    /// it is on disk; `fileExists` is the stat, injected for the tests.
     static func resolve(
-        _ result: LauncherResult?, picked: [LauncherResult] = []
+        _ result: LauncherResult?,
+        picked: [LauncherResult] = [],
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> ClipboardPasteTarget? {
         if let clip = clip(result) { return clip }
         let picks = picked.filter { $0.kind.isFileOrFolder }.map(\.path)
         if !picks.isEmpty { return .files(picks) }
-        guard let result, result.kind.isFileOrFolder, !result.path.isEmpty else { return nil }
+        guard let result, onDisk(result, fileExists: fileExists) else { return nil }
         return .files([result.path])
+    }
+
+    private static func onDisk(_ result: LauncherResult, fileExists: (String) -> Bool) -> Bool {
+        switch result.kind {
+        case .file, .folder: return true
+        case .action: return !result.path.isEmpty && fileExists(result.path)
+        default: return false
+        }
     }
 
     private static func clip(_ result: LauncherResult?) -> ClipboardPasteTarget? {
