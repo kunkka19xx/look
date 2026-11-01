@@ -54,7 +54,7 @@ use crate::settings::{self, Settings};
 use crate::shortcuts::{self, Hint, Piece};
 use crate::theme::{self, Theme};
 use crate::update::Update;
-use crate::{Shell, fonts, health, state as app_state};
+use crate::{Shell, clipwrite, fonts, health, state as app_state};
 
 /// The answer card is the answer: no row is picked, so Enter has no target.
 static HINT_ANSWER: Hint = Hint::new(&[
@@ -1381,7 +1381,7 @@ impl Launcher {
     pub(crate) fn copy_text(&mut self, text: String, done: String, cx: &mut Context<Self>) {
         bg::fetch(
             cx,
-            move || clipboard::copy_to_clipboard(&text),
+            clipwrite::ordered(Box::new(move || clipboard::copy_to_clipboard(&text))),
             move |this, outcome, cx| match outcome {
                 Ok(()) => this.banner.show(done, Tone::Success, banner::SHORT, cx),
                 Err(_) => this
@@ -1521,6 +1521,7 @@ impl Launcher {
         let Some((work, done)) = self.selected_row().and_then(|row| clip_write(&row.open)) else {
             return;
         };
+        let work = clipwrite::ordered(work);
         bg::fetch(cx, work, move |this, outcome, cx| match outcome {
             Ok(()) => this
                 .banner
@@ -1533,7 +1534,7 @@ impl Launcher {
     /// underneath. The blocker is asked first, since a banner behind a hidden
     /// window explains nothing; the copy happens either way.
     fn paste_selected_clip(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(work) = self.paste_write() else {
+        let Some(work) = self.paste_write().map(clipwrite::ordered) else {
             self.banner
                 .show(PASTE_NOTHING.into(), Tone::Info, banner::PASTE_BLOCKED, cx);
             return true;
@@ -1661,10 +1662,9 @@ impl Launcher {
             cx.notify();
             return;
         }
-        let paths = self.picked.paths();
         bg::fetch(
             cx,
-            move || files::copy_files_to_clipboard(&paths),
+            clipwrite::ordered(files_write(self.picked.paths())),
             move |this, outcome, cx| {
                 let (text, tone, seconds) = match outcome {
                     Ok(()) => (
@@ -3537,7 +3537,7 @@ fn glyph_icon(path: &'static str, th: &Theme) -> AnyElement {
 
 /// What putting a clip back on the clipboard runs, and what the banner says
 /// once it has.
-type ClipWrite = Box<dyn FnOnce() -> Result<(), String> + Send>;
+type ClipWrite = clipwrite::Write;
 
 fn clip_write(open: &Open) -> Option<(ClipWrite, &'static str)> {
     match open {

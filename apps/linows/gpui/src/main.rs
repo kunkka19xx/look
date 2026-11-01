@@ -12,6 +12,7 @@ mod bgimage;
 mod bindings;
 mod blocks;
 mod blur;
+mod clipwrite;
 mod commands;
 mod config_list;
 mod confirm;
