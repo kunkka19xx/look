@@ -103,7 +103,7 @@ pub fn is_math(query: &str) -> bool {
         return false;
     }
     // A path being typed, even when the rest is digits.
-    if q.starts_with('/') || q.starts_with('~') {
+    if matches!(q.chars().next().map(canonical), Some('/' | '~')) {
         return false;
     }
     if is_grouped_numeric(q) {
@@ -167,9 +167,10 @@ fn is_spaced(chars: &[char], i: usize) -> bool {
     before && after
 }
 
-/// Three or more all-digit groups joined by `-`, `/` or `.`.
+/// Three or more all-digit groups joined by `-`, `/` or `.`. A typographic
+/// minus counts as a dash, but `÷` is never a date separator.
 fn is_grouped_numeric(s: &str) -> bool {
-    let parts: Vec<&str> = s.split(['-', '/', '.']).collect();
+    let parts: Vec<&str> = s.split(['-', '−', '/', '.']).collect();
     parts.len() >= 3
         && parts
             .iter()
@@ -194,15 +195,16 @@ enum Token {
 // --- Tokenizer ---
 
 fn tokenize(expr: &str, aliases: Aliases) -> Result<Vec<Token>, String> {
-    let chars: Vec<char> = expr.chars().collect();
+    // Up front, so number scanning (`1e−3`) and spacing checks see it too.
+    let chars: Vec<char> = expr.chars().map(canonical).collect();
     let mut tokens = Vec::new();
     let mut i = 0;
 
     while i < chars.len() {
         let c = chars[i];
-        if c == ' ' || c == '\t' {
+        if c == ' ' {
             i += 1;
-        } else if c.is_ascii_digit() || c == '.' {
+        } else if c.is_ascii_digit() || c == '.' || vulgar_fraction(c).is_some() {
             let (value, next) = scan_number(&chars, i)?;
             tokens.push(Token::Num(value));
             i = next;
@@ -221,6 +223,57 @@ fn tokenize(expr: &str, aliases: Aliases) -> Result<Vec<Token>, String> {
         }
     }
     Ok(tokens)
+}
+
+/// Typographic operators read as their ASCII forms, so text pasted from a
+/// document or rewritten by the system (`3 × 4`, `10 ÷ 2`, `5 − 1`, `16∶9`)
+/// means what it shows. `∶` stays a ratio colon and keeps `:`'s rules.
+/// Whitespace within a line, such as a tab or a pasted non-breaking space, is a
+/// plain space.
+fn canonical(c: char) -> char {
+    match c {
+        '×' | '⋅' | '∙' => '*',
+        '÷' | '∕' | '⁄' => '/',
+        '−' => '-',
+        '∶' => ':',
+        c if is_inline_space(c) => ' ',
+        _ => c,
+    }
+}
+
+const LINE_SEPARATOR: char = '\u{2028}';
+const PARAGRAPH_SEPARATOR: char = '\u{2029}';
+
+/// Line breaks stay unknown characters: a multi-line paste is not one expression.
+fn is_inline_space(c: char) -> bool {
+    c.is_whitespace()
+        && (c == '\t' || !c.is_control())
+        && !matches!(c, LINE_SEPARATOR | PARAGRAPH_SEPARATOR)
+}
+
+/// The value of a vulgar fraction character, e.g. `½`.
+fn vulgar_fraction(c: char) -> Option<f64> {
+    Some(match c {
+        '½' => 1.0 / 2.0,
+        '⅓' => 1.0 / 3.0,
+        '⅔' => 2.0 / 3.0,
+        '¼' => 1.0 / 4.0,
+        '¾' => 3.0 / 4.0,
+        '⅕' => 1.0 / 5.0,
+        '⅖' => 2.0 / 5.0,
+        '⅗' => 3.0 / 5.0,
+        '⅘' => 4.0 / 5.0,
+        '⅙' => 1.0 / 6.0,
+        '⅚' => 5.0 / 6.0,
+        '⅐' => 1.0 / 7.0,
+        '⅛' => 1.0 / 8.0,
+        '⅜' => 3.0 / 8.0,
+        '⅝' => 5.0 / 8.0,
+        '⅞' => 7.0 / 8.0,
+        '⅑' => 1.0 / 9.0,
+        '⅒' => 1.0 / 10.0,
+        _ => return None,
+    })
 }
 
 fn punctuation(c: char, chars: &[char], i: usize, aliases: Aliases) -> Option<Token> {
@@ -254,9 +307,13 @@ fn word_token(word: &str) -> Result<Token, String> {
     })
 }
 
-/// One number, accepting group separators (`1,500`) and scientific notation
-/// (`1e6`). Returns the value and the index just past it.
+/// One number, accepting group separators (`1,500`), scientific notation
+/// (`1e6`), and a trailing vulgar fraction as a mixed number (`1½` is 1.5).
+/// Returns the value and the index just past it.
 fn scan_number(chars: &[char], start: usize) -> Result<(f64, usize), String> {
+    if let Some(fraction) = vulgar_fraction(chars[start]) {
+        return Ok((fraction, start + 1));
+    }
     let mut digits = String::new();
     let mut i = start;
     let mut seen_dot = false;
@@ -298,10 +355,13 @@ fn scan_number(chars: &[char], start: usize) -> Result<(f64, usize), String> {
         }
     }
 
-    digits
+    let value = digits
         .parse::<f64>()
-        .map(|v| (v, i))
-        .map_err(|_| format!("Invalid number: {digits}"))
+        .map_err(|_| format!("Invalid number: {digits}"))?;
+    match chars.get(i).copied().and_then(vulgar_fraction) {
+        Some(fraction) if !digits.contains(['.', 'e']) => Ok((value + fraction, i + 1)),
+        _ => Ok((value, i)),
+    }
 }
 
 /// Exactly three digits follow and no fourth: `1,500` yes, `1,5` no.
@@ -802,6 +862,40 @@ mod tests {
         ] {
             assert!(is_math(q), "{q} should be math");
         }
+    }
+
+    #[test]
+    fn typographic_operators_and_fractions() {
+        assert_eq!(calc("3 × 4"), "12");
+        assert_eq!(calc("10 ÷ 4"), "2.5");
+        assert_eq!(calc("5 − 1"), "4");
+        assert_eq!(calc("1⁄2"), "0.5");
+        assert_eq!(calc("½ + ¼"), "0.75");
+        assert_eq!(calc("1½ * 2"), "3");
+        assert_eq!(calc("16∶9"), "1.7777777778");
+        assert!(is_math("3×4"));
+        assert!(is_math("½ + 1"));
+        assert!(is_math("10 ∶ 2"));
+        assert!(!is_math("16∶9"), "a glued ratio colon is still a ratio");
+        assert!(!is_math("½"), "a bare number is not a calculation");
+        assert_eq!(calc("1e−3"), "0.001", "a typographic exponent sign");
+        assert_eq!(calc("3\u{a0}×\u{a0}4"), "12", "pasted non-breaking spaces");
+        assert!(is_math("3\u{a0}×\u{a0}4"));
+        assert!(!is_math("20−05−2026"), "a date with typographic dashes");
+        assert!(is_math("100÷5÷2"), "a division chain is not a date");
+        assert_eq!(calc("100÷5÷2"), "10");
+        assert!(!is_math("÷5"), "a leading divide is not a calculation");
+        assert!(!is_math("∕2"));
+        assert!(
+            !is_math("12\n+ 30"),
+            "a multi-line paste is not one expression"
+        );
+        assert!(!is_math("12\u{2028}+ 30"));
+        assert!(is_math("3\t×\t4"));
+        assert!(
+            eval("1.5½").is_err(),
+            "a fraction only completes a whole number"
+        );
     }
 
     /// The dedicated /calc panel is past the gate - the user already said this
