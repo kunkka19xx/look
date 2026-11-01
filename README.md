@@ -14,7 +14,9 @@ A keyboard-first, local-first launcher for macOS, Windows, and Linux. Open apps,
 
 📘 [Docs](https://noah-code.com/docs/look) · 📖 [User guide](docs/user-guide.md)
 
-https://github.com/user-attachments/assets/33c9d078-a754-47e3-ae04-a7efb6c68e48
+https://github.com/user-attachments/assets/a0907691-d99b-48a7-862c-8bc43cfa3a2e
+
+
 
 Results land as fast as you can type. A Rust core under a native SwiftUI app on macOS, and a GPU-drawn gpui shell on Windows and Linux, with no browser engine in the process. No background daemons. Your index, clipboard, and history stay on your machine; no telemetry.
 
