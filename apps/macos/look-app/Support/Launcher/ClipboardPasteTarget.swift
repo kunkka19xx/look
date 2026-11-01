@@ -1,15 +1,31 @@
 import Foundation
 
-/// What ⌘I on a clipboard row pastes, and when the chord is allowed to act.
-/// Pure data-in / data-out so it can be unit-tested; `FrontmostAppPaste` and
-/// `LauncherView` do the pasteboard write and the keystroke.
+/// What ⌘I pastes, and when the chord is allowed to act: a clipboard row
+/// pastes its clip, anywhere else the picks go, or the file or folder under
+/// the cursor. Pure data-in / data-out so it can be unit-tested;
+/// `FrontmostAppPaste` and `LauncherView` do the pasteboard write and the
+/// keystroke.
 enum ClipboardPasteTarget: Equatable {
     /// Labeled entries (`2+2 = 4`) paste their value, the same one Enter copies.
     case text(String)
     /// The pixels live in the store, so an image clip travels as a result id.
     case image(resultID: String)
+    /// Files and folders, written the way a pick is: Finder pastes the items,
+    /// a text field pastes the paths.
+    case files([String])
 
-    static func resolve(_ result: LauncherResult?) -> ClipboardPasteTarget? {
+    /// The picks outrank the row since picking is how several get chosen at all.
+    static func resolve(
+        _ result: LauncherResult?, picked: [LauncherResult] = []
+    ) -> ClipboardPasteTarget? {
+        if let clip = clip(result) { return clip }
+        let picks = picked.filter { $0.kind.isFileOrFolder }.map(\.path)
+        if !picks.isEmpty { return .files(picks) }
+        guard let result, result.kind.isFileOrFolder, !result.path.isEmpty else { return nil }
+        return .files([result.path])
+    }
+
+    private static func clip(_ result: LauncherResult?) -> ClipboardPasteTarget? {
         guard let result, result.kind == .clipboard else { return nil }
         if result.isClipboardImage {
             return .image(resultID: result.id)

@@ -165,7 +165,7 @@ fn build() -> Vec<Group> {
                 Entry::new(
                     PASTE,
                     "Ctrl+I",
-                    "In clipboard history: paste the selected clip into the app you came from (text or image)",
+                    "Paste the selected file/folder, or every pick, into the app you came from; in clipboard history, the selected clip",
                 ),
                 Entry::new(
                     TRASH,

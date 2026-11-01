@@ -97,6 +97,7 @@ const TRANSLATING: &str = "Translating\u{2026}";
 const TRANSLATE_FAILED: &str = "Translation failed";
 const OPEN_IN_BROWSER: &str = "Open in Browser";
 const CLIP_DELETED: &str = "Clipboard item deleted";
+const PASTE_NOTHING: &str = "Only clips, files or folders can be pasted";
 const CLIP_IMAGE_DELETED: &str = "Image removed from history";
 static HINT_LEVEL: Hint = Hint::new(&[
     Piece::Id(shortcuts::ACTIONS, "Actions"),
@@ -1532,7 +1533,9 @@ impl Launcher {
     /// underneath. The blocker is asked first, since a banner behind a hidden
     /// window explains nothing; the copy happens either way.
     fn paste_selected_clip(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some((work, _)) = self.selected_row().and_then(|row| clip_write(&row.open)) else {
+        let Some(work) = self.paste_write() else {
+            self.banner
+                .show(PASTE_NOTHING.into(), Tone::Info, banner::PASTE_BLOCKED, cx);
             return true;
         };
         let shell: Arc<dyn LauncherWindow> = Arc::new(self.shell.clone());
@@ -1552,6 +1555,21 @@ impl Launcher {
             },
         );
         true
+    }
+
+    /// What Ctrl+I puts on the clipboard before the chord: the clip under the
+    /// cursor, else every pick, else the file or folder under the cursor. The
+    /// picks outrank the row since picking is how several get chosen at all.
+    fn paste_write(&self) -> Option<ClipWrite> {
+        let row = self.selected_row();
+        if let Some((work, _)) = row.and_then(|row| clip_write(&row.open)) {
+            return Some(work);
+        }
+        if !self.picked.is_empty() {
+            return Some(files_write(self.picked.paths()));
+        }
+        row.filter(|row| picked::pickable(row))
+            .map(|row| files_write(vec![row.path.clone()]))
     }
 
     /// `t"` Enter: one translation per configured language, each landing as it
@@ -3538,6 +3556,12 @@ fn clip_write(open: &Open) -> Option<(ClipWrite, &'static str)> {
         }
         _ => None,
     }
+}
+
+/// Files and folders go out in every form at once, so a file manager pastes
+/// the items and a text field pastes the paths.
+fn files_write(paths: Vec<String>) -> ClipWrite {
+    Box::new(move || files::copy_files_to_clipboard(&paths))
 }
 
 /// Percent-encoding for a query in a URL: letters, digits and the unreserved

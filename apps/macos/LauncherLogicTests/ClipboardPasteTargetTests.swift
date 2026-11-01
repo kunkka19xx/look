@@ -46,11 +46,40 @@ final class ClipboardPasteTargetTests: XCTestCase {
         XCTAssertNil(ClipboardPasteTarget.resolve(nil))
     }
 
-    func testANonClipboardRowResolvesToNothing() {
-        let file = LauncherResult(
-            id: "file:1", kind: .file, title: "notes.txt", subtitle: "", path: "/tmp/notes.txt",
+    private func pathResult(kind: LauncherResultKind, path: String) -> LauncherResult {
+        LauncherResult(
+            id: "\(kind.rawValue):\(path)", kind: kind, title: path, subtitle: "", path: path,
             score: 0)
-        XCTAssertNil(ClipboardPasteTarget.resolve(file))
+    }
+
+    func testAFileOrFolderRowPastesItself() {
+        let file = pathResult(kind: .file, path: "/tmp/notes.txt")
+        XCTAssertEqual(ClipboardPasteTarget.resolve(file), .files(["/tmp/notes.txt"]))
+        let folder = pathResult(kind: .folder, path: "/tmp")
+        XCTAssertEqual(ClipboardPasteTarget.resolve(folder), .files(["/tmp"]))
+    }
+
+    func testThePicksOutrankTheRow() {
+        let row = pathResult(kind: .file, path: "/tmp/notes.txt")
+        let picks = [
+            pathResult(kind: .file, path: "/tmp/a.txt"),
+            pathResult(kind: .app, path: "/Applications/Safari.app"),
+            pathResult(kind: .folder, path: "/tmp/b"),
+        ]
+        XCTAssertEqual(
+            ClipboardPasteTarget.resolve(row, picked: picks), .files(["/tmp/a.txt", "/tmp/b"]))
+    }
+
+    func testAClipRowPastesTheClipEvenWithPicks() {
+        let picks = [pathResult(kind: .file, path: "/tmp/a.txt")]
+        XCTAssertEqual(
+            ClipboardPasteTarget.resolve(clipboardResult(), picked: picks), .text("hello"))
+    }
+
+    func testAnAppRowResolvesToNothing() {
+        let app = pathResult(kind: .app, path: "/Applications/Safari.app")
+        XCTAssertNil(ClipboardPasteTarget.resolve(app))
+        XCTAssertNil(ClipboardPasteTarget.resolve(app, picked: [app]))
     }
 
     func testTheChordIsRefusedWhileAnotherSurfaceOwnsTheWindow() {
