@@ -103,7 +103,7 @@ pub fn is_math(query: &str) -> bool {
         return false;
     }
     // A path being typed, even when the rest is digits.
-    if q.starts_with('/') || q.starts_with('~') {
+    if matches!(q.chars().next().map(canonical), Some('/' | '~')) {
         return false;
     }
     if is_grouped_numeric(q) {
@@ -167,11 +167,10 @@ fn is_spaced(chars: &[char], i: usize) -> bool {
     before && after
 }
 
-/// Three or more all-digit groups joined by `-`, `/` or `.`.
+/// Three or more all-digit groups joined by `-`, `/` or `.`. A typographic
+/// minus counts as a dash, but `÷` is never a date separator.
 fn is_grouped_numeric(s: &str) -> bool {
-    let parts: Vec<&str> = s
-        .split(|c| matches!(canonical(c), '-' | '/' | '.'))
-        .collect();
+    let parts: Vec<&str> = s.split(['-', '−', '/', '.']).collect();
     parts.len() >= 3
         && parts
             .iter()
@@ -203,7 +202,7 @@ fn tokenize(expr: &str, aliases: Aliases) -> Result<Vec<Token>, String> {
 
     while i < chars.len() {
         let c = chars[i];
-        if c == ' ' || c == '\t' {
+        if c == ' ' {
             i += 1;
         } else if c.is_ascii_digit() || c == '.' || vulgar_fraction(c).is_some() {
             let (value, next) = scan_number(&chars, i)?;
@@ -229,21 +228,30 @@ fn tokenize(expr: &str, aliases: Aliases) -> Result<Vec<Token>, String> {
 /// Typographic operators read as their ASCII forms, so text pasted from a
 /// document or rewritten by the system (`3 × 4`, `10 ÷ 2`, `5 − 1`, `16∶9`)
 /// means what it shows. `∶` stays a ratio colon and keeps `:`'s rules.
-/// Other whitespace, such as a pasted non-breaking space, is a plain space.
+/// Whitespace within a line, such as a tab or a pasted non-breaking space, is a
+/// plain space.
 fn canonical(c: char) -> char {
     match c {
         '×' | '⋅' | '∙' => '*',
         '÷' | '∕' | '⁄' => '/',
         '−' => '-',
         '∶' => ':',
-        '\t' => c,
-        c if c.is_whitespace() => ' ',
+        c if is_inline_space(c) => ' ',
         _ => c,
     }
 }
 
-/// The value of a vulgar fraction character, e.g. `½`, which macOS text
-/// replacement produces from `1/2`.
+const LINE_SEPARATOR: char = '\u{2028}';
+const PARAGRAPH_SEPARATOR: char = '\u{2029}';
+
+/// Line breaks stay unknown characters: a multi-line paste is not one expression.
+fn is_inline_space(c: char) -> bool {
+    c.is_whitespace()
+        && (c == '\t' || !c.is_control())
+        && !matches!(c, LINE_SEPARATOR | PARAGRAPH_SEPARATOR)
+}
+
+/// The value of a vulgar fraction character, e.g. `½`.
 fn vulgar_fraction(c: char) -> Option<f64> {
     Some(match c {
         '½' => 1.0 / 2.0,
@@ -874,6 +882,16 @@ mod tests {
         assert_eq!(calc("3\u{a0}×\u{a0}4"), "12", "pasted non-breaking spaces");
         assert!(is_math("3\u{a0}×\u{a0}4"));
         assert!(!is_math("20−05−2026"), "a date with typographic dashes");
+        assert!(is_math("100÷5÷2"), "a division chain is not a date");
+        assert_eq!(calc("100÷5÷2"), "10");
+        assert!(!is_math("÷5"), "a leading divide is not a calculation");
+        assert!(!is_math("∕2"));
+        assert!(
+            !is_math("12\n+ 30"),
+            "a multi-line paste is not one expression"
+        );
+        assert!(!is_math("12\u{2028}+ 30"));
+        assert!(is_math("3\t×\t4"));
         assert!(
             eval("1.5½").is_err(),
             "a fraction only completes a whole number"
