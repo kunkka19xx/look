@@ -50,7 +50,7 @@ static TIPS: Hint = Hint::new(&[
     Piece::Key("/kill", "force quit apps"),
 ]);
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct View {
     topic: Option<Topic>,
     collapsed: HashSet<&'static str>,
@@ -196,6 +196,17 @@ impl Recorder {
 
     pub fn saved(&mut self) {
         self.pending.clear();
+        self.refresh();
+    }
+
+    /// The unsaved edits, for a hide to keep.
+    pub fn pending(&self) -> HashMap<&'static str, String> {
+        self.pending.clone()
+    }
+
+    /// The edits a hide kept, over the table as it stands now.
+    pub fn resume(&mut self, pending: HashMap<&'static str, String>) {
+        self.pending = pending;
         self.refresh();
     }
 }

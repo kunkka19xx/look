@@ -149,7 +149,7 @@ fn detect_compositor() -> Compositor {
     if super::wm::is_sway() {
         return Compositor::Sway;
     }
-    if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
+    if super::wm::is_hyprland() {
         return Compositor::Hyprland;
     }
     if super::wm::is_niri() {
@@ -320,7 +320,7 @@ const SWAY_BIND_FLAGS: &str = "--inhibited";
 
 fn ensure_sway_keybinding() {
     // Add window rule: float + no border
-    let _ = host_command("swaymsg")
+    let _ = super::wm::swaymsg()
         .args([
             "for_window",
             "[app_id=\"lookapp\"]",
@@ -334,13 +334,13 @@ fn ensure_sway_keybinding() {
     // Drop a binding left by a Look old enough to predate SWAY_BIND_FLAGS:
     // sway counts the flag as part of a binding's identity, so the two would
     // coexist and fire the toggle twice.
-    let _ = host_command("swaymsg")
+    let _ = super::wm::swaymsg()
         .arg(format!("unbindsym {SWAY_KEY}"))
         .output();
 
     // Bind Alt+Space to toggle Look via D-Bus
     let cmd = toggle_cmd();
-    let bound = host_command("swaymsg")
+    let bound = super::wm::swaymsg()
         .arg(format!("bindsym {SWAY_BIND_FLAGS} {SWAY_KEY} exec {cmd}"))
         .output()
         .map(|o| o.status.success())
@@ -361,7 +361,7 @@ fn ensure_sway_keybinding() {
 }
 
 fn cleanup_sway_keybinding() {
-    let _ = host_command("swaymsg")
+    let _ = super::wm::swaymsg()
         .arg(format!("unbindsym {SWAY_BIND_FLAGS} {SWAY_KEY}"))
         .output();
     eprintln!("[look] Removed Sway keybinding for Alt+Space");
@@ -413,7 +413,7 @@ hl.window_rule({{ name = "look-float", match = {{ class = "lookapp" }}, float = 
 hl.window_rule({{ name = "look-noborder", match = {{ class = "lookapp" }}, border_size = 0, rounding = 0, no_shadow = true }})
 hl.bind("ALT + space", hl.dsp.exec_cmd("{cmd}"){flags})"#
     );
-    if hyprctl_ok(host_command("hyprctl").args(["eval", &lua]).output()) {
+    if hyprctl_ok(super::wm::hyprctl().args(["eval", &lua]).output()) {
         return true;
     }
 
@@ -421,17 +421,17 @@ hl.bind("ALT + space", hl.dsp.exec_cmd("{cmd}"){flags})"#
     // bind` appends rather than replaces, so an ALT,space bind left by an
     // earlier run - or by the other of bind/bindp - stays live alongside the
     // new one and Hyprland fires both dispatchers.
-    let _ = host_command("hyprctl")
+    let _ = super::wm::hyprctl()
         .args(["keyword", "unbind", "ALT,space"])
         .output();
-    let _ = host_command("hyprctl")
+    let _ = super::wm::hyprctl()
         .args(["keyword", "windowrulev2", "float, class:lookapp"])
         .output();
-    let _ = host_command("hyprctl")
+    let _ = super::wm::hyprctl()
         .args(["keyword", "windowrulev2", "noborder, class:lookapp"])
         .output();
     hyprctl_ok(
-        host_command("hyprctl")
+        super::wm::hyprctl()
             .args([
                 "keyword",
                 if dont_inhibit { "bindp" } else { "bind" },
@@ -451,14 +451,14 @@ fn hyprctl_ok(result: std::io::Result<std::process::Output>) -> bool {
 
 fn cleanup_hyprland_keybinding() {
     // Try Lua first, then legacy
-    let result = host_command("hyprctl")
+    let result = super::wm::hyprctl()
         .args(["eval", r#"hl.unbind("ALT + space")"#])
         .output();
 
     let used_lua = result.as_ref().map(|o| o.status.success()).unwrap_or(false);
 
     if !used_lua {
-        let _ = host_command("hyprctl")
+        let _ = super::wm::hyprctl()
             .args(["keyword", "unbind", "ALT,space"])
             .output();
     }
@@ -537,8 +537,7 @@ fn niri_user_config() -> Option<std::path::PathBuf> {
 /// since nothing else exports it. Silently `None` anywhere that shape does not
 /// hold, which leaves every caller on its own fallback.
 fn niri_pid() -> Option<u32> {
-    let socket = std::env::var("NIRI_SOCKET").ok()?;
-    std::path::Path::new(&socket)
+    super::wm::niri_socket()?
         .file_stem()?
         .to_str()?
         .rsplit('.')

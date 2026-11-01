@@ -159,6 +159,7 @@ struct Translation {
 pub struct Retained {
     pub query: String,
     pub screen: Option<(usize, String)>,
+    pub settings: Option<settings::Kept>,
     pub answer: Option<answers::Settled>,
     pub suggestions: Option<Suggestions>,
     /// The new launcher reads the switch off the UI thread, after the
@@ -171,6 +172,7 @@ impl Retained {
     pub fn expire(self) -> Self {
         Self {
             screen: self.screen,
+            settings: self.settings,
             ai_enabled: self.ai_enabled,
             ..Default::default()
         }
@@ -412,6 +414,7 @@ impl Launcher {
             Retained {
                 query: self.query(cx),
                 screen: None,
+                settings: self.settings_open.then(|| self.settings.kept()),
                 answer: self.ai.settled(),
                 suggestions: self.suggestions.clone(),
                 ai_enabled: self.ai.enabled,
@@ -430,6 +433,9 @@ impl Launcher {
         }
         if let Some((index, text)) = &retained.screen {
             self.enter_command_mode(*index, text, cx);
+        } else if let Some(kept) = retained.settings {
+            self.settings_open = true;
+            self.settings.resume(kept, cx);
         } else if !retained.query.is_empty() {
             self.input.update(cx, |input, cx| {
                 input.set_text(&retained.query, cx);

@@ -1,6 +1,6 @@
 //! Focus and window control on niri via its own IPC socket.
 //!
-//! niri exposes a line-oriented JSON protocol on `$NIRI_SOCKET`: write one
+//! niri exposes a line-oriented JSON protocol on its socket (see `wm::ipc`): write one
 //! serialised request, read one reply. Talking to the socket directly avoids
 //! spawning `niri msg` per call, and unlike the generic
 //! `wlr-foreign-toplevel` `activate` request, `FocusWindow` also scrolls the
@@ -45,8 +45,7 @@ pub struct Timestamp {
 }
 
 fn request(payload: &serde_json::Value) -> Option<serde_json::Value> {
-    let path = std::env::var_os("NIRI_SOCKET")?;
-    let stream = UnixStream::connect(path).ok()?;
+    let stream = UnixStream::connect(super::wm::niri_socket()?).ok()?;
     stream.set_read_timeout(Some(IPC_TIMEOUT)).ok()?;
     stream.set_write_timeout(Some(IPC_TIMEOUT)).ok()?;
 

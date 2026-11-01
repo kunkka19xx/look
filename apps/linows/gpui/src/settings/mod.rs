@@ -6,13 +6,13 @@
 mod advanced;
 mod shortcuts;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, Div, Entity, FocusHandle, FontWeight, ScrollHandle, SharedString,
-    deferred, div, px, relative,
+    AnyElement, Context, Div, Entity, FocusHandle, FontWeight, Pixels, Point, ScrollHandle,
+    SharedString, deferred, div, px, relative,
 };
 use linows_backend::config::{self, ConfigUpdate, LauncherLayout};
 use linows_backend::platform::{self, CandidateDrive};
@@ -393,10 +393,38 @@ struct SaveMessage {
     ok: bool,
 }
 
+/// The screen as a hide leaves it, so the next open lands back on it: the
+/// working copy, the tab and how far it is scrolled.
+pub struct Kept {
+    tab: Tab,
+    scroll: Point<Pixels>,
+    shortcuts_view: shortcuts::View,
+    entries: HashMap<String, String>,
+    /// False while the file is still being read: the resume reads it again
+    /// rather than save an empty copy over it.
+    loaded: bool,
+    edited: HashSet<String>,
+    pending: HashMap<&'static str, String>,
+}
+
+impl Kept {
+    /// The file changed behind the screen's back: the resume reads it
+    /// again, and edits do not carry across an explicit reload.
+    pub fn forget_entries(&mut self) {
+        self.loaded = false;
+        self.edited.clear();
+    }
+}
+
 pub struct Settings {
     pub tab: Tab,
     /// The config as this screen last read it, with its own changes on top.
     entries: HashMap<String, String>,
+    /// Whether `entries` has been read from the file since the last request.
+    loaded: bool,
+    /// Keys changed while that read was in flight, laid back over it when
+    /// it lands.
+    edited: HashSet<String>,
     fonts: Vec<String>,
     /// Windows: the fixed drives that are not the system's.
     drives: Vec<CandidateDrive>,
@@ -424,6 +452,8 @@ impl Settings {
         Self {
             tab: Tab::default(),
             entries: HashMap::new(),
+            loaded: false,
+            edited: HashSet::new(),
             fonts: Vec::new(),
             drives: Vec::new(),
             recorder: shortcuts::Recorder::default(),
@@ -443,7 +473,42 @@ impl Settings {
         self.tab = Tab::default();
         self.shortcuts_view = shortcuts::View::default();
         self.scroll.set_offset(Default::default());
-        self.reload(cx);
+        self.edited.clear();
+        self.load(true, cx);
+        self.fetch_fonts(cx);
+    }
+
+    pub fn kept(&self) -> Kept {
+        Kept {
+            tab: self.tab,
+            scroll: self.scroll.offset(),
+            shortcuts_view: self.shortcuts_view.clone(),
+            entries: self.entries.clone(),
+            loaded: self.loaded,
+            edited: self.edited.clone(),
+            pending: self.recorder.pending(),
+        }
+    }
+
+    /// Back where a hide left it, the working copy standing in for the file
+    /// when it had been read; otherwise the read runs again.
+    pub fn resume(&mut self, kept: Kept, cx: &mut Context<Launcher>) {
+        self.tab = kept.tab;
+        self.scroll.set_offset(kept.scroll);
+        self.shortcuts_view = kept.shortcuts_view;
+        self.recorder.resume(kept.pending);
+        self.entries = kept.entries;
+        self.edited = kept.edited;
+        if kept.loaded {
+            self.load(false, cx);
+            self.apply(cx);
+        } else {
+            self.load(true, cx);
+        }
+        self.fetch_fonts(cx);
+    }
+
+    fn fetch_fonts(&mut self, cx: &mut Context<Launcher>) {
         if self.fonts.is_empty() {
             bg::fetch(cx, files::list_fonts, |this, fonts, _| {
                 this.settings.fonts = fonts;
@@ -464,34 +529,67 @@ impl Settings {
     /// their switches read the OS, not the file, and the drives come along
     /// on Windows.
     pub fn reload(&mut self, cx: &mut Context<Launcher>) {
+        self.edited.clear();
+        self.load(true, cx);
+    }
+
+    /// `read` takes the entries from the file; a resume keeps its own, and
+    /// a change made meanwhile must not be overwritten when the rest lands.
+    fn load(&mut self, read: bool, cx: &mut Context<Launcher>) {
+        if read {
+            self.loaded = false;
+        }
         bg::fetch(
             cx,
-            || {
-                let mut entries = (*theme::entries()).clone();
-                let flag = |on: bool| if on { "true" } else { "false" }.to_string();
-                entries.insert(
-                    advanced::LAUNCH_AT_LOGIN.key.to_string(),
-                    flag(autostart::get_autostart()),
-                );
-                if cfg!(windows) {
-                    entries.insert(
-                        advanced::ADD_TO_PATH.key.to_string(),
-                        flag(cli_path::get_cli_path()),
-                    );
-                }
+            move || {
                 (
-                    entries,
+                    read.then(Self::read_entries),
                     platform::list_candidate_drives(),
                     hotkey::launcher_hotkey_state(),
                 )
             },
-            |this, (entries, drives, hotkey), _| {
-                this.settings.entries = entries;
+            |this, (entries, drives, hotkey), cx| {
+                if let Some(entries) = entries {
+                    this.settings.land(entries, cx);
+                }
                 this.settings.drives = drives;
                 this.settings.recorder.state = Some(hotkey);
                 this.settings.recorder.refresh();
             },
         );
+    }
+
+    /// The read in, under whatever was changed while it ran.
+    fn land(&mut self, read: HashMap<String, String>, cx: &mut Context<Launcher>) {
+        let edited = std::mem::take(&mut self.edited);
+        let interim = std::mem::replace(&mut self.entries, read);
+        self.loaded = true;
+        if edited.is_empty() {
+            return;
+        }
+        for key in edited {
+            match interim.get(&key) {
+                Some(value) => self.entries.insert(key, value.clone()),
+                None => self.entries.remove(&key),
+            };
+        }
+        self.apply(cx);
+    }
+
+    fn read_entries() -> HashMap<String, String> {
+        let mut entries = (*theme::entries()).clone();
+        let flag = |on: bool| if on { "true" } else { "false" }.to_string();
+        entries.insert(
+            advanced::LAUNCH_AT_LOGIN.key.to_string(),
+            flag(autostart::get_autostart()),
+        );
+        if cfg!(windows) {
+            entries.insert(
+                advanced::ADD_TO_PATH.key.to_string(),
+                flag(cli_path::get_cli_path()),
+            );
+        }
+        entries
     }
 
     pub fn hint(&self) -> Option<SharedString> {
@@ -616,6 +714,9 @@ impl Settings {
     /// Set a key on the working copy; empty unsets it.
     fn set(&mut self, key: &str, value: impl Into<String>) {
         let value = value.into();
+        if !self.loaded {
+            self.edited.insert(key.to_string());
+        }
         if value.is_empty() {
             self.entries.remove(key);
         } else {
@@ -792,6 +893,10 @@ impl Settings {
     /// Save Config: the screen's keys, in one write, then the engine reads
     /// the file again and the OS takes the startup switches.
     fn save_all(&mut self, cx: &mut Context<Launcher>) {
+        // Nothing to write until the file has been read.
+        if !self.loaded {
+            return;
+        }
         if let Some(field) = &self.field
             && let FieldKind::Number(spec) = field.kind
         {

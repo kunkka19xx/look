@@ -61,6 +61,12 @@ fn is_x11() -> bool {
     std::env::var_os("WAYLAND_DISPLAY").is_none_or(|d| d.is_empty())
 }
 
+/// The window is a layer surface, which outranks every toplevel: a dialog
+/// can only come up behind it.
+pub fn layered() -> bool {
+    !is_x11() && wm::has_layer_shell()
+}
+
 static OPAQUE: AtomicBool = AtomicBool::new(false);
 
 /// Bare X11 has nothing to blend a transparent pixel with, so the gaps
@@ -294,7 +300,7 @@ pub fn kind() -> WindowKind {
     if is_x11() {
         return WindowKind::Dialog;
     }
-    if !wm::has_layer_shell() {
+    if !layered() {
         return WindowKind::Normal;
     }
     WindowKind::LayerShell(LayerShellOptions {
