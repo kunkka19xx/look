@@ -273,12 +273,12 @@ fn check_program(word: &str, key: &'static str, home: &Path, found: &mut Found) 
         return;
     }
     // Named by path rather than by name: a file to find, not a lookup.
-    if word.contains('/') {
+    if word.contains('/') || drive_rooted(word) {
         // Anchored only. A relative path resolves against wherever the
         // command runs, which is the block's `cwd`, the row's folder, or `/`,
         // and never this process's directory, so `./list.sh` has no one
         // answer to look up.
-        if word.starts_with('/') || word.starts_with("~/") {
+        if word.starts_with('/') || word.starts_with("~/") || drive_rooted(word) {
             check_path(word, key, home, found);
         }
         return;
@@ -288,14 +288,28 @@ fn check_program(word: &str, key: &'static str, home: &Path, found: &mut Found) 
     }
 }
 
+/// `C:\tools\x.exe` or `C:/tools/x.exe`: anchored the way a leading `/` is.
+///
+/// Recognised everywhere, not only on Windows. A cross-platform example that
+/// names one is saying where a file is, and reading it as a program name
+/// would look it up on `PATH` and report it missing.
+fn drive_rooted(word: &str) -> bool {
+    let mut chars = word.chars();
+    matches!(
+        (chars.next(), chars.next(), chars.next()),
+        (Some(letter), Some(':'), Some('/' | '\\')) if letter.is_ascii_alphabetic()
+    )
+}
+
 /// Shell builtins and keywords. Some are also on `PATH` and some never are, but
 /// either way the shell answers them itself, so looking is pointless.
 fn builtin(word: &str) -> bool {
-    const BUILTINS: [&str; 41] = [
-        ".", ":", "[", "alias", "break", "case", "cd", "command", "continue", "declare", "do",
-        "done", "echo", "elif", "else", "esac", "eval", "exec", "exit", "export", "false", "fi",
-        "for", "function", "if", "in", "let", "local", "printf", "pwd", "read", "readonly",
-        "return", "set", "shift", "source", "test", "then", "true", "until", "while",
+    const BUILTINS: &[&str] = &[
+        "!", ".", ":", "[", "[[", "]]", "alias", "break", "case", "cd", "command", "continue",
+        "declare", "do", "done", "echo", "elif", "else", "esac", "eval", "exec", "exit", "export",
+        "false", "fi", "for", "function", "getopts", "hash", "if", "in", "let", "local", "printf",
+        "pwd", "read", "readonly", "return", "select", "set", "shift", "source", "test", "then",
+        "time", "trap", "true", "type", "umask", "unset", "until", "wait", "while",
     ];
 
     BUILTINS.contains(&word)
@@ -349,8 +363,10 @@ fn segments(command: &str) -> Vec<Segment> {
 
     while let Some(ch) = chars.next() {
         match ch {
-            // Whatever follows is literal, `\;` and `\ ` included.
-            '\\' => {
+            // Whatever follows is literal, `\;` and `\ ` included. Only off
+            // Windows: `cmd` reads a backslash as a path separator, and
+            // eating it turns `C:\tools\list.exe` into `C:toolslist.exe`.
+            '\\' if !cfg!(windows) => {
                 if let Some(next) = chars.next() {
                     word.push(next);
                 }
@@ -404,6 +420,15 @@ fn segments(command: &str) -> Vec<Segment> {
             // opened it, and reading an AppleScript as a list of shell
             // commands finds a missing program on every line of it.
             '<' if chars.peek() == Some(&'<') => break,
+            // A comment, which starts a word rather than ending one, so
+            // `foo#bar` stays a filename. Prose is the worst thing to read as
+            // shell: an apostrophe in it ("the way sway's does") opens a
+            // quote that swallows every command after it.
+            '#' if word.is_empty() => {
+                while chars.peek().is_some_and(|next| *next != '\n') {
+                    chars.next();
+                }
+            }
             ';' | '\n' => end(&mut out, &mut words, &mut word, &mut alternative, false),
             '|' => {
                 let fallback = chars.peek() == Some(&'|');
@@ -823,6 +848,68 @@ mod tests {
         // program anywhere.
         assert!(installed("sh"));
         assert!(!installed("look-no-such-program"));
+    }
+
+    #[test]
+    fn a_comment_is_not_read_as_a_command() {
+        // The apostrophe is the point: unclosed, it quotes everything after
+        // it, and the real commands below vanish into one word.
+        let found = segments("ls\n# the way sway's does, see `.pid`\nwc -l");
+        let programs: Vec<&str> = found.iter().map(|one| one.words[0].as_str()).collect();
+        assert_eq!(programs, ["ls", "wc"]);
+    }
+
+    #[test]
+    fn a_hash_inside_a_word_is_not_a_comment() {
+        let found = segments("rm ~/notes/draft#2.md");
+        assert_eq!(found[0].words, ["rm", "~/notes/draft#2.md"]);
+    }
+
+    #[test]
+    fn a_test_bracket_and_a_negation_are_shell_not_programs() {
+        let home = TempDir::new("brackets");
+        let found = checked(
+            r#"
+            [guard]
+            do = ["[[ -d ~ ]] && true", "! false"]
+            "#,
+            &home.0,
+        );
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn a_drive_letter_path_is_a_path_and_not_a_program_name() {
+        let home = TempDir::new("drive");
+        let found = checked(
+            r#"
+            [win]
+            run = "C:/look-not-here/list.exe"
+            "#,
+            &home.0,
+        );
+        // Reported as the path it is, never looked up on PATH.
+        assert_eq!(
+            reasons(&found),
+            [("run", "C:/look-not-here/list.exe", Reason::MissingPath)]
+        );
+    }
+
+    /// `cmd` reads a backslash as a path separator. Eating it the way a POSIX
+    /// shell does turned `C:\tools\list.exe` into `C:toolslist.exe`, which
+    /// was then looked up on `PATH` and reported missing.
+    #[cfg(windows)]
+    #[test]
+    fn a_windows_path_keeps_its_separators() {
+        let found = segments(r"C:	ools\list.exe --all");
+        assert_eq!(found[0].words[0], r"C:	ools\list.exe");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn a_backslash_still_escapes_off_windows() {
+        let found = segments(r"printf a\ b");
+        assert_eq!(found[0].words, ["printf", "a b"]);
     }
 
     #[test]
