@@ -140,6 +140,27 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    /// A temp home is not enough on its own: `sources_dir` consults
+    /// `LOOK_SOURCES_DIR`, so a test that writes has to say where, or it
+    /// writes into whatever that points at. Process-wide, so one at a time.
+    static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Set for the length of a test and removed after.
+    struct SourcesDir;
+
+    impl SourcesDir {
+        fn pointed_at(dir: &Path) -> Self {
+            unsafe { std::env::set_var(look_sources::SOURCES_DIR_ENV, dir) };
+            Self
+        }
+    }
+
+    impl Drop for SourcesDir {
+        fn drop(&mut self) {
+            unsafe { std::env::remove_var(look_sources::SOURCES_DIR_ENV) };
+        }
+    }
+
     struct TempDir(PathBuf);
 
     impl TempDir {
@@ -211,7 +232,9 @@ mod tests {
 
     #[test]
     fn an_install_reports_what_it_wrote_and_refuses_a_path_for_a_name() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let home = TempDir::new("install");
+        let _sources = SourcesDir::pointed_at(&home.0.join("sources"));
         let request: InstallRequest = serde_json::from_str(
             r#"{
                 "declarations": [{"name": "a.toml", "contents": "[a]\ndo = [\"true\"]\n"}],
@@ -228,7 +251,9 @@ mod tests {
 
     #[test]
     fn what_was_previewed_is_what_the_extend_screen_then_says() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let home = TempDir::new("agree");
+        let _sources = SourcesDir::pointed_at(&home.0.join("sources"));
         let toml = "[projects]\ndir = \"~/look-not-here\"\n";
 
         let before = preview(toml, &home.0).expect("parses");

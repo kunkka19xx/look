@@ -23,9 +23,11 @@ pub(crate) fn look_lookbook_preview_json(toml: *const c_char) -> *mut c_char {
 /// For a catalog entry's `requires`, which names a program with no block
 /// behind it.
 pub(crate) fn look_lookbook_missing_json(programs_json: *const c_char) -> *mut c_char {
-    let programs: Vec<String> =
-        serde_json::from_str(&cstr_to_string(programs_json)).unwrap_or_default();
-    json(Some(look_engine::lookbook::missing_programs(&programs)))
+    // Null on input that is not a list of names, rather than an empty list:
+    // `[]` already means "nothing missing", and the two calls either side of
+    // this one answer null when they cannot read what they were given.
+    let programs: Option<Vec<String>> = serde_json::from_str(&cstr_to_string(programs_json)).ok();
+    json(programs.map(|programs| look_engine::lookbook::missing_programs(&programs)))
 }
 
 /// Writes an entry into the user's directories. Takes

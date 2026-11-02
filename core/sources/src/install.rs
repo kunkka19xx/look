@@ -40,9 +40,19 @@ pub struct Installed {
 /// declaration down with it, because a half-installed source the user can see
 /// and delete beats a silent nothing.
 pub fn install(what: &Installing, home: &Path) -> Installed {
+    install_into(what, &sources_dir(home), &scripts_dir(home))
+}
+
+/// The same, into directories the caller names.
+///
+/// Split out because `sources_dir` reads `LOOK_SOURCES_DIR`: a test that went
+/// through `install` wrote into whatever that pointed at, which on a machine
+/// with it set is somebody's real sources directory. Deciding where to write
+/// and writing there are now separate, so a test can say where.
+pub fn install_into(what: &Installing, sources: &Path, scripts: &Path) -> Installed {
     let mut done = Installed::default();
-    write_all(&what.declarations, &sources_dir(home), false, &mut done);
-    write_all(&what.scripts, &scripts_dir(home), true, &mut done);
+    write_all(&what.declarations, sources, false, &mut done);
+    write_all(&what.scripts, scripts, true, &mut done);
     done
 }
 
@@ -137,25 +147,27 @@ mod tests {
         (name.to_string(), contents.to_string())
     }
 
-    /// `sources_dir` reads `LOOK_SOURCES_DIR`, which the test runner may have
-    /// set. These tests are about where `install` puts things relative to a
-    /// home, so they assert against whatever that resolves to.
-    fn expected_dirs(home: &Path) -> (PathBuf, PathBuf) {
-        (sources_dir(home), scripts_dir(home))
+    /// Directories of this test's own, never the ones a `LOOK_SOURCES_DIR` in
+    /// the environment would resolve to. What is being tested is that files
+    /// land where they are told, and borrowing the real location to find that
+    /// out would write into it.
+    fn dirs(home: &Path) -> (PathBuf, PathBuf) {
+        (home.join("sources"), home.join("bin"))
     }
 
     #[test]
     fn a_declaration_and_its_script_land_in_their_own_directories() {
         let home = TempDir::new("both");
-        let done = install(
+        let (sources, scripts) = dirs(&home.0);
+        let done = install_into(
             &Installing {
                 declarations: vec![one("docker-containers.toml", "[docker]\ndo = [\"true\"]\n")],
                 scripts: vec![one("docker-rows", "#!/bin/sh\necho hi\n")],
             },
-            &home.0,
+            &sources,
+            &scripts,
         );
 
-        let (sources, scripts) = expected_dirs(&home.0);
         assert!(done.problems.is_empty(), "{:?}", done.problems);
         assert_eq!(done.written.len(), 2, "{:?}", done.written);
         assert!(sources.join("docker-containers.toml").is_file());
@@ -169,15 +181,16 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let home = TempDir::new("mode");
-        install(
+        let (sources, scripts) = dirs(&home.0);
+        install_into(
             &Installing {
                 declarations: vec![one("a.toml", "[a]\ndo = [\"true\"]\n")],
                 scripts: vec![one("a-rows", "#!/bin/sh\n")],
             },
-            &home.0,
+            &sources,
+            &scripts,
         );
 
-        let (sources, scripts) = expected_dirs(&home.0);
         let mode =
             |path: PathBuf| fs::metadata(path).expect("metadata").permissions().mode() & 0o111;
         assert_ne!(mode(scripts.join("a-rows")), 0);
@@ -191,8 +204,9 @@ mod tests {
             declarations: vec![one("a.toml", "[a]\ndo = [\"true\"]\n")],
             ..Installing::default()
         };
-        install(&what, &home.0);
-        let again = install(&what, &home.0);
+        let (sources, scripts) = dirs(&home.0);
+        install_into(&what, &sources, &scripts);
+        let again = install_into(&what, &sources, &scripts);
 
         assert_eq!(again.replaced.len(), 1, "{:?}", again.replaced);
         assert_eq!(again.written.len(), 1);
@@ -201,7 +215,8 @@ mod tests {
     #[test]
     fn a_file_name_that_is_a_path_is_refused() {
         let home = TempDir::new("escape");
-        let done = install(
+        let (sources, scripts) = dirs(&home.0);
+        let done = install_into(
             &Installing {
                 declarations: vec![
                     one("../../escaped.toml", "[a]\ndo = [\"true\"]\n"),
@@ -211,7 +226,8 @@ mod tests {
                 ],
                 ..Installing::default()
             },
-            &home.0,
+            &sources,
+            &scripts,
         );
 
         assert_eq!(done.problems.len(), 3, "{:?}", done.problems);
@@ -223,10 +239,12 @@ mod tests {
     #[test]
     fn nothing_to_install_makes_no_directories() {
         let home = TempDir::new("empty");
-        let done = install(&Installing::default(), &home.0);
+        let (sources, scripts) = dirs(&home.0);
+        let done = install_into(&Installing::default(), &sources, &scripts);
 
         assert!(done.written.is_empty());
         assert!(done.problems.is_empty());
-        assert!(!home.0.join(".look").exists());
+        assert!(!sources.exists());
+        assert!(!scripts.exists());
     }
 }

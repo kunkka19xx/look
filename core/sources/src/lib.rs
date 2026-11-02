@@ -28,7 +28,7 @@ pub use def::{
     RowKind, Verbs, inferred, parse_duration, parse_file,
 };
 pub use detail::{DetailBlock, DetailField, DetailItem, parse as parse_detail};
-pub use install::{Installed, Installing, install};
+pub use install::{Installed, Installing, install, install_into};
 pub use load::{
     CONNECTORS_DIR_ENV, Loaded, Problem, SOURCES_DIR_ENV, connectors_dir, load_connectors,
     load_dir, scripts_dir, sources_dir,
