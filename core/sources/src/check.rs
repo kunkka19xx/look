@@ -298,7 +298,7 @@ fn check_program(word: &str, key: &'static str, home: &Path, found: &mut Found) 
         || word.contains('{')
         || word.contains('$')
         || word.contains('=')
-        || word.starts_with(['\'', '"', '(', '-'])
+        || word.starts_with(['\'', '"', '(', '-', '#'])
     {
         return;
     }
@@ -342,7 +342,7 @@ fn builtin(word: &str) -> bool {
         "declare", "do", "done", "echo", "elif", "else", "esac", "eval", "exec", "exit", "export",
         "false", "fi", "for", "function", "getopts", "hash", "if", "in", "let", "local", "printf",
         "pwd", "read", "readonly", "return", "select", "set", "shift", "source", "test", "then",
-        "time", "trap", "true", "type", "umask", "unset", "until", "wait", "while",
+        "time", "trap", "true", "type", "ulimit", "umask", "unset", "until", "wait", "while",
     ];
 
     BUILTINS.contains(&word)
@@ -457,7 +457,12 @@ fn segments(command: &str) -> Vec<Segment> {
             // `foo#bar` stays a filename. Prose is the worst thing to read as
             // shell: an apostrophe in it ("the way sway's does") opens a
             // quote that swallows every command after it.
-            '#' if word.is_empty() => {
+            //
+            // POSIX only. `cmd` has no comment marker, so swallowing the rest
+            // of the line there would hide the commands after a `#` instead
+            // of reading them. `check_program` ignores a word starting with
+            // one, so the leftover is not reported as a program either.
+            '#' if word.is_empty() && !cfg!(windows) => {
                 while chars.peek().is_some_and(|next| *next != '\n') {
                     chars.next();
                 }
@@ -504,12 +509,17 @@ fn end(
     fallback: bool,
 ) {
     push(words, word);
-    if !words.is_empty() {
-        out.push(Segment {
-            words: std::mem::take(words),
-            alternative: *alternative,
-        });
+    if words.is_empty() {
+        // Nothing was closed, so there is nothing to re-mark. A newline or a
+        // comment sitting between `||` and its fallback used to clear the
+        // marker here, which made the fallback look like a command of its own
+        // and reported the first choice as missing.
+        return;
     }
+    out.push(Segment {
+        words: std::mem::take(words),
+        alternative: *alternative,
+    });
     *alternative = fallback;
 }
 
@@ -946,6 +956,64 @@ mod tests {
         let found = segments("ls\n# the way sway's does, see `.pid`\nwc -l");
         let programs: Vec<&str> = found.iter().map(|one| one.words[0].as_str()).collect();
         assert_eq!(programs, ["ls", "wc"]);
+    }
+
+    #[test]
+    fn a_fallback_survives_a_newline_between_it_and_the_bar() {
+        // Multi-line TOML makes this layout easy to write, and the newline
+        // used to clear the marker the `||` had just set.
+        let found = segments("xdg-open x ||\n  open x");
+        assert_eq!(
+            found.iter().map(|one| one.alternative).collect::<Vec<_>>(),
+            [false, true]
+        );
+    }
+
+    #[test]
+    fn a_fallback_is_still_reported_when_nothing_in_the_chain_runs() {
+        let home = TempDir::new("multiline-fallback");
+        let found = checked(
+            r#"
+            [open]
+            dir  = "~"
+            open = """look-no-such-opener {path} ||
+              look-no-other-opener {path}"""
+            "#,
+            &home.0,
+        );
+        // One intent, so both names, and only because neither is here.
+        assert_eq!(found.len(), 2, "{found:?}");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn a_hash_is_a_comment_to_a_posix_shell() {
+        let found = segments("echo #build && docker ps");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].words, ["echo"]);
+    }
+
+    /// `cmd` has no comment marker, so the rest of the line is still command
+    /// text and the `docker ps` after it has to be read.
+    #[cfg(windows)]
+    #[test]
+    fn a_hash_is_not_a_comment_to_cmd() {
+        let found = segments("echo #build && docker ps");
+        let programs: Vec<&str> = found.iter().map(|one| one.words[0].as_str()).collect();
+        assert_eq!(programs, ["echo", "docker"]);
+    }
+
+    #[test]
+    fn a_word_starting_with_a_hash_is_never_a_program() {
+        let home = TempDir::new("hash-word");
+        let found = checked(
+            r##"
+            [note]
+            do = ["#build the thing"]
+            "##,
+            &home.0,
+        );
+        assert!(found.is_empty(), "{found:?}");
     }
 
     #[test]
