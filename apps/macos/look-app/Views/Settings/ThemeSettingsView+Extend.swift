@@ -97,6 +97,8 @@ struct ExtendSettingsTab: View {
             empty: "Nothing declared yet."
         )
 
+        LookbookBrowseSection()
+
         if inventory.problems.isEmpty, inventory.blocks.allSatisfy(\.needs.isEmpty) {
             Text("No problems.")
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
