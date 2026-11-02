@@ -901,8 +901,8 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_windows_path_keeps_its_separators() {
-        let found = segments(r"C:	ools\list.exe --all");
-        assert_eq!(found[0].words[0], r"C:	ools\list.exe");
+        let found = segments(r"C:\tools\list.exe --all");
+        assert_eq!(found[0].words[0], r"C:\tools\list.exe");
     }
 
     #[cfg(not(windows))]
