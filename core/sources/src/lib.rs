@@ -16,6 +16,7 @@ mod install;
 mod load;
 mod rows;
 mod run;
+mod setup;
 mod tools;
 
 pub use check::{Reason, Review, Unready, check, installed, review};
@@ -38,4 +39,5 @@ pub use run::{
     ParentRow, RowContext, StepOutcome, capture, end_connector, expand, expand_path, perform,
     spawn_connector,
 };
+pub use setup::{FieldKind, SetupField, current, fill, locate, parse_setup, validate};
 pub use tools::{block_declares, resolve_for_row};

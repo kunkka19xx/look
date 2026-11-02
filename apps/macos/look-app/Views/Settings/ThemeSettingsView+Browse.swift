@@ -165,6 +165,10 @@ struct LookbookInstallSheet: View {
     @State private var previews: [String: LookbookPreview] = [:]
     @State private var failure: String?
     @State private var working = true
+    /// What the user has typed or picked, keyed by file then field index.
+    /// Empty means "as the author wrote it", which is what the engine reads a
+    /// null as, so an untouched form installs the example unchanged.
+    @State private var answers: [String: [Int: String]] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -235,6 +239,19 @@ struct LookbookInstallSheet: View {
                 .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
                 .foregroundStyle(themeStore.secondaryTextColor())
 
+            // What the example asks for, above the commands rather than
+            // below: these are the lines you would otherwise have installed
+            // it and gone looking for.
+            let fields = previews[file.name]?.fields ?? []
+            if !fields.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(fields.enumerated()), id: \.offset) { index, field in
+                        control(file.name, index, field)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
             // What it would want changed, said here rather than after
             // installing. The same check the Extend screen runs, so this
             // cannot promise something the screen then contradicts.
@@ -257,6 +274,76 @@ struct LookbookInstallSheet: View {
                     themeStore.liftColor(opacity: 0.05),
                     in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
                 )
+        }
+    }
+
+    /// One field: a picker for a path, a popup for a choice, a box otherwise.
+    @ViewBuilder
+    private func control(_ file: String, _ index: Int, _ field: LookbookField) -> some View {
+        let value = answers[file]?[index] ?? field.current ?? ""
+        VStack(alignment: .leading, spacing: 2) {
+            Text(field.label)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
+                .foregroundStyle(themeStore.fontColor())
+
+            HStack(spacing: 8) {
+                switch field.kind {
+                case "choice":
+                    Picker("", selection: binding(file, index, value)) {
+                        ForEach(field.options, id: \.self) { Text($0).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 220)
+                default:
+                    TextField("", text: binding(file, index, value))
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
+                }
+
+                if field.kind == "folder" || field.kind == "file" {
+                    Button("Choose\u{2026}") { choose(file, index, folders: field.kind == "folder") }
+                        .buttonStyle(.plain)
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .medium))
+                        .foregroundStyle(themeStore.accentColor())
+                }
+            }
+
+            if let note = field.note {
+                Text(note)
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                    .foregroundStyle(themeStore.mutedTextColor())
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func binding(_ file: String, _ index: Int, _ value: String) -> Binding<String> {
+        Binding(
+            get: { value },
+            set: { answers[file, default: [:]][index] = $0 }
+        )
+    }
+
+    /// The reason a folder field exists at all: picking beats retyping
+    /// somebody else's path from memory.
+    private func choose(_ file: String, _ index: Int, folders: Bool) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = folders
+        panel.canChooseFiles = !folders
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        answers[file, default: [:]][index] = url.path
+    }
+
+    /// Answers for one file, as the engine wants them: parallel to the
+    /// declared fields, with null for anything left alone.
+    private func answers(for file: LookbookInstall.NamedFile) -> [String?] {
+        let fields = previews[file.name]?.fields ?? []
+        guard !fields.isEmpty else { return [] }
+        let given = answers[file.name] ?? [:]
+        return fields.indices.map { index in
+            guard let typed = given[index], typed != fields[index].current else { return nil }
+            return typed
         }
     }
 
@@ -293,9 +380,17 @@ struct LookbookInstallSheet: View {
 
     private func install() {
         guard let files else { return }
+        let filled = LookbookInstall(
+            declarations: files.declarations.map {
+                LookbookInstall.NamedFile(
+                    name: $0.name, contents: $0.contents, answers: answers(for: $0)
+                )
+            },
+            scripts: files.scripts
+        )
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
-                EngineBridge.shared.lookbookInstall(files)
+                EngineBridge.shared.lookbookInstall(filled)
             }.value
             guard let outcome else {
                 failure = "Could not install it."

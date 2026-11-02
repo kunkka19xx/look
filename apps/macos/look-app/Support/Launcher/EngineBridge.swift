@@ -1868,8 +1868,25 @@ nonisolated struct InstalledBlock: Decodable, Identifiable {
 /// What a lookbook entry would add, read without installing it.
 nonisolated struct LookbookPreview: Decodable {
     let blocks: [LookbookPreviewBlock]
+    /// What the example asks the installer for, in the order declared.
+    let fields: [LookbookField]
     /// Parts of the file that did not parse. The rest still previews.
     let problems: [String]
+}
+
+/// One value the example asks for, declared by whoever wrote it.
+///
+/// This is how the form reaches what the check cannot see: `vault=look` is a
+/// perfectly good string that happens to name somebody else's vault.
+nonisolated struct LookbookField: Decodable, Identifiable {
+    let label: String
+    /// `folder`, `file`, `text` or `choice`.
+    let kind: String
+    let note: String?
+    let options: [String]
+    /// What the author wrote, which the control starts on.
+    let current: String?
+    var id: String { label }
 }
 
 nonisolated struct LookbookPreviewBlock: Decodable, Identifiable {
@@ -1891,6 +1908,9 @@ nonisolated struct LookbookInstall: Encodable {
     struct NamedFile: Encodable {
         let name: String
         let contents: String
+        /// Answers to this file's fields, in the order declared. The engine
+        /// decides which bytes they replace, so nothing here builds TOML.
+        var answers: [String?] = []
     }
 }
 

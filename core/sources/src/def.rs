@@ -505,6 +505,11 @@ pub fn parse_file(contents: &str) -> Result<ParsedFile, String> {
 
     let mut parsed = ParsedFile::default();
     for (id, block) in table {
+        // The one top-level name that is not a block: the values the example
+        // asks the installer for. Read by `crate::setup`, skipped here.
+        if id == crate::setup::KEY_SETUP {
+            continue;
+        }
         let Some(block) = block.as_table() else {
             parsed.problems.push(format!(
                 "[{id}] must be a table, like [{id}]\\nname = \"…\""
@@ -1213,6 +1218,17 @@ run = "git -C {path} branch"
         // A fixed directory names no row, so the block stands on its own.
         let fixed = one("[scripts]\nrun = \"npm run\"\ncwd = \"~/dev/look\"\n");
         assert!(!fixed.needs_row());
+    }
+
+    #[test]
+    fn a_setup_table_is_not_read_as_a_block() {
+        let parsed = parse_file(
+            "[a]\ndo = [\"true\"]\n\n[[setup]]\nlabel = \"L\"\nblock = \"a\"\nkey = \"do\"\n",
+        )
+        .expect("parses");
+        assert_eq!(parsed.blocks.len(), 1);
+        assert_eq!(parsed.blocks[0].id, "a");
+        assert!(parsed.problems.is_empty(), "{:?}", parsed.problems);
     }
 
     #[test]
