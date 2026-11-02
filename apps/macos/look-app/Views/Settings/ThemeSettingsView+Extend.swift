@@ -97,7 +97,7 @@ struct ExtendSettingsTab: View {
             empty: "Nothing declared yet."
         )
 
-        if inventory.problems.isEmpty {
+        if inventory.problems.isEmpty, inventory.blocks.allSatisfy(\.needs.isEmpty) {
             Text("No problems.")
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
                 .foregroundStyle(themeStore.mutedTextColor())
@@ -180,17 +180,30 @@ struct ExtendSettingsTab: View {
             }
 
             ForEach(declaration.blocks) { block in
-                HStack(spacing: 8) {
-                    Text(block.name)
-                        .foregroundStyle(block.enabled ? themeStore.fontColor() : themeStore.mutedTextColor())
-                    Text(block.kind)
-                        .font(.system(size: CGFloat(themeStore.settings.fontSize - 3), design: .monospaced))
-                        .foregroundStyle(themeStore.mutedTextColor())
-                    Spacer(minLength: 8)
-                    Text(state(of: block))
-                        .foregroundStyle(themeStore.mutedTextColor())
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Text(block.name)
+                            .foregroundStyle(block.enabled ? themeStore.fontColor() : themeStore.mutedTextColor())
+                        Text(block.kind)
+                            .font(.system(size: CGFloat(themeStore.settings.fontSize - 3), design: .monospaced))
+                            .foregroundStyle(themeStore.mutedTextColor())
+                        Spacer(minLength: 8)
+                        Text(state(of: block))
+                            .foregroundStyle(themeStore.mutedTextColor())
+                    }
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+
+                    // Indented under the block, because this is a line to go
+                    // and change in that block rather than something wrong
+                    // with the file as a whole.
+                    ForEach(block.needs) { need in
+                        Text(need.message)
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                            .foregroundStyle(themeStore.warningColor())
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.leading, 12)
+                    }
                 }
-                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
             }
         }
         .padding(10)

@@ -349,7 +349,7 @@ fn executable_command(path: &Path) -> String {
 }
 
 #[cfg(unix)]
-fn is_executable(path: &Path) -> bool {
+pub(crate) fn is_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
 
     const ANY_EXECUTE_BIT: u32 = 0o111;
@@ -357,7 +357,7 @@ fn is_executable(path: &Path) -> bool {
 }
 
 #[cfg(windows)]
-fn is_executable(path: &Path) -> bool {
+pub(crate) fn is_executable(path: &Path) -> bool {
     const EXECUTABLE_EXTENSIONS: [&str; 5] = ["exe", "cmd", "bat", "ps1", "com"];
 
     path.extension().is_some_and(|extension| {
