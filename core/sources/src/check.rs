@@ -124,9 +124,15 @@ fn check_path(declared: &str, key: &'static str, home: &Path, found: &mut Found)
     if declared.is_empty() || declared.contains('{') || declared.contains('$') {
         return;
     }
-    let reason = match foreign_home(declared, home) {
-        Some(reason) => Some(reason),
-        None => missing(&expand_home(declared, home)),
+    // Existence first. Only a path that is not here can be from another
+    // machine, and two that are here look exactly like one: `/Users/Shared`
+    // ships on every Mac, and `/home/linuxbrew/.linuxbrew/bin/brew` is where
+    // Homebrew puts itself on Linux. Neither belongs to a user, and telling
+    // someone to edit a line that already works is the one thing this must
+    // not do.
+    let reason = match missing(&expand_home(declared, home)) {
+        Some(Reason::MissingPath) => foreign_home(declared, home).or(Some(Reason::MissingPath)),
+        other => other,
     };
     if let Some(reason) = reason {
         found.insert((key, declared.to_string(), reason));
@@ -268,7 +274,13 @@ fn check_program(word: &str, key: &'static str, home: &Path, found: &mut Found) 
     }
     // Named by path rather than by name: a file to find, not a lookup.
     if word.contains('/') {
-        check_path(word, key, home, found);
+        // Anchored only. A relative path resolves against wherever the
+        // command runs, which is the block's `cwd`, the row's folder, or `/`,
+        // and never this process's directory, so `./list.sh` has no one
+        // answer to look up.
+        if word.starts_with('/') || word.starts_with("~/") {
+            check_path(word, key, home, found);
+        }
         return;
     }
     if !on_path(word) {
@@ -715,6 +727,39 @@ mod tests {
             "#,
             &home.0,
         );
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    /// `/Users/Shared` is on every Mac and belongs to no user, so the name in
+    /// the second component is not somebody else's home. The Linux twin is
+    /// `/home/linuxbrew`, which cannot be tested here for the same reason
+    /// this one cannot be tested there.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_shared_folder_that_is_here_is_not_another_machines_home() {
+        let home = TempDir::new("shared");
+        let found = checked(
+            r#"
+            [notes]
+            dir = "/Users/Shared"
+            "#,
+            &home.0,
+        );
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn a_relative_program_path_is_not_resolved_against_this_process() {
+        let home = TempDir::new("relative");
+        let found = checked(
+            r#"
+            [build]
+            run = "./list.sh"
+            cwd = "~"
+            "#,
+            &home.0,
+        );
+        // It runs in the block's `cwd`, not here, so there is nothing to say.
         assert!(found.is_empty(), "{found:?}");
     }
 
