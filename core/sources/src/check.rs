@@ -458,11 +458,13 @@ fn segments(command: &str) -> Vec<Segment> {
             // shell: an apostrophe in it ("the way sway's does") opens a
             // quote that swallows every command after it.
             //
-            // POSIX only. `cmd` has no comment marker, so swallowing the rest
-            // of the line there would hide the commands after a `#` instead
-            // of reading them. `check_program` ignores a word starting with
-            // one, so the leftover is not reported as a program either.
-            '#' if word.is_empty() && !cfg!(windows) => {
+            // On every platform, including Windows where `cmd` has no comment
+            // marker. Reading the prose there instead is worse in practice:
+            // these files are POSIX-authored, 38 of lookbook's carry `#`
+            // lines, and an apostrophe in one swallows whatever follows it.
+            // Skipping the line loses nothing a Windows user could run, while
+            // parsing it loses the commands underneath.
+            '#' if word.is_empty() => {
                 while chars.peek().is_some_and(|next| *next != '\n') {
                     chars.next();
                 }
@@ -985,22 +987,13 @@ mod tests {
         assert_eq!(found.len(), 2, "{found:?}");
     }
 
-    #[cfg(not(windows))]
     #[test]
-    fn a_hash_is_a_comment_to_a_posix_shell() {
+    fn a_hash_starting_a_word_comments_out_the_rest_of_the_line() {
+        // Matches the shell: bash treats this as a comment too, so the
+        // `docker ps` really does not run.
         let found = segments("echo #build && docker ps");
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].words, ["echo"]);
-    }
-
-    /// `cmd` has no comment marker, so the rest of the line is still command
-    /// text and the `docker ps` after it has to be read.
-    #[cfg(windows)]
-    #[test]
-    fn a_hash_is_not_a_comment_to_cmd() {
-        let found = segments("echo #build && docker ps");
-        let programs: Vec<&str> = found.iter().map(|one| one.words[0].as_str()).collect();
-        assert_eq!(programs, ["echo", "docker"]);
     }
 
     #[test]
