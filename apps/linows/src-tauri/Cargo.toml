@@ -17,13 +17,13 @@ tokio = { version = "1.52.3", features = ["rt", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # The KWin blur atom on X11.
-x11rb = { version = "0.13", features = ["allow-unsafe-code"] }
+x11rb = { version = "0.14", features = ["allow-unsafe-code"] }
 # Window/display pointers for the Wayland blur bind, without GDK FFI.
 raw-window-handle = "0.6"
 webkit2gtk = "2.0"
 # dlopen for libgtk-layer-shell: absent on some distros, so it must not be a
 # link-time dependency.
-libloading = "0.8"
+libloading = "0.9"
 # Owning the clipboard in-process, which is the only way to offer a path as
 # BOTH a file (for a file manager) and text (for everything else): wl-copy and
 # xclip each advertise a single MIME type per invocation. Pinned to the version
