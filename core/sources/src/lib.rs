@@ -12,12 +12,13 @@ mod collect;
 mod connect;
 mod def;
 mod detail;
+mod install;
 mod load;
 mod rows;
 mod run;
 mod tools;
 
-pub use check::{Reason, Unready, check, installed};
+pub use check::{Reason, Review, Unready, check, installed, review};
 pub use collect::{
     CollectError, Collected, MAX_ROWS_PER_SOURCE, collect, collect_for_row, expand_home,
 };
@@ -27,9 +28,10 @@ pub use def::{
     RowKind, Verbs, inferred, parse_duration, parse_file,
 };
 pub use detail::{DetailBlock, DetailField, DetailItem, parse as parse_detail};
+pub use install::{Installed, Installing, install, install_into};
 pub use load::{
     CONNECTORS_DIR_ENV, Loaded, Problem, SOURCES_DIR_ENV, connectors_dir, load_connectors,
-    load_dir, sources_dir,
+    load_dir, scripts_dir, sources_dir,
 };
 pub use rows::{SourceRow, parse_rows};
 pub use run::{

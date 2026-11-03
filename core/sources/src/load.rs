@@ -19,6 +19,7 @@ pub const CONNECTORS_DIR_ENV: &str = "LOOK_CONNECTORS_DIR";
 
 const SOURCES_DIR_NAME: &str = ".look/sources";
 const CONNECTORS_DIR_NAME: &str = ".look/connectors";
+const SCRIPTS_DIR_NAME: &str = ".look/bin";
 const DECLARATION_EXTENSION: &str = "toml";
 /// Between a manifest's name and a block's own id.
 const NAMESPACE: char = '.';
@@ -50,6 +51,17 @@ pub fn sources_dir(home: &Path) -> PathBuf {
 /// is then one file, and neither can take the other's blocks down with it.
 pub fn connectors_dir(home: &Path) -> PathBuf {
     configured_dir(CONNECTORS_DIR_ENV, home, CONNECTORS_DIR_NAME)
+}
+
+/// Where a source's helper scripts live: `~/.look/bin`. A `run` or `preview`
+/// too long to sit on one line goes in a file, and every example that does so
+/// already points here, so installing one has somewhere to put it.
+///
+/// No environment override: the path is written into the declarations
+/// themselves (`run = "~/.look/bin/docker-rows"`), so moving the directory
+/// would break the very files that name it.
+pub fn scripts_dir(home: &Path) -> PathBuf {
+    home.join(SCRIPTS_DIR_NAME)
 }
 
 fn configured_dir(env_key: &str, home: &Path, name: &str) -> PathBuf {
