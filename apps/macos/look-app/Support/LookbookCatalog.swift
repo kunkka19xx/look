@@ -119,7 +119,11 @@ final class LookbookCatalog: ObservableObject {
 
             let index = try JSONDecoder().decode(Index.self, from: data)
             base = index.base
-            web = index.web ?? index.base
+            // No fallback to `base`: that serves raw bytes, so the link
+            // would open Markdown source in a browser, which is the thing
+            // this button exists to avoid. A catalog without `web` simply
+            // has no page to point at.
+            web = index.web ?? ""
             reading = .ready(index.sources)
             await probeRequirements(of: index.sources)
         } catch {
@@ -194,9 +198,11 @@ final class LookbookCatalog: ObservableObject {
     /// Always the web page, even when the catalog is coming from a checkout.
     /// A local `.md` opens in whatever handles the extension, which is an
     /// editor showing the raw text, and the formatting is the reason someone
-    /// clicked.
+    /// clicked. Nil when the catalog publishes no `web`, so the card shows no
+    /// button rather than one that opens Markdown source.
     func readme(for entry: Entry) -> URL? {
-        URL(string: web + entry.readme)
+        guard !web.isEmpty else { return nil }
+        return URL(string: web + entry.readme)
     }
 
     /// The directory the override points into, or nil when the catalog is
