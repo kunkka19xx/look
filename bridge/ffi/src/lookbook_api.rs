@@ -30,6 +30,16 @@ pub(crate) fn look_lookbook_missing_json(programs_json: *const c_char) -> *mut c
     json(programs.map(|programs| look_engine::lookbook::missing_programs(&programs)))
 }
 
+/// Which of an entry's files are already on disk, as
+/// `{declarations, scripts}`, so the sheet can say what it would replace
+/// before it writes. Takes `{declarations: [name], scripts: [name]}`.
+pub(crate) fn look_lookbook_present_json(request_json: *const c_char) -> *mut c_char {
+    let Ok(request) = serde_json::from_str(&cstr_to_string(request_json)) else {
+        return json_cstring_or_null(None);
+    };
+    json(home_dir().map(|home| look_engine::lookbook::present(&request, &home)))
+}
+
 /// Writes an entry into the user's directories. Takes
 /// `{declarations: [{name, contents}], scripts: [...]}` and returns
 /// `{written, replaced, problems}`.

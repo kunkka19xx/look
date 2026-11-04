@@ -80,6 +80,42 @@ pub fn missing_programs(programs: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// Names to look for before writing anything.
+#[derive(Deserialize)]
+pub struct PresentRequest {
+    #[serde(default)]
+    pub declarations: Vec<String>,
+    #[serde(default)]
+    pub scripts: Vec<String>,
+}
+
+/// Which of them are already there.
+#[derive(Serialize)]
+pub struct Present {
+    pub declarations: Vec<String>,
+    pub scripts: Vec<String>,
+}
+
+/// What an install would replace, asked before it writes.
+///
+/// The shell could infer the declarations from the list of what is installed,
+/// but not the scripts: those live in `~/.look/bin`, which no screen shows.
+/// Asked here so one answer covers both directories and the shell never has
+/// to rebuild where a source lives.
+pub fn present(request: &PresentRequest, home: &Path) -> Present {
+    let found = |dir: std::path::PathBuf, names: &[String]| -> Vec<String> {
+        names
+            .iter()
+            .filter(|name| dir.join(name).exists())
+            .cloned()
+            .collect()
+    };
+    Present {
+        declarations: found(look_sources::sources_dir(home), &request.declarations),
+        scripts: found(look_sources::scripts_dir(home), &request.scripts),
+    }
+}
+
 /// What the shell fetched, ready to write.
 #[derive(Deserialize)]
 pub struct InstallRequest {
@@ -247,6 +283,66 @@ mod tests {
         assert_eq!(done.written.len(), 1, "{:?}", done.written);
         assert!(done.written[0].ends_with("a.toml"));
         assert_eq!(done.problems.len(), 1, "{:?}", done.problems);
+    }
+
+    #[test]
+    fn a_refused_script_still_leaves_the_declaration_written() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let home = TempDir::new("partial");
+        let _sources = SourcesDir::pointed_at(&home.0.join("sources"));
+
+        let done = install(
+            &InstallRequest {
+                declarations: vec![NamedFile {
+                    name: "a.toml".to_string(),
+                    contents: "[a]\ndo = [\"true\"]\n".to_string(),
+                }],
+                scripts: vec![NamedFile {
+                    name: "../escape".to_string(),
+                    contents: "x".to_string(),
+                }],
+            },
+            &home.0,
+        );
+
+        // Partial on purpose, and the shell has to know: something is on
+        // disk, so the screens behind it are out of date even though this
+        // install also failed.
+        assert_eq!(done.written.len(), 1, "{:?}", done.written);
+        assert_eq!(done.problems.len(), 1, "{:?}", done.problems);
+    }
+
+    #[test]
+    fn what_an_install_would_replace_covers_both_directories() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let home = TempDir::new("present");
+        let _sources = SourcesDir::pointed_at(&home.0.join("sources"));
+
+        let request = InstallRequest {
+            declarations: vec![NamedFile {
+                name: "a.toml".to_string(),
+                contents: "[a]\ndo = [\"true\"]\n".to_string(),
+            }],
+            scripts: vec![NamedFile {
+                name: "a-rows".to_string(),
+                contents: "#!/bin/sh\n".to_string(),
+            }],
+        };
+        let asking = PresentRequest {
+            declarations: vec!["a.toml".to_string(), "never.toml".to_string()],
+            scripts: vec!["a-rows".to_string(), "never-rows".to_string()],
+        };
+
+        let before = present(&asking, &home.0);
+        assert!(before.declarations.is_empty(), "{:?}", before.declarations);
+        assert!(before.scripts.is_empty(), "{:?}", before.scripts);
+
+        assert!(install(&request, &home.0).problems.is_empty());
+
+        let after = present(&asking, &home.0);
+        assert_eq!(after.declarations, ["a.toml"]);
+        // The half the shell cannot see for itself: no screen lists ~/.look/bin.
+        assert_eq!(after.scripts, ["a-rows"]);
     }
 
     #[test]
