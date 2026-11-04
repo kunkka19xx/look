@@ -97,7 +97,11 @@ struct ExtendSettingsTab: View {
             empty: "Nothing declared yet."
         )
 
-        LookbookBrowseSection()
+        // The installed list is right above, so the browser can tell which
+        // entries are already here rather than only remembering this visit.
+        LookbookBrowseSection(
+            present: Set(inventory.blocks.map { fileName($0.file) })
+        )
 
         if inventory.problems.isEmpty, inventory.blocks.allSatisfy(\.needs.isEmpty) {
             Text("No problems.")

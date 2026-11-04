@@ -77,8 +77,16 @@ final class LookbookCatalog: ObservableObject {
     /// catalog changes when somebody merges a PR to lookbook, which is not
     /// often enough to re-fetch every time this screen opens.
     func load(force: Bool = false) {
-        if case .ready = reading, !force { return }
         if case .loading = reading { return }
+        if case .ready(let entries) = reading, !force {
+            // The catalog is worth fetching once. What is installed on this
+            // machine is not: somebody can go and install docker between two
+            // visits to this screen, and the Extend screen below re-checks
+            // every time it opens. A card still saying "you do not have it"
+            // would be the two disagreeing, which is the thing this is for.
+            Task { await probeRequirements(of: entries) }
+            return
+        }
         reading = .loading
         Task { await fetch() }
     }
@@ -114,7 +122,10 @@ final class LookbookCatalog: ObservableObject {
     /// because each name is a walk along `PATH`.
     private func probeRequirements(of entries: [Entry]) async {
         let wanted = Array(Set(entries.flatMap(\.requires))).sorted()
-        guard !wanted.isEmpty else { return }
+        guard !wanted.isEmpty else {
+            missing = []
+            return
+        }
         let absent = await Task.detached {
             EngineBridge.shared.lookbookMissing(programs: wanted)
         }.value
@@ -142,7 +153,9 @@ final class LookbookCatalog: ObservableObject {
     }
 
     private func text(_ entry: Entry, _ name: String) async throws -> String {
-        let url = Self.resolve(base: base, entry.path + name)
+        guard let url = Self.resolve(base: base, entry.path + name) else {
+            throw URLError(.badURL)
+        }
         let data: Data
         if url.isFileURL {
             data = try Data(contentsOf: url)
@@ -173,7 +186,10 @@ final class LookbookCatalog: ObservableObject {
 
     /// A relative path against the catalog's base, which is a checkout
     /// directory under the override and a raw.githubusercontent URL otherwise.
-    private static func resolve(base: String, _ relative: String) -> URL {
+    /// Nil when the entry names something that is not a URL. It used to fall
+    /// back to the index, which meant fetching `index.json` and installing it
+    /// as somebody's declaration.
+    private static func resolve(base: String, _ relative: String) -> URL? {
         if let override = ProcessInfo.processInfo.environment[overrideKey], !override.isEmpty,
             URL(string: override)?.scheme == nil
         {
@@ -181,6 +197,6 @@ final class LookbookCatalog: ObservableObject {
                 .deletingLastPathComponent()
                 .appendingPathComponent(relative)
         }
-        return URL(string: base + relative) ?? indexURL
+        return URL(string: base + relative)
     }
 }

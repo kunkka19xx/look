@@ -10,11 +10,18 @@ struct LookbookBrowseSection: View {
     @EnvironmentObject private var themeStore: ThemeStore
     @ObservedObject private var catalog = LookbookCatalog.shared
 
+    /// File names already in the sources directory, from the list above this
+    /// section. What makes "installed" outlive the visit, and what lets the
+    /// sheet warn before it replaces something.
+    let present: Set<String>
+
     @State private var filter = ""
     /// The entry whose declaration is being read before installing it.
     @State private var opening: LookbookCatalog.Entry?
     /// Ids installed during this visit, so a card can say so without the whole
     /// list being re-read.
+    /// Installed during this visit. Folded in with `present` so a card does
+    /// not flip back to "Install" before the list behind it has reloaded.
     @State private var installed: Set<String> = []
 
     var body: some View {
@@ -62,7 +69,10 @@ struct LookbookBrowseSection: View {
         }
         .task { catalog.load() }
         .sheet(item: $opening) { entry in
-            LookbookInstallSheet(entry: entry) { installed.insert(entry.id) }
+            LookbookInstallSheet(
+                entry: entry,
+                replaces: entry.files.filter(present.contains).sorted()
+            ) { installed.insert(entry.id) }
                 .environmentObject(themeStore)
         }
     }
@@ -83,6 +93,7 @@ struct LookbookBrowseSection: View {
     private func card(_ entry: LookbookCatalog.Entry) -> some View {
         let elsewhere = !entry.platforms.contains(LookbookCatalog.thisPlatform)
         let absent = entry.requires.filter { catalog.missing.contains($0) }
+        let here = installed.contains(entry.id) || entry.files.allSatisfy(present.contains)
 
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
@@ -92,9 +103,12 @@ struct LookbookBrowseSection: View {
                     .font(.system(size: CGFloat(themeStore.settings.fontSize - 3), design: .monospaced))
                     .foregroundStyle(themeStore.mutedTextColor())
                 Spacer(minLength: 8)
-                if installed.contains(entry.id) {
-                    Text("installed")
-                        .foregroundStyle(themeStore.mutedTextColor())
+                if here {
+                    // Still openable: this is how you get back to the form
+                    // after deciding the folder you picked was the wrong one.
+                    Button("Reconfigure") { opening = entry }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(themeStore.accentColor())
                 } else if elsewhere {
                     Text(entry.platforms.joined(separator: ", "))
                         .foregroundStyle(themeStore.mutedTextColor())
@@ -138,6 +152,10 @@ struct LookbookInstallSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let entry: LookbookCatalog.Entry
+    /// Files already in the sources directory that this would write over.
+    /// One of them may be the copy somebody edited to point at their own
+    /// folder, and a notice after the write cannot give that back.
+    let replaces: [String]
     let onInstalled: () -> Void
 
     @State private var files: LookbookInstall?
@@ -182,10 +200,22 @@ struct LookbookInstallSheet: View {
                 }
             }
 
+            if !replaces.isEmpty {
+                Text(
+                    "Replaces \(replaces.joined(separator: ", ")), overwriting any changes "
+                        + "you made to it."
+                )
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                .foregroundStyle(themeStore.warningColor())
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
             HStack(spacing: 8) {
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Install") { install() }
+                // Named for what it does: the second press is the one that
+                // takes somebody's edits away, so it should not say Install.
+                Button(replaces.isEmpty ? "Install" : "Replace") { install() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(files == nil)
             }
@@ -236,11 +266,17 @@ struct LookbookInstallSheet: View {
         var read: [String: LookbookPreview] = [:]
         for file in fetched.declarations {
             let contents = file.contents
-            if let preview = await Task.detached(priority: .userInitiated, operation: {
+            // Nil means it is not a file of blocks at all. A preview that
+            // came back with problems is still installable: part of it
+            // parsed, and the sheet shows what did not.
+            guard let preview = await Task.detached(priority: .userInitiated, operation: {
                 EngineBridge.shared.lookbookPreview(toml: contents)
-            }).value {
-                read[file.name] = preview
+            }).value else {
+                failure = "\(file.name) is not a declaration Look can read."
+                working = false
+                return
             }
+            read[file.name] = preview
         }
         files = fetched
         previews = read
