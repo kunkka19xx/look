@@ -297,18 +297,32 @@ struct LookbookInstallSheet: View {
             let outcome = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.lookbookInstall(files)
             }.value
-            guard let outcome, outcome.problems.isEmpty else {
-                failure = outcome?.problems.joined(separator: "\n") ?? "Could not install it."
+            guard let outcome else {
+                failure = "Could not install it."
+                return
+            }
+
+            // A reload, not the notice that one happened: the files are on
+            // disk and nothing has read them yet. This is the same work
+            // Cmd+Shift+; does, so an installed source brings its rows, its
+            // icons and any connector it declares without the user being told
+            // to go and press anything. The reload posts `lookConfigReloaded`
+            // when it finishes, which is what refreshes the list behind this
+            // sheet.
+            //
+            // Asked whenever anything landed, including a failed install. The
+            // installer is partial on purpose, so a refused script leaves the
+            // declaration written, and skipping the reload there would leave
+            // a file on disk that no screen knows about.
+            if !outcome.written.isEmpty {
+                NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
+            }
+
+            guard outcome.problems.isEmpty else {
+                failure = outcome.problems.joined(separator: "\n")
                 return
             }
             onInstalled()
-            // A reload, not the notice that one happened: the file is on disk
-            // and nothing has read it yet. This is the same work Cmd+Shift+;
-            // does, so an installed source brings its rows, its icons and any
-            // connector it declares without the user being told to go and
-            // press anything. The reload posts `lookConfigReloaded` when it
-            // finishes, which is what refreshes the list behind this sheet.
-            NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
             dismiss()
         }
     }

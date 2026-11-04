@@ -286,6 +286,33 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_script_still_leaves_the_declaration_written() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let home = TempDir::new("partial");
+        let _sources = SourcesDir::pointed_at(&home.0.join("sources"));
+
+        let done = install(
+            &InstallRequest {
+                declarations: vec![NamedFile {
+                    name: "a.toml".to_string(),
+                    contents: "[a]\ndo = [\"true\"]\n".to_string(),
+                }],
+                scripts: vec![NamedFile {
+                    name: "../escape".to_string(),
+                    contents: "x".to_string(),
+                }],
+            },
+            &home.0,
+        );
+
+        // Partial on purpose, and the shell has to know: something is on
+        // disk, so the screens behind it are out of date even though this
+        // install also failed.
+        assert_eq!(done.written.len(), 1, "{:?}", done.written);
+        assert_eq!(done.problems.len(), 1, "{:?}", done.problems);
+    }
+
+    #[test]
     fn what_an_install_would_replace_covers_both_directories() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let home = TempDir::new("present");
