@@ -442,6 +442,14 @@ pub extern "C" fn look_installed_json() -> *mut c_char {
     std::panic::catch_unwind(sources_api::look_installed_json_impl).unwrap_or(std::ptr::null_mut())
 }
 
+/// Turns every block declared in `file` on or off. `{changed, problems}`, free
+/// with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_set_enabled_json(file: *const c_char, enabled: bool) -> *mut c_char {
+    std::panic::catch_unwind(|| sources_api::look_source_set_enabled_json_impl(file, enabled))
+        .unwrap_or(std::ptr::null_mut())
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn look_source_blocks_json() -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(

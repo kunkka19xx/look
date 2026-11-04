@@ -17,6 +17,7 @@ mod load;
 mod rows;
 mod run;
 mod setup;
+mod toggle;
 mod tools;
 
 pub use check::{Reason, Review, Unready, check, installed, review};
@@ -40,4 +41,5 @@ pub use run::{
     spawn_connector,
 };
 pub use setup::{FieldKind, SetupField, current, fill, locate, parse_setup, validate};
+pub use toggle::set_enabled;
 pub use tools::{block_declares, resolve_for_row};

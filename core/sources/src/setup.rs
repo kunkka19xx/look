@@ -115,7 +115,7 @@ pub fn locate(contents: &str, block: &str, key: &str) -> Option<Range<usize>> {
 /// fields are an array of tables sitting among them. Blanking rather than
 /// deleting is the whole trick: delete and every span after the first field
 /// is wrong by however long the section was.
-fn without_setup(contents: &str) -> String {
+pub(crate) fn without_setup(contents: &str) -> String {
     let mut out = String::with_capacity(contents.len());
     let mut blanking = false;
     for line in contents.split_inclusive('\n') {

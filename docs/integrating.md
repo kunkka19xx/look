@@ -27,7 +27,10 @@ icon    = "🗂️"
 connect = "/Applications/MyApp.app/Contents/Helpers/look-connector"
 ```
 
-Uninstall by deleting the file. `LOOK_CONNECTORS_DIR` repoints the directory, if
+Uninstall by deleting the file. A user can also turn your manifest off from
+`Settings > Extend`, which writes `enabled = false` into every block in it, so
+reinstalling or rewriting the file is how that choice gets undone: read it
+before you overwrite one. `LOOK_CONNECTORS_DIR` repoints the directory, if
 your tests want one of their own. Everything else a block can declare is in
 [Your own sources](user-sources.md#key-reference); `connect` is the only key
 specific to this document.
