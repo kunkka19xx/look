@@ -101,6 +101,14 @@ struct LookbookBrowseSection: View {
                     .font(.system(size: CGFloat(themeStore.settings.fontSize - 3), design: .monospaced))
                     .foregroundStyle(themeStore.mutedTextColor())
                 Spacer(minLength: 8)
+                // Before the verdict, not after: the README is what answers
+                // "what does this actually do" for someone still deciding.
+                if let readme = catalog.readme(for: entry) {
+                    Button("Read me") { NSWorkspace.shared.open(readme) }
+                        .buttonStyle(.plain)
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .medium))
+                        .foregroundStyle(themeStore.accentColor())
+                }
                 if elsewhere {
                     // Asked before anything else: an entry that cannot run
                     // here has no button, whatever is already on disk.

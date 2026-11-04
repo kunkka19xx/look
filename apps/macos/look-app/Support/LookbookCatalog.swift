@@ -38,6 +38,10 @@ final class LookbookCatalog: ObservableObject {
 
     private struct Index: Decodable {
         let base: String
+        /// The same files as pages a person can read. Kept apart from `base`,
+        /// which serves raw bytes: right for a `.toml` about to be parsed,
+        /// wrong for a README somebody clicked to read.
+        let web: String?
         let sources: [Entry]
     }
 
@@ -56,6 +60,7 @@ final class LookbookCatalog: ObservableObject {
     @Published private(set) var missing: Set<String> = []
 
     private var base = ""
+    private var web = ""
     /// Counts probes. Each visit starts one and nothing orders them, so an
     /// older answer finishing late could put back a state the machine has
     /// already left. Only the newest may write `missing`.
@@ -114,6 +119,11 @@ final class LookbookCatalog: ObservableObject {
 
             let index = try JSONDecoder().decode(Index.self, from: data)
             base = index.base
+            // No fallback to `base`: that serves raw bytes, so the link
+            // would open Markdown source in a browser, which is the thing
+            // this button exists to avoid. A catalog without `web` simply
+            // has no page to point at.
+            web = index.web ?? ""
             reading = .ready(index.sources)
             await probeRequirements(of: index.sources)
         } catch {
@@ -182,6 +192,31 @@ final class LookbookCatalog: ObservableObject {
         return text
     }
 
+    /// Where an entry's README can be read: the rendered page on GitHub, in a
+    /// browser.
+    ///
+    /// Always the web page, even when the catalog is coming from a checkout.
+    /// A local `.md` opens in whatever handles the extension, which is an
+    /// editor showing the raw text, and the formatting is the reason someone
+    /// clicked. Nil when the catalog publishes no `web`, so the card shows no
+    /// button rather than one that opens Markdown source.
+    func readme(for entry: Entry) -> URL? {
+        guard !web.isEmpty else { return nil }
+        return URL(string: web + entry.readme)
+    }
+
+    /// The directory the override points into, or nil when the catalog is
+    /// coming over the network.
+    private static func localRoot() -> URL? {
+        guard let override = ProcessInfo.processInfo.environment[overrideKey],
+            !override.isEmpty,
+            URL(string: override)?.scheme == nil
+        else {
+            return nil
+        }
+        return URL(fileURLWithPath: override).deletingLastPathComponent()
+    }
+
     private static func resolvedURL() -> URL {
         guard let override = ProcessInfo.processInfo.environment[overrideKey],
             !override.isEmpty
@@ -194,16 +229,13 @@ final class LookbookCatalog: ObservableObject {
 
     /// A relative path against the catalog's base, which is a checkout
     /// directory under the override and a raw.githubusercontent URL otherwise.
+    ///
     /// Nil when the entry names something that is not a URL. It used to fall
     /// back to the index, which meant fetching `index.json` and installing it
     /// as somebody's declaration.
     private static func resolve(base: String, _ relative: String) -> URL? {
-        if let override = ProcessInfo.processInfo.environment[overrideKey], !override.isEmpty,
-            URL(string: override)?.scheme == nil
-        {
-            return URL(fileURLWithPath: override)
-                .deletingLastPathComponent()
-                .appendingPathComponent(relative)
+        if let local = localRoot() {
+            return local.appendingPathComponent(relative)
         }
         return URL(string: base + relative)
     }
