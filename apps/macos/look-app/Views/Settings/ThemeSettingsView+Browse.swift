@@ -69,10 +69,7 @@ struct LookbookBrowseSection: View {
         }
         .task { catalog.load() }
         .sheet(item: $opening) { entry in
-            LookbookInstallSheet(
-                entry: entry,
-                replaces: entry.files.filter(present.contains).sorted()
-            ) { installed.insert(entry.id) }
+            LookbookInstallSheet(entry: entry) { installed.insert(entry.id) }
                 .environmentObject(themeStore)
         }
     }
@@ -93,7 +90,8 @@ struct LookbookBrowseSection: View {
     private func card(_ entry: LookbookCatalog.Entry) -> some View {
         let elsewhere = !entry.platforms.contains(LookbookCatalog.thisPlatform)
         let absent = entry.requires.filter { catalog.missing.contains($0) }
-        let here = installed.contains(entry.id) || entry.files.allSatisfy(present.contains)
+        let here = installed.contains(entry.id)
+            || (!entry.files.isEmpty && entry.files.allSatisfy(present.contains))
 
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
@@ -103,15 +101,17 @@ struct LookbookBrowseSection: View {
                     .font(.system(size: CGFloat(themeStore.settings.fontSize - 3), design: .monospaced))
                     .foregroundStyle(themeStore.mutedTextColor())
                 Spacer(minLength: 8)
-                if here {
+                if elsewhere {
+                    // Asked before anything else: an entry that cannot run
+                    // here has no button, whatever is already on disk.
+                    Text(entry.platforms.joined(separator: ", "))
+                        .foregroundStyle(themeStore.mutedTextColor())
+                } else if here {
                     // Still openable: this is how you get back to the form
                     // after deciding the folder you picked was the wrong one.
                     Button("Reconfigure") { opening = entry }
                         .buttonStyle(.plain)
                         .foregroundStyle(themeStore.accentColor())
-                } else if elsewhere {
-                    Text(entry.platforms.joined(separator: ", "))
-                        .foregroundStyle(themeStore.mutedTextColor())
                 } else {
                     Button("Install") { opening = entry }
                         .buttonStyle(.plain)
@@ -152,11 +152,14 @@ struct LookbookInstallSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let entry: LookbookCatalog.Entry
-    /// Files already in the sources directory that this would write over.
-    /// One of them may be the copy somebody edited to point at their own
-    /// folder, and a notice after the write cannot give that back.
-    let replaces: [String]
     let onInstalled: () -> Void
+
+    /// Files this would write over, asked of the engine when the sheet opens.
+    /// One of them may be the copy somebody edited to point at their own
+    /// folder, and a notice after the write cannot give that back. Asked
+    /// rather than inferred because helper scripts live in `~/.look/bin`,
+    /// which no screen lists.
+    @State private var replaces: [String] = []
 
     @State private var files: LookbookInstall?
     @State private var previews: [String: LookbookPreview] = [:]
@@ -258,6 +261,11 @@ struct LookbookInstallSheet: View {
     }
 
     private func read() async {
+        let asking = LookbookPresent.Request(declarations: entry.files, scripts: entry.bin)
+        replaces = await Task.detached(priority: .userInitiated) {
+            EngineBridge.shared.lookbookPresent(asking)
+        }.value?.all.sorted() ?? []
+
         guard let fetched = await LookbookCatalog.shared.fetchFiles(for: entry) else {
             failure = "Could not read \(entry.id) from lookbook."
             working = false

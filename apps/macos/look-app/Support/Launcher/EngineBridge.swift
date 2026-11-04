@@ -22,6 +22,9 @@ private nonisolated func look_lookbook_preview_json(_ toml: UnsafePointer<CChar>
 @_silgen_name("look_lookbook_missing_json")
 private nonisolated func look_lookbook_missing_json(_ programsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_lookbook_present_json")
+private nonisolated func look_lookbook_present_json(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_lookbook_install_json")
 private nonisolated func look_lookbook_install_json(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
@@ -1331,6 +1334,14 @@ final class EngineBridge: @unchecked Sendable {
         return decode(json.withCString { look_lookbook_missing_json($0) }) ?? []
     }
 
+    /// Which of an entry's files are already on disk. Asked before writing,
+    /// because one of them may be the copy somebody edited, and the sheet
+    /// cannot see `~/.look/bin` any other way.
+    nonisolated func lookbookPresent(_ request: LookbookPresent.Request) -> LookbookPresent? {
+        guard let json = encode(request) else { return nil }
+        return decode(json.withCString { look_lookbook_present_json($0) })
+    }
+
     /// Writes a fetched entry into `~/.look/sources` and `~/.look/bin`.
     nonisolated func lookbookInstall(_ request: LookbookInstall) -> LookbookInstalled? {
         guard let json = encode(request) else { return nil }
@@ -1881,6 +1892,20 @@ nonisolated struct LookbookInstall: Encodable {
         let name: String
         let contents: String
     }
+}
+
+/// What an install would land on top of.
+nonisolated struct LookbookPresent: Decodable {
+    let declarations: [String]
+    let scripts: [String]
+
+    struct Request: Encodable {
+        let declarations: [String]
+        let scripts: [String]
+    }
+
+    /// Everything it would replace, in the order a sentence wants them.
+    var all: [String] { declarations + scripts }
 }
 
 nonisolated struct LookbookInstalled: Decodable {

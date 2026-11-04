@@ -413,6 +413,14 @@ pub extern "C" fn look_lookbook_missing_json(programs_json: *const c_char) -> *m
         .unwrap_or(std::ptr::null_mut())
 }
 
+/// Which of an entry's files are already on disk, so the sheet can say what
+/// installing would replace.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_lookbook_present_json(request_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(|| lookbook_api::look_lookbook_present_json(request_json))
+        .unwrap_or(std::ptr::null_mut())
+}
+
 /// Writes a fetched entry into the user's directories.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_lookbook_install_json(request_json: *const c_char) -> *mut c_char {

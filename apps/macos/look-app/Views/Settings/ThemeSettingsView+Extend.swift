@@ -100,7 +100,10 @@ struct ExtendSettingsTab: View {
         // The installed list is right above, so the browser can tell which
         // entries are already here rather than only remembering this visit.
         LookbookBrowseSection(
-            present: Set(inventory.blocks.map { fileName($0.file) })
+            // Only what the user installed. A connector manifest an app put
+            // in ~/.look/connectors can share a name with a catalog entry,
+            // and installing would not touch it.
+            present: Set(inventory.blocks.filter { !$0.fromApp }.map { fileName($0.file) })
         )
 
         if inventory.problems.isEmpty, inventory.blocks.allSatisfy(\.needs.isEmpty) {

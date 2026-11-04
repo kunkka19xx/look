@@ -56,6 +56,10 @@ final class LookbookCatalog: ObservableObject {
     @Published private(set) var missing: Set<String> = []
 
     private var base = ""
+    /// Counts probes. Each visit starts one and nothing orders them, so an
+    /// older answer finishing late could put back a state the machine has
+    /// already left. Only the newest may write `missing`.
+    private var probeGeneration = 0
     private let session: URLSession
     private let log = Logger(subsystem: "noah-code.Look", category: "LookbookCatalog")
 
@@ -121,6 +125,9 @@ final class LookbookCatalog: ObservableObject {
     /// One pass over every program any entry asks for, off the main thread
     /// because each name is a walk along `PATH`.
     private func probeRequirements(of entries: [Entry]) async {
+        probeGeneration += 1
+        let generation = probeGeneration
+
         let wanted = Array(Set(entries.flatMap(\.requires))).sorted()
         guard !wanted.isEmpty else {
             missing = []
@@ -129,6 +136,7 @@ final class LookbookCatalog: ObservableObject {
         let absent = await Task.detached {
             EngineBridge.shared.lookbookMissing(programs: wanted)
         }.value
+        guard generation == probeGeneration else { return }
         missing = Set(absent)
     }
 
