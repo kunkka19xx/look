@@ -19,6 +19,9 @@ private func look_record_usage_json(_ candidateID: UnsafePointer<CChar>?, _ acti
 @_silgen_name("look_lookbook_preview_json")
 private nonisolated func look_lookbook_preview_json(_ toml: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_lookbook_preview_filled_json")
+private nonisolated func look_lookbook_preview_filled_json(_ fileJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_lookbook_missing_json")
 private nonisolated func look_lookbook_missing_json(_ programsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
@@ -1324,6 +1327,13 @@ final class EngineBridge: @unchecked Sendable {
     /// and the screen then say another.
     nonisolated func lookbookPreview(toml: String) -> LookbookPreview? {
         decode(toml.withCString { look_lookbook_preview_json($0) })
+    }
+
+    /// The same for a declaration whose answers are chosen, so the sheet can
+    /// show what Install would land rather than what the author shipped.
+    nonisolated func lookbookPreviewFilled(_ file: LookbookInstall.NamedFile) -> LookbookPreview? {
+        guard let json = encode(file) else { return nil }
+        return decode(json.withCString { look_lookbook_preview_filled_json($0) })
     }
 
     /// Which of a catalog entry's `requires` are not installed here. These

@@ -98,6 +98,17 @@ pub fn preview(contents: &str, home: &Path) -> Result<Preview, String> {
     })
 }
 
+/// The same, for a declaration with its answers already filled in.
+///
+/// The readiness lines describe the file as written, and the whole point of
+/// the form is to stop them being true. Previewing the filled text is how the
+/// sheet can show what Install would actually land rather than what the
+/// author shipped.
+pub fn preview_filled(file: &NamedFile, home: &Path) -> Result<Preview, String> {
+    let contents = answered(file).map_err(|problems| problems.join("\n"))?;
+    preview(&contents, home)
+}
+
 /// Programs from a catalog entry's `requires` that are not installed here.
 ///
 /// A requirement arrives as a bare name with no block behind it, usually
@@ -398,7 +409,9 @@ match = "code"
 
     #[test]
     fn answers_land_in_the_installed_file_and_the_comments_do_too() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let home = TempDir::new("answers");
+        let _sources = SourcesDir::pointed_at(&home.0.join("sources"));
         let request = InstallRequest {
             declarations: vec![NamedFile {
                 name: "projects.toml".to_string(),
@@ -437,8 +450,44 @@ match = "code"
     }
 
     #[test]
+    fn a_filled_preview_no_longer_reports_what_the_answer_fixed() {
+        let home = TempDir::new("filled");
+        let folder = home.0.join("projects");
+        std::fs::create_dir_all(&folder).expect("folder");
+
+        let file = NamedFile {
+            name: "projects.toml".to_string(),
+            contents: ASKING.to_string(),
+            answers: vec![Some(folder.to_string_lossy().into_owned()), None],
+        };
+
+        let before = preview(ASKING, &home.0).expect("parses");
+        assert!(
+            before.blocks[0]
+                .needs
+                .iter()
+                .any(|need| need.value == "~/dev"),
+            "{:?}",
+            before.blocks[0].needs
+        );
+
+        // The whole point of the form: the line the sheet showed is answered.
+        let after = preview_filled(&file, &home.0).expect("parses");
+        assert!(
+            !after.blocks[0]
+                .needs
+                .iter()
+                .any(|need| need.value == "~/dev"),
+            "{:?}",
+            after.blocks[0].needs
+        );
+    }
+
+    #[test]
     fn nothing_is_written_when_an_answer_cannot_be_applied() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let home = TempDir::new("refused");
+        let _sources = SourcesDir::pointed_at(&home.0.join("sources"));
         let request = InstallRequest {
             declarations: vec![NamedFile {
                 name: "a.toml".to_string(),
@@ -469,10 +518,12 @@ match = "code"
                 declarations: vec![NamedFile {
                     name: "a.toml".to_string(),
                     contents: "[a]\ndo = [\"true\"]\n".to_string(),
+                    answers: Vec::new(),
                 }],
                 scripts: vec![NamedFile {
                     name: "../escape".to_string(),
                     contents: "x".to_string(),
+                    answers: Vec::new(),
                 }],
             },
             &home.0,
@@ -495,10 +546,12 @@ match = "code"
             declarations: vec![NamedFile {
                 name: "a.toml".to_string(),
                 contents: "[a]\ndo = [\"true\"]\n".to_string(),
+                answers: Vec::new(),
             }],
             scripts: vec![NamedFile {
                 name: "a-rows".to_string(),
                 contents: "#!/bin/sh\n".to_string(),
+                answers: Vec::new(),
             }],
         };
         let asking = PresentRequest {

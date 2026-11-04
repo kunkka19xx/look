@@ -165,6 +165,10 @@ struct LookbookInstallSheet: View {
     @State private var previews: [String: LookbookPreview] = [:]
     @State private var failure: String?
     @State private var working = true
+    /// True while a write is in flight. Each press starts an engine write,
+    /// and two with different answers could finish out of order, leaving the
+    /// older on disk while the sheet reported the newer as installed.
+    @State private var writing = false
     /// What the user has typed or picked, keyed by file then field index.
     /// Empty means "as the author wrote it", which is what the engine reads a
     /// null as, so an untouched form installs the example unchanged.
@@ -224,7 +228,7 @@ struct LookbookInstallSheet: View {
                 // takes somebody's edits away, so it should not say Install.
                 Button(replaces.isEmpty ? "Install" : "Replace") { install() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(files == nil)
+                    .disabled(files == nil || writing)
             }
         }
         .padding(16)
@@ -320,8 +324,32 @@ struct LookbookInstallSheet: View {
     private func binding(_ file: String, _ index: Int, _ value: String) -> Binding<String> {
         Binding(
             get: { value },
-            set: { answers[file, default: [:]][index] = $0 }
+            set: {
+                answers[file, default: [:]][index] = $0
+                // The lines underneath describe the example as written, and
+                // the point of the form is to stop them being true. Re-read
+                // what Install would actually write.
+                recheck(file)
+            }
         )
+    }
+
+    /// Previews one declaration again with the answers filled in, so the
+    /// readiness lines match the file that would land rather than the one
+    /// the author shipped.
+    private func recheck(_ name: String) {
+        guard let files, let file = files.declarations.first(where: { $0.name == name }) else {
+            return
+        }
+        let filled = LookbookInstall.NamedFile(
+            name: file.name, contents: file.contents, answers: answers(for: file)
+        )
+        Task {
+            let found = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.lookbookPreviewFilled(filled)
+            }.value
+            if let found { previews[name] = found }
+        }
     }
 
     /// The reason a folder field exists at all: picking beats retyping
@@ -379,7 +407,8 @@ struct LookbookInstallSheet: View {
     }
 
     private func install() {
-        guard let files else { return }
+        guard let files, !writing else { return }
+        writing = true
         let filled = LookbookInstall(
             declarations: files.declarations.map {
                 LookbookInstall.NamedFile(
@@ -389,6 +418,7 @@ struct LookbookInstallSheet: View {
             scripts: files.scripts
         )
         Task {
+            defer { writing = false }
             let outcome = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.lookbookInstall(filled)
             }.value

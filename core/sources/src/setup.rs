@@ -126,8 +126,17 @@ fn without_setup(contents: &str) -> String {
             blanking = false;
         }
         if blanking {
-            // Same length, same line breaks, nothing to parse.
-            out.extend(line.chars().map(|ch| if ch == '\n' { '\n' } else { ' ' }));
+            // Same byte length, same line breaks, nothing to parse. Counted
+            // in bytes rather than characters: an accented letter in a label
+            // is two or more, and one space each would shorten the document
+            // and shift every span taken after it.
+            for ch in line.chars() {
+                if ch == '\n' {
+                    out.push('\n');
+                } else {
+                    out.extend(std::iter::repeat_n(' ', ch.len_utf8()));
+                }
+            }
         } else {
             out.push_str(line);
         }
@@ -135,12 +144,15 @@ fn without_setup(contents: &str) -> String {
     out
 }
 
-/// `[[setup]]` -> `setup`, for a header line only.
+/// `[[setup]]` -> `setup`, for a header line only. `[[setup]] # why` is a
+/// header too, so the comment comes off before the brackets are matched.
 fn header_names(line: &str) -> Option<&str> {
-    line.trim_end()
-        .strip_prefix("[[")?
-        .strip_suffix("]]")
-        .map(str::trim)
+    let line = line.trim_end();
+    let line = match line.split_once('#') {
+        Some((before, _)) if before.trim_end().ends_with("]]") => before.trim_end(),
+        _ => line,
+    };
+    line.strip_prefix("[[")?.strip_suffix("]]").map(str::trim)
 }
 
 /// What each field would replace, for showing the current value in the form.
@@ -154,10 +166,25 @@ pub fn current(contents: &str, field: &SetupField) -> Option<String> {
     }
 }
 
+/// What a TOML string may open with.
+const QUOTES: [char; 2] = ['"', '\''];
+
+/// How an answer has to be written where it lands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Writing {
+    /// Over the whole value, quotes and all, so it brings its own.
+    WholeString,
+    /// Inside `"..."`, where the basic-string escapes apply.
+    InsideBasic,
+    /// Inside `'...'`, where nothing is escaped and nothing may be: a
+    /// backslash stays a backslash and an apostrophe cannot appear.
+    InsideLiteral,
+}
+
 /// The exact bytes a field replaces: the whole value, or the `match` inside
 /// it. One answer to "where does this field point", so a checker and an
 /// installer cannot disagree about whether a declaration is usable.
-fn target(contents: &str, field: &SetupField) -> Result<(Range<usize>, bool), String> {
+fn target(contents: &str, field: &SetupField) -> Result<(Range<usize>, Writing), String> {
     let span = locate(contents, &field.block, &field.key).ok_or_else(|| {
         format!(
             "{}: [{}] has no `{}` to fill in",
@@ -169,7 +196,18 @@ fn target(contents: &str, field: &SetupField) -> Result<(Range<usize>, bool), St
         .ok_or_else(|| format!("{}: its value is not readable", field.label))?;
 
     let Some(matching) = &field.matching else {
-        return Ok((span, true));
+        // A whole-value fill writes a quoted string over the span, so the
+        // value has to already be one. Over `dirs = [...]` or `depth = 2` it
+        // would leave a string where the loader wants a list or a number,
+        // and the block would stop loading.
+        if !text.starts_with(QUOTES) {
+            return Err(format!(
+                "{}: [{}] `{}` is not a string, so there is nothing to fill in. \
+                 Use `match` to name the part of it to replace",
+                field.label, field.block, field.key
+            ));
+        }
+        return Ok((span, Writing::WholeString));
     };
     if !contents_contains_once(text, matching) {
         return Err(format!(
@@ -177,18 +215,40 @@ fn target(contents: &str, field: &SetupField) -> Result<(Range<usize>, bool), St
             field.label, field.block, field.key
         ));
     }
-    let at = span.start + text.find(matching).unwrap_or(0);
-    Ok((at..at + matching.len(), false))
+    // Decided here, where the enclosing value is still in hand: the
+    // substring's own span says nothing about the quotes around it. The
+    // nearest quote before the match, not the first character of the value,
+    // because a `do` value is an array and the strings are inside it.
+    let offset = text.find(matching).unwrap_or(0);
+    let writing = match text[..offset].rfind(QUOTES) {
+        Some(at) if text[at..].starts_with('\'') => Writing::InsideLiteral,
+        _ => Writing::InsideBasic,
+    };
+    let at = span.start + offset;
+    Ok((at..at + matching.len(), writing))
 }
 
 /// Every field checked against the document it points into, for a checker run
 /// before anybody installs it. Empty means all of them resolve.
 pub fn validate(contents: &str, fields: &[SetupField]) -> Vec<String> {
     let mut problems = Vec::new();
+    let mut claimed: Vec<Range<usize>> = Vec::new();
     for field in fields {
-        if let Err(message) = target(contents, field) {
-            problems.push(message);
-            continue;
+        match target(contents, field) {
+            Err(message) => {
+                problems.push(message);
+                continue;
+            }
+            Ok((span, _)) => {
+                if let Some(other) = claimed.iter().find(|other| overlaps(other, &span)) {
+                    problems.push(format!(
+                        "{}: it fills the same text as another field ({other:?})",
+                        field.label
+                    ));
+                    continue;
+                }
+                claimed.push(span);
+            }
         }
         if field.kind != FieldKind::Choice {
             continue;
@@ -229,29 +289,55 @@ pub fn fill(
         };
         match target(contents, field) {
             // A whole value carries its own quotes; a substring sits inside
-            // somebody else's.
-            Ok((span, whole)) => edits.push((
-                span,
-                if whole {
-                    quoted(answer)
-                } else {
-                    escaped(answer)
-                },
-            )),
+            // somebody else's, and which kind decides how it is escaped.
+            Ok((span, writing)) => {
+                // A literal string has no escapes at all, so an answer that
+                // would need one cannot go in it.
+                if writing == Writing::InsideLiteral && answer.contains(['\'', '\n']) {
+                    problems.push(format!(
+                        "{}: {answer:?} cannot go inside a '...' string, which has \
+                         no way to escape an apostrophe or a newline",
+                        field.label
+                    ));
+                    continue;
+                }
+                let text = match writing {
+                    Writing::WholeString => quoted(answer),
+                    Writing::InsideBasic => escaped(answer),
+                    Writing::InsideLiteral => answer.clone(),
+                };
+                edits.push((span, text));
+            }
             Err(message) => problems.push(message),
+        }
+    }
+
+    // Two fields can land on the same text: two whole-value fields on one
+    // key, or a whole value and a `match` inside it. The edits are applied
+    // back to front, which assumes they do not overlap; applying them anyway
+    // corrupts the file or panics on a stale range, across the FFI.
+    edits.sort_by_key(|(span, _)| std::cmp::Reverse(span.start));
+    for pair in edits.windows(2) {
+        if overlaps(&pair[1].0, &pair[0].0) {
+            problems.push(format!(
+                "two fields fill the same text ({:?} and {:?})",
+                pair[1].0, pair[0].0
+            ));
         }
     }
 
     if !problems.is_empty() {
         return Err(problems);
     }
-
-    edits.sort_by_key(|(span, _)| std::cmp::Reverse(span.start));
     let mut out = contents.to_string();
     for (span, replacement) in edits {
         out.replace_range(span, &replacement);
     }
     Ok(out)
+}
+
+fn overlaps(one: &Range<usize>, other: &Range<usize>) -> bool {
+    one.start < other.end && other.start < one.end
 }
 
 fn contents_contains_once(text: &str, needle: &str) -> bool {
@@ -264,12 +350,25 @@ fn quoted(value: &str) -> String {
     format!("\"{}\"", escaped(value))
 }
 
+/// A TOML basic string's contents. Every control character, not the few that
+/// came to mind: the answer arrives from the shell across JSON and is written
+/// to disk, and a stray `\r` in it makes the installed file stop parsing.
 fn escaped(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\t', "\\t")
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            ch if ch.is_control() => out.push_str(&format!("\\u{:04X}", ch as u32)),
+            ch => out.push(ch),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -463,7 +562,7 @@ options = ["Alacritty", "kitty"]
 
     #[test]
     fn a_choice_with_no_options_is_refused() {
-        let text = "[a]\ndo = [\"x\"]\n\n[[setup]]\nlabel = \"L\"\ntype = \"choice\"\nblock = \"a\"\nkey = \"do\"\n";
+        let text = "[a]\nopen = \"x\"\n\n[[setup]]\nlabel = \"L\"\ntype = \"choice\"\nblock = \"a\"\nkey = \"open\"\n";
         let problems = validate(text, &fields_of(text));
         assert!(problems[0].contains("needs `options`"), "{problems:?}");
     }
@@ -471,6 +570,136 @@ options = ["Alacritty", "kitty"]
     #[test]
     fn a_sound_declaration_validates_clean() {
         assert!(validate(PROJECTS, &fields_of(PROJECTS)).is_empty());
+    }
+
+    #[test]
+    fn a_multibyte_label_does_not_shift_the_spans_after_it() {
+        // Blanking the section by characters rather than bytes shortened the
+        // document, and every span taken after it pointed a few bytes early.
+        let text = r#"
+[[setup]]
+label = "Choose a folder … café"
+block = "notes"
+key   = "dir"
+
+[notes]
+dir = "~/old"
+"#;
+        let fields = fields_of(text);
+        assert_eq!(current(text, &fields[0]).as_deref(), Some("~/old"));
+        let out = fill(text, &fields, &[Some("/tmp/new".to_string())]).expect("fills");
+        assert!(out.contains(r#"dir = "/tmp/new""#), "{out}");
+    }
+
+    #[test]
+    fn a_comment_on_the_header_still_marks_the_section() {
+        let text = r#"
+[[setup]] # what you change
+label = "Folder"
+block = "notes"
+key   = "dir"
+
+[notes]
+dir = "~/old"
+"#;
+        let fields = fields_of(text);
+        assert_eq!(current(text, &fields[0]).as_deref(), Some("~/old"));
+        assert!(validate(text, &fields).is_empty());
+    }
+
+    #[test]
+    fn a_whole_value_fill_is_refused_on_something_that_is_not_a_string() {
+        let text = r#"
+[notes]
+dirs  = ["~/a", "~/b"]
+depth = 2
+
+[[setup]]
+label = "Folders"
+block = "notes"
+key   = "dirs"
+"#;
+        let fields = fields_of(text);
+        let problems = validate(text, &fields);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("not a string"), "{problems:?}");
+    }
+
+    #[test]
+    fn two_fields_on_the_same_text_are_refused_rather_than_applied() {
+        let text = r#"
+[notes]
+dir = "~/old"
+
+[[setup]]
+label = "One"
+block = "notes"
+key   = "dir"
+
+[[setup]]
+label = "Two"
+block = "notes"
+key   = "dir"
+"#;
+        let fields = fields_of(text);
+        assert!(!validate(text, &fields).is_empty());
+        let err =
+            fill(text, &fields, &[Some("/a".into()), Some("/b".into())]).expect_err("refuses");
+        assert!(err.iter().any(|one| one.contains("same text")), "{err:?}");
+    }
+
+    #[test]
+    fn an_answer_inside_a_literal_string_keeps_its_backslashes() {
+        let text = r#"
+[notes]
+do = ['open C:\tools\x']
+
+[[setup]]
+label = "Tool"
+block = "notes"
+key   = "do"
+match = 'C:\tools\x'
+"#;
+        let fields = fields_of(text);
+        let out = fill(text, &fields, &[Some(r"D:in\y".to_string())]).expect("fills");
+        // One backslash each, not two: nothing is escaped inside '...'.
+        assert!(out.contains(r"open D:in\y"), "{out}");
+    }
+
+    #[test]
+    fn an_apostrophe_cannot_be_written_into_a_literal_string() {
+        let text = r#"
+[notes]
+do = ['echo hello']
+
+[[setup]]
+label = "Word"
+block = "notes"
+key   = "do"
+match = 'hello'
+"#;
+        let fields = fields_of(text);
+        let err = fill(text, &fields, &[Some("it's".to_string())]).expect_err("refuses");
+        assert!(err[0].contains("apostrophe"), "{err:?}");
+    }
+
+    #[test]
+    fn a_control_character_in_an_answer_cannot_break_the_file() {
+        let home_text = r#"
+[notes]
+dir = "~/old"
+
+[[setup]]
+label = "Folder"
+block = "notes"
+key   = "dir"
+"#;
+        let fields = fields_of(home_text);
+        let out = fill(home_text, &fields, &[Some("a\rb\u{1}c".to_string())]).expect("fills");
+        // It has to still be a file of blocks afterwards.
+        let (back, problems) = parse_setup(&out).expect("still parses");
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(back.len(), 1);
     }
 
     #[test]
