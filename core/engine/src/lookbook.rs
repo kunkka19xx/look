@@ -427,10 +427,21 @@ match = "code"
         assert!(done.problems.is_empty(), "{:?}", done.problems);
 
         let written = std::fs::read_to_string(&done.written[0]).expect("reads back");
-        assert!(
-            written.contains(&format!("dir  = \"{}\"", home.0.display())),
-            "{written}"
-        );
+        // Read back through the parser rather than matched as text: a
+        // Windows path is full of backslashes and `quoted` escapes them, so
+        // the file correctly holds `C:\\Users\\...` and only TOML can say
+        // whether that is the folder that was chosen.
+        let parsed = look_sources::parse_file(&written).expect("still parses");
+        let landed = parsed
+            .blocks
+            .iter()
+            .find(|block| block.id == "projects")
+            .map(|block| match &block.producer {
+                look_sources::Producer::Dir { roots, .. } => roots.clone(),
+                _ => Vec::new(),
+            })
+            .unwrap_or_default();
+        assert_eq!(landed, [home.0.to_string_lossy().into_owned()], "{written}");
         assert!(written.contains(r#"edit = "hx {path}""#), "{written}");
         assert!(written.contains("# A comment that has to survive being installed."));
 
