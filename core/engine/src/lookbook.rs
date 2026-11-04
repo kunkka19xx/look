@@ -23,8 +23,26 @@ use crate::sources::Needed;
 #[derive(Serialize)]
 pub struct Preview {
     pub blocks: Vec<PreviewBlock>,
+    /// What the example asks the installer for, in the order declared.
+    pub fields: Vec<Field>,
     /// Parts of the file that did not parse. The rest still previews.
     pub problems: Vec<String>,
+}
+
+/// One value the example asks for, as a form needs it.
+///
+/// Declared rather than inferred, which is what lets it reach a value the
+/// check cannot see: `vault=look` is a working string that happens to be
+/// somebody else's vault.
+#[derive(Serialize)]
+pub struct Field {
+    pub label: String,
+    /// `folder`, `file`, `text` or `choice`, deciding the control shown.
+    pub kind: &'static str,
+    pub note: Option<String>,
+    pub options: Vec<String>,
+    /// What the author wrote, which the control starts on.
+    pub current: Option<String>,
 }
 
 /// One block the declaration would add, and what it would want changed.
@@ -42,6 +60,19 @@ pub struct PreviewBlock {
 /// text is not a file of blocks at all.
 pub fn preview(contents: &str, home: &Path) -> Result<Preview, String> {
     let reviewed = look_sources::review(contents, home)?;
+    let (declared, mut problems) = look_sources::parse_setup(contents)?;
+    problems.extend(reviewed.problems);
+
+    let fields = declared
+        .iter()
+        .map(|field| Field {
+            label: field.label.clone(),
+            kind: field.kind.name(),
+            note: field.note.clone(),
+            options: field.options.clone(),
+            current: look_sources::current(contents, field),
+        })
+        .collect();
 
     let blocks = reviewed
         .blocks
@@ -62,8 +93,20 @@ pub fn preview(contents: &str, home: &Path) -> Result<Preview, String> {
 
     Ok(Preview {
         blocks,
-        problems: reviewed.problems,
+        fields,
+        problems,
     })
+}
+
+/// The same, for a declaration with its answers already filled in.
+///
+/// The readiness lines describe the file as written, and the whole point of
+/// the form is to stop them being true. Previewing the filled text is how the
+/// sheet can show what Install would actually land rather than what the
+/// author shipped.
+pub fn preview_filled(file: &NamedFile, home: &Path) -> Result<Preview, String> {
+    let contents = answered(file).map_err(|problems| problems.join("\n"))?;
+    preview(&contents, home)
 }
 
 /// Programs from a catalog entry's `requires` that are not installed here.
@@ -131,6 +174,10 @@ pub struct InstallRequest {
 pub struct NamedFile {
     pub name: String,
     pub contents: String,
+    /// Answers to this file's `[[setup]]` fields, in the order declared. An
+    /// entry left out, or null, keeps what the author wrote.
+    #[serde(default)]
+    pub answers: Vec<Option<String>>,
 }
 
 #[derive(Serialize)]
@@ -142,8 +189,35 @@ pub struct InstallOutcome {
     pub problems: Vec<String>,
 }
 
-/// Writes an entry into this user's directories.
+/// Writes an entry into this user's directories, with its fields filled in.
+///
+/// Filling happens here rather than in the shell so the shell never builds
+/// TOML: it collects answers and the engine decides which bytes they replace.
 pub fn install(request: &InstallRequest, home: &Path) -> InstallOutcome {
+    let mut refused = Vec::new();
+    let mut declarations = Vec::new();
+    for file in &request.declarations {
+        declarations.push((
+            file.name.clone(),
+            match answered(file) {
+                Ok(contents) => contents,
+                Err(problems) => {
+                    refused.extend(problems);
+                    continue;
+                }
+            },
+        ));
+    }
+    // A field that could not be applied means the file would land saying
+    // something other than what the form showed, so none of it is written.
+    if !refused.is_empty() {
+        return InstallOutcome {
+            written: Vec::new(),
+            replaced: Vec::new(),
+            problems: refused,
+        };
+    }
+
     let named = |files: &[NamedFile]| {
         files
             .iter()
@@ -152,7 +226,7 @@ pub fn install(request: &InstallRequest, home: &Path) -> InstallOutcome {
     };
     let done = look_sources::install(
         &look_sources::Installing {
-            declarations: named(&request.declarations),
+            declarations,
             scripts: named(&request.scripts),
         },
         home,
@@ -169,6 +243,18 @@ pub fn install(request: &InstallRequest, home: &Path) -> InstallOutcome {
         replaced: shown(done.replaced),
         problems: done.problems,
     }
+}
+
+/// One declaration with its answers applied, or why they could not be.
+fn answered(file: &NamedFile) -> Result<String, Vec<String>> {
+    if file.answers.iter().all(Option::is_none) {
+        return Ok(file.contents.clone());
+    }
+    let (fields, problems) = look_sources::parse_setup(&file.contents).map_err(|err| vec![err])?;
+    if !problems.is_empty() {
+        return Err(problems);
+    }
+    look_sources::fill(&file.contents, &fields, &file.answers)
 }
 
 #[cfg(test)]
@@ -285,6 +371,153 @@ mod tests {
         assert_eq!(done.problems.len(), 1, "{:?}", done.problems);
     }
 
+    const ASKING: &str = r#"
+# A comment that has to survive being installed.
+[projects]
+name = "Projects"
+dir  = "~/dev"
+edit = "code {path}"
+
+[[setup]]
+label = "Your projects folder"
+type  = "folder"
+block = "projects"
+key   = "dir"
+
+[[setup]]
+label = "Editor command"
+block = "projects"
+key   = "edit"
+match = "code"
+"#;
+
+    #[test]
+    fn a_preview_carries_the_fields_the_example_asks_for() {
+        let home = TempDir::new("fields");
+        let found = preview(ASKING, &home.0).expect("parses");
+
+        assert_eq!(found.fields.len(), 2);
+        assert_eq!(found.fields[0].label, "Your projects folder");
+        assert_eq!(found.fields[0].kind, "folder");
+        assert_eq!(found.fields[0].current.as_deref(), Some("~/dev"));
+        // Defaulted, because the declaration left `type` out.
+        assert_eq!(found.fields[1].kind, "text");
+        assert_eq!(found.fields[1].current.as_deref(), Some("code"));
+        // The fields are not blocks.
+        assert_eq!(found.blocks.len(), 1);
+    }
+
+    #[test]
+    fn answers_land_in_the_installed_file_and_the_comments_do_too() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let home = TempDir::new("answers");
+        let _sources = SourcesDir::pointed_at(&home.0.join("sources"));
+        let request = InstallRequest {
+            declarations: vec![NamedFile {
+                name: "projects.toml".to_string(),
+                contents: ASKING.to_string(),
+                answers: vec![
+                    Some(home.0.to_string_lossy().into_owned()),
+                    Some("hx".into()),
+                ],
+            }],
+            scripts: Vec::new(),
+        };
+        let done = install(&request, &home.0);
+        assert!(done.problems.is_empty(), "{:?}", done.problems);
+
+        let written = std::fs::read_to_string(&done.written[0]).expect("reads back");
+        // Read back through the parser rather than matched as text: a
+        // Windows path is full of backslashes and `quoted` escapes them, so
+        // the file correctly holds `C:\\Users\\...` and only TOML can say
+        // whether that is the folder that was chosen.
+        let parsed = look_sources::parse_file(&written).expect("still parses");
+        let landed = parsed
+            .blocks
+            .iter()
+            .find(|block| block.id == "projects")
+            .map(|block| match &block.producer {
+                look_sources::Producer::Dir { roots, .. } => roots.clone(),
+                _ => Vec::new(),
+            })
+            .unwrap_or_default();
+        assert_eq!(landed, [home.0.to_string_lossy().into_owned()], "{written}");
+        assert!(written.contains(r#"edit = "hx {path}""#), "{written}");
+        assert!(written.contains("# A comment that has to survive being installed."));
+
+        // And the point of all of it: answered, the block no longer reports
+        // the thing the card warned about.
+        let after = look_sources::load_dir(&look_sources::sources_dir(&home.0));
+        let still: Vec<String> = after
+            .blocks
+            .iter()
+            .flat_map(|block| look_sources::check(block, &home.0))
+            .map(|unready| unready.message())
+            .collect();
+        assert!(
+            !still.iter().any(|line| line.contains("~/dev")),
+            "the folder was filled in: {still:?}"
+        );
+    }
+
+    #[test]
+    fn a_filled_preview_no_longer_reports_what_the_answer_fixed() {
+        let home = TempDir::new("filled");
+        let folder = home.0.join("projects");
+        std::fs::create_dir_all(&folder).expect("folder");
+
+        let file = NamedFile {
+            name: "projects.toml".to_string(),
+            contents: ASKING.to_string(),
+            answers: vec![Some(folder.to_string_lossy().into_owned()), None],
+        };
+
+        let before = preview(ASKING, &home.0).expect("parses");
+        assert!(
+            before.blocks[0]
+                .needs
+                .iter()
+                .any(|need| need.value == "~/dev"),
+            "{:?}",
+            before.blocks[0].needs
+        );
+
+        // The whole point of the form: the line the sheet showed is answered.
+        let after = preview_filled(&file, &home.0).expect("parses");
+        assert!(
+            !after.blocks[0]
+                .needs
+                .iter()
+                .any(|need| need.value == "~/dev"),
+            "{:?}",
+            after.blocks[0].needs
+        );
+    }
+
+    #[test]
+    fn nothing_is_written_when_an_answer_cannot_be_applied() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let home = TempDir::new("refused");
+        let _sources = SourcesDir::pointed_at(&home.0.join("sources"));
+        let request = InstallRequest {
+            declarations: vec![NamedFile {
+                name: "a.toml".to_string(),
+                contents: "[a]\ndo = [\"cp x x\"]\n\n[[setup]]\nlabel = \"Which\"\nblock = \"a\"\nkey = \"do\"\nmatch = \"x\"\n".to_string(),
+                answers: vec![Some("y".into())],
+            }],
+            scripts: Vec::new(),
+        };
+        let done = install(&request, &home.0);
+
+        assert!(done.written.is_empty(), "{:?}", done.written);
+        assert_eq!(done.problems.len(), 1, "{:?}", done.problems);
+        assert!(
+            done.problems[0].contains("exactly once"),
+            "{:?}",
+            done.problems
+        );
+    }
+
     #[test]
     fn a_refused_script_still_leaves_the_declaration_written() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
@@ -296,10 +529,12 @@ mod tests {
                 declarations: vec![NamedFile {
                     name: "a.toml".to_string(),
                     contents: "[a]\ndo = [\"true\"]\n".to_string(),
+                    answers: Vec::new(),
                 }],
                 scripts: vec![NamedFile {
                     name: "../escape".to_string(),
                     contents: "x".to_string(),
+                    answers: Vec::new(),
                 }],
             },
             &home.0,
@@ -322,10 +557,12 @@ mod tests {
             declarations: vec![NamedFile {
                 name: "a.toml".to_string(),
                 contents: "[a]\ndo = [\"true\"]\n".to_string(),
+                answers: Vec::new(),
             }],
             scripts: vec![NamedFile {
                 name: "a-rows".to_string(),
                 contents: "#!/bin/sh\n".to_string(),
+                answers: Vec::new(),
             }],
         };
         let asking = PresentRequest {
@@ -357,6 +594,7 @@ mod tests {
             declarations: vec![NamedFile {
                 name: "projects.toml".to_string(),
                 contents: toml.to_string(),
+                answers: Vec::new(),
             }],
             scripts: Vec::new(),
         };

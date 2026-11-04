@@ -19,6 +19,16 @@ pub(crate) fn look_lookbook_preview_json(toml: *const c_char) -> *mut c_char {
     json(home_dir().and_then(|home| look_engine::lookbook::preview(&toml, &home).ok()))
 }
 
+/// The same for a declaration whose answers are already chosen, so the sheet
+/// can show what Install would land rather than what the author shipped.
+/// Takes one `{name, contents, answers}`.
+pub(crate) fn look_lookbook_preview_filled_json(file_json: *const c_char) -> *mut c_char {
+    let Ok(file) = serde_json::from_str(&cstr_to_string(file_json)) else {
+        return json_cstring_or_null(None);
+    };
+    json(home_dir().and_then(|home| look_engine::lookbook::preview_filled(&file, &home).ok()))
+}
+
 /// Which of `programs_json` (a JSON array of names) are not installed here.
 /// For a catalog entry's `requires`, which names a program with no block
 /// behind it.

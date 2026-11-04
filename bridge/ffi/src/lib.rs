@@ -405,6 +405,13 @@ pub extern "C" fn look_lookbook_preview_json(toml: *const c_char) -> *mut c_char
         .unwrap_or(std::ptr::null_mut())
 }
 
+/// A preview of a declaration with its answers filled in.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_lookbook_preview_filled_json(file_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(|| lookbook_api::look_lookbook_preview_filled_json(file_json))
+        .unwrap_or(std::ptr::null_mut())
+}
+
 /// Which of a catalog entry's `requires` are not installed here. Takes a JSON
 /// array of program names.
 #[unsafe(no_mangle)]

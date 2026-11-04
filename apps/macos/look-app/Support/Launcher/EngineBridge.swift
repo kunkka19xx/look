@@ -19,6 +19,9 @@ private func look_record_usage_json(_ candidateID: UnsafePointer<CChar>?, _ acti
 @_silgen_name("look_lookbook_preview_json")
 private nonisolated func look_lookbook_preview_json(_ toml: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_lookbook_preview_filled_json")
+private nonisolated func look_lookbook_preview_filled_json(_ fileJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_lookbook_missing_json")
 private nonisolated func look_lookbook_missing_json(_ programsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
@@ -1326,6 +1329,13 @@ final class EngineBridge: @unchecked Sendable {
         decode(toml.withCString { look_lookbook_preview_json($0) })
     }
 
+    /// The same for a declaration whose answers are chosen, so the sheet can
+    /// show what Install would land rather than what the author shipped.
+    nonisolated func lookbookPreviewFilled(_ file: LookbookInstall.NamedFile) -> LookbookPreview? {
+        guard let json = encode(file) else { return nil }
+        return decode(json.withCString { look_lookbook_preview_filled_json($0) })
+    }
+
     /// Which of a catalog entry's `requires` are not installed here. These
     /// have no block behind them: whatever runs them is inside a helper
     /// script, so only the entry knows to ask.
@@ -1868,8 +1878,25 @@ nonisolated struct InstalledBlock: Decodable, Identifiable {
 /// What a lookbook entry would add, read without installing it.
 nonisolated struct LookbookPreview: Decodable {
     let blocks: [LookbookPreviewBlock]
+    /// What the example asks the installer for, in the order declared.
+    let fields: [LookbookField]
     /// Parts of the file that did not parse. The rest still previews.
     let problems: [String]
+}
+
+/// One value the example asks for, declared by whoever wrote it.
+///
+/// This is how the form reaches what the check cannot see: `vault=look` is a
+/// perfectly good string that happens to name somebody else's vault.
+nonisolated struct LookbookField: Decodable, Identifiable {
+    let label: String
+    /// `folder`, `file`, `text` or `choice`.
+    let kind: String
+    let note: String?
+    let options: [String]
+    /// What the author wrote, which the control starts on.
+    let current: String?
+    var id: String { label }
 }
 
 nonisolated struct LookbookPreviewBlock: Decodable, Identifiable {
@@ -1891,6 +1918,9 @@ nonisolated struct LookbookInstall: Encodable {
     struct NamedFile: Encodable {
         let name: String
         let contents: String
+        /// Answers to this file's fields, in the order declared. The engine
+        /// decides which bytes they replace, so nothing here builds TOML.
+        var answers: [String?] = []
     }
 }
 
