@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use look_indexing::CandidateIdKind;
-use look_sources::{Block, Producer, RowContext, RowKind, load_dir, sources_dir};
+use look_sources::{Block, Producer, RowContext, RowKind, connectors_dir, load_dir, sources_dir};
 use serde::Serialize;
 
 /// Fallback limits for a captured command, when the block names none. A source
@@ -224,6 +224,57 @@ pub fn inventory(home: &Path) -> Inventory {
         .collect();
 
     Inventory { blocks, problems }
+}
+
+/// What a switch did, or why it did nothing.
+#[derive(Serialize, Default)]
+pub struct Switched {
+    pub changed: bool,
+    pub problems: Vec<String>,
+}
+
+/// Turns every block declared in `file` on or off, by writing `enabled` into
+/// the declaration itself.
+///
+/// The state goes in the file rather than into a list kept beside it, so Edit
+/// and Reveal keep telling the truth: a block that produces nothing says so on
+/// the line above, where whoever opens the file will find it. A reload is what
+/// makes it take effect, the same reload an edit by hand needs, so connectors
+/// of a block just turned off are stopped by the one path that starts them.
+///
+/// Confined to the two source directories. The path arrives over the FFI from
+/// a screen that read it out of an inventory, and nothing downstream checks it
+/// again, so anything else is refused here rather than written to.
+pub fn set_enabled(file: &Path, on: bool, home: &Path) -> Switched {
+    let refused = |message: String| Switched {
+        changed: false,
+        problems: vec![message],
+    };
+    let declared = [sources_dir(home), connectors_dir(home)];
+    if !declared.iter().any(|dir| file.parent() == Some(dir)) {
+        return refused(format!("{} is not a declared source", file.display()));
+    }
+
+    let contents = match std::fs::read_to_string(file) {
+        Ok(contents) => contents,
+        Err(err) => return refused(format!("{}: {err}", file.display())),
+    };
+    let rewritten = match look_sources::set_enabled(&contents, on) {
+        Ok(rewritten) => rewritten,
+        Err(err) => return refused(format!("{}: {err}", file.display())),
+    };
+    // Already in that state: not a failure, and writing the same bytes would
+    // only tell every watcher the file changed.
+    if rewritten == contents {
+        return Switched::default();
+    }
+    match std::fs::write(file, rewritten) {
+        Ok(()) => Switched {
+            changed: true,
+            problems: Vec::new(),
+        },
+        Err(err) => refused(format!("{}: {err}", file.display())),
+    }
 }
 
 #[derive(Serialize, Default)]

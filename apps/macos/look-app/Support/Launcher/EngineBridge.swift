@@ -316,6 +316,9 @@ private nonisolated func look_installed_json() -> UnsafeMutablePointer<CChar>?
 nonisolated
 private func look_source_blocks_json() -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_source_set_enabled_json")
+private nonisolated func look_source_set_enabled_json(_ file: UnsafePointer<CChar>?, _ enabled: Bool) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_source_rows_json")
 nonisolated
 private func look_source_rows_json(_ blockID: UnsafePointer<CChar>?, _ parentCandidateID: UnsafePointer<CChar>?, _ parentTitle: UnsafePointer<CChar>?, _ parentPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -1321,6 +1324,12 @@ final class EngineBridge: @unchecked Sendable {
         return try? decoder.decode(Inventory.self, from: data)
     }
 
+    /// Turns every block declared in `file` on or off, by writing `enabled`
+    /// into the declaration. A reload is what makes it take effect.
+    nonisolated func setSourceEnabled(file: String, _ enabled: Bool) -> SourceSwitch? {
+        decode(file.withCString { look_source_set_enabled_json($0, enabled) })
+    }
+
     /// What a lookbook entry's TOML declares and what it would need on this
     /// machine, before a byte of it is written. The same check the Extend
     /// screen runs on an installed block, so a card cannot promise one thing
@@ -1837,6 +1846,12 @@ nonisolated struct MarkdownBlock: Decodable, Equatable {
     let items: [[MarkdownSpan]]?
     let language: String?
     let text: String?
+}
+
+/// What turning a declaration off did, or why it did nothing.
+nonisolated struct SourceSwitch: Decodable {
+    let changed: Bool
+    let problems: [String]
 }
 
 /// A file that declared something Look could not use.

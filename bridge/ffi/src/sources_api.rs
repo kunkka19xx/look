@@ -36,6 +36,18 @@ pub(crate) fn look_installed_json_impl() -> *mut c_char {
     json(home_dir().map(|home| look_engine::sources::inventory(&home)))
 }
 
+/// Turns every block in `file` on or off, by writing `enabled` into it.
+/// Returns `{changed, problems}`. The caller reloads afterwards: the bytes are
+/// on disk and nothing has read them yet.
+pub(crate) fn look_source_set_enabled_json_impl(file: *const c_char, enabled: bool) -> *mut c_char {
+    let file = cstr_to_string(file);
+    json(
+        home_dir().map(|home| {
+            look_engine::sources::set_enabled(std::path::Path::new(&file), enabled, &home)
+        }),
+    )
+}
+
 /// Every declared block as `{id, name, icon}`. The shell caches this once per
 /// launcher open so a row can show its declared icon without a disk read each
 /// time it renders.

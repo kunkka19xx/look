@@ -135,6 +135,7 @@ This document tracks what `look` supports today and what is planned next.
 - `aliases`, `bias`, `icon`, and `enabled` per block; unknown keys reported, never fatal
 - `run` rows are refreshed on reload (`Cmd+Shift+;`) and cached in `~/.look/cache/rows/`, so a failed command keeps the last good rows and their ranking
 - a second directory, `~/.look/connectors/`, read with the same schema, for manifests an app installs rather than ones you write. A manifest's blocks are namespaced by its file name (`[notes]` in `myapp.toml` is `myapp.notes`), so an app cannot collide with your own blocks and uninstalling it is one file. `LOOK_CONNECTORS_DIR` repoints it
+- `Settings > Extend` (macOS) lists every declaration loaded from both directories with what each block needs to work here, and turns one off (`enabled = false`, written into the file) or moves it to the Trash. Removing is offered for your own files only, since an app rewrites its own manifest
 - shared `core/sources` engine on macOS, Linux, and Windows. See [`docs/user-sources.md`](user-sources.md), and [lookbook](https://github.com/kunkka19xx/lookbook) for ready-made sources to copy
 
 ### Settings and runtime config

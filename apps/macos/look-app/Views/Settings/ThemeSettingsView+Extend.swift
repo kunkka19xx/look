@@ -3,8 +3,8 @@ import SwiftUI
 
 extension ThemeSettingsView {
     /// What Look has been extended with: the blocks you wrote, and the ones an
-    /// app installed. Read-only for now; it answers "where did this row come
-    /// from" and "is that connector actually running".
+    /// app installed. It answers "where did this row come from" and "is that
+    /// connector actually running", and is where one goes off or away.
     var extendTab: some View {
         ExtendSettingsTab()
     }
@@ -26,6 +26,9 @@ struct ExtendSettingsTab: View {
     /// Bumped by a reload, which cancels the read in flight and starts a fresh
     /// one. That is also what stops an older answer from landing last.
     @State private var reloads = 0
+    /// Why the last switch or removal did nothing. Shown rather than swallowed:
+    /// this screen's whole job is saying what is installed and what is not.
+    @State private var failure: String?
 
     private enum Metrics {
         static let sectionSpacing: CGFloat = 14
@@ -45,6 +48,12 @@ struct ExtendSettingsTab: View {
         var fromApp: Bool {
             blocks.first?.fromApp ?? file.contains("/.look/connectors/")
         }
+        /// A property of the file, since the file is what the switch writes
+        /// to. Blocks that disagree read as on, so one press turns the
+        /// remainder off rather than reporting a state no row shows.
+        var off: Bool {
+            !blocks.isEmpty && blocks.allSatisfy { !$0.enabled }
+        }
     }
 
     var body: some View {
@@ -59,6 +68,12 @@ struct ExtendSettingsTab: View {
                         .foregroundStyle(themeStore.warningColor())
                 case .ready(let inventory):
                     sections(of: inventory)
+                }
+                if let failure {
+                    Text(failure)
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                        .foregroundStyle(themeStore.warningColor())
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -163,16 +178,29 @@ struct ExtendSettingsTab: View {
 
     private func declarationRow(_ declaration: Declaration) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Text(fileName(declaration.file))
                     .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
                     .foregroundStyle(themeStore.secondaryTextColor())
                 Spacer(minLength: 8)
-                link("Edit") { edit(declaration.file) }
-                link("Reveal") {
+                // Nothing parsed means no block to carry the key, so there is
+                // nothing to turn off. Removing it is still the way out.
+                if !declaration.blocks.isEmpty {
+                    pill(declaration.off ? "Turn on" : "Turn off") {
+                        setEnabled(declaration, declaration.off)
+                    }
+                }
+                pill("Edit") { edit(declaration.file) }
+                pill("Reveal") {
                     NSWorkspace.shared.activateFileViewerSelecting([
                         URL(fileURLWithPath: declaration.file)
                     ])
+                }
+                // Only what the user wrote. Deleting a manifest an app
+                // installed invites that app to write it back on its next
+                // launch, so there the honest verb is off.
+                if !declaration.fromApp {
+                    pill("Remove", themeStore.warningColor()) { remove(declaration) }
                 }
             }
 
@@ -222,11 +250,67 @@ struct ExtendSettingsTab: View {
         )
     }
 
-    private func link(_ title: String, _ act: @escaping () -> Void) -> some View {
-        Button(title, action: act)
-            .buttonStyle(.plain)
-            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .medium))
-            .foregroundStyle(themeStore.accentColor())
+    /// One action, in a pill of its own.
+    ///
+    /// Bordered rather than bare words: four verbs in a row read as one phrase
+    /// without an edge between them, and one of them moves a file to the Trash.
+    /// The neutral fill and border every other pill in Settings uses, so `tint`
+    /// is left to say which verb is the odd one.
+    private func pill(
+        _ title: String, _ tint: Color? = nil, _ act: @escaping () -> Void
+    ) -> some View {
+        Button(action: act) {
+            Text(title)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .medium))
+                .foregroundStyle(tint ?? themeStore.accentColor())
+                .padding(.horizontal, 9)
+                .padding(.vertical, 3)
+                .background(themeStore.liftColor(opacity: 0.16), in: Capsule())
+                .overlay(Capsule().strokeBorder(themeStore.liftColor(opacity: 0.22), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .contentShape(Capsule())
+    }
+
+    /// Writes `enabled` into every block of the file and reloads.
+    ///
+    /// A reload rather than the notice that one happened: the bytes are on disk
+    /// and nothing has read them yet. The same work an edit by hand needs, so a
+    /// connector just turned off is stopped by the one path that starts them,
+    /// and the list refreshes when it finishes.
+    private func setEnabled(_ declaration: Declaration, _ on: Bool) {
+        failure = nil
+        let file = declaration.file
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.setSourceEnabled(file: file, on)
+            }.value
+            guard let outcome, outcome.problems.isEmpty else {
+                failure = outcome?.problems.joined(separator: "\n")
+                    ?? "Could not change \(fileName(file))."
+                return
+            }
+            if outcome.changed {
+                NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
+            }
+        }
+    }
+
+    /// To the Trash, not unlinked. Unconfirmed for the same reason Cmd+D is:
+    /// the Trash is the undo, and a declaration put back is a declaration
+    /// again.
+    private func remove(_ declaration: Declaration) {
+        failure = nil
+        let file = declaration.file
+        NSWorkspace.shared.recycle([URL(fileURLWithPath: file)]) { _, error in
+            Task { @MainActor in
+                if let error {
+                    failure = "Could not remove \(fileName(file)): \(error.localizedDescription)"
+                    return
+                }
+                NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
+            }
+        }
     }
 
     /// Through the declared `text_editor`, so this opens whatever `Cmd+E` on a

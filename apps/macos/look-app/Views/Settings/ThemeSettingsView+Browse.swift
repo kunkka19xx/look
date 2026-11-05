@@ -86,6 +86,31 @@ struct LookbookBrowseSection: View {
         }
     }
 
+    /// The entry's name, which opens its README.
+    ///
+    /// The title rather than a button beside it: "what does this actually do"
+    /// is the question the name already stands for, and the row already ends
+    /// in the verb that matters. Styled accent and underlined, the way
+    /// `MarkdownView` styles every other link, because a title that looks like
+    /// a title is one. An entry with no README stays plain text rather than
+    /// offering a click that does nothing.
+    @ViewBuilder
+    private func name(_ entry: LookbookCatalog.Entry) -> some View {
+        if let readme = catalog.readme(for: entry) {
+            Button { NSWorkspace.shared.open(readme) } label: {
+                Text(entry.name)
+                    .underline()
+                    .foregroundStyle(themeStore.accentColor())
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .help("Open this entry's README on the web")
+        } else {
+            Text(entry.name)
+                .foregroundStyle(themeStore.fontColor())
+        }
+    }
+
     @ViewBuilder
     private func card(_ entry: LookbookCatalog.Entry) -> some View {
         let elsewhere = !entry.platforms.contains(LookbookCatalog.thisPlatform)
@@ -95,20 +120,11 @@ struct LookbookBrowseSection: View {
 
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Text(entry.name)
-                    .foregroundStyle(themeStore.fontColor())
+                name(entry)
                 Text(entry.id)
                     .font(.system(size: CGFloat(themeStore.settings.fontSize - 3), design: .monospaced))
                     .foregroundStyle(themeStore.mutedTextColor())
                 Spacer(minLength: 8)
-                // Before the verdict, not after: the README is what answers
-                // "what does this actually do" for someone still deciding.
-                if let readme = catalog.readme(for: entry) {
-                    Button("Read me") { NSWorkspace.shared.open(readme) }
-                        .buttonStyle(.plain)
-                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .medium))
-                        .foregroundStyle(themeStore.accentColor())
-                }
                 if elsewhere {
                     // Asked before anything else: an entry that cannot run
                     // here has no button, whatever is already on disk.
