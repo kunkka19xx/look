@@ -64,6 +64,39 @@ impl Unready {
     }
 }
 
+/// A declaration read without being installed: what it declares, what would
+/// not parse, and what would have to change here.
+///
+/// The text never reaches disk, which is the whole point. A catalog entry has
+/// to say what an example would do on this machine *before* it is installed,
+/// and installing to find out is the thing that answers.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Review {
+    pub blocks: Vec<Block>,
+    /// Blocks that did parse are still returned alongside these.
+    pub problems: Vec<String>,
+    /// Across every block, in declaration order.
+    pub unready: Vec<Unready>,
+}
+
+/// Parses `contents` and checks every block it declares against this machine.
+///
+/// `Err` only when the text is not a file of blocks at all. A block that is
+/// merely wrong arrives in `problems` with the rest still readable.
+pub fn review(contents: &str, home: &Path) -> Result<Review, String> {
+    let parsed = crate::def::parse_file(contents)?;
+    let unready = parsed
+        .blocks
+        .iter()
+        .flat_map(|block| check(block, home))
+        .collect();
+    Ok(Review {
+        blocks: parsed.blocks,
+        problems: parsed.problems,
+        unready,
+    })
+}
+
 /// Deduplicated while collecting: one program named by six steps is one thing
 /// to install, not six.
 type Found = BTreeSet<(&'static str, String, Reason)>;
@@ -265,7 +298,7 @@ fn check_program(word: &str, key: &'static str, home: &Path, found: &mut Found) 
         || word.contains('{')
         || word.contains('$')
         || word.contains('=')
-        || word.starts_with(['\'', '"', '(', '-'])
+        || word.starts_with(['\'', '"', '(', '-', '#'])
     {
         return;
     }
@@ -309,7 +342,7 @@ fn builtin(word: &str) -> bool {
         "declare", "do", "done", "echo", "elif", "else", "esac", "eval", "exec", "exit", "export",
         "false", "fi", "for", "function", "getopts", "hash", "if", "in", "let", "local", "printf",
         "pwd", "read", "readonly", "return", "select", "set", "shift", "source", "test", "then",
-        "time", "trap", "true", "type", "umask", "unset", "until", "wait", "while",
+        "time", "trap", "true", "type", "ulimit", "umask", "unset", "until", "wait", "while",
     ];
 
     BUILTINS.contains(&word)
@@ -424,6 +457,13 @@ fn segments(command: &str) -> Vec<Segment> {
             // `foo#bar` stays a filename. Prose is the worst thing to read as
             // shell: an apostrophe in it ("the way sway's does") opens a
             // quote that swallows every command after it.
+            //
+            // On every platform, including Windows where `cmd` has no comment
+            // marker. Reading the prose there instead is worse in practice:
+            // these files are POSIX-authored, 38 of lookbook's carry `#`
+            // lines, and an apostrophe in one swallows whatever follows it.
+            // Skipping the line loses nothing a Windows user could run, while
+            // parsing it loses the commands underneath.
             '#' if word.is_empty() => {
                 while chars.peek().is_some_and(|next| *next != '\n') {
                     chars.next();
@@ -471,12 +511,17 @@ fn end(
     fallback: bool,
 ) {
     push(words, word);
-    if !words.is_empty() {
-        out.push(Segment {
-            words: std::mem::take(words),
-            alternative: *alternative,
-        });
+    if words.is_empty() {
+        // Nothing was closed, so there is nothing to re-mark. A newline or a
+        // comment sitting between `||` and its fallback used to clear the
+        // marker here, which made the fallback look like a command of its own
+        // and reported the first choice as missing.
+        return;
     }
+    out.push(Segment {
+        words: std::mem::take(words),
+        alternative: *alternative,
+    });
     *alternative = fallback;
 }
 
@@ -843,6 +888,62 @@ mod tests {
     }
 
     #[test]
+    fn a_declaration_is_reviewed_without_being_written_anywhere() {
+        let home = TempDir::new("review");
+        let found = review(
+            r#"
+            [notes]
+            dir = "~/Documents/look-not-here"
+
+            [deploy]
+            do = ["look-no-such-program push"]
+            "#,
+            &home.0,
+        )
+        .expect("parses");
+
+        assert_eq!(found.blocks.len(), 2);
+        assert!(found.problems.is_empty(), "{:?}", found.problems);
+        assert_eq!(
+            reasons(&found.unready),
+            [
+                ("do", "look-no-such-program", Reason::MissingProgram),
+                ("dir", "~/Documents/look-not-here", Reason::MissingPath),
+            ]
+        );
+        // Declaration order, which TOML gives alphabetically: deploy, notes.
+        assert_eq!(found.unready[0].block, "deploy");
+        assert_eq!(found.unready[1].block, "notes");
+    }
+
+    #[test]
+    fn a_review_keeps_the_blocks_that_parsed() {
+        let home = TempDir::new("review-partial");
+        let found = review(
+            r#"
+            [good]
+            dir = "~"
+
+            [bad]
+            name = "no producer"
+            "#,
+            &home.0,
+        )
+        .expect("parses");
+
+        assert_eq!(found.blocks.len(), 1);
+        assert_eq!(found.blocks[0].id, "good");
+        assert_eq!(found.problems.len(), 1, "{:?}", found.problems);
+        assert!(found.problems[0].contains("[bad]"), "{:?}", found.problems);
+    }
+
+    #[test]
+    fn text_that_is_not_blocks_at_all_is_an_error_not_a_problem() {
+        let home = TempDir::new("review-garbage");
+        assert!(review("this is not toml {{{", &home.0).is_err());
+    }
+
+    #[test]
     fn a_bare_program_name_can_be_probed_without_a_block() {
         // `sh` is on every machine this builds for; the second name is not a
         // program anywhere.
@@ -857,6 +958,55 @@ mod tests {
         let found = segments("ls\n# the way sway's does, see `.pid`\nwc -l");
         let programs: Vec<&str> = found.iter().map(|one| one.words[0].as_str()).collect();
         assert_eq!(programs, ["ls", "wc"]);
+    }
+
+    #[test]
+    fn a_fallback_survives_a_newline_between_it_and_the_bar() {
+        // Multi-line TOML makes this layout easy to write, and the newline
+        // used to clear the marker the `||` had just set.
+        let found = segments("xdg-open x ||\n  open x");
+        assert_eq!(
+            found.iter().map(|one| one.alternative).collect::<Vec<_>>(),
+            [false, true]
+        );
+    }
+
+    #[test]
+    fn a_fallback_is_still_reported_when_nothing_in_the_chain_runs() {
+        let home = TempDir::new("multiline-fallback");
+        let found = checked(
+            r#"
+            [open]
+            dir  = "~"
+            open = """look-no-such-opener {path} ||
+              look-no-other-opener {path}"""
+            "#,
+            &home.0,
+        );
+        // One intent, so both names, and only because neither is here.
+        assert_eq!(found.len(), 2, "{found:?}");
+    }
+
+    #[test]
+    fn a_hash_starting_a_word_comments_out_the_rest_of_the_line() {
+        // Matches the shell: bash treats this as a comment too, so the
+        // `docker ps` really does not run.
+        let found = segments("echo #build && docker ps");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].words, ["echo"]);
+    }
+
+    #[test]
+    fn a_word_starting_with_a_hash_is_never_a_program() {
+        let home = TempDir::new("hash-word");
+        let found = checked(
+            r##"
+            [note]
+            do = ["#build the thing"]
+            "##,
+            &home.0,
+        );
+        assert!(found.is_empty(), "{found:?}");
     }
 
     #[test]

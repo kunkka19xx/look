@@ -16,6 +16,21 @@ private func look_search_files_json(_ query: UnsafePointer<CChar>?, _ now: Int64
 nonisolated
 private func look_record_usage_json(_ candidateID: UnsafePointer<CChar>?, _ action: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_lookbook_preview_json")
+private nonisolated func look_lookbook_preview_json(_ toml: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_lookbook_preview_filled_json")
+private nonisolated func look_lookbook_preview_filled_json(_ fileJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_lookbook_missing_json")
+private nonisolated func look_lookbook_missing_json(_ programsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_lookbook_present_json")
+private nonisolated func look_lookbook_present_json(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_lookbook_install_json")
+private nonisolated func look_lookbook_install_json(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_free_cstring")
 nonisolated
 private func look_free_cstring(_ ptr: UnsafeMutablePointer<CChar>?)
@@ -300,6 +315,9 @@ private nonisolated func look_installed_json() -> UnsafeMutablePointer<CChar>?
 @_silgen_name("look_source_blocks_json")
 nonisolated
 private func look_source_blocks_json() -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_source_set_enabled_json")
+private nonisolated func look_source_set_enabled_json(_ file: UnsafePointer<CChar>?, _ enabled: Bool) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_rows_json")
 nonisolated
@@ -1306,6 +1324,65 @@ final class EngineBridge: @unchecked Sendable {
         return try? decoder.decode(Inventory.self, from: data)
     }
 
+    /// Turns every block declared in `file` on or off, by writing `enabled`
+    /// into the declaration. A reload is what makes it take effect.
+    nonisolated func setSourceEnabled(file: String, _ enabled: Bool) -> SourceSwitch? {
+        decode(file.withCString { look_source_set_enabled_json($0, enabled) })
+    }
+
+    /// What a lookbook entry's TOML declares and what it would need on this
+    /// machine, before a byte of it is written. The same check the Extend
+    /// screen runs on an installed block, so a card cannot promise one thing
+    /// and the screen then say another.
+    nonisolated func lookbookPreview(toml: String) -> LookbookPreview? {
+        decode(toml.withCString { look_lookbook_preview_json($0) })
+    }
+
+    /// The same for a declaration whose answers are chosen, so the sheet can
+    /// show what Install would land rather than what the author shipped.
+    nonisolated func lookbookPreviewFilled(_ file: LookbookInstall.NamedFile) -> LookbookPreview? {
+        guard let json = encode(file) else { return nil }
+        return decode(json.withCString { look_lookbook_preview_filled_json($0) })
+    }
+
+    /// Which of a catalog entry's `requires` are not installed here. These
+    /// have no block behind them: whatever runs them is inside a helper
+    /// script, so only the entry knows to ask.
+    nonisolated func lookbookMissing(programs: [String]) -> [String] {
+        guard let json = encode(programs) else { return [] }
+        return decode(json.withCString { look_lookbook_missing_json($0) }) ?? []
+    }
+
+    /// Which of an entry's files are already on disk. Asked before writing,
+    /// because one of them may be the copy somebody edited, and the sheet
+    /// cannot see `~/.look/bin` any other way.
+    nonisolated func lookbookPresent(_ request: LookbookPresent.Request) -> LookbookPresent? {
+        guard let json = encode(request) else { return nil }
+        return decode(json.withCString { look_lookbook_present_json($0) })
+    }
+
+    /// Writes a fetched entry into `~/.look/sources` and `~/.look/bin`.
+    nonisolated func lookbookInstall(_ request: LookbookInstall) -> LookbookInstalled? {
+        guard let json = encode(request) else { return nil }
+        return decode(json.withCString { look_lookbook_install_json($0) })
+    }
+
+    /// The shape every call above shares: take ownership of the C string,
+    /// free it however this returns, decode snake_case like the rest.
+    private nonisolated func decode<T: Decodable>(_ ptr: UnsafeMutablePointer<CChar>?) -> T? {
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try? decoder.decode(T.self, from: data)
+    }
+
+    private nonisolated func encode<T: Encodable>(_ value: T) -> String? {
+        guard let data = try? JSONEncoder().encode(value) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     /// Every declared block, for the row-icon cache. Reads the sources
     /// directory, so call it off the main thread.
     nonisolated func sourceBlocks() -> [SourceBlockSummary] {
@@ -1771,6 +1848,12 @@ nonisolated struct MarkdownBlock: Decodable, Equatable {
     let text: String?
 }
 
+/// What turning a declaration off did, or why it did nothing.
+nonisolated struct SourceSwitch: Decodable {
+    let changed: Bool
+    let problems: [String]
+}
+
 /// A file that declared something Look could not use.
 nonisolated struct Reported: Decodable, Identifiable {
     let file: String
@@ -1805,6 +1888,77 @@ nonisolated struct InstalledBlock: Decodable, Identifiable {
     let running: Bool
     /// What to change before this block works here. Empty is the normal case.
     let needs: [Needed]
+}
+
+/// What a lookbook entry would add, read without installing it.
+nonisolated struct LookbookPreview: Decodable {
+    let blocks: [LookbookPreviewBlock]
+    /// What the example asks the installer for, in the order declared.
+    let fields: [LookbookField]
+    /// Parts of the file that did not parse. The rest still previews.
+    let problems: [String]
+}
+
+/// One value the example asks for, declared by whoever wrote it.
+///
+/// This is how the form reaches what the check cannot see: `vault=look` is a
+/// perfectly good string that happens to name somebody else's vault.
+nonisolated struct LookbookField: Decodable, Identifiable {
+    let label: String
+    /// `folder`, `file`, `text` or `choice`.
+    let kind: String
+    let note: String?
+    let options: [String]
+    /// What the author wrote, which the control starts on.
+    let current: String?
+    var id: String { label }
+}
+
+nonisolated struct LookbookPreviewBlock: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let icon: String?
+    /// `do`, `dir`, `file`, `run`, `connect` or `ask`.
+    let kind: String
+    let needs: [Needed]
+}
+
+/// Files the catalog fetched, ready to write.
+nonisolated struct LookbookInstall: Encodable {
+    let declarations: [NamedFile]
+    /// Helper scripts. A `run` block pointing at one installs into a row that
+    /// does nothing without it.
+    let scripts: [NamedFile]
+
+    struct NamedFile: Encodable {
+        let name: String
+        let contents: String
+        /// Answers to this file's fields, in the order declared. The engine
+        /// decides which bytes they replace, so nothing here builds TOML.
+        var answers: [String?] = []
+    }
+}
+
+/// What an install would land on top of.
+nonisolated struct LookbookPresent: Decodable {
+    let declarations: [String]
+    let scripts: [String]
+
+    struct Request: Encodable {
+        let declarations: [String]
+        let scripts: [String]
+    }
+
+    /// Everything it would replace, in the order a sentence wants them.
+    var all: [String] { declarations + scripts }
+}
+
+nonisolated struct LookbookInstalled: Decodable {
+    let written: [String]
+    /// Paths that already held something, one of which may be a file the user
+    /// had edited.
+    let replaced: [String]
+    let problems: [String]
 }
 
 nonisolated struct SourceBlockSummary: Decodable {

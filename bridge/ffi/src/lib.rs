@@ -7,6 +7,7 @@ mod calling_api;
 mod clipboard_api;
 mod connectors_api;
 mod hotkey_api;
+mod lookbook_api;
 mod lunar_api;
 mod markdown_api;
 mod matching_api;
@@ -396,11 +397,57 @@ pub extern "C" fn look_source_rows_json(
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// What a lookbook entry's `toml` declares and what it would need on this
+/// machine, before any of it is written. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_lookbook_preview_json(toml: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(|| lookbook_api::look_lookbook_preview_json(toml))
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// A preview of a declaration with its answers filled in.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_lookbook_preview_filled_json(file_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(|| lookbook_api::look_lookbook_preview_filled_json(file_json))
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// Which of a catalog entry's `requires` are not installed here. Takes a JSON
+/// array of program names.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_lookbook_missing_json(programs_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(|| lookbook_api::look_lookbook_missing_json(programs_json))
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// Which of an entry's files are already on disk, so the sheet can say what
+/// installing would replace.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_lookbook_present_json(request_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(|| lookbook_api::look_lookbook_present_json(request_json))
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// Writes a fetched entry into the user's directories.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_lookbook_install_json(request_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(|| lookbook_api::look_lookbook_install_json(request_json))
+        .unwrap_or(std::ptr::null_mut())
+}
+
 /// Every declared block as `{id, name, icon}`, for the shell's row-icon cache.
 /// Everything declared, for the Extend screen. Free with `look_free_cstring`.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_installed_json() -> *mut c_char {
     std::panic::catch_unwind(sources_api::look_installed_json_impl).unwrap_or(std::ptr::null_mut())
+}
+
+/// Turns every block declared in `file` on or off. `{changed, problems}`, free
+/// with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_set_enabled_json(file: *const c_char, enabled: bool) -> *mut c_char {
+    std::panic::catch_unwind(|| sources_api::look_source_set_enabled_json_impl(file, enabled))
+        .unwrap_or(std::ptr::null_mut())
 }
 
 #[unsafe(no_mangle)]

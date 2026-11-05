@@ -42,6 +42,7 @@ let package = Package(
                 "Support/Actions/MentionQuery.swift",
                 "Support/Actions/MentionAttachments.swift",
                 "Support/SingleInstanceLock.swift",
+                "Support/LookbookPages.swift",
                 "Models/LauncherResult.swift",
                 "Support/QuickActions/LaunchpadTileModel.swift",
                 "Support/QuickActions/LaunchpadGrid.swift",

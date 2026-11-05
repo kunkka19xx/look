@@ -8,6 +8,8 @@ No plugin to install, no API to learn. One directory, one file format, four keys
 
 A copied example usually needs one or two lines changed to match your machine, and Look says which. Settings -> Extend lists every declaration it loaded, and under each block the values that cannot work here: a folder that is not there, a command that is not installed, a path left pointing at the author's home directory. Nothing is run to find that out, so a `do` block is read rather than performed.
 
+That screen is also where a declaration goes off or away: `Turn off` writes `enabled = false` into every block in the file, and `Remove` moves the file to the Trash. Removing is offered for the files you wrote, not for the manifests an app installed, since that app would write its own back on its next launch; turn those off instead.
+
 > **Platform note.** Same directory, same format, same parser on macOS, Linux
 > and Windows. Two things differ in this guide: read `Cmd` as `Ctrl` off macOS,
 > and the example commands are macOS ones, so `open {path}` becomes
@@ -108,8 +110,9 @@ Four things to know:
   file wins and the other is reported.
 - **Nothing is file-wide.** No settings at the top of a file, so moving a block
   between files never changes what it does. Split them by topic or by machine
-  however you like, and turn one off with `enabled = false` or by moving its
-  file out of the directory.
+  however you like, and turn one off with `enabled = false`, from
+  `Settings > Extend` (`Turn off`, which writes that key into every block in
+  the file), or by moving its file out of the directory.
 - **`then` reaches across files.** Targets resolve after every file is loaded,
   so `[projects]` in `git.toml` may name `[deploy]` in `work.toml`.
 
@@ -229,7 +232,7 @@ If the command fails, times out, or prints nothing, **the rows it produced last 
 | `aliases`                         | list of strings   | none         | Extra words that also find this block's rows                                                               |
 | `bias`                            | integer           | `0`          | Score offset. Negative sits below apps and files, positive above                                           |
 | `icon`                            | string            | none         | Emoji, SF Symbol name, or an image path                                                                    |
-| `enabled`                         | bool              | `true`       | `false` keeps the file but stops loading the block                                                         |
+| `enabled`                         | bool              | `true`       | `false` keeps the file but stops loading the block. `Settings > Extend` writes it for you (`Turn off`)      |
 | `preview`                         | string            | none         | Command run for the selected row, in that row's folder; its output fills the right panel. Fixed 5s timeout |
 | `scope`                           | bool              | `false`      | The block's words narrow a search to its own rows: `obsnote inv`. See [Searching inside one block](#searching-inside-one-block) |
 | `confirm`                         | string            | none         | Yes/no question asked before the block does anything                                                       |

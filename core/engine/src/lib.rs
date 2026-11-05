@@ -6,6 +6,7 @@ pub mod hotkey;
 pub mod index;
 pub mod launchpad;
 pub mod launchpad_values;
+pub mod lookbook;
 pub mod modes;
 mod normalize;
 mod platform;
