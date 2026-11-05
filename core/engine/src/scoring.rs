@@ -96,6 +96,30 @@ pub(crate) fn path_match_score(query: &str, path: &str) -> Option<i64> {
     Some(score)
 }
 
+/// [`TIER_NAMED_APP`] when `candidate` is an app or declared row that the query
+/// names: every query word starts a word of the title (`code` → Visual Studio
+/// Code, `photo` → PhotoCraft). Fuzzy subsequence hits (`excel` →
+/// Accessibility Inspector) and System Settings panes don't qualify.
+pub(crate) fn named_app_tier(query: &str, title_search: &str, candidate: &Candidate) -> i64 {
+    let eligible = match candidate.kind {
+        CandidateKind::App => !is_system_settings_candidate(candidate),
+        CandidateKind::Action => true,
+        CandidateKind::File | CandidateKind::Folder => false,
+    };
+    if !eligible {
+        return 0;
+    }
+    // Any non-alphanumeric is a break, on both sides: `(beta)` is the word
+    // `beta`, and `wi-fi` names `Wi-Fi` as two words.
+    let words =
+        |text| str::split(text, |c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty());
+    let mut query_words = words(query).peekable();
+    let named = query_words.peek().is_some()
+        && query_words
+            .all(|word| words(title_search).any(|title_word| title_word.starts_with(word)));
+    if named { TIER_NAMED_APP } else { 0 }
+}
+
 pub(crate) fn kind_bias(candidate: &Candidate) -> i64 {
     match candidate.kind {
         CandidateKind::App => BIAS_APP,
@@ -398,6 +422,34 @@ mod tests {
     #[test]
     fn path_match_single_segment_returns_none() {
         assert!(path_match_score("test/", "/some/path").is_none());
+    }
+
+    #[test]
+    fn named_app_tier_needs_every_query_word_to_start_a_title_word() {
+        let vscode = app("Visual Studio Code", "/Applications/Visual Studio Code.app");
+        let named = |q: &str| named_app_tier(q, "visual studio code", &vscode) > 0;
+        assert!(named("code"));
+        assert!(named("vis cod"));
+        let beta = app(
+            "Google Chrome (Beta)",
+            "/Applications/Google Chrome Beta.app",
+        );
+        assert!(named_app_tier("beta", "google chrome (beta)", &beta) > 0);
+        assert!(named_app_tier("chrome-be", "google chrome (beta)", &beta) > 0);
+        assert!(!named("ode"), "a mid-word hit is fuzzy, not a name");
+        assert!(!named("code x"));
+        assert!(!named(""));
+    }
+
+    #[test]
+    fn named_app_tier_is_for_apps_and_declared_rows_only() {
+        let folder = folder("code", "/Users/test/code");
+        assert_eq!(named_app_tier("code", "code", &folder), 0);
+        let mut pane = app("Photos", "x-apple.systempreferences:photos");
+        pane.id = format!("{}photos", CandidateIdKind::PREFIX_SETTING).into();
+        assert_eq!(named_app_tier("photos", "photos", &pane), 0);
+        let declared = Candidate::new("src:x:1", CandidateKind::Action, "Deploy", "");
+        assert!(named_app_tier("dep", "deploy", &declared) > 0);
     }
 
     #[test]
