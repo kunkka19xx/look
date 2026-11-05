@@ -1,0 +1,9 @@
+# Spec-Rails Mutation Testing Rail for Rust (cargo-mutants)
+# Target: > 90% mutation kill score on domain logic. Every surviving mutant must be justified in the PR.
+
+test_tool = "cargo"
+timeout_multiplier = 3.0
+
+# Filter to domain crates / modules (customize for target repo)
+# examine_globs = ["src/domain/**", "src/core/**"]
+# exclude_globs = ["src/tests/**", "src/main.rs"]

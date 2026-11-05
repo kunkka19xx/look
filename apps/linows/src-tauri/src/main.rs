@@ -10,6 +10,7 @@ mod clipimage;
 mod commands;
 mod config;
 mod consts;
+mod emoji;
 mod crash;
 mod files;
 mod health;
@@ -897,6 +898,7 @@ fn main() {
             // Commands
             calc::eval_calc,
             calc::calc_inline,
+            emoji::emoji_search,
             sysinfo::get_system_info,
             sysinfo::system_uptime,
             process::list_processes,

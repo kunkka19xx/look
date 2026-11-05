@@ -5,6 +5,7 @@ mod answers_api;
 mod calc_api;
 mod calling_api;
 mod clipboard_api;
+mod emoji_api;
 mod hotkey_api;
 mod lunar_api;
 mod matching_api;
@@ -550,6 +551,17 @@ pub extern "C" fn look_calc_eval_json(expr: *const c_char) -> *mut c_char {
 pub extern "C" fn look_calc_inline_json(query: *const c_char) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         calc_api::look_calc_inline_json_impl(query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Emoji search for the `/emoji` panel. Returns an owned JSON C string holding
+/// an array of `{glyph, name}` hits (`[]` on no match). Free the result with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_emoji_search_json(query: *const c_char, limit: usize) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        emoji_api::look_emoji_search_json_impl(query, limit)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

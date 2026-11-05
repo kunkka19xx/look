@@ -129,6 +129,13 @@ pub const MODES: &[Mode] = &[
         about: "calculator panel",
     },
     Mode {
+        name: "emoji",
+        aliases: &[],
+        prefix: ":emoji ",
+        platforms: Platforms::All,
+        about: "emoji search panel",
+    },
+    Mode {
         name: "pomo",
         aliases: &["pomodoro"],
         prefix: ":pomo ",

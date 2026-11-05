@@ -11,6 +11,7 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 look-answers = { path = "../../../core/answers" }
 look-calc = { path = "../../../core/calc" }
+look-emoji = { path = "../../../core/emoji" }
 look-engine = { path = "../../../core/engine" }
 look-lunar = { path = "../../../core/lunar" }
 look-matching = { path = "../../../core/matching" }

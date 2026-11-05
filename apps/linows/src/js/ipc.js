@@ -7,6 +7,10 @@ export async function search(query, limit = 40) {
     return invoke('search', { query, limit });
 }
 
+export async function emojiSearch(query, limit = 60) {
+    return invoke('emoji_search', { query, limit });
+}
+
 export async function recordUsage(candidateId, action) {
     return invoke('record_usage', { candidateId, action });
 }

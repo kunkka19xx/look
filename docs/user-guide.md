@@ -296,12 +296,13 @@ Enter command mode with `Cmd+/`, or jump straight to a specific command from the
 - `:calc 2+2` - opens `/calc` with `2+2` already typed (the space after the command id is the trigger; you can keep typing without pressing Enter)
 - Same pattern for `:shell`, `:kill`, `:sys`, `:pomo`, `:todo`, `:speed`
 
-The `:` prefix only triggers when the word right after it is a known command id (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`); anything else (`:foo`, `:Users/me/...`) stays in normal search.
+The `:` prefix only triggers when the word right after it is a known command id (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`, `emoji`); anything else (`:foo`, `:Users/me/...`) stays in normal search.
 
 Built-in commands:
 
 - `calc`: evaluate expressions (supports `^`, `!`, constants `pi`/`e`, functions `sqrt`/`abs`/`round`/`floor`/`ceil`, `%` shorthand, implicit multiplication like `2pi`, comma-grouped/scientific-notation input like `1,500` or `1e6`, and aliases `x`/`:`/leading `v` honored wherever they land, e.g. `1920x1080`)
 - `shell`: run shell command text
+- `emoji`: search emoji by name or keyword; `Enter` copies, `Shift+Enter` types it into the app you came from (copy-only with a notice if insertion is not permitted); an empty query lists your last 20 emoji
 - `kill`: force-kill a running app/process (with confirmation), supports port queries like `:3000` or `port 3000`
 - `sys`: show system information
 - `pomo`: pomodoro focus timer with editable session list, three timer styles (Modern Ring / Vintage Dial / Minimal Text), background-music folder, menu-bar mini-timer, and a 5-second standby fade
@@ -387,6 +388,7 @@ The mode name comes first, and everything after it is the term, verbatim: `looka
 | `calc` | `calculator` | the calculator panel | all |
 | `pomo` | `pomodoro` | the pomodoro timer | all |
 | `todo` | | daily tasks | all |
+| `emoji` | | the emoji search panel | all |
 | `speed` | | the network speed test | all |
 | `kill` | | running processes | all |
 | `shell` | | the shell command panel | all |

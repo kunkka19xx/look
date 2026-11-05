@@ -24,7 +24,7 @@ final class ShortcutCatalogTests: XCTestCase {
     /// wrong. Naming it explicitly keeps the regression legible.
     func testSpeedIsListedFourth() {
         let ids = AppConstants.Launcher.commandCatalog.map(\.id)
-        XCTAssertEqual(ids.count, 13)
+        XCTAssertEqual(ids.count, 14)
         XCTAssertEqual(ids[3], AppConstants.Launcher.Command.speed)
     }
 

@@ -1,0 +1,115 @@
+name: spec-rails
+version: 1
+description: Spec-Rails gated workflow on OpenSpec - research → proposal → specs → design → tasks, each behind a human Review Gate
+artifacts:
+  - id: research
+    generates: research.md
+    description: Gate 0 research and tradeoffs; the developer decides Go or No-Go
+    template: research.md
+    instruction: |
+      Create research.md BEFORE any proposal. Explore briefly so nothing is built on unverified assumptions.
+
+      Mandatory sections:
+      - **Intent & Ground Truth**: problem, existing constraints, facts verified in the codebase or official docs.
+      - **Options Explored (2-3)**: e.g. idiomatic library vs minimal in-house vs specialized.
+      - **Tradeoff Matrix**: complexity, dependencies, performance, maintenance, blast radius.
+      - **Breaking Changes & Deprecations**: every `REQ-*` / `NFR-*` in `openspec/specs/` that will be modified, superseded or deprecated.
+      - **Recommendation**: 1-2 sentences, YAGNI-first.
+
+      Stop at the Review Gate: only the human ticks the Gate 0 box (Go or No-Go). Never tick it yourself.
+    requires: []
+
+  - id: proposal
+    generates: proposal.md
+    description: Gate 1 proposal built on the option chosen at Gate 0
+    template: proposal.md
+    instruction: |
+      Create proposal.md for the option chosen in research.md.
+
+      Mandatory sections: Intent, Problem Statement, Scope (In-Scope and Out-of-Scope (YAGNI)),
+      Assumptions (`ASM-GEN-*`), Success Metrics.
+
+      Out-of-Scope (YAGNI) items are binding prohibitions for every later artifact.
+      Also fill the Capabilities section: each new capability becomes `specs/<capability-path>/spec.md`;
+      each modified capability must use the exact existing path under `openspec/specs/`.
+      A change with no spec-level behavior change must set `skip_specs: true` in its `.openspec.yaml`.
+
+      Stop at the Review Gate: only the human ticks the Gate 1 box.
+    requires:
+      - research
+
+  - id: specs
+    generates: "specs/**/*.md"
+    description: Gate 2 delta specifications with uniquely keyed requirements
+    template: spec.md
+    instruction: |
+      Create one OpenSpec delta spec per capability listed in the proposal, at `specs/<capability-path>/spec.md`.
+      A spec is a behavior contract, not an implementation plan.
+
+      Delta operations (## headers): ADDED, MODIFIED (include the FULL updated requirement block),
+      REMOVED (include **Reason** and **Migration**), RENAMED (FROM:/TO:).
+      New capabilities start with `## Purpose` (one or two sentences); never add it to a delta for an existing capability.
+
+      Spec-Rails conventions:
+      - Every requirement header starts with its stable key: `### Requirement: REQ-<DOMAIN>-<N> <Name>`
+        (or `NFR-<DOMAIN>-<N>` for budgets). Keys are never reused. Deprecated requirements keep their exact
+        `### Requirement: REQ-... <Name>` header in `## MODIFIED Requirements` (preserving OpenSpec exact header matching)
+        and place `**[DEPRECATED by <change>]**` at the start of the requirement body (or use `## RENAMED Requirements` if renaming).
+        MODIFIED and REMOVED headers must repeat the full `REQ-... <Name>` text exactly, because OpenSpec matches on the whole header.
+      - Requirement text uses MUST/SHALL. Scenarios use exactly four hashtags (`#### Scenario:`) with GIVEN/WHEN/THEN steps (for OpenSpec 1.16 `--strict`).
+      - Cover Non-Functional Requirements and budgets (`NFR-*`), Assumptions (`ASM-*`), and Edge Cases & Errors.
+
+      Stop at the Review Gate: only the human ticks the Gate 2 box.
+    requires:
+      - proposal
+
+  - id: design
+    generates: design.md
+    description: Gate 3 architecture and design
+    template: design.md
+    instruction: |
+      Create design.md explaining HOW to implement the specs.
+
+      Mandatory sections:
+      - Overview & Invariants.
+      - Domain Models, State & Interface Contracts.
+      - Architecture Diagrams & Data Flow.
+      - Boundary Rules (Pure Core vs. I/O Shell): the core has no direct I/O, network or framework coupling.
+      - Concurrency, Latency & Resource Budgets matching the `NFR-*` requirements.
+      - Testing Strategy (BDD, unit >= 95% line and branch coverage, mutation > 90% kill).
+      UI work adds frame and input-latency budgets; ML/data work starts from a deterministic Tier 0 baseline.
+
+      Stop at the Review Gate: only the human ticks the Gate 3 box.
+    requires:
+      - specs
+
+  - id: tasks
+    generates: tasks.md
+    description: Gate 4 task breakdown and dependency DAG
+    template: tasks.md
+    instruction: |
+      Create tasks.md with a Dependency DAG, streams with worktrees (`.worktrees/<id>-<stream>`),
+      the test-first order per vertical slice (BDD, Gate 5.x review, Red, Green, Coverage, Mutation),
+      and an Integration & Rebase Plan.
+
+      Every tracked task MUST be a checkbox: `- [ ] X.Y Task description`, stating how to verify it.
+      Streams may only be created for slices with no mutual dependencies, after the shared contract is committed.
+      Human `## Review Gate` and Gate 5.x sign-off checkboxes MUST NOT be ticked by `/opsx-apply` agents.
+
+      Stop at the Review Gate: only the human ticks the Gate 4 box.
+    requires:
+      - design
+
+apply:
+  requires: [tasks]
+  tracks: tasks.md
+  instruction: |
+    Work one vertical slice at a time, in this order:
+    1. BDD: write Gherkin scenarios for every REQ and NFR in the slice, then STOP for the human's Gate 5.x approval (human Review Gate and Gate 5.x sign-off checkboxes MUST NOT be ticked by `/opsx-apply` agents).
+    2. Red: write failing unit tests and confirm they fail for the expected reason. Do not commit them alone.
+    3. Green: write the minimal production code, then commit tests and code together.
+    4. Coverage: at least 95% line and branch on the slice's modules.
+    5. Mutation: 100% kill score on the slice's modules; fix survivors with an assertion, dead-code deletion, or a restructure.
+    Never delete or weaken assertions, skip failing tests, or touch files outside the slice.
+    When ticking a Red, Green, Coverage or Mutation task, end its line with `Evidence: <command and result>`; CI (`spec-rails-verify`) rejects ticked tasks without it.
+    Pause if you hit blockers or need clarification.

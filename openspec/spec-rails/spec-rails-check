@@ -1,0 +1,276 @@
+#!/usr/bin/env sh
+# spec-rails-check: lane + gate check for OpenSpec changes using the spec-rails schema.
+# Exit codes: 0 ok | 1 violation | 2 environment/parse error. Requires jq.
+# Branch guard: main/master fail; a detached HEAD (empty branch name) or a
+# non-git directory is allowed. Artifact presence comes from `openspec status --json`.
+
+# Prints ticked|unticked|missing for a file's "## Review Gate" section.
+# A box counts as ticked for "- [x]" and "- [X]" unless it records a No-Go
+# decision. Fenced code blocks are ignored and only the final "## Review Gate"
+# section governs. "missing" = no file, no section, or no checkbox in section.
+gate_state() {
+  [ -f "$1" ] || { echo missing; return 0; }
+  awk '
+    /^(```|~~~)/ { fence = !fence; next }
+    fence { next }
+    /^## Review Gate[[:space:]]*$/ { sec = 1; box = 0; ticked = 0; next }
+    /^##? / { sec = 0 }
+    sec && /^- \[[ xX]\]/ {
+      box = 1
+      if ($0 ~ /^- \[[xX]\]/ && tolower($0) !~ /:[[:space:]]*no-go([[:space:].!]|$)/) {
+        ticked = 1
+      }
+    }
+    END { print (ticked ? "ticked" : (box ? "unticked" : "missing")) }
+  ' "$1"
+}
+
+gate_number() {
+  case "$1" in
+    research) echo 0 ;; proposal) echo 1 ;; specs) echo 2 ;;
+    design) echo 3 ;; tasks) echo 4 ;;
+  esac
+}
+
+# artifact_state <change_dir> <artifact> [status_json]: aggregate gate state of an artifact's files.
+artifact_state() {
+  case "$2" in
+    specs)
+      _files=""
+      if [ -n "${3:-}" ]; then
+        _files=$(printf '%s' "$3" | jq -r '
+          if (.artifactPaths.specs.existingOutputPaths | type) == "array" and (.artifactPaths.specs.existingOutputPaths | length) > 0
+          then .artifactPaths.specs.existingOutputPaths[]
+          else empty end
+        ' 2>/dev/null || true)
+      fi
+      if [ -z "$_files" ]; then
+        _files=$(find "$1/specs" -name '*.md' -type f 2>/dev/null | sort)
+      fi
+      if [ -z "$_files" ]; then echo missing; return 0; fi
+      _agg=ticked
+      while IFS= read -r _f; do
+        [ -n "$_f" ] || continue
+        [ -f "$_f" ] || [ ! -f "$1/$_f" ] || _f="$1/$_f"
+        case "$(gate_state "$_f")" in
+          missing) echo missing; return 0 ;;
+          unticked) _agg=unticked ;;
+        esac
+      done <<EOF_FILES
+$_files
+EOF_FILES
+      echo "$_agg"
+      ;;
+    research | proposal | design | tasks) gate_state "$1/$2.md" ;;
+    *) echo ticked ;;
+  esac
+}
+
+# violations <change> <status_json> <results> [change_dir]
+# results: lines "<artifact> <ticked|unticked|missing>". Prints one line per
+# gate that is not ticked while any transitive downstream artifact is done,
+# plus Gate 4 if implementation tasks in tasks.md are ticked early.
+violations() {
+  _pairs=$(printf '%s' "$2" | jq -r '
+    . as $s
+    | $s.artifacts as $arts
+    | $arts[]
+    | select(.status != "skipped")
+    | .id as $u
+    | (
+        [] | until(
+          . as $cur |
+          ([ $arts[]
+             | select(
+                 .id != $u
+                 and (.id as $id | ($cur | index($id)) == null)
+                 and any((.requires // [])[]; . == $u or (. as $r | ($cur | index($r)) != null))
+               )
+             | .id
+           ]) as $next |
+          ($next | length) == 0;
+          . as $cur |
+          $cur + [ $arts[]
+            | select(
+                .id != $u
+                and (.id as $id | ($cur | index($id)) == null)
+                and any((.requires // [])[]; . == $u or (. as $r | ($cur | index($r)) != null))
+              )
+            | .id
+          ]
+        )
+      ) as $desc
+    | [ $arts[] | select(.status == "done" and (.id as $id | ($desc | index($id)) != null)) | .id ][0] as $d
+    | select($d != null)
+    | "\($d) \($u)"
+  ')
+  if [ -n "$_pairs" ]; then
+    while IFS=' ' read -r _down _up; do
+      [ -n "$_down" ] || continue
+      _res=$(printf '%s\n' "$3" | awk -v a="$_up" '$1 == a { print $2 }')
+      [ "$_res" = ticked ] && continue
+      _num=$(gate_number "$_up")
+      if [ "$_res" = unticked ]; then
+        echo "$1: Gate $_num ($_up) unticked but '$_down' exists"
+      else
+        echo "$1: Gate $_num ($_up) Review Gate section missing but '$_down' exists"
+      fi
+    done <<EOF_PAIRS
+$_pairs
+EOF_PAIRS
+  fi
+
+  if [ -n "${4:-}" ] && [ -f "$4/tasks.md" ] &&
+     printf '%s' "$2" | jq -e 'any(.artifacts[]; .id == "tasks" and .status == "done")' >/dev/null 2>&1; then
+    if awk '
+      /^(```|~~~)/ { fence = !fence; next }
+      fence { next }
+      /^## Review Gate[[:space:]]*$/ { gate = 1; next }
+      /^##? / { gate = 0 }
+      !gate && /^[[:space:]]*- \[[xX]\]/ { found = 1; exit }
+      END { exit (found ? 0 : 1) }
+    ' "$4/tasks.md"; then
+      _tres=$(printf '%s\n' "$3" | awk '$1 == "tasks" { print $2 }')
+      if [ "$_tres" = unticked ]; then
+        echo "$1: Gate 4 (tasks) unticked but implementation tasks are ticked"
+      elif [ "$_tres" != ticked ]; then
+        echo "$1: Gate 4 (tasks) Review Gate section missing but implementation tasks are ticked"
+      fi
+    fi
+  fi
+}
+
+_run_checks() {
+  _store=$1
+  _errf=$2
+
+  _rc=0
+  if [ -n "$_store" ]; then
+    _list=$(openspec list --json --store "$_store" 2>"$_errf") || _rc=$?
+  else
+    _list=$(openspec list --json 2>"$_errf") || _rc=$?
+  fi
+  if [ "$_rc" -ne 0 ]; then
+    _msg=$(cat "$_errf")
+    [ -n "$_msg" ] || _msg=$_list
+    echo "spec-rails-check: 'openspec list --json' failed: $_msg" >&2
+    return 2
+  fi
+
+  _names=$(printf '%s' "$_list" | jq -r 'if (.changes | type) == "array" then .changes[] | (.name // error("change entry missing name")) else error("list JSON has no changes array") end' 2>"$_errf") || {
+    echo "spec-rails-check: cannot parse 'openspec list --json': $(cat "$_errf")" >&2
+    return 2
+  }
+
+  _out=""
+  if [ -n "$_names" ]; then
+    while IFS= read -r _c; do
+      [ -n "$_c" ] || continue
+      case "$_c" in
+        -*)
+          echo "spec-rails-check: invalid change name '$_c'" >&2
+          return 2
+          ;;
+      esac
+      _rc=0
+      if [ -n "$_store" ]; then
+        _status=$(openspec status --change "$_c" --json --store "$_store" 2>"$_errf") || _rc=$?
+      else
+        _status=$(openspec status --change "$_c" --json 2>"$_errf") || _rc=$?
+      fi
+      if [ "$_rc" -ne 0 ]; then
+        _msg=$(cat "$_errf")
+        [ -n "$_msg" ] || _msg=$_status
+        echo "spec-rails-check: 'openspec status --change $_c --json' failed: $_msg" >&2
+        return 2
+      fi
+      printf '%s' "$_status" | jq -e 'if (.artifacts | type) == "array" then true else error("status JSON has no artifacts array") end' >/dev/null 2>"$_errf" || {
+        echo "spec-rails-check: cannot parse status for '$_c': $(cat "$_errf")" >&2
+        return 2
+      }
+      _change_dir=$(printf '%s' "$_status" | jq -r '.changeRoot // empty')
+      [ -n "$_change_dir" ] || _change_dir="openspec/changes/$_c"
+      _ids=$(printf '%s' "$_status" | jq -r '.artifacts[].id')
+      _results=""
+      if [ -n "$_ids" ]; then
+        while IFS= read -r _id; do
+          [ -n "$_id" ] || continue
+          _results="$_results$_id $(artifact_state "$_change_dir" "$_id" "$_status")
+"
+        done <<EOF_IDS
+$_ids
+EOF_IDS
+      fi
+      _v=$(violations "$_c" "$_status" "$_results" "$_change_dir")
+      [ -n "$_v" ] && _out="$_out$_v
+"
+    done <<EOF_NAMES
+$_names
+EOF_NAMES
+  fi
+
+  if [ -n "$_out" ]; then
+    printf 'spec-rails-check: gate violations:\n%s' "$_out" >&2
+    return 1
+  fi
+  return 0
+}
+
+main() {
+  set -u
+  _store=${OPENSPEC_STORE:-}
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --store=*)
+        _store=${1#--store=}
+        if [ -z "$_store" ]; then
+          echo "spec-rails-check: --store requires a non-empty argument" >&2
+          return 2
+        fi
+        shift
+        ;;
+      --store)
+        if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
+          echo "spec-rails-check: --store requires an argument" >&2
+          return 2
+        fi
+        _store=$2
+        shift 2
+        ;;
+      *)
+        echo "spec-rails-check: unknown option '$1'" >&2
+        return 2
+        ;;
+    esac
+  done
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "spec-rails-check: jq is required but not found on PATH" >&2
+    return 2
+  fi
+  if ! command -v openspec >/dev/null 2>&1; then
+    echo "spec-rails-check: openspec is required but not found on PATH" >&2
+    return 2
+  fi
+
+  _branch=$(git branch --show-current 2>/dev/null || true)
+  case "$_branch" in
+    main | master)
+      echo "spec-rails-check: direct commits on '$_branch' are not allowed; use a feature branch" >&2
+      return 1
+      ;;
+  esac
+
+  _errf=$(mktemp "${TMPDIR:-/tmp}/spec-rails-check.XXXXXX") || return 2
+  trap 'rm -f "$_errf"' EXIT INT TERM
+  _check_rc=0
+  _run_checks "$_store" "$_errf" || _check_rc=$?
+  rm -f "$_errf"
+  trap - EXIT INT TERM
+  return "$_check_rc"
+}
+
+if [ "${SPEC_RAILS_SOURCE_ONLY:-}" != 1 ]; then
+  main "$@"
+  exit $?
+fi

@@ -1578,3 +1578,27 @@ button.cmd-todo-add:hover {
     width: 240px;
     height: 240px;
 }
+
+.cmd-emoji-list {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+    padding: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.cmd-emoji-cell {
+    font-size: 22px;
+    line-height: 1;
+    padding: 6px 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.cmd-emoji-cell.selected,
+.cmd-emoji-cell:hover {
+    background: var(--hover, rgba(128, 128, 128, 0.25));
+}

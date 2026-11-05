@@ -1,0 +1,212 @@
+#!/usr/bin/env sh
+# CI-only verifier for the test rails (REQ-OSA-26, REQ-OSA-27, REQ-OSA-28).
+# Run from the repository root. Reads openspec/spec-rails/rails.conf (optional shell file).
+set -u
+
+STORE="${OPENSPEC_STORE:-}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --store=*)
+      STORE="${1#--store=}"
+      if [ -z "$STORE" ]; then
+        echo "FAIL: --store requires a non-empty argument" >&2
+        exit 2
+      fi
+      shift
+      ;;
+    --store)
+      if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
+        echo "FAIL: --store requires an argument" >&2
+        exit 2
+      fi
+      STORE="$2"
+      shift 2
+      ;;
+    *)
+      echo "FAIL: unknown option '$1'" >&2
+      exit 2
+      ;;
+  esac
+done
+
+CONF="openspec/spec-rails/rails.conf"
+RAILS_TEST_DIRS="tests"
+RAILS_TEST=""
+RAILS_COVERAGE=""
+RAILS_MUTATION=""
+# shellcheck disable=SC1090
+[ -f "$CONF" ] && . "./$CONF"
+
+FAILED=0
+fail() { echo "FAIL: $1"; FAILED=1; }
+
+CHANGE_DIRS=""
+resolve_changes() {
+  _use_cli=0
+  if [ -n "$STORE" ]; then
+    _use_cli=1
+  elif [ -f "openspec/config.yaml" ] && grep -qE '^store:' "openspec/config.yaml" 2>/dev/null &&
+       command -v openspec >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    _use_cli=1
+  fi
+
+  if [ "$_use_cli" -eq 1 ]; then
+    if ! command -v openspec >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+      fail "openspec and jq are required on PATH when --store / OPENSPEC_STORE is set"
+      return
+    fi
+    _errf=$(mktemp "${TMPDIR:-/tmp}/spec-rails-verify.XXXXXX") || { fail "mktemp failed"; return; }
+    _rc=0
+    if [ -n "$STORE" ]; then
+      _list=$(openspec list --json --store "$STORE" 2>"$_errf") || _rc=$?
+    else
+      _list=$(openspec list --json 2>"$_errf") || _rc=$?
+    fi
+    if [ "$_rc" -ne 0 ]; then
+      _msg=$(cat "$_errf")
+      [ -n "$_msg" ] || _msg=$_list
+      rm -f "$_errf"
+      fail "'openspec list --json' failed: $_msg"
+      return
+    fi
+    _names=$(printf '%s' "$_list" | jq -r 'if (.changes | type) == "array" then .changes[] | (.name // error("change entry missing name")) else error("list JSON has no changes array") end' 2>"$_errf") || {
+      _msg=$(cat "$_errf")
+      rm -f "$_errf"
+      fail "cannot parse 'openspec list --json': $_msg"
+      return
+    }
+    if [ -n "$_names" ]; then
+      while IFS= read -r _c; do
+        [ -n "$_c" ] || continue
+        case "$_c" in
+          -*)
+            rm -f "$_errf"
+            fail "invalid change name '$_c'"
+            return
+            ;;
+        esac
+        _rc=0
+        if [ -n "$STORE" ]; then
+          _st=$(openspec status --change "$_c" --json --store "$STORE" 2>"$_errf") || _rc=$?
+        else
+          _st=$(openspec status --change "$_c" --json 2>"$_errf") || _rc=$?
+        fi
+        if [ "$_rc" -ne 0 ]; then
+          _msg=$(cat "$_errf")
+          [ -n "$_msg" ] || _msg=$_st
+          rm -f "$_errf"
+          fail "'openspec status --change $_c --json' failed: $_msg"
+          return
+        fi
+        _root=$(printf '%s' "$_st" | jq -r '.changeRoot // empty' 2>"$_errf") || {
+          _msg=$(cat "$_errf")
+          rm -f "$_errf"
+          fail "cannot parse status for '$_c': $_msg"
+          return
+        }
+        [ -n "$_root" ] || _root="openspec/changes/$_c"
+        CHANGE_DIRS="${CHANGE_DIRS}${CHANGE_DIRS:+
+}$_root"
+      done <<EOF_NAMES
+$_names
+EOF_NAMES
+    fi
+    rm -f "$_errf"
+  elif [ -d "openspec/changes" ]; then
+    CHANGE_DIRS=$(find openspec/changes -mindepth 1 -maxdepth 1 -type d ! -name archive | sort)
+  fi
+}
+
+# Keys declared under ADDED/MODIFIED in a delta spec.
+delta_keys() {
+  awk '
+    /^(```|~~~)/ { fence = !fence; next }
+    fence { next }
+    /^## / { on = ($0 ~ /^## (ADDED|MODIFIED) Requirements/); next }
+    on && /^### Requirement: (REQ|NFR)-[A-Za-z0-9-]+-[0-9]+/ {
+      k = $3
+      sub(/:$/, "", k)
+      print k
+    }
+  ' "$1"
+}
+
+check_traceability() {
+  if [ -z "$(printf '%s' "$RAILS_TEST_DIRS" | tr -d '[:space:]')" ]; then
+    fail "RAILS_TEST_DIRS is empty"
+    return
+  fi
+  [ -n "$CHANGE_DIRS" ] || return 0
+  while IFS= read -r chg; do
+    [ -n "$chg" ] && [ -d "$chg/specs" ] || continue
+    specs=$(find "$chg/specs" -type f -name '*.md' 2>/dev/null | sort)
+    [ -n "$specs" ] || continue
+    while IFS= read -r spec; do
+      [ -f "$spec" ] || continue
+      keys=$(delta_keys "$spec")
+      [ -n "$keys" ] || continue
+      while IFS= read -r key; do
+        [ -n "$key" ] || continue
+        # shellcheck disable=SC2086
+        if grep -rqE "(^|[^A-Za-z0-9_-])${key}([^A-Za-z0-9_-]|$)" -- $RAILS_TEST_DIRS 2>/dev/null; then
+          echo "ok: $key covered"
+        else
+          fail "$key ($spec) appears in no file under: $RAILS_TEST_DIRS"
+        fi
+      done <<EOF_KEYS
+$keys
+EOF_KEYS
+    done <<EOF_SPECS
+$specs
+EOF_SPECS
+  done <<EOF_CHGS
+$CHANGE_DIRS
+EOF_CHGS
+}
+
+check_evidence() {
+  [ -n "$CHANGE_DIRS" ] || return 0
+  while IFS= read -r chg; do
+    [ -n "$chg" ] || continue
+    tasks="$chg/tasks.md"
+    [ -f "$tasks" ] || continue
+    awk -v file="$tasks" '
+      /^(```|~~~)/ { fence = !fence; next }
+      fence { next }
+      /^[[:space:]]*-[[:space:]]*\[[xX]\]/ && $0 ~ /(^|[^A-Za-z])([Rr]ed|[Gg]reen|[Cc]overage|[Mm]utation)([^A-Za-z]|$)/ {
+        cleaned = $0
+        gsub(/`Evidence:[[:space:]]*<command and result>`/, "", cleaned)
+        gsub(/Evidence:[[:space:]]*<command and result>/, "", cleaned)
+        if (cleaned !~ /Evidence:[[:space:]]*[^[:space:]]/) {
+          print file ":" NR ":" $0
+        }
+      }
+    ' "$tasks"
+  done <<EOF_EV
+$CHANGE_DIRS
+EOF_EV
+}
+
+run_cmd() {
+  name="$1"; cmd="$2"
+  if [ -z "$cmd" ]; then
+    echo "warning: $name is not defined in $CONF; skipped"
+    return 0
+  fi
+  echo "running $name: $cmd"
+  sh -c "$cmd" || { fail "$name exited non-zero"; return 1; }
+}
+
+resolve_changes
+check_traceability
+
+missing="$(check_evidence)"
+if [ -n "$missing" ]; then
+  fail "ticked task without 'Evidence:':"
+  echo "$missing"
+fi
+
+run_cmd RAILS_TEST "$RAILS_TEST" && run_cmd RAILS_COVERAGE "$RAILS_COVERAGE" && run_cmd RAILS_MUTATION "$RAILS_MUTATION"
+
+[ "$FAILED" -eq 0 ] && echo "spec-rails-verify: all checks passed"
+exit "$FAILED"

@@ -5,6 +5,7 @@
 
 import {
     calculator,
+    smile,
     timer,
     listChecks,
     gauge,
@@ -116,6 +117,7 @@ const COMMAND_DEFINITIONS = [
     },
     { id: 'shell', detail: 'Run a shell command', icon: terminal },
     { id: 'sys', detail: 'Show system information', icon: info },
+    { id: 'emoji', detail: 'Search and copy emoji', icon: smile },
 ];
 
 export const COMMAND_ENTRIES = COMMAND_DEFINITIONS.map((entry, index) => ({

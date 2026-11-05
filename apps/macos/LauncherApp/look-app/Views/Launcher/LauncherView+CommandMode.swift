@@ -237,6 +237,28 @@ extension LauncherView {
         }
     }
 
+    /// Copies `hit`, remembers it, and for Shift+Enter types it into the app
+    /// that owned the cursor, falling back to copy-only with a notice.
+    func pickEmoji(_ hit: EmojiHitDTO, insert: Bool) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(hit.glyph, forType: .string)
+        EmojiView.remember(hit)
+        guard insert else {
+            commandFeedback = "Copied \(hit.glyph)"
+            return
+        }
+        if let blocker = FrontmostAppPaste.blocker() {
+            if blocker == .accessibilityDenied {
+                FrontmostAppPaste.requestAccessibilityPermission()
+            }
+            commandFeedback = "Copied \(hit.glyph) instead: \(blocker.banner)"
+            return
+        }
+        let targetPID = pidToRestoreOnHide
+        hideLauncherWindow()
+        FrontmostAppPaste.paste(into: targetPID)
+    }
+
     func runCommandModeAction() {
         let resolvedCommand = commandCatalog.first(where: { $0.id == (activeCommandID ?? "") })
             ?? commandCatalog.first(where: { $0.id == commandNamePart.lowercased() })
@@ -258,6 +280,12 @@ extension LauncherView {
                 commandFeedback = message
                 isQueryFocused = true
             }
+        case AppConstants.Launcher.Command.emoji:
+            guard let hit = EmojiView.hits(for: commandArgsPart).first else {
+                commandFeedback = "No emoji found"
+                return
+            }
+            pickEmoji(hit, insert: NSEvent.modifierFlags.contains(.shift))
         case AppConstants.Launcher.Command.calc:
             guard !commandArgsPart.isEmpty else {
                 setCommandError("Usage: /calc <expression>")
@@ -530,6 +558,8 @@ extension LauncherView {
                         } else if activeCommandID == AppConstants.Launcher.Command.speed {
                             SpeedTestView(controller: speedTest, themeStore: themeStore)
                                 .padding(8)
+                        } else if activeCommandID == AppConstants.Launcher.Command.emoji {
+                            EmojiView(query: commandInput) { pickEmoji($0, insert: false) }
                         } else if activeCommandID == AppConstants.Launcher.Command.pomo {
                             PomoView(themeStore: themeStore)
                                 .padding(2)

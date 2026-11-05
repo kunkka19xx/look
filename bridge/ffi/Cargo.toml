@@ -14,6 +14,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 look-ai = { path = "../../core/ai" }
 look-answers = { path = "../../core/answers" }
 look-calc = { path = "../../core/calc" }
+look-emoji = { path = "../../core/emoji" }
 look-engine = { path = "../../core/engine" }
 look-indexing = { path = "../../core/indexing" }
 look-sources = { path = "../../core/sources" }

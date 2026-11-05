@@ -50,6 +50,11 @@ Backed by `core/calc` and the macOS `QuickMathService`:
 
 > Exact unit and currency coverage lives in `QuickMathService.swift`; check it for the full list.
 
+#### 😀 Emoji Search (`:emoji`)
+* **Search** by name or keyword (offline, bundled Unicode CLDR data in `core/emoji`, shared by macOS and Linux/Windows).
+* `Enter` copies the selected emoji; `Shift+Enter` types it into the app you came from, falling back to copy with a notice when insertion isn't permitted (e.g. macOS Accessibility denied).
+* An empty query shows your last 20 emoji, most recent first, kept across restarts.
+
 #### 🛑 Process & Port Killer (`:kill` / `ps"`)
 * **Kill by Name**: Fuzzy search across running processes and terminate with confirmation.
 * **Kill by Port**: Target stuck local web servers (e.g. `:kill 3000` or `ps"8080`) to immediately release locked network sockets.

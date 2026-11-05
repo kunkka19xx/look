@@ -337,6 +337,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "look-emoji"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "look-engine"
 version = "0.1.0"
 dependencies = [

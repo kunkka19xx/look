@@ -152,6 +152,10 @@ private func look_ai_markdown_segments_json(_ text: UnsafePointer<CChar>?) -> Un
 nonisolated
 private func look_instant_has_match(_ query: UnsafePointer<CChar>?) -> Bool
 
+@_silgen_name("look_emoji_search_json")
+nonisolated
+private func look_emoji_search_json(_ query: UnsafePointer<CChar>?, _ limit: Int) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_calc_eval_json")
 nonisolated
 private func look_calc_eval_json(_ expr: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -1022,6 +1026,17 @@ final class EngineBridge: @unchecked Sendable {
         return result
     }
 
+    /// Ranked emoji matches for the `/emoji` panel. Offline and cheap enough
+    /// to call on every keystroke.
+    nonisolated func emojiSearch(query: String, limit: Int = 60) -> [EmojiHitDTO] {
+        guard let ptr = query.withCString({ look_emoji_search_json($0, limit) }) else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8),
+            let hits = try? JSONDecoder().decode([EmojiHitDTO].self, from: data)
+        else { return [] }
+        return hits
+    }
+
     /// The main search field: resolves `query` only when it was clearly meant
     /// as arithmetic (dates/resolutions/ratios stay untouched). Network-free
     /// and cheap enough to call on every keystroke.
@@ -1499,6 +1514,12 @@ nonisolated struct CalculationDTO: Decodable {
     let display: String
     let raw: String
     let value: Double
+}
+
+/// Wire shape of one `look_emoji_search_json` hit.
+nonisolated struct EmojiHitDTO: Decodable, Equatable {
+    let glyph: String
+    let name: String
 }
 
 /// Wire shape of `look_calc_eval_json`: exactly one of the two is non-nil.

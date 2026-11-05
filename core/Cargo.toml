@@ -4,6 +4,7 @@ members = [
   "qactions",
   "answers",
   "calc",
+  "emoji",
   "engine",
   "indexing",
   "lunar",

@@ -48,6 +48,7 @@ let package = Package(
                 "Models/SourceLevel.swift",
                 "Support/Launcher/SourceLevelStack.swift",
                 "Support/Launcher/QuickMathService.swift",
+                "Support/Launcher/EmojiRecents.swift",
             ]
         ),
         .testTarget(

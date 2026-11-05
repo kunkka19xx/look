@@ -19,6 +19,8 @@ struct AppCommand: Identifiable {
             return "info.circle"
         case AppConstants.Launcher.Command.pomo:
             return "timer"
+        case AppConstants.Launcher.Command.emoji:
+            return "face.smiling"
         case AppConstants.Launcher.Command.todo:
             return "checklist"
         case AppConstants.Launcher.Command.speed:
@@ -92,6 +94,7 @@ enum AppConstants {
         enum Command {
             static let shell = "shell"
             static let calc = "calc"
+            static let emoji = "emoji"
             static let kill = "kill"
             static let sys = "sys"
             static let pomo = "pomo"
@@ -752,6 +755,7 @@ enum AppConstants {
             (Command.kill, "Force kill app or process by name, PID, or port", "Type a name, PID, or port"),
             (Command.shell, "Run a shell command", "Type shell command"),
             (Command.sys, "Show system information", "View system info"),
+            (Command.emoji, "Search and copy emoji", "Search emoji by name"),
             (Command.sleep, "Put display or system to sleep", "Press Enter to sleep"),
             (Command.lock, "Lock screen immediately", "Press Enter to lock"),
             (Command.mute, "Toggle mute on/off", "Press Enter to toggle mute"),

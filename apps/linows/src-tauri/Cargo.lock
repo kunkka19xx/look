@@ -2375,6 +2375,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "look-emoji"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "look-engine"
 version = "0.1.0"
 dependencies = [
@@ -2486,6 +2493,7 @@ dependencies = [
  "libloading 0.9.0",
  "look-answers",
  "look-calc",
+ "look-emoji",
  "look-engine",
  "look-lunar",
  "look-matching",

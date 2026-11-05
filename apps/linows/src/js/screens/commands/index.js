@@ -1,4 +1,5 @@
 import * as calc from './calc.js';
+import * as emoji from './emoji.js';
 import * as pomo from './pomo.js';
 import * as todo from './todo.js';
 import * as speed from './speed.js';
@@ -10,7 +11,7 @@ import * as tooltip from '../../components/tooltip.js';
 
 // catalog.js owns the order, the details and the Ctrl+N each command answers
 // to; this side only binds an id to the panel module that renders it.
-const MODULES = { calc, pomo, todo, speed, kill, shell, sys };
+const MODULES = { calc, emoji, pomo, todo, speed, kill, shell, sys };
 
 const COMMANDS = COMMAND_ENTRIES.map((entry) => ({
     ...entry,
@@ -39,6 +40,7 @@ export function init(contentAreaEl, inputEl, { onExitMode, onExecuteCommand, onG
 
     // Init each command module
     calc.init(onExecuteCommand);
+    emoji.init(onExecuteCommand);
     pomo.init();
     todo.init();
     speed.init();
