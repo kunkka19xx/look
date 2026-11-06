@@ -671,7 +671,7 @@ struct LauncherView: View {
     }
 
     /// Every hint line is at most three items, the same budget linows keeps
-    /// (apps/linows/src/js/app.js). The footer sits inside a card, so a fourth
+    /// (apps/linows/gpui/src/modes.rs). The footer sits inside a card, so a fourth
     /// item wraps or truncates; the keys left out are still listed in
     /// Settings > Shortcuts.
     var hintItems: [String] {

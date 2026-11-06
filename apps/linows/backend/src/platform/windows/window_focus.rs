@@ -430,8 +430,8 @@ fn activate_window(hwnd: HWND) {
 /// Bring `hwnd` forward with `lender`'s input queue attached.
 fn raise(hwnd: HWND, lender: HWND) {
     // SetForegroundWindow rejects threads that haven't received the last user
-    // input. Tauri commands run on a tokio worker that never sees raw input,
-    // so the rule trips even though Look's UI thread is foreground. Attach
+    // input. Backend calls run on a worker that never sees raw input, so the
+    // rule trips even though Look's UI thread is foreground. Attach
     // our input queue to the lender's for the duration to lend us its rights.
     //
     // SW_RESTORE only when iconic - calling it on a maximized window

@@ -19,7 +19,7 @@ pub fn discover_system_settings_entries(
 
         // Windows extras: classic .cpl / .msc / .exe applets that Settings
         // doesn't cover (env vars, Device Manager, Services, Registry, Task
-        // Manager, …). Paths use the `look-cmd://` scheme so the Tauri launcher
+        // Manager, …). Paths use the `look-cmd://` scheme so the launcher
         // knows to spawn them via Command::new rather than ShellExecute.
         #[cfg(target_os = "windows")]
         emit_windows_control_panel_entries(&tx);

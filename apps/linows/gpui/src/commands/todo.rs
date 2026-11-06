@@ -1,8 +1,7 @@
 //! `/todo`: a card per day with its tasks, an add row and a rename field,
 //! undo and redo over the whole set, Save writing it back, and the Stats
 //! page with its donuts, streak, trend, year heatmap and insights. The data
-//! is the process-wide one in `todo.rs`; this is its screen. Mirrors
-//! `screens/commands/todo.js`, which mirrors macOS.
+//! is the process-wide one in `todo.rs`; this is its screen. Mirrors macOS.
 
 use std::time::Duration;
 

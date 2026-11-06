@@ -1,7 +1,7 @@
 import Foundation
 
 /// Ranking for the `ps"` finder and `/kill`, ported field-for-field from the
-/// Rust reference (`apps/linows/src-tauri/src/process.rs`) so macOS ranks like
+/// Rust reference (`apps/linows/backend/src/process.rs`) so macOS ranks like
 /// linows. The fuzzy name score is injected as a closure (backed by the
 /// `look_fuzzy_score` FFI over `core/matching`), keeping this module pure and
 /// unit-testable. The caller lowercases the query once; this lowercases each

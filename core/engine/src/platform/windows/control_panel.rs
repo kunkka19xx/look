@@ -1,6 +1,6 @@
 //! Classic Win32 / MMC applets that Windows Search surfaces but `ms-settings:`
 //! doesn't cover (env vars, Device Manager, Services, Registry, Task Manager,
-//! etc.). The Tauri side handles `look-cmd://` paths by splitting on the first
+//! etc.). The linows side handles `look-cmd://` paths by splitting on the first
 //! `?` into program + args and spawning via `Command::new`.
 //!
 //! Format:

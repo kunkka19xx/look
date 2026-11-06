@@ -1,6 +1,6 @@
 # Building & Packaging: linows
 
-Build instructions for the Look desktop app on Linux and Windows: the gpui shell in `gpui/`, binary `lookapp`. The Tauri shell in `src-tauri/` is the backup (`cargo build -p lookapp-tauri`, `cargo tauri dev`); it still needs the WebKitGTK packages the old instructions listed.
+Build instructions for the Look desktop app on Linux and Windows: the gpui shell in `gpui/`, binary `lookapp`.
 
 ## Architecture support
 
@@ -149,7 +149,6 @@ make app-run            # cargo run (debug)
 make app-run-release    # cargo run (release)
 make app-build          # cargo build (debug)
 make app-build-release  # cargo build (release)
-make tauri-run          # the Tauri backup, cargo tauri dev
 ```
 
 Format and lint are not Make targets; run them directly under vcvars:
@@ -315,7 +314,7 @@ look = {
 
 Look then builds locally instead of coming from Cachix.
 
-> **Note:** For user-level declarative installation and configuration, use the Home Manager module described above. The NixOS module is intended for system-level configuration. Look is also in [nixpkgs](https://github.com/NixOS/nixpkgs) as `lookapp`, Linux only, and that package builds the Tauri shell rather than the gpui one.
+> **Note:** For user-level declarative installation and configuration, use the Home Manager module described above. The NixOS module is intended for system-level configuration. Look is also in [nixpkgs](https://github.com/NixOS/nixpkgs) as `lookapp`, Linux only, but a bump there waits on a nixpkgs maintainer, so it lags releases. Prefer this flake with the Cachix cache (`programs.lookapp.cachix = true`, or `cachix use look`): same prebuilt binary, no local compile, and it tracks every release.
 
 ### macOS (flake)
 

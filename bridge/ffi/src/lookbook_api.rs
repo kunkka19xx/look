@@ -3,7 +3,7 @@
 //!
 //! Transport only. The shell fetches the text, because `URLSession` is where
 //! this app's network already lives; everything said about that text is
-//! decided in the engine, shared with the Tauri shell.
+//! decided in the engine, shared with the linows shell.
 
 use std::os::raw::c_char;
 

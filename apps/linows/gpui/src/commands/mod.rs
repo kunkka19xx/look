@@ -1,8 +1,7 @@
 //! The command screen (`/`): a sidebar of the catalog's commands beside the
 //! active panel, in one framed card that takes the window while it is up.
-//! Mirrors `screens/commands/index.js`: this module is the frame, and each
-//! command is a file of its own beside it; the ones not ported yet say so
-//! in place of their body.
+//! This module is the frame, and each command is a file of its own beside
+//! it; the ones not ported yet say so in place of their body.
 
 mod calc;
 mod draw;

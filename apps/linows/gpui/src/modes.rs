@@ -75,7 +75,7 @@ impl Mode {
         matches!(self, Self::Clipboard | Self::ClipboardImage)
     }
 
-    /// The footer line, the webview's per-mode hints.
+    /// The footer line's per-mode hints.
     pub fn hint(self) -> SharedString {
         match self {
             Self::Search | Self::Recent => &HINT_SEARCH,

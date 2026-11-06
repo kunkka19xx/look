@@ -1,7 +1,8 @@
 //! Streaming chat sessions on the curl transport (P5): `start` spawns a curl
 //! child POSTing to Ollama's `/api/chat` with `stream:true` and a reader
 //! thread accumulates cumulative text; shells `poll` for snapshots (an easy
-//! fit for both FFI and Tauri) and `cancel` kills the child. No async runtime.
+//! fit for both FFI and in-process callers) and `cancel` kills the child. No
+//! async runtime.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};

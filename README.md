@@ -125,6 +125,8 @@ look.nixosModules.default
 
 Home Manager, updating, and troubleshooting: see [BUILDING.md](apps/linows/BUILDING.md#nixos-flake).
 
+> **Note:** Look is in nixpkgs as `lookapp` too, but a bump there waits on a nixpkgs maintainer, so that package lags releases. Install from this flake instead: the [Cachix](https://look.cachix.org) cache serves the prebuilt binary, so nothing compiles locally (`programs.lookapp.enable = true` turns it on, or `cachix use look`).
+
 > **Note:** On GNOME desktops, log out and log back in after the first install so the GNOME Shell extension (used for window focusing and hotkey on Wayland) can load.
 
 **Window manager users (i3, sway, Hyprland, niri, etc.):** Autostart via `.desktop` files only works on full DEs (GNOME, KDE). On standalone WMs, add Look to your config manually. On i3, sway, and Hyprland the `Alt+Space` hotkey and window rules (float, no border) are registered automatically at runtime, so you only need the autostart line; niri needs the bind added by hand (see below):

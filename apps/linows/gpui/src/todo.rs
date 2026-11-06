@@ -1,7 +1,7 @@
 //! The day planner's data, kept for the process: the tasks by day, the undo
 //! and redo stacks and what Save last wrote, since the window is rebuilt on
-//! every summon and an unsaved edit must not go with it. The rules are the
-//! webview's (`screens/commands/todo.js`), which are macOS's: three
+//! every summon and an unsaved edit must not go with it. The rules are
+//! macOS's: three
 //! unfinished tasks a day at most, three upcoming days, a three-day window
 //! in which a late task can still be ticked. Nothing here saves by itself;
 //! the panel writes the whole set back on Save.

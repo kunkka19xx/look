@@ -1,5 +1,5 @@
-//! The glyphs the shell draws itself: Lucide outlines, the same set
-//! `src/js/icons.js` inlines for the webview. Served to `svg()` by path.
+//! The glyphs the shell draws itself: Lucide outlines, served to `svg()` by
+//! path.
 
 use std::borrow::Cow;
 

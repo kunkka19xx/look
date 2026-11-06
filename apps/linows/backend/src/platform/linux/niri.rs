@@ -17,7 +17,7 @@ use std::time::Duration;
 /// where blocking the caller would freeze the launcher.
 const IPC_TIMEOUT: Duration = Duration::from_millis(300);
 
-/// `app_id` niri sees for Look's own window (matches the Tauri identifier).
+/// `app_id` niri sees for Look's own window (the one the shell sets).
 const SELF_APP_ID: &str = "lookapp";
 
 /// How long to wait for niri to map Look's toplevel after `show()`.

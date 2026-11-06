@@ -2,8 +2,8 @@
 //! row resolves to without knowing anything about terminals or editors.
 //!
 //! Transport only: the resolved shape, its `kind` strings, and the guards on an
-//! unusable request all live in `look_tools::Resolved`, so this and the Tauri
-//! commands hand their shells the same JSON by construction.
+//! unusable request all live in `look_tools::Resolved`, so this and the linows
+//! backend hand their shells the same JSON by construction.
 //!
 //! The tools are read from the cached config, so a reload picks up an edited
 //! `~/.look/config` with no extra call from the shell.

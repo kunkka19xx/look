@@ -1,8 +1,8 @@
 //! What the backend needs from the shell that embeds it.
 //!
-//! The backend never owns a window or an event loop. A shell (Tauri today, gpui
-//! next) installs one [`Host`] at startup for the process-wide hooks, and hands
-//! a [`LauncherWindow`] to the few calls that take the launcher off screen or
+//! The backend never owns a window or an event loop. The shell installs one
+//! [`Host`] at startup for the process-wide hooks, and hands a
+//! [`LauncherWindow`] to the few calls that take the launcher off screen or
 //! bring it back.
 
 use std::sync::OnceLock;

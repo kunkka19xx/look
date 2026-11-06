@@ -1,6 +1,6 @@
 //! The home launchpad: the bento the empty query shows, drawn from the shared
 //! catalog (`core/qactions`, or the user's `~/.look/super-actions.toml`) the
-//! way `superactions.js` and the macOS `EmptyStateLaunchpadView` draw it.
+//! way the macOS `EmptyStateLaunchpadView` draws it.
 //! Live state comes from the backend adapters off the UI thread; a press
 //! flips the tile at once and the adapter's answer reconciles it.
 
@@ -1744,7 +1744,7 @@ fn glyph(path: &'static str, size: f32, colour: Rgba) -> gpui::Svg {
         .flex_shrink_0()
 }
 
-/// The glyph a built-in control wears, keyed as `superactions.js` keys them.
+/// The glyph a built-in control wears, keyed by action id.
 fn glyph_for(action_id: &str) -> &'static str {
     match action_id {
         action_id::BLUETOOTH => glyphs::BLUETOOTH,

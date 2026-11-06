@@ -9,9 +9,8 @@ self:
 let
   cfg = config.programs.lookapp;
 
-  # `ui_theme` values as written by the settings dropdown
-  # (src/html/screens/settings.html). An unset key means the built-in default,
-  # so every name here is written literally.
+  # `ui_theme` values as written by the settings dropdown. An unset key means
+  # the built-in default, so every name here is written literally.
   themeIds = [
     "catppuccin"
     "tokyo-night"

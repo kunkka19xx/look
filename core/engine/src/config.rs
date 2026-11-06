@@ -494,7 +494,7 @@ fn append_missing_default_config_entries(path: &Path) {
 
 /// The cosmetic `ui_*` block. Never read back into `RuntimeConfig`: it seeds
 /// whichever frontend paints the window, and only macOS wants that here, since
-/// linows owns its defaults in `apps/linows/src/js/theme-defaults.js`. Gated
+/// linows owns its defaults in `apps/linows/gpui/src/theme.rs`. Gated
 /// rather than left out of the linows template because
 /// `append_missing_default_config_entries` adds back any key the file lacks.
 fn theme_config_section() -> String {

@@ -1,8 +1,8 @@
 //! Everything the linows launcher does that is not drawing.
 //!
-//! Search, launching, clipboard, controls, config, health: the Tauri shell and
-//! the gpui port both call into here, so a fix lands once. The crate owns no
-//! window and no event loop; what it needs from the shell goes through
+//! Search, launching, clipboard, controls, config, health: the gpui shell
+//! calls into here, so none of it is tied to the drawing layer. The crate owns
+//! no window and no event loop; what it needs from the shell goes through
 //! [`host`].
 
 pub mod answers;

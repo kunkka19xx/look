@@ -1,18 +1,14 @@
 /// Syntax highlighting module for file preview.
-/// Ported from macOS `SyntaxHighlighter.swift` - same tokenizer logic. Two
-/// outputs over one tokenizer: HTML with CSS classes for the webview, and
-/// the spans themselves for a shell that draws text runs.
+/// Ported from macOS `SyntaxHighlighter.swift` - same tokenizer logic. The
+/// tokenizer hands the shell spans and the shell draws the text runs.
 ///
 /// Structure:
 ///   lang.rs      - language detection + keyword/comment definitions
 ///   tokenizer.rs - byte-level tokenizer producing spans
-///   html.rs      - span-to-HTML renderer with CSS classes
-mod html;
 mod lang;
 mod tokenizer;
 
 use lang::Language;
-use serde::Serialize;
 
 pub use tokenizer::{Span, TokenType};
 
@@ -33,12 +29,6 @@ const DEFAULT_FILE_SIZE_CAP: u64 = 20 * 1024 * 1024; // 20 MB
 
 /// Display cap - matches macOS `TextFilePreview.displayByteCap`.
 const DISPLAY_BYTE_CAP: usize = 64 * 1024; // 64 KB
-
-#[derive(Serialize)]
-pub struct HighlightResult {
-    pub html: String,
-    pub truncated: bool,
-}
 
 fn file_extension(path: &str) -> String {
     path.rsplit('.').next().unwrap_or("").to_ascii_lowercase()
@@ -89,15 +79,6 @@ fn preview_bytes(path: &str) -> Option<(Vec<u8>, bool)> {
     Some((data, truncated))
 }
 
-/// Read a file and return syntax-highlighted HTML.
-/// Returns `None` if the file is missing, too large, or not a text file.
-pub fn highlight_file(path: &str) -> Option<HighlightResult> {
-    let (data, truncated) = preview_bytes(path)?;
-    let spans = tokenizer::tokenize(&data, Language::from_path(path));
-    let html = html::render(&data, &spans);
-    Some(HighlightResult { html, truncated })
-}
-
 /// Read a file and return its text with token spans.
 pub fn highlight_runs(path: &str) -> Option<HighlightRuns> {
     let (data, truncated) = preview_bytes(path)?;
@@ -114,23 +95,4 @@ pub fn highlight_runs(path: &str) -> Option<HighlightRuns> {
         spans,
         truncated,
     })
-}
-
-/// Highlight a file and return HTML + truncation flag.
-pub fn highlight_file_cmd(path: &str) -> Option<HighlightResult> {
-    highlight_file(path)
-}
-
-/// Highlight text the app already holds, as shell.
-///
-/// A block's steps ARE shell (`specs/user-sources.md` §2.8), and the panel
-/// shows them the way an AI answer's code is shown. Never truncated: what is
-/// about to run is shown in full or the panel is lying about it.
-pub fn highlight_shell_cmd(source: &str) -> HighlightResult {
-    let bytes = source.as_bytes();
-    let spans = tokenizer::tokenize(bytes, Language::Shell);
-    HighlightResult {
-        html: html::render(bytes, &spans),
-        truncated: false,
-    }
 }

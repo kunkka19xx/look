@@ -14,7 +14,6 @@ CONFIG ?= Debug
 APP_MANIFEST  := apps\linows\Cargo.toml
 CARGO_TARGET  := x86_64-pc-windows-msvc
 APP_PROCESS   := lookapp
-TAURI_PROCESS := lookapp-tauri
 
 # Every cargo invocation must run under VS 2022 BT vcvarsall x64 env, otherwise
 # rustc picks up VS 2026 Community's cl.exe (no Windows SDK) and link/build
@@ -26,12 +25,11 @@ DEV_DB_PATH  := $(USERPROFILE)\AppData\Local\look\look.dev.db
 
 .PHONY: help audit core-check ffi-check ffi-build ffi-build-release \
         app-check app-build app-build-release app-run app-run-release \
-        app-stop tauri-stop tauri-run tauri-build \
-        db-path db-status db-shell db-reset db-refresh \
+        app-stop db-path db-status db-shell db-reset db-refresh \
         dev-db-path dev-db-status dev-db-shell dev-db-reset
 
 help:
-	@echo look developer tasks (Windows / Tauri)
+	@echo look developer tasks (Windows)
 	@echo.
 	@echo build/check
 	@echo   make core-check          - cargo check core workspace
@@ -47,10 +45,6 @@ help:
 	@echo   make app-stop            - stop running $(APP_PROCESS).exe
 	@echo   make app-run             - cargo run lookapp (debug)
 	@echo   make app-run-release     - cargo run lookapp (release)
-	@echo.
-	@echo tauri backup
-	@echo   make tauri-run           - cargo tauri dev (the backup shell)
-	@echo   make tauri-build         - cargo tauri build (the backup shell)
 	@echo.
 	@echo database  (needs sqlite3 on PATH: winget install sqlite.sqlite)
 	@echo   make db-path             - print prod db path
@@ -103,16 +97,6 @@ app-run: app-stop
 
 app-run-release: app-stop
 	$(WITH_VCVARS) cargo run --manifest-path $(APP_MANIFEST) -p lookapp --target $(CARGO_TARGET) --release
-
-tauri-stop:
-	-@taskkill /F /IM $(TAURI_PROCESS).exe >NUL 2>NUL
-
-# cargo-tauri reads tauri.conf.json from CWD/src-tauri; run from apps/linows.
-tauri-run: tauri-stop
-	cd apps\linows && ..\..\$(WITH_VCVARS) cargo tauri dev
-
-tauri-build: tauri-stop
-	cd apps\linows && ..\..\$(WITH_VCVARS) cargo tauri build
 
 db-path:
 	@echo $(REAL_DB_PATH)

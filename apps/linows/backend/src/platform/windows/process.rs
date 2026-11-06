@@ -75,8 +75,8 @@ pub(crate) fn list() -> Vec<RunningApp> {
         let app = RunningApp {
             name: display,
             pid,
-            // The frontend (apps/linows/src/js/screens/commands/kill.js) only
-            // requests an icon when desktop_id is truthy; mirror Linux's
+            // The shell (apps/linows/gpui/src/commands/kill.rs) only
+            // requests an icon when desktop_id is set; mirror Linux's
             // "app:<path>" convention so the icon resolver gets called with
             // the exe path.
             desktop_id: (!exe_path.is_empty()).then(|| format!("app:{exe_path}")),

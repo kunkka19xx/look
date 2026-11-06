@@ -3,7 +3,7 @@
 //!
 //! Transport only. Resolving a candidate id back to its block, expanding a
 //! target's `confirm` against the row, the depth cap and the drilled id
-//! encoding all live in the engine, shared with the Tauri shell, so the two
+//! encoding all live in the engine, shared with the linows shell, so the two
 //! cannot answer the same question differently.
 
 use look_sources::ParentRow;

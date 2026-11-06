@@ -138,7 +138,7 @@ impl BlurRect {
     /// Both protocols take rectangles, so a rounded card is its middle band
     /// plus rows stepping around each corner. Rows sit inside the arc: blur
     /// past the curve would frost the gap, while a sliver short of it hides
-    /// under the anti-aliased edge. Same construction as src/js/blur.js.
+    /// under the anti-aliased edge.
     pub fn rounded(x: i32, y: i32, width: u32, height: u32, radius: f32) -> Vec<BlurRect> {
         let inset = radius
             .min(width as f32 / 2.0)

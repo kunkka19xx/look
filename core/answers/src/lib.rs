@@ -3,7 +3,7 @@
 //! These are the network-backed lookups that are identical on every OS -
 //! instant answers (currency/weather/crypto) today, with search suggestions and
 //! knowledge sources to follow. Each platform shell (macOS via the C FFI bridge,
-//! Linux/Windows via Tauri commands) calls into here so the logic lives once.
+//! Linux/Windows via the linows backend) calls into here so the logic lives once.
 //!
 //! Design rules that keep this crate shareable:
 //! - **No async runtime.** HTTP is a blocking `curl` subprocess (see [`http`]),

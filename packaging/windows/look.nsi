@@ -1,5 +1,5 @@
 ; The Windows installer for lookapp.exe. Per user, no elevation, the same
-; layout and silent flags (/S, /D=) the Tauri bundler produced, so
+; layout and silent flags (/S, /D=) earlier releases shipped, so
 ; scripts/windows/install-look.ps1 keeps working.
 ;
 ;   makensis /DVERSION=1.2.3 /DBINARY=path\to\lookapp.exe /DOUTFILE=Look_1.2.3_x64-setup.exe look.nsi

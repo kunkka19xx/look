@@ -237,7 +237,7 @@ pub fn run() -> Result<SpeedReading, SpeedError> {
     })
 }
 
-/// `run` as JSON, for the FFI bridge and the Tauri command: either
+/// `run` as JSON, for the FFI bridge and the linows backend: either
 /// `{"ok":true,"reading":{...}}` or `{"ok":false,"error":"..."}`.
 pub fn run_json() -> String {
     match run() {

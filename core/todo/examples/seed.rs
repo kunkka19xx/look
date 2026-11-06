@@ -6,7 +6,7 @@
 //!
 //! Targets:
 //!   dev   (default) look.dev.db next to the app's real database; this is
-//!         the file linows debug builds (cargo tauri dev) use automatically
+//!         the file linows debug builds use automatically
 //!   main  the app's real database (tasks are appended, never replaced)
 //!   path  any explicit .db file
 //!
@@ -99,7 +99,7 @@ fn main() {
         tasks.len(),
     );
     if target == "dev" {
-        println!("debug builds (cargo tauri dev) read this file automatically");
+        println!("debug builds read this file automatically");
     }
 }
 

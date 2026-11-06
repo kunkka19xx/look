@@ -94,7 +94,7 @@
         }
       );
 
-      # Linux only: the shell carries the GTK, Wayland and Vulkan stack the
+      # Linux only: the shell carries the Wayland, Vulkan and audio stack the
       # source build links against, none of which applies to the macOS app.
       devShells = forLinuxSystems (
         system:
@@ -105,20 +105,9 @@
           runtimeLibs = with pkgs; [
             dbus
             openssl
-            webkitgtk_4_1
-            gtk3
-            gtk-layer-shell
-            libsoup_3
-            glib
-            cairo
-            pango
-            gdk-pixbuf
-            harfbuzz
-            librsvg
             alsa-lib
-            libappindicator-gtk3
-            # The gpui port: wgpu, xkbcommon and font-kit link against these,
-            # and the Wayland and Vulkan loaders are dlopened at runtime.
+            # wgpu, xkbcommon and font-kit link against these, and the Wayland
+            # and Vulkan loaders are dlopened at runtime.
             wayland
             vulkan-loader
             libxkbcommon
@@ -132,10 +121,11 @@
             nativeBuildInputs = with pkgs; [
               pkg-config
               rust-bin.stable.${rustVersion}.default
-              cargo-tauri
               xdg-desktop-portal
               xdg-desktop-portal-gtk
-              prettier
+              # gdbus backs the Wayland hotkey's D-Bus call, as in
+              # packaging/nix/package.nix.
+              glib
               # The CLI a `run` source block shells out to; the app links rusqlite.
               sqlite
               # gpui/tools: frame capture and the control socket.

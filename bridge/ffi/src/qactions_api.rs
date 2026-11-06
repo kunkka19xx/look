@@ -92,24 +92,22 @@ pub(crate) fn look_launchpad_press_tile_json_impl(name: *const c_char) -> *mut c
 
 #[cfg(test)]
 mod tests {
-    /// The exact JSON both shells decode, as a file rather than an inline
-    /// literal because the Swift and JS tests read this same one. A field
-    /// renamed here and nowhere else fails in all three places at once, which
-    /// is the only way this contract announces itself: both shells swallow a
-    /// mismatch. Swift decodes with `try?` and falls back to `[]`, and JS reads
-    /// keys straight off the object, so a rename renders an EMPTY launchpad
-    /// rather than an error.
+    /// The exact JSON the macOS shell decodes, as a file rather than an
+    /// inline literal because the Swift test reads this same one. A field
+    /// renamed here and nowhere else fails in both places at once, which is
+    /// the only way this contract announces itself: the shell swallows a
+    /// mismatch. Swift decodes with `try?` and falls back to `[]`, so a rename
+    /// renders an EMPTY launchpad rather than an error.
     const FIXTURE_PATH: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fixtures/launchpad_layout.json"
     );
 
-    /// Every key a shell dereferences, spelled as the wire spells it.
+    /// Every key the shell dereferences, spelled as the wire spells it.
     ///
-    /// Swift decodes with `.convertFromSnakeCase`, so it reads `actionId` and
-    /// `onLabel`; the JS shell reads the raw object, so it reads `action_id`
-    /// and `on_label`. The two shells never read the same string, which is why
-    /// pinning the wire spelling is what protects both.
+    /// Swift decodes with `.convertFromSnakeCase`, so it reads `actionId` for
+    /// `action_id` and `onLabel` for `on_label`: it never reads the wire
+    /// spelling itself, which is why pinning it here is what protects it.
     const WIRE_KEYS: [&str; 14] = [
         "action_id",
         "title",
@@ -161,8 +159,8 @@ mnemonic = "C"
     }
 
     /// Compares against the checked-in fixture, or rewrites it under
-    /// UPDATE_FIXTURES. Both shells' tests read these same files, so a wire
-    /// change fails in all three places at once.
+    /// UPDATE_FIXTURES. The Swift test reads these same files, so a wire
+    /// change fails in both places at once.
     fn assert_matches_fixture(live: &serde_json::Value, path: &str) {
         if std::env::var_os("UPDATE_FIXTURES").is_some() {
             let pretty = serde_json::to_string_pretty(live).expect("serialises");
@@ -188,7 +186,7 @@ mnemonic = "C"
     }
 
     #[test]
-    fn the_launchpad_layout_survives_the_round_trip_to_both_shells() {
+    fn the_launchpad_layout_survives_the_round_trip_to_the_shell() {
         assert_matches_fixture(&live_payload(), FIXTURE_PATH);
     }
 
@@ -199,12 +197,12 @@ mnemonic = "C"
         for key in ["columns", "rows", "tiles"] {
             assert!(
                 payload.contains_key(key),
-                "the payload is missing {key}, which both shells read by that name"
+                "the payload is missing {key}, which the shell reads by that name"
             );
         }
         let tiles = payload["tiles"].as_array().expect("an array of tiles");
 
-        // Non-empty is the assertion that matters: both shells fall back to an
+        // Non-empty is the assertion that matters: the shell falls back to an
         // empty list on a decode failure, so "no tiles" is exactly what a
         // broken contract looks like from the outside.
         assert!(!tiles.is_empty(), "an empty layout is the failure mode");

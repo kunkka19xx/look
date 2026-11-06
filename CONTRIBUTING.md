@@ -85,11 +85,9 @@ The Rust core in `core/` is shared. The UI is not:
 
 - `apps/macos/` is a native SwiftUI app, talking to the core through the C ABI
   in `bridge/ffi/`
-- `apps/linows/gpui/` is the shipping shell on Linux and Windows, GPU-drawn with
+- `apps/linows/gpui/` is the shell on Linux and Windows, GPU-drawn with
   [gpui](https://www.gpui.rs), talking to `apps/linows/backend/` in-process.
   Run it with `cd apps/linows && cargo run`
-- `apps/linows/src-tauri/` is the old Tauri shell, kept only as a fallback
-  (`cargo build -p lookapp-tauri`). Do not build new features on it
 
 Before opening a PR, run the core checks:
 

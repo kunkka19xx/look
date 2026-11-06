@@ -1,7 +1,7 @@
-//! The preview column: what the selected row is, drawn the way the webview's
-//! `preview.js` and macOS `ResultPreviewView` draw it. The data comes from the
-//! backend off the UI thread after a short dwell, so arrowing through rows
-//! does not read every file on the way.
+//! The preview column: what the selected row is, drawn the way the macOS
+//! `ResultPreviewView` draws it. The data comes from the backend off the UI
+//! thread after a short dwell, so arrowing through rows does not read every
+//! file on the way.
 
 use std::collections::HashMap;
 use std::ops::Range;

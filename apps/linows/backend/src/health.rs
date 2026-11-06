@@ -4,10 +4,10 @@
 //! The app is usually launched from a menu entry, so `eprintln!` is invisible.
 //! When something the user must act on fails (the global hotkey can't be
 //! registered, the GNOME extension needs a re-login), modules report it here;
-//! the frontend shows the collected issues as a persistent, dismissible
-//! notice. Issues land at any time - during `setup` (before the webview runs
-//! JS) or minutes later from a background thread - so the frontend both pulls
-//! the list on init and listens for the change the host relays.
+//! the shell shows the collected issues as a persistent, dismissible notice.
+//! Issues land at any time - during `setup`, before the window is up, or
+//! minutes later from a background thread - so the shell both pulls the list
+//! on init and listens for the change the host relays.
 
 use serde::Serialize;
 use std::sync::Mutex;
@@ -74,7 +74,7 @@ pub fn get_health_issues() -> Vec<HealthIssue> {
 /// Debug-only test hook: `LOOK_FAKE_HEALTH_ISSUE=hotkey,late:gnome-ext`
 /// reports canned issues so the notice UI can be tested without reproducing
 /// real failures on each OS. Bare ids are reported during setup (exercises
-/// the get_health_issues pull path, before the webview runs JS); ids
+/// the get_health_issues pull path, before the window is up); ids
 /// prefixed with `late:` arrive seconds after startup (exercises the
 /// health-changed push path). Compiled out of release builds.
 #[cfg(debug_assertions)]

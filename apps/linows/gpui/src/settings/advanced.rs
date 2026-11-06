@@ -1,7 +1,5 @@
 //! The Advanced tab: web answers, the background picture, indexing, logs,
-//! startup, the config file, and the behind-window frost on Linux. The
-//! webview's WebKitGTK switches (GPU compositing, blur fallback) have no
-//! meaning on this shell and are not here.
+//! startup, the config file, and the behind-window frost on Linux.
 
 use std::path::PathBuf;
 

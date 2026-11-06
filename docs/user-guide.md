@@ -763,14 +763,6 @@ Every modifier chord below is the default. On macOS, and in the gpui build on Li
 - translation requires network; check connectivity and retry
 - corporate proxies and VPNs can block the translation endpoint
 
-**Linux, Tauri backup shell only (`lookapp-tauri`) - ghost slider trails or overlapping popovers in Settings.**
-
-- a WebKitGTK stack interaction reported on Arch, Ubuntu and inside VMs. The shipping `lookapp` draws with gpui and has no WebKitGTK in the process, so it is not affected and ignores the two keys below
-- in the backup shell, open **Settings > Advanced > Rendering** and flip one toggle:
-  - **Disable GPU compositing** (`disable_gpu_compositing`) - keeps blur, fixes the ghost. Requires restart.
-  - **Disable blur effect** (`disable_blur_effect`) - drops blur, keeps tint. Takes effect immediately.
-- both default off, and both are Linux-only. Configs written before the rename use `arch_disable_gpu` / `arch_disable_blur`, which are still read
-
 **I want to reset everything to defaults.**
 
 - `Settings > Advanced > Create Fresh Config` rewrites `~/.look/config` from the latest defaults (with a confirmation prompt)

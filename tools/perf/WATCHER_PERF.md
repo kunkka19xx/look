@@ -1,8 +1,8 @@
 # Watcher / Index-Refresh Performance Report
 
-Measured against the changes that landed in `apps/linows/src-tauri/src/state.rs` and `core/engine/src/lib.rs` (scoped bootstrap, non-recursive file watches, noise filter, off-thread reindex, cooldown gate, RAII slot guard).
+Measured against the changes that landed in `apps/linows/backend/src/state.rs` and `core/engine/src/lib.rs` (scoped bootstrap, non-recursive file watches, noise filter, off-thread reindex, cooldown gate, RAII slot guard).
 
-Three benches drive every number in this report. They live in a separate `tools/perf` crate - not part of the app, not in `dev-dependencies` of any shipped crate. Zero impact on Tauri bundle size.
+Three benches drive every number in this report. They live in a separate `tools/perf` crate - not part of the app, not in `dev-dependencies` of any shipped crate. Zero impact on the shipped binary.
 
 | Bench                     | What it measures                                                                  |
 | ------------------------- | --------------------------------------------------------------------------------- |

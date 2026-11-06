@@ -596,8 +596,7 @@ fn apply(command: Command, cx: &mut App) {
         Command::Toggle | Command::Hide => hide(cx),
         Command::Show => show(cx),
         Command::Quit => {
-            // The compositor keybinding this process registered goes with it,
-            // as the Tauri shell does on exit.
+            // The compositor keybinding this process registered goes with it.
             #[cfg(target_os = "linux")]
             if !probe_wanted() {
                 linows_backend::platform::linux::wayland_shortcut::cleanup_keybinding();

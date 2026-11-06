@@ -1,7 +1,7 @@
 name: Update nixpkgs
 
 # A stale pin builds Look against an older glibc than the user's NixOS graphics
-# driver, and WebKit then fails with EGL_BAD_PARAMETER (blank window).
+# driver, which breaks GPU init (blank window).
 on:
   schedule:
     - cron: "0 3 * * 1"

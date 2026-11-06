@@ -1,6 +1,6 @@
 //! The launcher hotkey as configured, and what the settings recorder asks
-//! about it. Binding the key is the shell's job: each one has its own route
-//! (a Tauri plugin, a compositor keybinding, a gpui key handler).
+//! about it. Binding the key is the shell's job: a compositor keybinding on
+//! Wayland, a gpui key handler elsewhere.
 
 use crate::health;
 use look_engine::config::RuntimeConfig;

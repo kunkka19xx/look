@@ -1,9 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["backend", "gpui", "src-tauri"]
-# A bare `cargo build` builds the shipping shell (gpui) and its backend. The
-# Tauri shell stays as the backup: `cargo build -p lookapp-tauri`.
-default-members = ["backend", "gpui"]
+members = ["backend", "gpui"]
 
 # The release version for dev and Nix builds. A tagged release takes its
 # version from the tag instead (LOOK_VERSION, see backend/build.rs).

@@ -22,7 +22,7 @@ struct NowPlayingSnapshot: Equatable {
 /// and liable to break on a macOS update.
 ///
 /// Commands must be addressed to a specific player, as the Linux/Windows app
-/// does with an MPRIS bus name (`apps/linows/src-tauri/src/nowplaying.rs`). The
+/// does with an MPRIS bus name (`apps/linows/backend/src/nowplaying.rs`). The
 /// untargeted `MRMediaRemoteSendCommand` reports success but is answered by
 /// Look's own `MPRemoteCommandCenter`, so it resumes Pomodoro music instead of
 /// the tab on screen.

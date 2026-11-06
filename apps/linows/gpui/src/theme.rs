@@ -1,7 +1,5 @@
-//! The look, resolved from `~/.look/config` the way `src/js/theme-defaults.js`
-//! and `src/css/theme.css` resolve it for the webview: a preset names the
-//! palette, the `ui_*` keys the user owns override it, and `custom` is the
-//! keys alone.
+//! The look, resolved from `~/.look/config`: a preset names the palette, the
+//! `ui_*` keys the user owns override it, and `custom` is the keys alone.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -23,9 +21,8 @@ pub const TILE_VALUE_SIZE: f32 = 20.0;
 /// Starts at the 1440p rung, the size before the first fit.
 static WINDOW_SIZE: RwLock<(f32, f32)> = RwLock::new((1008.0, 672.0));
 
-/// The split size on the shared geometry ladder, so the panel is the one the
-/// Tauri shell opens on the same screen: 840x560 up to 1080 logical rows,
-/// growing to 1.3x past 1440.
+/// The split size on the shared geometry ladder: 840x560 up to 1080 logical
+/// rows, growing to 1.3x past 1440.
 pub fn fit_window(screen_h: f32) {
     let ratio = geometry::screen_ratio(screen_h.round() as u32, 1.0);
     let size = (
@@ -144,8 +141,7 @@ const PLATFORM_MONO: &str = "Adwaita Mono";
 #[cfg(not(target_os = "linux"))]
 const PLATFORM_MONO: &str = "Cascadia Code";
 
-/// One preset's palette, the `:root[data-theme]` block of theme.css plus the
-/// triplets theme-defaults.js seeds the config with.
+/// One preset's palette, plus the triplets the config is seeded with.
 #[derive(Clone)]
 struct Preset {
     id: &'static str,

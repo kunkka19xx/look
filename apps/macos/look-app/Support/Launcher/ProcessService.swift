@@ -3,7 +3,7 @@ import Foundation
 
 /// One row in the `ps"` finder: a raw process. Kept minimal so enumeration stays
 /// cheap; richer fields load per-selection via `ProcessService.detail`. Mirrors
-/// the linows `ProcRow` (`apps/linows/src-tauri/src/process.rs`), minus the
+/// the linows `ProcRow` (`apps/linows/backend/src/process.rs`), minus the
 /// icon: macOS resolves that in the view via `NSRunningApplication`.
 struct ProcessRow: Identifiable, Equatable {
     let pid: Int32

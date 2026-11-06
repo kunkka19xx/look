@@ -110,7 +110,7 @@ fn detect_install_method_for_path(path: &Path) -> InstallMethod {
     if lower.contains("\\scoop\\apps\\look\\") {
         return InstallMethod::Scoop;
     }
-    // Tauri's currentUser bundle defaults to %LOCALAPPDATA%\Look, while the
+    // The old per-user bundle installed to %LOCALAPPDATA%\Look, while the
     // install script passes %LOCALAPPDATA%\Programs\Look via NSIS /D.
     if lower.contains("\\appdata\\local\\look\\")
         || lower.contains("\\appdata\\local\\programs\\look\\")
