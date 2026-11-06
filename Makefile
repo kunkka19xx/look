@@ -4,7 +4,7 @@
 # Force a specific build explicitly (from the repo root, so relative paths
 # inside the Makefiles resolve):
 #   make -f scripts/Makefile.mac     <target>   - macOS / Xcode
-#   make -f scripts/Makefile.win     <target>   - Windows / Tauri (apps/linows/)
+#   make -f scripts/Makefile.win     <target>   - Windows (apps/linows/)
 
 ifeq ($(OS),Windows_NT)
 include scripts/Makefile.win

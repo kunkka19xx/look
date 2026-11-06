@@ -2,7 +2,7 @@ import XCTest
 @testable import LauncherLogic
 
 /// Parity tests for the process-finder ranking, mirroring the Rust reference
-/// tests in `apps/linows/src-tauri/src/process.rs`. The fuzzy name score is
+/// tests in `apps/linows/backend/src/process.rs`. The fuzzy name score is
 /// injected as a lightweight subsequence stub: the real `core/matching` DP is
 /// already covered by the Rust crate's own tests, and reused verbatim over FFI,
 /// so what needs testing here is the numeric-tier layering and the apps-first

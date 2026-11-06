@@ -2,7 +2,7 @@
 //!
 //! Decides whether a raw query is something the user typed *as a web address*
 //! rather than a search term, and if so resolves it to an openable URL. Pure and
-//! network-free - both platform shells (macOS FFI, linows Tauri) call this so the
+//! network-free - both platform shells (macOS FFI, linows backend) call this so the
 //! rules and the risky TLD/extension list live once.
 //!
 //! Two tiers, by how certain the match is (see `UrlTier`). The tier exists so the

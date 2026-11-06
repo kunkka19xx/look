@@ -4,20 +4,20 @@ import Foundation
 /// Screen-based auto-scale and placement for the launcher window.
 ///
 /// Mirrors the Linux/Windows formula in
-/// apps/linows/src-tauri/src/main.rs (`scaled_window_size`):
+/// apps/linows/backend/src/geometry.rs (`scaled_window_size`):
 /// 1.0× at ≤1080-point screen height, linear to 1.2× at 1440p,
 /// capped at 1.3× on taller displays.
 ///
-/// SwiftUI/AppKit work in points, so unlike the Tauri version we do
+/// SwiftUI/AppKit work in points, so unlike the linows version we do
 /// not multiply by backingScaleFactor - the OS handles that.
 /// NSScreen height on a 2× Retina 4K is already 1080 points, matching
-/// the Tauri `logical_h = physical_h / scale` derivation.
+/// the linows `logical_h = physical_h / scale` derivation.
 ///
 /// The launcher is not draggable: it opens at a fixed
 /// position on whichever screen holds the mouse cursor, recomputed on
 /// every show (see `LauncherView.toggleWindowVisibility`).
 enum WindowAutoScale {
-    // Base size matches the Linux/Windows build (apps/linows/src-tauri):
+    // Base size matches the Linux/Windows build (apps/linows/backend):
     // 840×560 logical (3:2), landscape - list pane + preview pane side by side.
     static let baseWidth: CGFloat = 840
     static let baseHeight: CGFloat = 560

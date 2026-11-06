@@ -47,8 +47,7 @@ pub struct ClipboardImageEntry {
 }
 
 /// The thumbnail path is derived rather than stored, so moving the image
-/// directory cannot orphan the index. The picture itself travels as a data URL
-/// (`clipboard_image_data_url`), not as a path.
+/// directory cannot orphan the index.
 #[derive(Serialize)]
 pub struct ClipboardImageRow {
     #[serde(flatten)]
@@ -433,12 +432,6 @@ pub fn delete_clipboard_image(hash: &str) -> bool {
     // Saving sweeps, so the pixels go with the row.
     save_images(&state.images);
     true
-}
-
-/// The picture as a data URL, so images travel the way icons do.
-pub fn clipboard_image_data_url(hash: &str) -> Option<String> {
-    let path = clipimage::file_path(hash)?;
-    crate::platform::shared::read_icon_file(&path.to_string_lossy())
 }
 
 /// Back on the clipboard as pixels and as a file, so it pastes into an editor

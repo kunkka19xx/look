@@ -4,7 +4,7 @@ version.workspace = true
 edition = "2024"
 license = "GPL-3.0-or-later"
 authors = ["kunkka19xx <nobita079x@gmail.com>"]
-description = "Everything the linows launcher does that is not drawing: search, launching, clipboard, controls. Shared by the gpui shell and the Tauri backup."
+description = "Everything the linows launcher does that is not drawing: search, launching, clipboard, controls."
 
 [lib]
 name = "linows_backend"

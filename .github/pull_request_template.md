@@ -32,7 +32,6 @@ Tick what you ran. Delete whole blocks that this PR does not touch.
 - [ ] `cargo test --locked --manifest-path apps/linows/Cargo.toml`
 - [ ] `cargo fmt --all --manifest-path apps/linows/Cargo.toml -- --check`
 - [ ] `cargo clippy --locked --workspace --all-targets --manifest-path apps/linows/Cargo.toml -- -D warnings`
-- [ ] `node --test apps/linows/tests/*.test.js`
 
 ### Nix package
 

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Installs Look (Windows, Tauri) from a GitHub release via the NSIS installer.
+  Installs Look (Windows) from a GitHub release via the NSIS installer.
 
 .DESCRIPTION
   Resolves the latest release on kunkka19xx/look, downloads
@@ -308,7 +308,7 @@ function Invoke-Uninstall {
     Stop-LookProcess
     Remove-FromUserPath $InstallDir
 
-    # Tauri's NSIS template emits `uninstall.exe` at the install root.
+    # The NSIS installer emits `uninstall.exe` at the install root.
     $uninstaller = Join-Path $InstallDir "uninstall.exe"
     if (Test-Path $uninstaller) {
         Write-Step "Running uninstaller: $uninstaller"

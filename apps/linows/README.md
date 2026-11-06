@@ -4,21 +4,28 @@ Desktop app for **Windows + Linux**, drawn by gpui-ce. The binary is `lookapp`.
 
 The macOS SwiftUI app (`apps/macos/`) is the design source of truth; this app replicates its look, feel, and feature set.
 
-The shell lives in `gpui/` (see its README). The Tauri shell it replaced stays in `src-tauri/` and `src/` as the backup, built by name: `cargo build -p lookapp-tauri`.
+The shell lives in `gpui/` (see its README); everything that is not drawing lives in `backend/`.
 
 ## Architecture
 
 ```
 apps/linows/
-  backend/               Rust: search, launching, clipboard, controls, config (shared with the gpui port)
   gpui/                  The shell: window, screens, keys (lookapp)
-  src-tauri/             Tauri shell (backup): window, hotkey plugin, one command per backend call
     src/
-      main.rs            Entry point, plugin registration, global hotkey
-      commands.rs        Search, open, reveal, window, quit
-      state.rs           AppState: engine cache, scoped-refresh watcher (non-recursive
+      main.rs            Entry point, window, control socket, global hotkey
+      launcher.rs        The launcher view: bar, results, preview, footer
+      theme.rs           The look, resolved from ~/.look/config
+      settings/          Ctrl+Shift+, : the settings screen
+      commands/          /calc, /kill, /pomo, /shell, /speed, /sys, /todo
+      host/              Per-OS window plumbing (layer shell, X11, Windows)
+  backend/               Everything that is not drawing
+    src/
+      lib.rs             What the shell calls; host.rs is what it needs back
+      state.rs           Engine cache, scoped-refresh watcher (non-recursive
                          file roots, noise filter, debounce + cooldown, off-thread reindex,
                          RAII slot guard). See tools/perf/WATCHER_PERF.md for benchmarks.
+      search.rs          Query to rows, over core/engine
+      launch.rs          Open, reveal, focus an existing window, run as admin
       config.rs          Config get/set (.look/config persistence)
       files.rs           File meta, version, clipboard copy, music scan, folder pick
       clipboard.rs       Clipboard history monitor
@@ -32,44 +39,26 @@ apps/linows/
       translate.rs       Translation
       weburl.rs          URL-like query detection + opened-URL history (shared core)
       autostart.rs       Autostart management
+      qactions/          Quick Actions adapters (Bluetooth, Wi-Fi, …)
       platform/          Platform-specific code
         linux/           Icons, WM detection, Wayland shortcuts, GNOME ext, compositor blur, …
         windows/         Icons, effects, drives, known folders, …
         shared.rs        Shared platform helpers
-    capabilities/
-      default.json       Tauri v2 permissions (events, dialog)
-  src/                   Vanilla frontend (served by Tauri webview)
-    index.html
-    css/                 reset.css, layout.css, theme.css, motion.css, liquid.css
-    js/
-      app.js             Main controller, mode switching
-      keyboard.js        Keyboard handling
-      search.js          Query input, search modes (clipboard, translate)
-      ipc.js             All Tauri invoke wrappers
-      platform.js        Platform detection
-      blur.js            Compositor blur region (painted surfaces)
-      icons.js           Icon resolution
-      html-loader.js     Dynamic HTML template loader
-      components/        results, preview, picked, banner, translate, ai-answer (web answer card)
-      screens/           settings, commands (calc, kill, pomo, shell, speed, sys, todo)
-    html/screens/        HTML templates (search, settings, help, commands)
-    assets/              Icons
+  icons/                 App icons shipped by the deb, AppImage and Nix builds
 ```
 
 ## Why This Exists
 
 The previous Windows app was built with WinUI3/C#. It didn't match the macOS app's look and feel; the UI felt inconsistent across platforms. A Tauri app replaced it with a web-based frontend that could look identical on Windows and Linux, and the gpui shell in `gpui/` then replaced that, drawing the same design on the GPU with no browser engine in the process. The macOS SwiftUI app stays the single design reference throughout.
 
-Both migrations are complete: the WinUI3 app has been removed and lives on in git history under `apps/windows/`, and the Tauri shell stays in the tree as the backup only.
+Both migrations are complete, and both of the old shells live on in git history: the WinUI3 app under `apps/windows/`, the Tauri shell under `apps/linows/src-tauri/` and `apps/linows/src/`.
 
 ## Key Decisions
 
-- Direct Rust crate deps (no FFI/cdylib); both shells call the `backend/` crate, which calls the core engine directly
-- Own Cargo workspace (not part of core/ workspace); `default-members` is `backend` + `gpui`, so a bare `cargo build` builds the shipping shell
+- Direct Rust crate deps (no FFI/cdylib); the shell calls the `backend/` crate, which calls the core engine directly
+- Own Cargo workspace (not part of core/ workspace), so a bare `cargo build` builds the shell and its backend
 - macOS design language: dark, blurred, rounded, minimal
 - Audio playback via `rodio` (Rust)
-
-Backup-shell decisions, still true of `src-tauri/` and `src/`: ES modules (`<script type="module">`) with no bundler, CSS custom properties for theming, `tauri-plugin-dialog` for the folder picker, and Tauri v2 capabilities in `capabilities/default.json` for event/dialog permissions.
 
 ## Linux Desktop Environments
 
@@ -131,8 +120,6 @@ nix develop -c cargo run
 nix build .#default -L   # the packaged build, from the repo root
 ```
 
-The Tauri backup builds by name: `cargo build -p lookapp-tauri`, `cargo tauri dev`, `cargo tauri build --bundles deb`.
-
 ## Testing on Ubuntu VM (virt-manager)
 
 **Build .deb on NixOS host** (needs `cargo install cargo-deb`, the same tool CI uses):
@@ -173,7 +160,7 @@ lookapp                                    # launch from terminal to see logs
 
 > **Why?** NixOS builds link against `/nix/store/.../ld-linux-x86-64.so.2` which doesn't exist on Ubuntu/Debian. `patchelf` rewrites it to the standard `/lib64/ld-linux-x86-64.so.2`. Without this, the binary shows `cannot execute: required file not found`. For proper release builds, use Ubuntu/Debian CI or add a patchelf step to the build script.
 
-**VM without GPU** (no `/dev/dri` or virtual GPU driver): wgpu falls back to software GL through Mesa, slower but drawn the same. The Tauri backup detects this itself and turns WebKitGTK's acceleration off (`set_hardware_acceleration_policy(Never)`).
+**VM without GPU** (no `/dev/dri` or virtual GPU driver): wgpu falls back to software GL through Mesa, slower but drawn the same.
 
 **GNOME Shell extension** requires log out/in after first install to load.
 
@@ -215,24 +202,3 @@ lookapp                                    # launch from terminal to see logs
 
     # Undo: replace 'false' with 'true'
     ```
-
-## Tauri backup only
-
-None of this applies to `lookapp`; it concerns `lookapp-tauri`, which still draws through WebKitGTK.
-
-**Dev in a VM (NixOS):**
-
-```bash
-WEBKIT_DISABLE_COMPOSITING_MODE=1 cargo tauri dev
-```
-
-**Ghost slider trails / overlapping popovers:** on some WebKitGTK stacks, dragging a slider in Settings leaves a trail of past thumb positions, and the theme dropdown shows old text under the new label. Reported on Arch, Ubuntu and inside VMs, while identical webkit versions elsewhere don't show it, so it's some webkit x GTK/mutter/mesa interaction we can't auto-detect yet.
-
-If you hit it, open **Settings > Advanced > Rendering** and flip one of:
-
-- **Disable GPU compositing** (`disable_gpu_compositing`): keeps blur, fixes the ghost via the same API path VMs already use. Requires restart.
-- **Disable blur effect** (`disable_blur_effect`): drops the remaining filters, keeps tint. Live; no restart.
-
-Both default off and are ignored by the gpui shell. Configs written before the rename use `arch_disable_gpu` / `arch_disable_blur`, which are still read.
-
-If neither helps, please open an issue with: `pacman -Q webkit2gtk-4.1 gtk3 mutter mesa`, `lspci -nn | grep VGA`, and `echo $XDG_SESSION_TYPE`.

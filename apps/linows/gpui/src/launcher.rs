@@ -3070,7 +3070,7 @@ impl Launcher {
         }
         // Gap 0 with a query: the classic framed panel. The resting home
         // keeps the frosted bar in both modes. Without a compositor neither
-        // floats nor rests: always the panel (layout.js `apply`).
+        // floats nor rests: always the panel.
         let seated = classic() || (!th.floating() && !home);
         // The launchpad is a setting; off, the empty query is the bar alone,
         // or the panel listing the index where the bar cannot rest.
@@ -3195,23 +3195,21 @@ impl Launcher {
 }
 
 /// No compositor (bare X11): nothing blends a transparent pixel, so the
-/// Tauri shell's `floatingSupported` is false and it draws the classic framed
-/// panel, flush with the window, in every state.
+/// classic framed panel is drawn, flush with the window, in every state.
 fn classic() -> bool {
     crate::host::opaque()
 }
 
 /// Whether the empty query lists the index under the bar. The bar resting
-/// alone needs real transparency; without a compositor the Tauri shell keeps
-/// its framed panel and searches the empty query (`hidesResultsForEmptyQuery`).
+/// alone needs real transparency; without a compositor the framed panel stays
+/// and the empty query is searched.
 fn home_lists() -> bool {
     classic()
 }
 
-/// The launchpad setting, where the stack can show it. Like the Tauri shell's
-/// (`superactions.applyEnabled`), the classic panel has no launchpad and lists
-/// the index instead; the config value is left alone, so it comes back by
-/// itself under a compositor.
+/// The launchpad setting, where the stack can show it. The classic panel has
+/// no launchpad and lists the index instead; the config value is left alone,
+/// so it comes back by itself under a compositor.
 pub(crate) fn launchpad_shown(th: &Theme) -> bool {
     th.shows_launchpad() && !classic()
 }

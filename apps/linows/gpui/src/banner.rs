@@ -1,6 +1,6 @@
 //! The banner slot above the top bar: a transient toast that hides itself,
 //! and a sticky notice that stays until dismissed. A toast wins while it is
-//! up; when it expires the notice resurfaces, as the webview's `banner.js`.
+//! up; when it expires the notice resurfaces.
 
 use std::time::Duration;
 

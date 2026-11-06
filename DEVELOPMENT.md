@@ -10,8 +10,7 @@ Guide for building Look locally and contributing to the project.
 │   ├── macos/                    # Swift macOS app (Xcode project)
 │   └── linows/                   # gpui app, Linux + Windows
 │       ├── gpui/                 #   The shell: window, screens, keys (lookapp)
-│       ├── backend/              #   Everything that is not drawing (shared)
-│       └── src-tauri/, src/      #   The Tauri shell, kept as the backup
+│       └── backend/              #   Everything that is not drawing
 ├── core/                         # Shared Rust, consumed by every shell
 │   ├── ai/                       # Routing, planning, lexicon
 │   ├── answers/                  # Platform-agnostic "web answer" features
@@ -148,7 +147,7 @@ make app-run
 
 - stops any running `lookapp` process
 - runs `cargo run -p lookapp` for the linows app (`apps/linows/`) under the VS 2022 `vcvars` environment
-- `make app-run-release` runs the release build instead; `make tauri-run` starts the Tauri backup
+- `make app-run-release` runs the release build instead
 
 Install a side-by-side test build (`Look Dev`) without replacing the normal install (macOS only):
 

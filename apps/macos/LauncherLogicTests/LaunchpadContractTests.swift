@@ -7,12 +7,10 @@ import XCTest
 /// Worth pinning because every way this contract breaks is silent.
 /// `EngineBridge.launchpadLayout()` decodes with `try?` and returns `[]` on
 /// failure, so a renamed field does not raise anything - it renders an empty
-/// launchpad on the screen shown at every launch. The JS shell reads the raw
-/// object (`tile.action_id`), so the two shells never even read the same
-/// spelling, and a rename breaks them in two different silent ways.
+/// launchpad on the screen shown at every launch.
 ///
-/// The fixture is the one the Rust and JS tests read. Regenerate all three
-/// together with:
+/// The fixture is the one the Rust test reads. Regenerate both together
+/// with:
 ///
 ///     UPDATE_FIXTURES=1 cargo test --manifest-path bridge/ffi/Cargo.toml
 final class LaunchpadContractTests: XCTestCase {

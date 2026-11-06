@@ -2,7 +2,7 @@
 //!
 //! The wire contract lives here rather than in each shell's transport layer so
 //! there is exactly one definition of it: the C FFI hands macOS this JSON and
-//! the Tauri commands hand linows the same JSON, and a new [`Launch`] variant
+//! the linows backend hands its shell the same JSON, and a new [`Launch`] variant
 //! cannot reach one shell without reaching the other.
 
 use serde::Serialize;

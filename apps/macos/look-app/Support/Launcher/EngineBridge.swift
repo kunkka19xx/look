@@ -1741,7 +1741,7 @@ nonisolated struct ToolAction: Decodable {
 }
 
 /// The row a block's placeholders expand against. One struct because the three
-/// always travel together, mirroring `RowArgs` on the Tauri side - and because
+/// always travel together, mirroring `RowArgs` on the linows side - and because
 /// they used to be three defaulted parameters, which let a call site drop the
 /// row and render `shortcuts run ''` while Enter still ran the real command.
 nonisolated struct RowRef {

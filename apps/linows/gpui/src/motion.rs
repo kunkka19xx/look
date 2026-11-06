@@ -1,5 +1,5 @@
-//! Motion, same numbers as src/css/motion.css and the component sheets
-//! minus the scales: a CSS transform scales a finished raster, while gpui
+//! Motion, the same numbers the CSS sheets carried, minus the scales: a CSS
+//! transform scales a finished raster, while gpui
 //! 0.2.2 can only resize the box, which relayouts the text inside it every
 //! frame. So here things fade and rise, by whole pixels, and without the
 //! CSS spring: its overshoot in whole pixels is a one pixel bounce at the

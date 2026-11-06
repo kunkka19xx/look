@@ -226,7 +226,7 @@ impl Hotkey {
         self.join(|m| m.names().1, self.key.display())
     }
 
-    /// The spelling Tauri's `Shortcut` parses.
+    /// The spelling `global_hotkey`'s `HotKey` parses.
     pub fn accelerator(&self) -> String {
         self.join(|m| m.names().2, self.key.code.clone())
     }

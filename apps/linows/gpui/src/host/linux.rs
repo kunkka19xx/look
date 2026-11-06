@@ -1,6 +1,6 @@
 //! Linux host: a centred layer shell surface on Wayland (a plain toplevel where
-//! the compositor has none, as on GNOME), a borderless floating dialog on X11
-//! (as the Tauri shell's window), commands over a Unix socket.
+//! the compositor has none, as on GNOME), a borderless floating dialog on
+//! X11, commands over a Unix socket.
 
 use std::io::Write;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -210,7 +210,7 @@ fn x11_sync(conn: &impl x11rb::protocol::xproto::ConnectionExt) {
 /// X11, after gpui has asked for the map: drop the frame gpui requested and
 /// move the window where `bounds` says, since a tiling WM (i3) places a window
 /// itself on map and only takes a position from a mapped one. Then ask for
-/// focus, as the Tauri shell's toggle does.
+/// focus.
 ///
 /// gpui writes its own `_MOTIF_WM_HINTS` (a frame) on its connection, which
 /// may not be flushed yet, so the fix-up waits off thread for the map.
@@ -291,8 +291,8 @@ fn x11_undecorate_and_place(wid: u32, x: i32, y: i32) {
 
 /// On X11 a layer shell kind falls back to a normal toplevel, which a tiling
 /// WM such as i3 tiles. A dialog stays managed (focus, stacking) but floats:
-/// the role min == max size hints play for the Tauri window, which gpui does
-/// not let a caller set.
+/// the role min == max size hints play, which gpui does not let a caller
+/// set.
 ///
 /// Mutter has no layer shell, and gpui fails the open rather than fall back,
 /// so a normal toplevel stands in; GNOME places it.

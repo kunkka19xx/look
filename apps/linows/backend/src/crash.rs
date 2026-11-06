@@ -1,14 +1,14 @@
 //! Last-resort crash reporting for failures the health notice can't reach.
 //!
-//! The health banner needs a live webview; a panic during startup (WebView2
-//! missing on Windows, plugin init, the setup hook) kills the process before
-//! one exists, and a menu-launched Look dies as an invisible no-show. The
-//! panic hook writes the panic to a crash log and, for main-thread panics,
-//! shows a native dialog that doesn't depend on the webview.
+//! The health banner needs a live window; a panic during startup kills the
+//! process before one exists, and a menu-launched Look dies as an invisible
+//! no-show. The panic hook writes the panic to a crash log and, for
+//! main-thread panics, shows a native dialog that doesn't depend on the
+//! window.
 //!
-//! Out of scope: segfaults in native code (WebKitGTK, GPU drivers) never
-//! reach a Rust panic hook, and loader failures (missing shared libraries)
-//! kill the process before any of this runs.
+//! Out of scope: segfaults in native code (GPU drivers) never reach a Rust
+//! panic hook, and loader failures (missing shared libraries) kill the
+//! process before any of this runs.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -124,7 +124,7 @@ fn native_error_dialog(text: &str) {
     let text_w = to_wide(text);
     let title_w = to_wide(DIALOG_TITLE);
     // MessageBoxW only needs user32.dll, so it works even when the crash is
-    // WebView2 itself failing to initialize.
+    // the GPU backend itself failing to initialize.
     unsafe {
         MessageBoxW(
             None,

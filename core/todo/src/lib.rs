@@ -1,7 +1,7 @@
 //! Shared todo backend for Look.
 //!
 //! Persists the /todo command's tasks in SQLite so both the macOS app
-//! (via `bridge/ffi`) and linows (via its Tauri command layer) use the
+//! (via `bridge/ffi`) and linows (via its backend crate) use the
 //! same store. The crate owns the `todo_tasks` and `todo_tombstones`
 //! tables and their migration; the caller passes the path to the app's
 //! existing database (`look.db`), so todos live alongside

@@ -3,7 +3,7 @@
 //! Unlike `watcher_stress` (which simulates the decision logic against
 //! synthesized event timestamps), this binary:
 //!   • spins up a real `notify::RecommendedWatcher` against a tempdir,
-//!   • runs the same loop policy as `apps/linows/src-tauri/src/state.rs`
+//!   • runs the same loop policy as `apps/linows/backend/src/state.rs`
 //!     (debounce, cooldown, noise filter, scoped refresh, off-thread reindex,
 //!     RAII slot guard),
 //!   • spawns a producer worker that performs real file create/rename/remove
@@ -331,7 +331,7 @@ fn now_unix_ms() -> u64 {
         .unwrap_or(0)
 }
 
-// Mirrors `apps/linows/src-tauri/src/state.rs` exactly.
+// Mirrors `apps/linows/backend/src/state.rs` exactly.
 fn should_mark_dirty(event: &Event) -> bool {
     if event.paths.is_empty() {
         return false;

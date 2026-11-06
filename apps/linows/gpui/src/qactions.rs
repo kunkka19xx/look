@@ -1,8 +1,7 @@
 //! Quick Actions: the live controls the shared catalog gives some rows
-//! (Bluetooth, Wi-Fi, ...), under the preview's header. The webview's
-//! `components/qactions.js`: the switch or Ctrl+O flips the first toggle, a
-//! device row connects or disconnects it, the outcome goes to the banner,
-//! and the state is read again after every apply.
+//! (Bluetooth, Wi-Fi, ...), under the preview's header: the switch or Ctrl+O
+//! flips the first toggle, a device row connects or disconnects it, the
+//! outcome goes to the banner, and the state is read again after every apply.
 
 use gpui::{Context, Div, ElementId, FontWeight, SharedString, div, prelude::*, px};
 use linows_backend::look_qactions::{ActionDescriptor, ControlKind};

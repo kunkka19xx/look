@@ -1,5 +1,4 @@
-//! Ctrl+Shift+, : the settings screen, the webview's `settings.js` and
-//! `settings.html` on this shell, run the way the macOS ThemeStore runs:
+//! Ctrl+Shift+, : the settings screen, run the way the macOS ThemeStore runs:
 //! every control edits a working copy that the theme follows at once, Save
 //! Config writes the lot to the file in one go, Esc discards.
 

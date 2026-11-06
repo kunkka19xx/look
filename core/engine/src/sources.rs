@@ -4,8 +4,8 @@
 //! Here rather than in each shell because none of it is native work. It is
 //! `look_sources` calls plus the id encoding `look_indexing` owns, and the two
 //! shells that need it would otherwise reimplement 350 lines apiece and drift
-//! on what `confirm` expands to. The C ABI over this is transport; the Tauri
-//! commands serialize these structs directly.
+//! on what `confirm` expands to. The C ABI over this is transport; the linows
+//! backend serializes these structs directly.
 //!
 //! A row carries only its candidate id, so every entry point starts by
 //! resolving `src:<block>:<row>` back to the block that declared it. Reading the

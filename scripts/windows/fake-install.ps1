@@ -9,7 +9,7 @@
   drops it there, so "Check for Updates" finds the real GitHub release and the
   full download -> checksum -> install -> relaunch flow runs for real.
 
-  tauri.conf.json is patched in place for the build and restored afterwards.
+  The version is stamped through LOOK_VERSION, which backend/build.rs reads.
 
 .PARAMETER Version
   Version to stamp on the fake build. Must be lower than the latest release.
@@ -36,7 +36,6 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
-$confPath = Join-Path $repoRoot "apps\linows\src-tauri\tauri.conf.json"
 $exePath = Join-Path $repoRoot "apps\linows\target\x86_64-pc-windows-msvc\release\lookapp.exe"
 if (-not $InstallDir) { $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\Look" }
 $installedExe = Join-Path $InstallDir "lookapp.exe"
@@ -54,17 +53,15 @@ if ($Uninstall) {
 }
 
 if (-not $SkipBuild) {
-    $original = Get-Content -Raw -Path $confPath
+    $env:LOOK_VERSION = $Version
     try {
-        $patched = [regex]::Replace($original, '"version":\s*"[^"]+"', "`"version`": `"$Version`"", 1)
-        [System.IO.File]::WriteAllText($confPath, $patched, (New-Object System.Text.UTF8Encoding($false)))
         Write-Host "Building release lookapp.exe as $Version"
         & (Join-Path $repoRoot "scripts\windows\with-vcvars.bat") cargo build `
-            --manifest-path (Join-Path $repoRoot "apps\linows\src-tauri\Cargo.toml") `
+            --manifest-path (Join-Path $repoRoot "apps\linows\Cargo.toml") -p lookapp `
             --target x86_64-pc-windows-msvc --release
         if ($LASTEXITCODE -ne 0) { throw "cargo build failed ($LASTEXITCODE)" }
     } finally {
-        [System.IO.File]::WriteAllText($confPath, $original, (New-Object System.Text.UTF8Encoding($false)))
+        Remove-Item Env:\LOOK_VERSION -ErrorAction SilentlyContinue
     }
 }
 

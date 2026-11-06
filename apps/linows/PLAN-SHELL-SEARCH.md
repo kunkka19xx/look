@@ -51,7 +51,7 @@ Search and launch executables from `$PATH` + shell history, ranked by usage.
 
 ## Backend
 
-- New module: `src-tauri/src/executables.rs`
+- New module: `backend/src/executables.rs`
   - `scan_path()` - collect executables from `$PATH`
   - `parse_shell_history()` - parse bash/zsh/fish history
   - `search_executables(query)` - fuzzy match + rank

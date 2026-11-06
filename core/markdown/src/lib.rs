@@ -155,7 +155,7 @@ pub fn blocks(raw: &str) -> Vec<Block> {
     out
 }
 
-/// JSON for the FFI/Tauri boundary.
+/// JSON for the FFI boundary.
 pub fn blocks_json(raw: &str) -> String {
     serde_json::to_string(&blocks(raw)).unwrap_or_else(|_| "[]".into())
 }
@@ -415,7 +415,7 @@ pub fn segments(raw: &str) -> Vec<Segment> {
     out
 }
 
-/// JSON for the FFI/Tauri boundary: `[{"kind":"text","text":...} |
+/// JSON for the FFI boundary: `[{"kind":"text","text":...} |
 /// {"kind":"code","text":...,"language":...}]`.
 pub fn segments_json(raw: &str) -> String {
     serde_json::to_string(&segments(raw)).unwrap_or_else(|_| "[]".into())

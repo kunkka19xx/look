@@ -44,7 +44,7 @@ apps/macos/…/Views/Launcher/QuickActionsSection.swift     renders the controls
 apps/macos/…/Views/Launcher/LauncherView+QuickActions.swift  loads state, runs actions
 bridge/ffi/src/qactions_api.rs                            exposes the catalog to Swift
 apps/linows/backend/src/qactions/mod.rs                 contract + entry points (edit only adapter())
-apps/linows/src/js/components/qactions.js                 renders controls, loads state, runs actions
+apps/linows/gpui/src/qactions.rs                          renders controls, loads state, runs actions
 ```
 
 ## Steps
