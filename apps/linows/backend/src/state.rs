@@ -165,6 +165,10 @@ impl AppState {
     }
 
     pub fn request_index_refresh(&self) -> bool {
+        // Opening the launcher is "next use", so a connector that died since
+        // the last one comes back here. Costs a lock and a `try_wait` per
+        // connector when everything is healthy.
+        crate::connectors::restart_dead();
         if !self.try_acquire_refresh_slot() {
             return false;
         }
@@ -172,10 +176,33 @@ impl AppState {
         spawn_refresh_worker(
             self.ptrs(),
             BootstrapScope::ALL,
-            dirty_snapshot,
+            Some(dirty_snapshot),
             true,
             true,
             "look: index refresh",
+        );
+        true
+    }
+
+    /// Re-reads the declared sources and nothing else, for rows a connector
+    /// pushed. `false` when another refresh holds the slot, which is the
+    /// caller's cue to try again rather than drop the rows: nothing else is
+    /// coming to ask for them.
+    ///
+    /// The index's dirtiness is left alone. Marking the whole index dirty
+    /// would make the next open walk the home directory again, and clearing
+    /// it would hide an app or file change this pass never looked at.
+    pub fn refresh_sources_now(&self) -> bool {
+        if !self.try_acquire_refresh_slot() {
+            return false;
+        }
+        spawn_refresh_worker(
+            self.ptrs(),
+            BootstrapScope::SOURCES_ONLY,
+            None,
+            true,
+            true,
+            "look: sources refresh",
         );
         true
     }
@@ -187,7 +214,7 @@ impl AppState {
         spawn_refresh_worker(
             self.ptrs(),
             BootstrapScope::ALL,
-            dirty_snapshot,
+            Some(dirty_snapshot),
             false, // no slot held - don't release on drop
             true,  // the UI re-runs its query on index_ready
             "look: bootstrap",
@@ -375,7 +402,7 @@ impl AppState {
                     spawn_refresh_worker(
                         ptrs,
                         scope,
-                        dirty_snapshot,
+                        Some(dirty_snapshot),
                         true, // outer loop already CAS-acquired in_progress
                         true, // watcher refreshes are async; frontend needs the signal
                         "[watcher] auto-refresh",
@@ -406,6 +433,8 @@ impl AppState {
 /// - `scope`: `ALL` for full bootstrap, `APPS_ONLY`/`FILES_ONLY` for scoped.
 /// - `dirty_snapshot`: captured by the caller *before* spawning so that
 ///   events arriving during the refresh keep the cleared_version stale.
+///   `None` leaves the dirty state alone: a pass over the sources alone has
+///   not seen what made the index dirty, so it must not clear it.
 /// - `holds_slot`: `true` if the caller already CAS-acquired `in_progress` and
 ///   wants this worker to release it via `RefreshSlotGuard` on drop. The
 ///   initial bootstrap passes `false` (no contention to gate against yet).
@@ -417,7 +446,7 @@ impl AppState {
 fn spawn_refresh_worker(
     ptrs: WatcherStatePtrs,
     scope: BootstrapScope,
-    dirty_snapshot: u64,
+    dirty_snapshot: Option<u64>,
     holds_slot: bool,
     emit_ready: bool,
     log_label: &'static str,
@@ -456,8 +485,10 @@ fn spawn_refresh_worker(
                 }
                 // Only clear the dirty version if no new events landed during
                 // the refresh; otherwise the next loop tick picks them up.
-                if change_version.load(Ordering::Acquire) == dirty_snapshot {
-                    cleared_version.store(dirty_snapshot, Ordering::Release);
+                if let Some(snapshot) = dirty_snapshot
+                    && change_version.load(Ordering::Acquire) == snapshot
+                {
+                    cleared_version.store(snapshot, Ordering::Release);
                 }
                 if scope.is_all() {
                     eprintln!(
