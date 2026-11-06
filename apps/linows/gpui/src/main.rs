@@ -596,8 +596,7 @@ fn apply(command: Command, cx: &mut App) {
         Command::Toggle | Command::Hide => hide(cx),
         Command::Show => show(cx),
         Command::Quit => {
-            // Connectors lead their own session, so without this they outlive
-            // the shell that started them.
+            // They lead their own session and would outlive the shell.
             linows_backend::connectors::stop();
             // The compositor keybinding this process registered goes with it.
             #[cfg(target_os = "linux")]
@@ -691,8 +690,7 @@ fn main() {
     }
     host::detach_console();
     state().start_bootstrap();
-    // Off the startup path: it reads two directories and spawns a process per
-    // block, and the window must not wait on either.
+    // Off the startup path: it reads directories and spawns processes.
     std::thread::spawn(|| linows_backend::connectors::start(state()));
     // The histories `c"` and `ci"` list: loaded from disk now, then kept by
     // the poll thread.

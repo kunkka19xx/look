@@ -28,20 +28,10 @@ const FLOOR: Duration = Duration::from_secs(2);
 const BUSY_RETRY: Duration = Duration::from_millis(250);
 const BUSY_PATIENCE: u32 = 8;
 
-/// An [`OnRows`] that reads the sources soon, not now, and not more than once
-/// per `FLOOR`. `refresh` re-reads the declared sources and says whether it
-/// could; `false` means another refresh held the slot, and the read is tried
-/// again rather than dropped, since nothing else is coming to ask for the rows.
-///
-/// A read is not free: it re-parses every declaration and re-walks every `dir`
-/// block, which is the right price for a reload and the wrong one per frame. A
-/// connector that pushes a hundred rows in a burst costs one read, and one that
-/// pushes constantly costs one read every `FLOOR` instead of one per frame.
-/// Bounded rather than removed, so a connector should still push when its data
-/// changes rather than on a timer.
-///
-/// One per process: the statics are shared, which is right while a process has
-/// one index.
+/// An [`OnRows`] that reads the sources soon, and at most once per `FLOOR`:
+/// a burst of pushes costs one read. `refresh` says whether it could read;
+/// `false` means the slot was busy and the read is retried, since nothing
+/// else will ask for the rows. One per process, like the index.
 pub fn coalesced(refresh: impl Fn() -> bool + Send + Sync + 'static) -> OnRows {
     let refresh = Arc::new(refresh);
     Arc::new(move |_block: &str| schedule_read(refresh.clone()))
@@ -94,8 +84,7 @@ fn schedule_read(refresh: Arc<dyn Fn() -> bool + Send + Sync>) {
                 let mut next = NEXT_ALLOWED.lock().unwrap_or_else(|err| err.into_inner());
                 *next = Some(Instant::now() + FLOOR);
             }
-            // Released before the check, so a push landing between the two
-            // either finds the queue open or is seen here.
+            // Released before the check, so a push between the two is not lost.
             QUEUED.store(false, Ordering::Release);
             if !ARRIVED.load(Ordering::Acquire) {
                 return;

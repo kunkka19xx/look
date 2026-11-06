@@ -165,9 +165,7 @@ impl AppState {
     }
 
     pub fn request_index_refresh(&self) -> bool {
-        // Opening the launcher is "next use", so a connector that died since
-        // the last one comes back here. Costs a lock and a `try_wait` per
-        // connector when everything is healthy.
+        // A dead connector comes back on the next open.
         crate::connectors::restart_dead();
         if !self.try_acquire_refresh_slot() {
             return false;
@@ -184,14 +182,10 @@ impl AppState {
         true
     }
 
-    /// Re-reads the declared sources and nothing else, for rows a connector
-    /// pushed. `false` when another refresh holds the slot, which is the
-    /// caller's cue to try again rather than drop the rows: nothing else is
-    /// coming to ask for them.
-    ///
-    /// The index's dirtiness is left alone. Marking the whole index dirty
-    /// would make the next open walk the home directory again, and clearing
-    /// it would hide an app or file change this pass never looked at.
+    /// Re-reads the declared sources only, for rows a connector pushed.
+    /// `false` when another refresh holds the slot, so the caller retries
+    /// rather than drops the rows. Dirtiness is left alone: this pass never
+    /// looked at apps or files.
     pub fn refresh_sources_now(&self) -> bool {
         if !self.try_acquire_refresh_slot() {
             return false;
@@ -433,8 +427,7 @@ impl AppState {
 /// - `scope`: `ALL` for full bootstrap, `APPS_ONLY`/`FILES_ONLY` for scoped.
 /// - `dirty_snapshot`: captured by the caller *before* spawning so that
 ///   events arriving during the refresh keep the cleared_version stale.
-///   `None` leaves the dirty state alone: a pass over the sources alone has
-///   not seen what made the index dirty, so it must not clear it.
+///   `None` leaves the dirty state alone.
 /// - `holds_slot`: `true` if the caller already CAS-acquired `in_progress` and
 ///   wants this worker to release it via `RefreshSlotGuard` on drop. The
 ///   initial bootstrap passes `false` (no contention to gate against yet).

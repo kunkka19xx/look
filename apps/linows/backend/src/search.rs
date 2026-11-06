@@ -129,8 +129,6 @@ pub fn reload_config(
     crate::config::invalidate_cache();
     crate::clipboard::reload_from_config();
     rebind();
-    // A reload is how a manifest written since launch is noticed, and how a
-    // block turned off gets its process ended.
     crate::connectors::start(state);
     // Before the index pass, never after: the pass reads the rows these blocks
     // write, and the other order indexes the previous run's.

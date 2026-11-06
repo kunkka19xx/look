@@ -92,8 +92,7 @@ pub fn cached() -> HashMap<String, TileValue> {
 /// `refresh` is a maximum staleness, not an interval: an open inside the window
 /// spawns nothing, which is what makes a per-open tile affordable.
 fn is_stale(name: &str, def: &TileDef) -> bool {
-    // Never: nothing to run and nobody to ask, so there is nothing that could
-    // go stale. A control has no command but does have an answer to fetch.
+    // Nothing to run and nobody to ask, so nothing can go stale.
     if def.value.is_none() && def.control.is_none() {
         return false;
     }
@@ -472,9 +471,7 @@ mod tests {
                 ..Default::default()
             },
         )]);
-        // No connector runs here, so the ask fails. The point is that it was
-        // made: before, the tile was never claimed and showed the placeholder
-        // until its first press.
+        // No connector runs here, so the ask fails; the point is that it was made.
         let outcome = refresh_defs(&tiles);
         assert_eq!(outcome.refreshed, 0);
         assert_eq!(outcome.errors.len(), 1, "{:?}", outcome.errors);
