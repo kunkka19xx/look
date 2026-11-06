@@ -340,6 +340,7 @@ fn open(shell: &Shell, cx: &mut App) {
             let message = format!("Look could not open its window: {err:#}");
             eprintln!("{message}");
             crash::report_fatal(&message);
+            linows_backend::connectors::stop();
             cx.quit();
         }
     }

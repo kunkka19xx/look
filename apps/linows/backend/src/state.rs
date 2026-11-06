@@ -190,27 +190,31 @@ impl AppState {
         if !self.try_acquire_refresh_slot() {
             return false;
         }
-        spawn_refresh_worker(
+        // Inline, so the answer is whether the rows were read, not whether a
+        // worker was spawned.
+        run_refresh(
             self.ptrs(),
             BootstrapScope::SOURCES_ONLY,
             None,
             true,
             true,
             "look: sources refresh",
-        );
-        true
+        )
     }
 
     fn start_background_bootstrap(&self) {
-        // Initial bootstrap doesn't gate on `in_progress` (it's the first
-        // refresh of the session, nothing else has tried to acquire yet).
+        // Holds the slot like any other refresh: a connector can push while
+        // this still runs, and its pass must not publish an engine under it.
+        if !self.try_acquire_refresh_slot() {
+            return;
+        }
         let dirty_snapshot = self.index_change_version.load(Ordering::Acquire);
         spawn_refresh_worker(
             self.ptrs(),
             BootstrapScope::ALL,
             Some(dirty_snapshot),
-            false, // no slot held - don't release on drop
-            true,  // the UI re-runs its query on index_ready
+            true,
+            true, // the UI re-runs its query on index_ready
             "look: bootstrap",
         );
     }
@@ -444,10 +448,31 @@ fn spawn_refresh_worker(
     emit_ready: bool,
     log_label: &'static str,
 ) {
+    thread::spawn(move || {
+        run_refresh(
+            ptrs,
+            scope,
+            dirty_snapshot,
+            holds_slot,
+            emit_ready,
+            log_label,
+        );
+    });
+}
+
+/// One refresh, on the calling thread. `true` when the rows were read.
+fn run_refresh(
+    ptrs: WatcherStatePtrs,
+    scope: BootstrapScope,
+    dirty_snapshot: Option<u64>,
+    holds_slot: bool,
+    emit_ready: bool,
+    log_label: &'static str,
+) -> bool {
     let db_path = default_db_path();
     // SAFETY: `AppState` is owned by the shell and outlives every worker thread,
     // so the addresses smuggled through `WatcherStatePtrs` stay valid.
-    thread::spawn(move || {
+    {
         let (engine_lock, change_version, cleared_version, in_progress, last_refresh_at) = unsafe {
             (
                 &*(ptrs.engine_lock as *const RwLock<QueryEngine>),
@@ -468,6 +493,7 @@ fn spawn_refresh_worker(
         } else {
             QueryEngine::bootstrap_sqlite_scoped(&db_path, scope)
         };
+        let read = result.is_ok();
         match result {
             Ok(()) => {
                 if let Ok(new_engine) = QueryEngine::from_sqlite(&db_path) {
@@ -503,8 +529,13 @@ fn spawn_refresh_worker(
                 eprintln!("{log_label} failed: {err}");
             }
         }
-        last_refresh_at.store(now_unix_ms(), Ordering::Release);
-    });
+        // The watcher's cooldown is about apps and files; a sources pass
+        // must not keep pushing it back.
+        if scope.apps || scope.files {
+            last_refresh_at.store(now_unix_ms(), Ordering::Release);
+        }
+        read
+    }
 }
 
 pub const ENV_DB_PATH: &str = "LOOK_DB_PATH";

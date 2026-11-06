@@ -18,6 +18,7 @@ pub(crate) fn restart_dead() {
     look_engine::connectors::restart_dead(on_rows());
 }
 
+/// Ends every connector. Their rows stay cached.
 pub(crate) fn stop() {
     look_engine::connectors::stop();
 }

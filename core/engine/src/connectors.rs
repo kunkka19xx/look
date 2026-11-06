@@ -37,6 +37,8 @@ pub fn coalesced(refresh: impl Fn() -> bool + Send + Sync + 'static) -> OnRows {
     Arc::new(move |_block: &str| schedule_read(refresh.clone()))
 }
 
+/// Queues one read after `SETTLE`, folding every push that lands meanwhile
+/// into it.
 fn schedule_read(refresh: Arc<dyn Fn() -> bool + Send + Sync>) {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Instant;
