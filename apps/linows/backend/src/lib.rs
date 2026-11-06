@@ -12,6 +12,7 @@ pub mod cli_path;
 pub mod clipboard;
 pub mod clipimage;
 pub mod config;
+pub mod connectors;
 pub mod consts;
 pub mod crash;
 pub mod files;

@@ -102,6 +102,7 @@ struct WatcherStatePtrs {
     change_version: usize,
     cleared_version: usize,
     in_progress: usize,
+    pending_full: usize,
     engine_lock: usize,
     last_refresh_at: usize,
 }
@@ -111,6 +112,9 @@ pub struct AppState {
     index_change_version: AtomicU64,
     index_cleared_version: AtomicU64,
     index_refresh_in_progress: AtomicBool,
+    /// A full refresh asked for while another refresh held the slot. Runs
+    /// when that one ends, so a reload is never dropped.
+    full_refresh_pending: AtomicBool,
     /// UNIX millis at which the most recent refresh (of any source) completed.
     /// Read by the watcher loop to enforce `WATCHER_REFRESH_COOLDOWN_MS`.
     /// `0` means "no refresh has completed yet" - first run is always allowed.
@@ -135,6 +139,7 @@ impl AppState {
             index_change_version: AtomicU64::new(0),
             index_cleared_version: AtomicU64::new(0),
             index_refresh_in_progress: AtomicBool::new(false),
+            full_refresh_pending: AtomicBool::new(false),
             last_refresh_completed_unix_ms: AtomicU64::new(0),
             watcher_control: Mutex::new(None),
         };
@@ -165,14 +170,22 @@ impl AppState {
     }
 
     pub fn request_index_refresh(&self) -> bool {
+        // A dead connector comes back on the next open.
+        crate::connectors::restart_dead();
         if !self.try_acquire_refresh_slot() {
-            return false;
+            // Whoever holds the slot runs this after their pass. The second
+            // try covers a holder that let go between the first and the flag.
+            self.full_refresh_pending.store(true, Ordering::Release);
+            if !self.try_acquire_refresh_slot() {
+                return false;
+            }
+            self.full_refresh_pending.store(false, Ordering::Release);
         }
         let dirty_snapshot = self.index_change_version.load(Ordering::Acquire);
         spawn_refresh_worker(
             self.ptrs(),
             BootstrapScope::ALL,
-            dirty_snapshot,
+            Some(dirty_snapshot),
             true,
             true,
             "look: index refresh",
@@ -180,16 +193,39 @@ impl AppState {
         true
     }
 
+    /// Re-reads the declared sources only, for rows a connector pushed.
+    /// `false` when another refresh holds the slot, so the caller retries
+    /// rather than drops the rows. Dirtiness is left alone: this pass never
+    /// looked at apps or files.
+    pub fn refresh_sources_now(&self) -> bool {
+        if !self.try_acquire_refresh_slot() {
+            return false;
+        }
+        // Inline, so the answer is whether the rows were read, not whether a
+        // worker was spawned.
+        run_refresh(
+            self.ptrs(),
+            BootstrapScope::SOURCES_ONLY,
+            None,
+            true,
+            true,
+            "look: sources refresh",
+        )
+    }
+
     fn start_background_bootstrap(&self) {
-        // Initial bootstrap doesn't gate on `in_progress` (it's the first
-        // refresh of the session, nothing else has tried to acquire yet).
+        // Holds the slot like any other refresh: a connector can push while
+        // this still runs, and its pass must not publish an engine under it.
+        if !self.try_acquire_refresh_slot() {
+            return;
+        }
         let dirty_snapshot = self.index_change_version.load(Ordering::Acquire);
         spawn_refresh_worker(
             self.ptrs(),
             BootstrapScope::ALL,
-            dirty_snapshot,
-            false, // no slot held - don't release on drop
-            true,  // the UI re-runs its query on index_ready
+            Some(dirty_snapshot),
+            true,
+            true, // the UI re-runs its query on index_ready
             "look: bootstrap",
         );
     }
@@ -199,6 +235,7 @@ impl AppState {
             change_version: &self.index_change_version as *const AtomicU64 as usize,
             cleared_version: &self.index_cleared_version as *const AtomicU64 as usize,
             in_progress: &self.index_refresh_in_progress as *const AtomicBool as usize,
+            pending_full: &self.full_refresh_pending as *const AtomicBool as usize,
             engine_lock: &self.engine as *const RwLock<QueryEngine> as usize,
             last_refresh_at: &self.last_refresh_completed_unix_ms as *const AtomicU64 as usize,
         }
@@ -247,13 +284,7 @@ impl AppState {
             *guard = Some(stop_tx);
         }
 
-        let ptrs = WatcherStatePtrs {
-            change_version: &self.index_change_version as *const AtomicU64 as usize,
-            cleared_version: &self.index_cleared_version as *const AtomicU64 as usize,
-            in_progress: &self.index_refresh_in_progress as *const AtomicBool as usize,
-            engine_lock: &self.engine as *const RwLock<QueryEngine> as usize,
-            last_refresh_at: &self.last_refresh_completed_unix_ms as *const AtomicU64 as usize,
-        };
+        let ptrs = self.ptrs();
 
         // SAFETY: AppState lives for the app's lifetime, so the addresses
         // remain valid for the watcher thread and any reindex worker it spawns.
@@ -375,7 +406,7 @@ impl AppState {
                     spawn_refresh_worker(
                         ptrs,
                         scope,
-                        dirty_snapshot,
+                        Some(dirty_snapshot),
                         true, // outer loop already CAS-acquired in_progress
                         true, // watcher refreshes are async; frontend needs the signal
                         "[watcher] auto-refresh",
@@ -406,9 +437,9 @@ impl AppState {
 /// - `scope`: `ALL` for full bootstrap, `APPS_ONLY`/`FILES_ONLY` for scoped.
 /// - `dirty_snapshot`: captured by the caller *before* spawning so that
 ///   events arriving during the refresh keep the cleared_version stale.
+///   `None` leaves the dirty state alone.
 /// - `holds_slot`: `true` if the caller already CAS-acquired `in_progress` and
-///   wants this worker to release it via `RefreshSlotGuard` on drop. The
-///   initial bootstrap passes `false` (no contention to gate against yet).
+///   wants this worker to release it via `RefreshSlotGuard` on drop.
 /// - `emit_ready`: `true` for async refreshes that the frontend can't otherwise
 ///   know about (bootstrap, watcher auto-refresh). `false` for user-initiated
 ///   refreshes - the frontend already knows it issued the command.
@@ -417,15 +448,36 @@ impl AppState {
 fn spawn_refresh_worker(
     ptrs: WatcherStatePtrs,
     scope: BootstrapScope,
-    dirty_snapshot: u64,
+    dirty_snapshot: Option<u64>,
     holds_slot: bool,
     emit_ready: bool,
     log_label: &'static str,
 ) {
+    thread::spawn(move || {
+        run_refresh(
+            ptrs,
+            scope,
+            dirty_snapshot,
+            holds_slot,
+            emit_ready,
+            log_label,
+        );
+    });
+}
+
+/// One refresh, on the calling thread. `true` when the rows were read.
+fn run_refresh(
+    ptrs: WatcherStatePtrs,
+    scope: BootstrapScope,
+    dirty_snapshot: Option<u64>,
+    holds_slot: bool,
+    emit_ready: bool,
+    log_label: &'static str,
+) -> bool {
     let db_path = default_db_path();
     // SAFETY: `AppState` is owned by the shell and outlives every worker thread,
     // so the addresses smuggled through `WatcherStatePtrs` stay valid.
-    thread::spawn(move || {
+    let read = {
         let (engine_lock, change_version, cleared_version, in_progress, last_refresh_at) = unsafe {
             (
                 &*(ptrs.engine_lock as *const RwLock<QueryEngine>),
@@ -446,6 +498,7 @@ fn spawn_refresh_worker(
         } else {
             QueryEngine::bootstrap_sqlite_scoped(&db_path, scope)
         };
+        let read = result.is_ok();
         match result {
             Ok(()) => {
                 if let Ok(new_engine) = QueryEngine::from_sqlite(&db_path) {
@@ -456,8 +509,10 @@ fn spawn_refresh_worker(
                 }
                 // Only clear the dirty version if no new events landed during
                 // the refresh; otherwise the next loop tick picks them up.
-                if change_version.load(Ordering::Acquire) == dirty_snapshot {
-                    cleared_version.store(dirty_snapshot, Ordering::Release);
+                if let Some(snapshot) = dirty_snapshot
+                    && change_version.load(Ordering::Acquire) == snapshot
+                {
+                    cleared_version.store(snapshot, Ordering::Release);
                 }
                 if scope.is_all() {
                     eprintln!(
@@ -479,8 +534,57 @@ fn spawn_refresh_worker(
                 eprintln!("{log_label} failed: {err}");
             }
         }
-        last_refresh_at.store(now_unix_ms(), Ordering::Release);
-    });
+        // The watcher's cooldown is about apps and files; a sources pass
+        // must not keep pushing it back.
+        if scope.apps || scope.files {
+            last_refresh_at.store(now_unix_ms(), Ordering::Release);
+        }
+        read
+    };
+    if holds_slot {
+        run_pending_full(ptrs);
+    }
+    read
+}
+
+/// Runs the full refresh that `request_index_refresh` queued while the slot was
+/// taken. Checked by every pass as it lets go of the slot, so the request
+/// waits at most one pass.
+fn run_pending_full(ptrs: WatcherStatePtrs) {
+    let (in_progress, pending, change_version) = unsafe {
+        (
+            &*(ptrs.in_progress as *const AtomicBool),
+            &*(ptrs.pending_full as *const AtomicBool),
+            &*(ptrs.change_version as *const AtomicU64),
+        )
+    };
+    if !claim_pending_full(in_progress, pending) {
+        return;
+    }
+    spawn_refresh_worker(
+        ptrs,
+        BootstrapScope::ALL,
+        Some(change_version.load(Ordering::Acquire)),
+        true,
+        true,
+        "look: index refresh",
+    );
+}
+
+/// Takes the slot for the queued full refresh. `false` when nothing is queued
+/// or another pass got the slot first: that one checks again when it ends.
+fn claim_pending_full(in_progress: &AtomicBool, pending: &AtomicBool) -> bool {
+    if !pending.load(Ordering::Acquire) {
+        return false;
+    }
+    if in_progress
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return false;
+    }
+    pending.store(false, Ordering::Release);
+    true
 }
 
 pub const ENV_DB_PATH: &str = "LOOK_DB_PATH";
@@ -733,6 +837,41 @@ mod tests {
     fn path_under_any_returns_false_when_no_root_matches() {
         let roots = vec![PathBuf::from("/home/u/Documents")];
         assert!(!path_under_any(Path::new("/tmp/scratch.txt"), &roots));
+    }
+
+    #[test]
+    fn a_full_refresh_asked_during_another_pass_is_queued_not_dropped() {
+        let state = AppState {
+            engine: RwLock::new(QueryEngine::new(vec![])),
+            index_change_version: AtomicU64::new(0),
+            index_cleared_version: AtomicU64::new(0),
+            index_refresh_in_progress: AtomicBool::new(true),
+            full_refresh_pending: AtomicBool::new(false),
+            last_refresh_completed_unix_ms: AtomicU64::new(0),
+            watcher_control: Mutex::new(None),
+        };
+        assert!(!state.request_index_refresh());
+        assert!(state.full_refresh_pending.load(Ordering::Acquire));
+        assert!(state.index_refresh_in_progress.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn the_queued_full_refresh_is_claimed_once_the_slot_is_free() {
+        let in_progress = AtomicBool::new(true);
+        let pending = AtomicBool::new(true);
+        // Still held: the holder tries again when it ends.
+        assert!(!claim_pending_full(&in_progress, &pending));
+        assert!(pending.load(Ordering::Acquire));
+
+        in_progress.store(false, Ordering::Release);
+        assert!(claim_pending_full(&in_progress, &pending));
+        assert!(in_progress.load(Ordering::Acquire));
+        assert!(!pending.load(Ordering::Acquire));
+
+        // Nothing queued leaves the slot alone.
+        in_progress.store(false, Ordering::Release);
+        assert!(!claim_pending_full(&in_progress, &pending));
+        assert!(!in_progress.load(Ordering::Acquire));
     }
 
     #[test]

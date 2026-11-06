@@ -119,7 +119,7 @@ pub fn record_usage(state: &AppState, candidate_id: &str, action: &str) -> Usage
 /// not after the blocks, which can take seconds. A shell whose binding must
 /// happen on its UI thread passes a no-op and re-binds when this returns.
 pub fn reload_config(
-    state: &AppState,
+    state: &'static AppState,
     rebind: impl FnOnce(),
 ) -> look_engine::sources::RefreshOutcome {
     // The engine caches the parsed `~/.look/config` across calls (skips a disk
@@ -129,6 +129,7 @@ pub fn reload_config(
     crate::config::invalidate_cache();
     crate::clipboard::reload_from_config();
     rebind();
+    crate::connectors::start(state);
     // Before the index pass, never after: the pass reads the rows these blocks
     // write, and the other order indexes the previous run's.
     let sources = look_engine::sources::refresh_run_blocks();

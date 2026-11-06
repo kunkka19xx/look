@@ -241,6 +241,21 @@ fn a_tile_reads_and_presses_the_same_control() {
         control: Some("myapp.notes#lamp".into()),
         ..Default::default()
     };
+    // An open refreshes it like any tile, and the answer lands in the cache
+    // the strip draws from.
+    let tiles = fixture.base.join("tiles");
+    unsafe { std::env::set_var(look_engine::launchpad_values::CACHE_DIR_ENV, &tiles) };
+    let outcome =
+        look_engine::launchpad_values::refresh_defs(&std::collections::HashMap::from([(
+            "lamp".to_string(),
+            def.clone(),
+        )]));
+    assert_eq!(outcome.errors, Vec::<String>::new());
+    assert_eq!(outcome.refreshed, 1);
+    let cached = look_engine::launchpad_values::cached();
+    assert_eq!(cached["lamp"].state.as_deref(), Some("off"));
+    unsafe { std::env::remove_var(look_engine::launchpad_values::CACHE_DIR_ENV) };
+
     // Off, then pressed on, and the tile reads as a toggle rather than as a
     // readout that happens to say "On".
     let value = look_engine::launchpad_values::value_for_test("lamp", &def, false).expect("read");

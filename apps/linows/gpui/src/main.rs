@@ -340,6 +340,7 @@ fn open(shell: &Shell, cx: &mut App) {
             let message = format!("Look could not open its window: {err:#}");
             eprintln!("{message}");
             crash::report_fatal(&message);
+            linows_backend::connectors::stop();
             cx.quit();
         }
     }
@@ -596,6 +597,8 @@ fn apply(command: Command, cx: &mut App) {
         Command::Toggle | Command::Hide => hide(cx),
         Command::Show => show(cx),
         Command::Quit => {
+            // They lead their own session and would outlive the shell.
+            linows_backend::connectors::stop();
             // The compositor keybinding this process registered goes with it.
             #[cfg(target_os = "linux")]
             if !probe_wanted() {
@@ -688,6 +691,8 @@ fn main() {
     }
     host::detach_console();
     state().start_bootstrap();
+    // Off the startup path: it reads directories and spawns processes.
+    std::thread::spawn(|| linows_backend::connectors::start(state()));
     // The histories `c"` and `ci"` list: loaded from disk now, then kept by
     // the poll thread.
     linows_backend::clipboard::start_monitor();

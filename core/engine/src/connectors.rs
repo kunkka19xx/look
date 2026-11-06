@@ -19,6 +19,86 @@ use look_sources::{Ask, Content, PROTOCOL_VERSION, Producer, Say, SourceRow};
 /// index's freshness, the shell does.
 pub type OnRows = Arc<dyn Fn(&str) + Send + Sync>;
 
+/// How long a burst is allowed to settle before its rows are read, and the
+/// floor between two reads however often rows arrive.
+const SETTLE: Duration = Duration::from_millis(300);
+const FLOOR: Duration = Duration::from_secs(2);
+/// How soon to try again when another refresh holds the slot, and how many
+/// such tries before backing off to the floor.
+const BUSY_RETRY: Duration = Duration::from_millis(250);
+const BUSY_PATIENCE: u32 = 8;
+
+/// An [`OnRows`] that reads the sources soon, and at most once per `FLOOR`:
+/// a burst of pushes costs one read. `refresh` says whether it could read;
+/// `false` means the slot was busy and the read is retried, since nothing
+/// else will ask for the rows. One per process, like the index.
+pub fn coalesced(refresh: impl Fn() -> bool + Send + Sync + 'static) -> OnRows {
+    let refresh = Arc::new(refresh);
+    Arc::new(move |_block: &str| schedule_read(refresh.clone()))
+}
+
+/// Queues one read after `SETTLE`, folding every push that lands meanwhile
+/// into it.
+fn schedule_read(refresh: Arc<dyn Fn() -> bool + Send + Sync>) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Instant;
+
+    static QUEUED: AtomicBool = AtomicBool::new(false);
+    static ARRIVED: AtomicBool = AtomicBool::new(false);
+    static NEXT_ALLOWED: Mutex<Option<Instant>> = Mutex::new(None);
+
+    /// How long until another read is allowed, never less than the settle.
+    fn until_allowed() -> Duration {
+        let next = NEXT_ALLOWED.lock().unwrap_or_else(|err| err.into_inner());
+        next.map(|at| at.saturating_duration_since(Instant::now()))
+            .unwrap_or_default()
+            .max(SETTLE)
+    }
+
+    // Before the queue check, so rows landing mid-read still count.
+    ARRIVED.store(true, Ordering::Release);
+    if QUEUED.swap(true, Ordering::AcqRel) {
+        return;
+    }
+
+    std::thread::spawn(move || {
+        let mut wait = until_allowed();
+        let mut busy = 0_u32;
+        loop {
+            std::thread::sleep(wait);
+
+            // Before the read, never after: a push during it sets this again.
+            ARRIVED.store(false, Ordering::Release);
+
+            if !refresh() {
+                busy += 1;
+                wait = if busy > BUSY_PATIENCE {
+                    FLOOR
+                } else {
+                    BUSY_RETRY
+                };
+                ARRIVED.store(true, Ordering::Release);
+                continue;
+            }
+            busy = 0;
+
+            {
+                let mut next = NEXT_ALLOWED.lock().unwrap_or_else(|err| err.into_inner());
+                *next = Some(Instant::now() + FLOOR);
+            }
+            // Released before the check, so a push between the two is not lost.
+            QUEUED.store(false, Ordering::Release);
+            if !ARRIVED.load(Ordering::Acquire) {
+                return;
+            }
+            if QUEUED.swap(true, Ordering::AcqRel) {
+                return;
+            }
+            wait = until_allowed();
+        }
+    });
+}
+
 /// A connector's stdin, shared so a write never holds the registry.
 type Pipe = Arc<Mutex<ChildStdin>>;
 

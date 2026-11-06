@@ -6,7 +6,7 @@
 
 use crate::launchpad::{TileDef, TileValue};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
@@ -64,6 +64,23 @@ fn in_flight() -> &'static Mutex<HashSet<String>> {
     IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
+/// Presses per tile. A read that began before a press is dropped rather than
+/// stored over the press's answer: an open can ask a control while the user
+/// is flipping it, and the press is the newer truth.
+fn presses() -> &'static Mutex<HashMap<String, u64>> {
+    static PRESSES: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+    PRESSES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn presses_seen(name: &str) -> u64 {
+    presses()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .get(name)
+        .copied()
+        .unwrap_or(0)
+}
+
 /// Every tile value on disk. Spawns nothing, so it is safe while drawing. No
 /// entry means never run or printed nothing - both draw the placeholder.
 pub fn cached() -> HashMap<String, TileValue> {
@@ -92,8 +109,8 @@ pub fn cached() -> HashMap<String, TileValue> {
 /// `refresh` is a maximum staleness, not an interval: an open inside the window
 /// spawns nothing, which is what makes a per-open tile affordable.
 fn is_stale(name: &str, def: &TileDef) -> bool {
-    // Never: there is no command, so there is nothing that could go stale.
-    if def.value.is_none() {
+    // Nothing to run and nobody to ask, so nothing can go stale.
+    if def.value.is_none() && def.control.is_none() {
         return false;
     }
     let Some(path) = cache_path(name) else {
@@ -108,10 +125,12 @@ fn is_stale(name: &str, def: &TileDef) -> bool {
     age >= def.refresh.unwrap_or(DEFAULT_REFRESH)
 }
 
-/// Runs one tile's command and stores what it printed.
-fn run_one(name: &str, def: &TileDef) -> Result<(), String> {
+/// Runs one tile's command and stores what it printed. `pressed` says this is
+/// the read after a press, so it is stored even if the read overlapped one.
+fn run_one(name: &str, def: &TileDef, pressed: bool) -> Result<(), String> {
+    let seen = (!pressed).then(|| presses_seen(name));
     if let Some(control) = def.control.as_deref() {
-        return store(name, &control_value(name, control, false)?);
+        return store(name, &control_value(name, control, false)?, seen);
     }
     // A tile that only acts has nothing to run until it is pressed.
     let Some(command) = def.value.as_deref() else {
@@ -120,15 +139,13 @@ fn run_one(name: &str, def: &TileDef) -> Result<(), String> {
     let output = look_sources::capture(command, None, TIMEOUT, MAX_BYTES)
         .map_err(|err| format!("tile \"{name}\": {err}"))?;
 
-    let Some(path) = cache_path(name) else {
-        return Err(format!("tile \"{name}\": not a name that can be cached"));
-    };
-
     // Printing nothing hides the tile. Inverts the `run`-block rule, where empty
     // means "keep the rows you had": a stale meeting is worse than no meeting.
     if output.trim().is_empty() {
-        let _ = std::fs::remove_file(&path);
-        return Ok(());
+        return write_cache(name, seen, |path| {
+            let _ = std::fs::remove_file(path);
+            Ok(())
+        });
     }
 
     // Parsed here, not in the shells: reported once, and the last good value
@@ -136,7 +153,7 @@ fn run_one(name: &str, def: &TileDef) -> Result<(), String> {
     serde_json::from_str::<TileValue>(output.trim())
         .map_err(|err| format!("tile \"{name}\": did not print a tile value ({err})"))?;
 
-    store(name, output.trim())
+    store(name, output.trim(), seen)
 }
 
 /// Runs every stale tile and stores what it prints. Blocking and spawning: call
@@ -167,7 +184,7 @@ pub fn refresh_defs(defs: &HashMap<String, TileDef>) -> RefreshOutcome {
         let results: Vec<Result<(), String>> = std::thread::scope(|scope| {
             let handles: Vec<_> = chunk
                 .iter()
-                .map(|(name, def)| scope.spawn(move || run_one(name, def)))
+                .map(|(name, def)| scope.spawn(move || run_one(name, def, false)))
                 .collect();
             handles
                 .into_iter()
@@ -213,7 +230,7 @@ fn press_def(name: &str, def: &TileDef) -> Result<(), String> {
     // failure would invite a second one that flips the control back.
     if let Some(control) = def.control.as_deref() {
         let value = control_value(name, control, true)?;
-        return store(name, &value).map_err(|problem| format!("{problem}; it was pressed"));
+        return store(name, &value, None).map_err(|problem| format!("{problem}; it was pressed"));
     }
     let Some(command) = def.press.clone() else {
         return Err(format!("\"{name}\" has no press command"));
@@ -228,7 +245,7 @@ fn press_def(name: &str, def: &TileDef) -> Result<(), String> {
     // Read again rather than wait out the refresh window: a press changes what
     // the tile reports. Through `run_one`, so a failed read keeps the last good
     // value. A press is detached, so a command still settling lands next time.
-    let _ = run_one(name, def);
+    let _ = run_one(name, def, true);
     Ok(())
 }
 
@@ -262,16 +279,35 @@ pub fn value_for_test(name: &str, def: &TileDef, press: bool) -> Result<TileValu
 }
 
 /// The one write: a connector tile and a command tile are cached, read and
-/// swept alike.
-fn store(name: &str, text: &str) -> Result<(), String> {
+/// swept alike. `seen` is the press count when the value was read; `None`
+/// is a press's own answer.
+fn store(name: &str, text: &str, seen: Option<u64>) -> Result<(), String> {
+    write_cache(name, seen, |path| {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        std::fs::write(path, text)
+    })
+}
+
+/// Where reads and presses are ordered: under one lock, a read that a press
+/// overtook writes nothing, and a press counts itself so later reads know.
+fn write_cache(
+    name: &str,
+    seen: Option<u64>,
+    write: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> Result<(), String> {
     let Some(path) = cache_path(name) else {
         return Err(format!("tile \"{name}\": not a name that can be cached"));
     };
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+    let mut presses = presses().lock().unwrap_or_else(|err| err.into_inner());
+    let count = presses.entry(name.to_string()).or_insert(0);
+    match seen {
+        Some(seen) if seen != *count => return Ok(()),
+        Some(_) => {}
+        None => *count += 1,
     }
-    std::fs::write(&path, text)
-        .map_err(|err| format!("tile \"{name}\": could not be cached ({err})"))
+    write(&path).map_err(|err| format!("tile \"{name}\": could not be cached ({err})"))
 }
 
 /// Drops values for tiles the drawing no longer names.
@@ -446,6 +482,33 @@ mod tests {
         assert_eq!(cached()["ci"].value, "after");
     }
 
+    #[cfg(not(windows))]
+    const SLOW_STALE_READ: &str = r#"sleep 0.3; printf '{"value":"stale"}'"#;
+    #[cfg(windows)]
+    const SLOW_STALE_READ: &str = r#"ping -n 2 127.0.0.1 >nul & echo {"value":"stale"}"#;
+
+    #[test]
+    fn a_read_that_a_press_overtook_does_not_bury_the_press() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new("overtaken");
+        let tile = |value: &str| TileDef {
+            value: Some(value.to_string()),
+            refresh: Some(Duration::ZERO),
+            press: Some("true".to_string()),
+            ..Default::default()
+        };
+
+        // An open starts a slow read; the user presses while it is on its way.
+        let slow = defs(&[("ci", SLOW_STALE_READ)]);
+        let reading = std::thread::spawn(move || refresh_defs(&slow));
+        std::thread::sleep(Duration::from_millis(50));
+        press_def("ci", &tile(r#"printf '{"value":"fresh"}'"#)).expect("the press ran");
+        assert_eq!(cached()["ci"].value, "fresh");
+
+        reading.join().expect("the read finished");
+        assert_eq!(cached()["ci"].value, "fresh", "the older read must not win");
+    }
+
     #[test]
     fn output_that_is_not_a_tile_value_is_refused_rather_than_stored() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
@@ -458,6 +521,24 @@ mod tests {
             "{:?}",
             outcome.errors
         );
+    }
+
+    #[test]
+    fn a_control_tile_is_asked_on_open_rather_than_waiting_for_a_press() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new("control");
+        let tiles: HashMap<String, TileDef> = HashMap::from([(
+            "lamp".to_string(),
+            TileDef {
+                control: Some("myapp.notes#lamp".to_string()),
+                ..Default::default()
+            },
+        )]);
+        // No connector runs here, so the ask fails; the point is that it was made.
+        let outcome = refresh_defs(&tiles);
+        assert_eq!(outcome.refreshed, 0);
+        assert_eq!(outcome.errors.len(), 1, "{:?}", outcome.errors);
+        assert!(outcome.errors[0].contains("connector is not running"));
     }
 
     #[test]
