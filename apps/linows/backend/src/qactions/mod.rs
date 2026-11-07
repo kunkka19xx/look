@@ -16,6 +16,7 @@
 // lifts on its own.
 #![cfg_attr(not(any(target_os = "linux", target_os = "windows")), allow(dead_code))]
 
+mod connector;
 pub mod controls;
 
 use serde::{Deserialize, Serialize};
@@ -140,11 +141,38 @@ pub trait SystemControl: Send + Sync {
     }
 }
 
+/// The adapter behind an action id: a declared control goes to the connector
+/// that produced its row, anything else to the native table.
+fn adapter(action_id: &str) -> Option<Adapter> {
+    if look_engine::qactions::control_parts(action_id).is_some() {
+        return Some(Adapter::Declared(connector::ConnectorControl::new(
+            action_id,
+        )));
+    }
+    native_adapter(action_id).map(Adapter::Native)
+}
+
+enum Adapter {
+    Native(&'static dyn SystemControl),
+    Declared(connector::ConnectorControl),
+}
+
+impl std::ops::Deref for Adapter {
+    type Target = dyn SystemControl;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Adapter::Native(control) => *control,
+            Adapter::Declared(control) => control,
+        }
+    }
+}
+
 /// Resolves an action id to its native adapter - the one-line-per-control
 /// registry. An id with a shared descriptor but no adapter here renders as
 /// unavailable (declaration is shared across OSes; execution is not).
 #[cfg(target_os = "linux")]
-fn adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
+fn native_adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
     use look_qactions::action_id as id;
     match action_id {
         id::BLUETOOTH => Some(&controls::bluetooth::BluetoothControl),
@@ -161,7 +189,7 @@ fn adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
 }
 
 #[cfg(target_os = "windows")]
-fn adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
+fn native_adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
     use look_qactions::action_id as id;
     match action_id {
         id::BLUETOOTH => Some(&controls::bluetooth_windows::BluetoothControl),
@@ -178,7 +206,7 @@ fn adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-fn adapter(_action_id: &str) -> Option<&'static dyn SystemControl> {
+fn native_adapter(_action_id: &str) -> Option<&'static dyn SystemControl> {
     None
 }
 
