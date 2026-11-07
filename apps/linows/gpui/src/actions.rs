@@ -47,6 +47,9 @@ const ROW_GAP: f32 = 16.0;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ActionId {
     Open,
+    /// Enter on a block row once its `confirm` was answered, so the second
+    /// pass performs rather than asks again.
+    OpenConfirmed,
     Tool(&'static str),
     CopyPath,
     OpenAllPicked,
@@ -54,6 +57,14 @@ pub enum ActionId {
     DeleteClipboard,
     /// A block's `then` target, by block id.
     Target(String),
+    /// A verb the connector behind the row plans: the question comes from
+    /// it, so this asks rather than performs.
+    Plan(String),
+    /// A plan the connector made, once the user said yes.
+    RunPlan {
+        plan: u64,
+        title: String,
+    },
     Yes,
     No,
 }
@@ -139,7 +150,7 @@ pub fn block_id_of(id: &str) -> Option<&str> {
 /// terminal are about a place you work in; an app is a thing you launch,
 /// so only revealing applies to it.
 pub fn applies(action: &str, kind: &str) -> bool {
-    let place = kind == "file" || kind == "folder" || kind == "action";
+    let place = kind == "file" || kind == "folder" || kind == crate::rows::KIND_ACTION;
     if action == REVEAL {
         place || kind == "app"
     } else {
@@ -159,13 +170,14 @@ pub fn actionable(row: &Row) -> bool {
 }
 
 /// The row as core needs it: its id so a block can override the chord, its
-/// title and ancestors so that override expands like any other command.
-pub fn row_args(row: &Row, ancestors: &str) -> RowArgs {
+/// title and ancestors so that override expands like any other command, and
+/// the search text, which is what `{query}` and `{arg}` stand for.
+pub fn row_args(row: &Row, ancestors: &str, query: &str) -> RowArgs {
     RowArgs {
         candidate_id: row.id.clone(),
         row_title: row.title.clone(),
         row_path: row.path.clone(),
-        query: String::new(),
+        query: query.to_string(),
         ancestors: ancestors.to_string(),
     }
 }
@@ -173,7 +185,7 @@ pub fn row_args(row: &Row, ancestors: &str) -> RowArgs {
 /// A file row and a folder row say which they are; a block's row does not,
 /// so only the filesystem knows and the backend is what asks it.
 pub fn is_dir(row: &Row) -> Option<bool> {
-    if row.kind == "action" {
+    if row.kind == crate::rows::KIND_ACTION {
         None
     } else {
         Some(row.kind == "folder")
@@ -184,13 +196,22 @@ pub fn is_dir(row: &Row) -> Option<bool> {
 /// declared `then` targets shows those instead of the verb list; an action
 /// declared for rows like this one joins at the end. Resolves the tool names
 /// in one call. Blocking, so it runs on the background executor.
-pub fn descriptors(row: &Row, ancestors: String, panel: Vec<MenuItem>) -> Vec<MenuItem> {
-    let block = sources::source_block(row_args(row, &ancestors));
+pub fn descriptors(
+    row: &Row,
+    ancestors: String,
+    query: String,
+    panel: Vec<MenuItem>,
+) -> Vec<MenuItem> {
+    let block = sources::source_block(row_args(row, &ancestors, &query));
     let describe = |targets: &[linows_backend::look_engine::sources::ThenTarget]| {
         targets
             .iter()
             .map(|target| MenuItem {
-                id: ActionId::Target(target.id.clone()),
+                id: if target.plans {
+                    ActionId::Plan(target.id.clone())
+                } else {
+                    ActionId::Target(target.id.clone())
+                },
                 // The ellipsis says this one lists rather than runs.
                 title: if target.performs {
                     target.name.clone()
@@ -232,7 +253,7 @@ pub fn descriptors(row: &Row, ancestors: String, panel: Vec<MenuItem>) -> Vec<Me
     let resolved = if asked.is_empty() {
         Vec::new()
     } else {
-        tools::tool_actions(&asked, row_args(row, &ancestors), is_dir(row))
+        tools::tool_actions(&asked, row_args(row, &ancestors, &query), is_dir(row))
     };
     let tool_name = |action: &str| {
         asked
@@ -328,6 +349,13 @@ impl Menu {
         ];
         self.focused = 1;
         self.pending = Some(action);
+    }
+
+    /// The question a connector computed. Starts on Yes, since it names what
+    /// will happen where a declared `confirm` string cannot.
+    pub fn ask_planned(&mut self, question: String, action: ActionId) {
+        self.ask(Some(question), action);
+        self.focused = 0;
     }
 
     /// Wraps at both ends, so holding one direction cycles.
@@ -430,5 +458,23 @@ mod tests {
         assert_eq!(menu.items[0].id, ActionId::Yes);
         menu.move_by(1);
         assert_eq!(menu.focused, 0);
+    }
+
+    #[test]
+    fn a_planned_question_starts_on_yes() {
+        let mut menu = Menu::new(Vec::new());
+        menu.ask_planned(
+            "Archive: 3 issues".into(),
+            ActionId::RunPlan {
+                plan: 7,
+                title: "Archive".into(),
+            },
+        );
+        assert_eq!(menu.focused, 0);
+        assert_eq!(menu.items[0].title, "Archive: 3 issues");
+        assert!(matches!(
+            menu.pending,
+            Some(ActionId::RunPlan { plan: 7, .. })
+        ));
     }
 }

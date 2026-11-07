@@ -84,6 +84,22 @@ impl Preview {
         self.read_actions(cx);
     }
 
+    /// Enter on a row whose block supplies a control and nothing else: a
+    /// press, whatever the panel has read so far, since the connector answers
+    /// with where it ended up. False when the row has no control.
+    pub(crate) fn press_first(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(actions) = self.actions.as_ref() else {
+            return false;
+        };
+        if actions.actions.is_empty() {
+            return false;
+        }
+        if !actions.busy {
+            self.press(0, ActionIntent::Run, cx);
+        }
+        true
+    }
+
     /// Ctrl+O: flip the first toggle. False when the row has none.
     pub fn toggle_primary(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(index) = self.actions.as_ref().and_then(|a| {
@@ -144,21 +160,30 @@ impl Preview {
     /// The switch or the button. A switch press asks for the opposite of
     /// what is drawn, so a stale panel still does what the user sees.
     fn run_action(&mut self, index: usize, cx: &mut Context<Self>) {
-        let Some(actions) = self.actions.as_mut().filter(|a| !a.busy) else {
+        let Some(actions) = self.actions.as_ref().filter(|a| !a.busy) else {
             return;
         };
-        let action = &mut actions.actions[index];
+        let action = &actions.actions[index];
         if !action.available() {
             return;
         }
         let intent = match (action.descriptor.control, action.on) {
             (ControlKind::Button, _) => ActionIntent::Run,
-            (ControlKind::Toggle, Some(on)) => {
-                action.on = Some(!on);
-                ActionIntent::SetOn(!on)
-            }
+            (ControlKind::Toggle, Some(on)) => ActionIntent::SetOn(!on),
             (ControlKind::Toggle, None) => ActionIntent::Toggle,
         };
+        self.press(index, intent, cx);
+    }
+
+    /// The switch flips as it is pressed; the re-read corrects it.
+    fn press(&mut self, index: usize, intent: ActionIntent, cx: &mut Context<Self>) {
+        let Some(actions) = self.actions.as_mut() else {
+            return;
+        };
+        let action = &mut actions.actions[index];
+        if let Some(on) = action.on {
+            action.on = Some(!on);
+        }
         actions.busy = true;
         let id = action.descriptor.action_id.clone();
         self.apply(index, move || qactions::quick_action_apply(&id, intent), cx);
@@ -356,15 +381,7 @@ impl Preview {
                     .on_click(cx.listener(move |this, _, _, cx| this.run_item(index, &clicked, cx)))
             })
             .when(clickable && busy, |el| el.opacity(INERT_OPACITY))
-            .child(
-                div()
-                    .size(px(DOT))
-                    .flex_shrink_0()
-                    .rounded_full()
-                    .border(px(DOT_BORDER))
-                    .border_color(if connected { th.accent } else { th.text_muted })
-                    .when(connected, |el| el.bg(th.accent)),
-            )
+            .child(status_dot(connected, th))
             .child(
                 div()
                     .min_w_0()
@@ -374,6 +391,18 @@ impl Preview {
                     .child(SharedString::from(item.label.clone())),
             )
     }
+}
+
+/// A dot, hollow when off and filled when on: the mark a device row and a
+/// connector's list share.
+pub(crate) fn status_dot(on: bool, th: &Theme) -> Div {
+    div()
+        .size(px(DOT))
+        .flex_shrink_0()
+        .rounded_full()
+        .border(px(DOT_BORDER))
+        .border_color(if on { th.accent } else { th.text_muted })
+        .when(on, |el| el.bg(th.accent))
 }
 
 fn connected_count(items: &[ListItem]) -> String {

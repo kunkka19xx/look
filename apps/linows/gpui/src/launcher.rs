@@ -72,6 +72,20 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 /// How long a keystroke waits for the next before the query runs; the
 /// webview uses the same.
 const COPY_FAILED: &str = "Copy failed";
+/// A block said Enter presses its control, and the panel found none to press.
+const NO_CONTROL: &str = "nothing to press";
+/// A verb the connector was told to run and has not reported on.
+const VERB_STARTED: &str = "started";
+
+/// How Enter on a block row went, decided off the draw thread.
+enum Performed {
+    /// The block asks first; the question goes to the menu.
+    Asks(String),
+    /// The block supplies a control and nothing else.
+    Presses,
+    Failed(String),
+    Done,
+}
 const DEBOUNCE: Duration = Duration::from_millis(70);
 /// A row's picture, or the glyph that stands in for it.
 const EMPTY_STATE_H: f32 = 200.0;
@@ -1225,9 +1239,10 @@ impl Launcher {
         let row = self.selected_row().cloned();
         let mode = self.mode;
         let ancestors = self.levels.ancestors();
+        let query = self.query(cx);
         self.preview.update(cx, |preview, cx| match row {
             Some(row) if (split && !mode.is_menu()) || matches!(row.open, Open::Process(_)) => {
-                preview.show(&row, ancestors, cx)
+                preview.show(&row, ancestors, query, cx)
             }
             None if split && mode.is_clipboard() => preview.show_help(mode, cx),
             _ => preview.clear(cx),
@@ -1250,7 +1265,7 @@ impl Launcher {
             return true;
         };
         match row.open {
-            Open::Path { .. } if row.declared() => self.perform_source_row(row, cx),
+            Open::Path { .. } if row.declared() => self.perform_source_row(row, false, cx),
             Open::Path { usage } => {
                 match launch::open_path(&self.shell, row.path, Some(&row.kind), Some(&row.id)) {
                     Ok(()) => {
@@ -1325,7 +1340,7 @@ impl Launcher {
             return true;
         }
         if row.path.is_empty() && row.declared() {
-            let args = actions::row_args(&row, &self.levels.ancestors());
+            let args = actions::row_args(&row, &self.levels.ancestors(), &self.query(cx));
             let shell = self.shell.clone();
             bg::fetch(
                 cx,
@@ -1877,9 +1892,10 @@ impl Launcher {
             )
         };
         let ancestors = self.levels.ancestors();
+        let query = self.query(cx);
         bg::fetch(
             cx,
-            move || actions::descriptors(&row, ancestors, panel),
+            move || actions::descriptors(&row, ancestors, query, panel),
             move |this, items, cx| {
                 if this.menu_token != token {
                     return;
@@ -1920,6 +1936,12 @@ impl Launcher {
             cx.notify();
             return;
         }
+        // The menu stays up while the connector thinks: the question lands
+        // where the user's eyes already are.
+        if let ActionId::Plan(block_id) = item.id {
+            self.ask_connector(block_id, item.title, cx);
+            return;
+        }
         // The target's title comes from the menu it was picked in, so the
         // menu goes after the action reads it.
         self.menu_token += 1;
@@ -1933,6 +1955,11 @@ impl Launcher {
             ActionId::Open => {
                 self.open_selected(cx);
             }
+            ActionId::OpenConfirmed => {
+                if let Some(row) = self.selected_row().cloned() {
+                    self.perform_source_row(row, true, cx);
+                }
+            }
             ActionId::Tool(action) => {
                 self.run_tool(action, cx);
             }
@@ -1945,7 +1972,9 @@ impl Launcher {
                 self.delete(cx);
             }
             ActionId::Target(block_id) => self.run_target(block_id, cx),
-            ActionId::Yes | ActionId::No => {}
+            ActionId::RunPlan { plan, title } => self.run_planned(plan, title, cx),
+            // Asked in `activate_menu_item`, which still has the menu.
+            ActionId::Plan(_) | ActionId::Yes | ActionId::No => {}
         }
     }
 
@@ -1960,7 +1989,7 @@ impl Launcher {
         {
             return true;
         }
-        let args = actions::row_args(&row, &self.levels.ancestors());
+        let args = actions::row_args(&row, &self.levels.ancestors(), &self.query(cx));
         let is_dir = actions::is_dir(&row);
         let shell = self.shell.clone();
         bg::fetch(
@@ -1979,8 +2008,9 @@ impl Launcher {
     }
 
     /// Enter on a block row: what the block's `open` says, with its question
-    /// asked first in the menu. Core says whether the row's own path opens.
-    fn perform_source_row(&mut self, row: Row, cx: &mut Context<Self>) {
+    /// asked first in the menu unless `confirmed` says it already was. Core
+    /// says whether the row's own path opens or its control is pressed.
+    fn perform_source_row(&mut self, row: Row, confirmed: bool, cx: &mut Context<Self>) {
         let Some(block_id) = actions::block_id_of(&row.id).map(str::to_string) else {
             self.banner.show(
                 "Couldn't tell which block this row belongs to".into(),
@@ -1991,46 +2021,140 @@ impl Launcher {
             return;
         };
         let ancestors = self.levels.ancestors();
-        let args = actions::row_args(&row, &ancestors);
+        let query = self.query(cx);
+        let args = actions::row_args(&row, &ancestors, &query);
         let title = row.title.clone();
         let shell = self.shell.clone();
         bg::fetch(
             cx,
             move || {
-                let declared = sources::source_block(actions::row_args(&row, &ancestors));
-                if let Some(question) = declared.and_then(|d| d.confirm) {
-                    return Err(question);
+                if !confirmed {
+                    let declared =
+                        sources::source_block(actions::row_args(&row, &ancestors, &query));
+                    if let Some(question) = declared.and_then(|d| d.confirm) {
+                        return Performed::Asks(question);
+                    }
                 }
                 let outcome = sources::perform_block(block_id, args, false);
                 engine::record_usage(app_state(), &row.id, USAGE_EXECUTE);
                 if outcome.opens_path {
                     let _ =
                         launch::open_path(&shell, row.path.clone(), Some(&row.kind), Some(&row.id));
-                    return Ok(None);
+                    return Performed::Done;
+                }
+                if outcome.presses_control {
+                    return Performed::Presses;
                 }
                 match outcome.errors.into_iter().next() {
-                    Some(failure) => Ok(Some(failure)),
+                    Some(failure) => Performed::Failed(failure),
                     None => {
                         shell.hide();
-                        Ok(None)
+                        Performed::Done
                     }
                 }
             },
             move |this, outcome, cx| match outcome {
                 // Asked in the menu rather than a modal, as a `then` target is.
-                Err(question) => {
+                Performed::Asks(question) => {
                     let mut menu = Menu::new(Vec::new());
-                    menu.ask(Some(question), ActionId::Open);
+                    menu.ask(Some(question), ActionId::OpenConfirmed);
                     this.menu_token += 1;
                     this.menu = Some(menu);
                 }
-                Ok(Some(failure)) => this.banner.show(
+                // The panel owns the control, so it presses and re-reads.
+                Performed::Presses => {
+                    let pressed = this
+                        .preview
+                        .update(cx, |preview, cx| preview.press_first(cx));
+                    if !pressed {
+                        this.banner.show(
+                            format!("{title}: {NO_CONTROL}"),
+                            Tone::Error,
+                            actions::BANNER_SECONDS,
+                            cx,
+                        );
+                    }
+                }
+                Performed::Failed(failure) => this.banner.show(
                     format!("{title}: {failure}"),
                     Tone::Error,
                     actions::BANNER_SECONDS,
                     cx,
                 ),
-                Ok(None) => {}
+                Performed::Done => {}
+            },
+        );
+    }
+
+    /// Asks the connector what the verb would do to the selected row, then
+    /// swaps the menu to that question. An answer after the menu closed is
+    /// dropped, or it would put an old question on a new row.
+    fn ask_connector(&mut self, block_id: String, title: String, cx: &mut Context<Self>) {
+        let Some(row) = self.selected_row().cloned() else {
+            return;
+        };
+        let token = self.menu_token;
+        let args = actions::row_args(&row, &self.levels.ancestors(), &self.query(cx));
+        bg::fetch(
+            cx,
+            move || sources::plan_verb(block_id, args),
+            move |this, planned, cx| {
+                if this.menu_token != token {
+                    return;
+                }
+                if let Some(error) = planned.error {
+                    this.close_menu();
+                    this.banner
+                        .show(format!("{title}: {error}"), Tone::Error, banner::LONG, cx);
+                    cx.notify();
+                    return;
+                }
+                let question = [Some(planned.title), planned.detail]
+                    .into_iter()
+                    .flatten()
+                    .filter(|part| !part.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(": ");
+                if let Some(menu) = this.menu.as_mut() {
+                    menu.ask_planned(
+                        question,
+                        ActionId::RunPlan {
+                            plan: planned.plan,
+                            title,
+                        },
+                    );
+                }
+                cx.notify();
+            },
+        );
+    }
+
+    /// Runs what the user just confirmed, and says how it went.
+    fn run_planned(&mut self, plan: u64, title: String, cx: &mut Context<Self>) {
+        let Some(row) = self.selected_row().cloned() else {
+            return;
+        };
+        bg::fetch(
+            cx,
+            move || sources::run_verb(&row.id, plan),
+            move |this, ran, cx| {
+                if let Some(error) = ran.error {
+                    this.banner
+                        .show(format!("{title}: {error}"), Tone::Error, banner::LONG, cx);
+                    return;
+                }
+                // No summary means the connector has not answered yet, which
+                // is not the same as it having finished.
+                let (text, tone, seconds) = match ran.summary {
+                    Some(summary) if ran.ok => (summary, Tone::Info, actions::BANNER_SECONDS),
+                    Some(summary) => (summary, Tone::Warning, banner::LONG),
+                    None => (
+                        format!("{title}: {VERB_STARTED}"),
+                        Tone::Info,
+                        actions::BANNER_SECONDS,
+                    ),
+                };
+                this.banner.show(text, tone, seconds, cx);
             },
         );
     }
@@ -2053,7 +2177,7 @@ impl Launcher {
                 })
             })
             .unwrap_or_else(|| block_id.clone());
-        let args = actions::row_args(&row, &self.levels.ancestors());
+        let args = actions::row_args(&row, &self.levels.ancestors(), &self.query(cx));
         let shell = self.shell.clone();
         let id = block_id.clone();
         bg::fetch(

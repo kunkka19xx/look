@@ -39,6 +39,13 @@ fn is_text_file(path: &str) -> bool {
     TEXT_EXTENSIONS.contains(&ext.as_str())
 }
 
+/// Whether the preview draws this file as prose rather than as source.
+pub fn is_markdown(path: &str) -> bool {
+    MARKDOWN_EXTENSIONS.contains(&file_extension(path).as_str())
+}
+
+const MARKDOWN_EXTENSIONS: &[&str] = &["md", "markdown"];
+
 fn size_cap(path: &str) -> u64 {
     if is_text_file(path) {
         TEXT_FILE_SIZE_CAP
@@ -79,6 +86,16 @@ fn preview_bytes(path: &str) -> Option<(Vec<u8>, bool)> {
     Some((data, truncated))
 }
 
+/// Token spans for text whose language is named rather than read off a path,
+/// as a fenced block's tag names it. An unknown or missing name highlights
+/// nothing.
+pub fn highlight_text(text: &str, language: Option<&str>) -> Vec<Span> {
+    match language.and_then(Language::from_name) {
+        Some(lang) => tokenizer::tokenize(text.as_bytes(), lang),
+        None => Vec::new(),
+    }
+}
+
 /// Read a file and return its text with token spans.
 pub fn highlight_runs(path: &str) -> Option<HighlightRuns> {
     let (data, truncated) = preview_bytes(path)?;
@@ -95,4 +112,18 @@ pub fn highlight_runs(path: &str) -> Option<HighlightRuns> {
         spans,
         truncated,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fence_tag_names_a_language_or_nothing() {
+        assert!(!highlight_text("fn main() {}", Some("rust")).is_empty());
+        assert!(!highlight_text("fn main() {}", Some("rs")).is_empty());
+        assert!(highlight_text("fn main() {}", Some("brainfuck")).is_empty());
+        assert!(highlight_text("fn main() {}", None).is_empty());
+        assert!(is_markdown("/notes/today.md") && !is_markdown("/notes/today.rst"));
+    }
 }
