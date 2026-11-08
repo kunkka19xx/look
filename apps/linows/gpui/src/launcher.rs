@@ -187,13 +187,16 @@ pub struct Retained {
     /// The new launcher reads the switch off the UI thread, after the
     /// restored search may have run.
     pub ai_enabled: bool,
+    /// Kept until cleared or opened, as on macOS.
+    pub picks: Vec<Row>,
 }
 
 impl Retained {
-    /// Past the retention window only the screen and the switch stay.
+    /// Past the retention window only the screen, the switch and the picks stay.
     pub fn expire(self) -> Self {
         Self {
             screen: self.screen,
+            picks: self.picks,
             settings: self.settings,
             ai_enabled: self.ai_enabled,
             ..Default::default()
@@ -434,6 +437,7 @@ impl Launcher {
                     self.commands.input().read(cx).text().to_string(),
                 )),
                 ai_enabled: self.ai.enabled,
+                picks: self.picked.items().to_vec(),
                 ..Default::default()
             }
         } else {
@@ -444,6 +448,7 @@ impl Launcher {
                 answer: self.ai.settled(),
                 suggestions: self.suggestions.clone(),
                 ai_enabled: self.ai.enabled,
+                picks: self.picked.items().to_vec(),
             }
         }
     }
@@ -454,6 +459,7 @@ impl Launcher {
         // Before the query lands, so its search finds them already in hand.
         self.ai.enabled = retained.ai_enabled;
         self.suggestions = retained.suggestions;
+        self.picked.restore(retained.picks);
         if let Some(answer) = retained.answer {
             self.ai.resume(answer, cx);
         }
@@ -2422,7 +2428,6 @@ impl Launcher {
                 )
             })
             .child(search_field(self.input.clone(), placeholder))
-            .children((!th.split()).then(|| self.picked.badge(th)).flatten())
             .children(strip)
             .when(!th.split() && th.hints, |el| {
                 el.child(copyright(th, cx).flex_shrink_0())
@@ -2856,6 +2861,10 @@ impl Launcher {
             (Some(list), None)
         };
 
+        let picks = (!self.mode.is_menu())
+            .then(|| self.picked.strip(&self.icons, th, cx))
+            .flatten();
+
         // One floating card: rows, then the hint as the card's own footer.
         let radius = th.tile_radius();
         let fade = blur::surfaces_fade(th.frosted());
@@ -2870,6 +2879,7 @@ impl Launcher {
             .flex()
             .flex_col()
             .gap(px(theme::ROW_SPACING))
+            .children(picks)
             .children(ai_card)
             .map(|card| {
                 if two_col {
@@ -2900,8 +2910,7 @@ impl Launcher {
         // for the menus, whose rows have nothing to describe.
         let preview_card = (th.split() && !self.mode.is_menu()).then(|| {
             let panel_theme = th.clone();
-            // The suggestions take the column in a knowledge lookup, the
-            // picks while there are any.
+            // The suggestions take the column in a knowledge lookup.
             let body = if let Some(list) = side_list {
                 div()
                     .size_full()
@@ -2911,12 +2920,10 @@ impl Launcher {
                     .pt(px(theme::ROW_INSET))
                     .child(list)
                     .into_any_element()
-            } else if self.picked.is_empty() {
+            } else {
                 self.preview
                     .update(cx, |preview, cx| preview.render_in(&panel_theme, cx))
                     .into_any_element()
-            } else {
-                self.picked.panel(&self.icons, th, cx).into_any_element()
             };
             div()
                 .map(|el| {

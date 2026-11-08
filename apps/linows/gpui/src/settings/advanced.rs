@@ -24,7 +24,6 @@ const DIR_GAP_X: f32 = 6.0;
 const DIR_GAP_Y: f32 = 4.0;
 const DIR_PADDING_X: f32 = 8.0;
 const DIR_PADDING_Y: f32 = 3.0;
-const DIR_REMOVE: &str = "\u{2715}";
 const DIR_REMOVE_PADDING_X: f32 = 6.0;
 const DIR_REMOVE_PADDING_Y: f32 = 2.0;
 const DIR_LIST_MAX_W: f32 = 520.0;
@@ -581,15 +580,14 @@ impl Settings {
                             .id(("remove", i))
                             .px(px(DIR_REMOVE_PADDING_X))
                             .py(px(DIR_REMOVE_PADDING_Y))
+                            .group(controls::REMOVE_GROUP)
                             .rounded(px(th.chip_radius()))
-                            .text_size(px(th.font_size - 3.0))
-                            .text_color(th.text_muted)
                             .cursor_pointer()
-                            .hover(|s| s.text_color(th.danger).bg(th.control_fill))
+                            .hover(|s| s.bg(th.control_fill))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.settings.remove_dir(list, &path, cx)
                             }))
-                            .child(DIR_REMOVE),
+                            .child(controls::remove_icon(th)),
                     )
             })
             .collect();

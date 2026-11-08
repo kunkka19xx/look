@@ -9,19 +9,21 @@ use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Bounds, CursorStyle, Div, ElementId, FontWeight, HitboxBehavior, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, SharedString, Stateful,
-    Window, canvas, deferred, div, point, px, relative, size,
+    Window, canvas, deferred, div, point, px, relative, size, svg,
 };
 
+use crate::glyphs;
 use crate::theme::{self, Theme};
 
 pub const LABEL_W: f32 = 140.0;
+/// The hover group of a pill's (x) button, see `remove_icon`.
+pub const REMOVE_GROUP: &str = "remove";
 const ROW_GAP: f32 = 10.0;
 const ROW_PADDING_Y: f32 = 4.0;
 const VALUE_W: f32 = 42.0;
 const SECTION_GAP: f32 = 8.0;
 const SECTION_PADDING_TOP: f32 = 8.0;
 const SECTION_PADDING_BOTTOM: f32 = 2.0;
-const SECTION_ARROW: &str = "\u{25b6}";
 const DIVIDER_MARGIN_Y: f32 = 6.0;
 const TOGGLE_W: f32 = 36.0;
 const TOGGLE_H: f32 = 20.0;
@@ -34,7 +36,6 @@ const SELECT_MIN_W: f32 = 120.0;
 const SELECT_PADDING_X: f32 = 10.0;
 const SELECT_PADDING_Y: f32 = 4.0;
 const SELECT_GAP: f32 = 8.0;
-const SELECT_ARROW: &str = "\u{25be}";
 const MENU_GAP: f32 = 4.0;
 const MENU_PADDING: f32 = 4.0;
 const MENU_ITEM_PADDING_X: f32 = 10.0;
@@ -61,8 +62,23 @@ pub fn section(title: &'static str, th: &Theme) -> Div {
         .text_size(px(th.font_size - 1.0))
         .font_weight(FontWeight::SEMIBOLD)
         .text_color(th.text_secondary)
-        .child(div().text_size(px(th.font_size - 2.0)).child(SECTION_ARROW))
+        .child(
+            svg()
+                .path(glyphs::CHEVRON_RIGHT)
+                .size(px(th.font_size - 2.0))
+                .text_color(th.text_secondary),
+        )
         .child(title)
+}
+
+/// A pill's (x), red while its `REMOVE_GROUP` button is hovered.
+pub fn remove_icon(th: &Theme) -> impl IntoElement {
+    let danger = th.danger;
+    svg()
+        .path(glyphs::X)
+        .size(px(th.font_size - 3.0))
+        .text_color(th.text_muted)
+        .group_hover(REMOVE_GROUP, move |s| s.text_color(danger))
 }
 
 pub fn divider(th: &Theme) -> Div {
@@ -234,7 +250,12 @@ pub fn select(
         .gap(px(SELECT_GAP))
         .on_click(move |_, window, cx| open_click(&!open, window, cx))
         .child(label)
-        .child(div().text_color(th.text_muted).child(SELECT_ARROW));
+        .child(
+            svg()
+                .path(glyphs::CHEVRON_DOWN)
+                .size(px(th.font_size - 2.0))
+                .text_color(th.text_muted),
+        );
     div().relative().child(button).when(open, |el| {
         el.child(deferred(
             div()
