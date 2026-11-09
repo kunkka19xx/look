@@ -92,10 +92,11 @@ fn failed(launcher: &mut Launcher, text: String, cx: &mut Context<Launcher>) {
 }
 
 impl Extend {
-    /// A fresh settings session: nothing read yet. The counter stays, so a
-    /// read still in flight from the last session cannot land as this one's.
+    /// A fresh settings session: nothing read yet, and a read still in
+    /// flight from the last session is disowned.
     pub(super) fn forget(&mut self) {
         self.reading = Reading::Pending;
+        self.reads += 1;
     }
 
     pub(super) fn read(&mut self, cx: &mut Context<Launcher>) {

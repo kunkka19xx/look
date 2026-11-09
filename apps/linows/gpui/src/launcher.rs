@@ -78,6 +78,12 @@ const NOT_RUN: &str = "not run, you moved on";
 const VERB_STARTED: &str = "started";
 const VERB_FAILED: &str = "failed";
 
+#[derive(Default)]
+struct SourcesReload {
+    running: bool,
+    again: bool,
+}
+
 /// How Enter on a block row went, decided off the draw thread.
 enum Performed {
     /// The block asks first; the question goes to the menu.
@@ -233,6 +239,9 @@ pub struct Launcher {
     pub(crate) settings: Settings,
     /// Ctrl+Shift+, : the settings screen is up, in the command screen's frame.
     settings_open: bool,
+    /// A sources reload in flight, and whether another was asked for
+    /// meanwhile: run one at a time, so an older pass cannot publish last.
+    sources_reload: SourcesReload,
     /// Ctrl+H: the help screen, in the same frame.
     pub(crate) help: Help,
     /// Version and update status, shown by settings and help.
@@ -362,6 +371,7 @@ impl Launcher {
             command_mode: false,
             settings: Settings::new(cx),
             settings_open: false,
+            sources_reload: SourcesReload::default(),
             help: Help::new(cx),
             update: Update::new(),
             levels: Levels::default(),
@@ -1121,6 +1131,11 @@ impl Launcher {
     /// and the tab re-reads once that is done. The config and the settings'
     /// working copy are left alone.
     pub(crate) fn reload_sources(&mut self, cx: &mut Context<Self>) {
+        if self.sources_reload.running {
+            self.sources_reload.again = true;
+            return;
+        }
+        self.sources_reload.running = true;
         bg::fetch(
             cx,
             || {
@@ -1128,7 +1143,10 @@ impl Launcher {
                 blocks::refresh();
             },
             |this, (), cx| {
-                if this.settings_open {
+                this.sources_reload.running = false;
+                if std::mem::take(&mut this.sources_reload.again) {
+                    this.reload_sources(cx);
+                } else if this.settings_open {
                     this.settings.read_extend(cx);
                 }
             },
