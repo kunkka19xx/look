@@ -528,7 +528,8 @@ impl Settings {
             Some(field) => search_field(field.input.clone(), "").into_any_element(),
             None => div()
                 .flex_1()
-                .text_center()
+                .flex()
+                .justify_center()
                 .child(self.number_value(spec).to_string())
                 .into_any_element(),
         };

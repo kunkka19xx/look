@@ -11,10 +11,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Div, Entity,
-    FontWeight, KeyDownEvent, PaintQuad, Pixels, Render, ScrollStrategy, SharedString, Stateful,
-    Task, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred, div, img,
-    point, prelude::*, px, relative, size, svg, uniform_list,
+    Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Deferred, Div,
+    Entity, FontWeight, KeyDownEvent, PaintQuad, Pixels, Render, ScrollStrategy, SharedString,
+    Stateful, Task, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred,
+    div, img, point, prelude::*, px, relative, size, svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
@@ -77,6 +77,12 @@ const NOT_RUN: &str = "not run, you moved on";
 /// Told to run, not reported on yet.
 const VERB_STARTED: &str = "started";
 const VERB_FAILED: &str = "failed";
+
+#[derive(Default)]
+struct SourcesReload {
+    running: bool,
+    again: bool,
+}
 
 /// How Enter on a block row went, decided off the draw thread.
 enum Performed {
@@ -233,6 +239,9 @@ pub struct Launcher {
     pub(crate) settings: Settings,
     /// Ctrl+Shift+, : the settings screen is up, in the command screen's frame.
     settings_open: bool,
+    /// A sources reload in flight, and whether another was asked for
+    /// meanwhile: run one at a time, so an older pass cannot publish last.
+    sources_reload: SourcesReload,
     /// Ctrl+H: the help screen, in the same frame.
     pub(crate) help: Help,
     /// Version and update status, shown by settings and help.
@@ -362,6 +371,7 @@ impl Launcher {
             command_mode: false,
             settings: Settings::new(cx),
             settings_open: false,
+            sources_reload: SourcesReload::default(),
             help: Help::new(cx),
             update: Update::new(),
             levels: Levels::default(),
@@ -1114,6 +1124,33 @@ impl Launcher {
             },
         );
         cx.notify();
+    }
+
+    /// A source file changed from the Extend tab: the engine reads the
+    /// sources again and restarts connectors, the block catalog follows,
+    /// and the tab re-reads once that is done. The config and the settings'
+    /// working copy are left alone.
+    pub(crate) fn reload_sources(&mut self, cx: &mut Context<Self>) {
+        if self.sources_reload.running {
+            self.sources_reload.again = true;
+            return;
+        }
+        self.sources_reload.running = true;
+        bg::fetch(
+            cx,
+            || {
+                engine::reload_config(app_state(), || {});
+                blocks::refresh();
+            },
+            |this, (), cx| {
+                this.sources_reload.running = false;
+                if std::mem::take(&mut this.sources_reload.again) {
+                    this.reload_sources(cx);
+                } else if this.settings_open {
+                    this.settings.read_extend(cx);
+                }
+            },
+        );
     }
 
     /// Create Fresh Config: the question, then the defaults written over
@@ -2234,7 +2271,9 @@ impl Launcher {
         // No copyright on this screen: the footer is the tab's hint alone.
         let trailing = hint.as_ref().map(|_| div().into_any_element());
         // The question's bar takes the corner while it asks.
-        let float = (self.confirm.is_none()).then(|| self.settings.save_float(&th, cx));
+        let float = (self.confirm.is_none())
+            .then(|| self.settings.save_float(&th, cx))
+            .flatten();
         self.screen(body, hint, trailing, float, &th, cx)
     }
 
@@ -2253,13 +2292,27 @@ impl Launcher {
     ) -> Div {
         let radius = th.tile_radius();
         let frosted = th.frosted();
-        let banner = self.banner.render(th, cx).map(|banner| {
-            div()
-                .mx(px(theme::CONTENT_PADDING))
-                .mt(px(theme::CONTENT_PADDING))
-                .flex()
-                .child(banner)
-        });
+        // A toast floats over the card where it floats over the rows; the
+        // sticky notice takes a place in the flow above the card.
+        let toast = self.banner.showing_toast();
+        let banner = self
+            .banner
+            .render(th, cx)
+            .map(|banner| div().flex_1().min_w_0().child(banner));
+        let (toast_card, sticky_card) = match banner {
+            Some(card) if toast => (Some(toast_float(card, th)), None),
+            Some(card) => (
+                None,
+                Some(
+                    div()
+                        .mx(px(theme::CONTENT_PADDING))
+                        .mt(px(theme::CONTENT_PADDING))
+                        .flex()
+                        .child(card),
+                ),
+            ),
+            None => (None, None),
+        };
         // The focused field (the panel's box, or a row's open field) is where
         // the keys dispatch from, so this root must track that handle.
         let focus_handle = self.focus_target(cx);
@@ -2282,7 +2335,7 @@ impl Launcher {
             .child(blur_commit(frosted))
             .flex()
             .flex_col()
-            .children(banner)
+            .children(sticky_card)
             .child(
                 div()
                     .flex_1()
@@ -2324,6 +2377,7 @@ impl Launcher {
                             .children(float),
                     ),
             )
+            .children(toast_card)
             .children(confirm)
     }
 
@@ -3233,24 +3287,7 @@ impl Launcher {
             .render(&th, cx)
             .map(|banner| div().flex_1().min_w_0().child(banner));
         let (toast_card, sticky_card) = match banner {
-            Some(card) if toast => {
-                let top = theme::CONTENT_PADDING
-                    + theme::TOP_ROW_HEIGHT
-                    + 2.0 * theme::INPUT_PADDING_Y
-                    + gap;
-                // Occludes, or a click on it would open the row under it.
-                let card = deferred(
-                    div()
-                        .occlude()
-                        .absolute()
-                        .top(px(top))
-                        .left(px(theme::CONTENT_PADDING))
-                        .right(px(theme::CONTENT_PADDING))
-                        .flex()
-                        .child(card),
-                );
-                (Some(card), None)
-            }
+            Some(card) if toast => (Some(toast_float(card, &th)), None),
             Some(card) => (
                 None,
                 Some(
@@ -3593,6 +3630,27 @@ pub(crate) fn backdrop_layer(radius: f32, th: &Theme) -> Option<impl IntoElement
 }
 
 /// The band's leading at the hint's size.
+/// The toast's place on every screen: just under the bar, over whatever
+/// is below it. Occludes, or a click on it would land on the row under it.
+fn toast_float(card: Div, th: &Theme) -> Deferred {
+    let gap = if th.floating() {
+        th.inner_gap
+    } else {
+        theme::ROW_INSET
+    };
+    let top = theme::CONTENT_PADDING + theme::TOP_ROW_HEIGHT + 2.0 * theme::INPUT_PADDING_Y + gap;
+    deferred(
+        div()
+            .occlude()
+            .absolute()
+            .top(px(top))
+            .left(px(theme::CONTENT_PADDING))
+            .right(px(theme::CONTENT_PADDING))
+            .flex()
+            .child(card),
+    )
+}
+
 fn hint_line_height(th: &Theme) -> f32 {
     (th.font_size - 1.0) * theme::LABEL_LINE_HEIGHT
 }
