@@ -78,6 +78,7 @@ pub const CALENDAR: &str = "icons/calendar.svg";
 pub const ACTIVITY: &str = "icons/activity.svg";
 pub const CHEVRON_RIGHT: &str = "icons/chevron-right.svg";
 pub const CHEVRON_DOWN: &str = "icons/chevron-down.svg";
+pub const TRIANGLE_ALERT: &str = "icons/triangle-alert.svg";
 
 /// A Lucide body in the shared 24-unit frame.
 macro_rules! lucide {
@@ -335,6 +336,10 @@ const GLYPHS: &[(&str, &[u8])] = &[
     ),
     lucide!(CHEVRON_RIGHT, r#"<polyline points="9 18 15 12 9 6"/>"#),
     lucide!(CHEVRON_DOWN, r#"<polyline points="6 9 12 15 18 9"/>"#),
+    lucide!(
+        TRIANGLE_ALERT,
+        r#"<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>"#
+    ),
 ];
 
 /// The bytes of a user's SVG the backend inlined as a data URL.

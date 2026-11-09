@@ -582,7 +582,8 @@ impl Preview {
                         .bg(th.control_fill)
                         .text_size(px(th.font_size - 1.0))
                         .text_color(th.text_muted)
-                        .text_center()
+                        .flex()
+                        .justify_center()
                         .child(IMAGE_MISSING),
                 };
                 panel
@@ -978,7 +979,8 @@ impl Preview {
                         .py(px(FOLDER_EMPTY_PADDING))
                         .text_size(px(th.font_size - 1.0))
                         .text_color(th.text_muted)
-                        .text_center()
+                        .flex()
+                        .justify_center()
                         .child("Empty folder")
                         .into_any_element();
                 }
@@ -2017,7 +2019,8 @@ fn truncated_note(text: impl Into<SharedString>, th: &Theme) -> Div {
         .border_color(th.border)
         .text_size(px(th.font_size - 2.0))
         .text_color(th.text_muted)
-        .text_center()
+        .flex()
+        .justify_center()
         .child(text.into())
 }
 

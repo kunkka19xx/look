@@ -3,6 +3,7 @@
 //! Config writes the lot to the file in one go, Esc discards.
 
 mod advanced;
+mod extend;
 mod shortcuts;
 
 use std::collections::{HashMap, HashSet};
@@ -335,23 +336,25 @@ pub enum Tab {
     Appearance,
     Advanced,
     Shortcuts,
+    Extend,
 }
 
 impl Tab {
-    const ALL: [Tab; 3] = [Tab::Appearance, Tab::Advanced, Tab::Shortcuts];
+    const ALL: [Tab; 4] = [Tab::Appearance, Tab::Advanced, Tab::Shortcuts, Tab::Extend];
 
     fn label(self) -> &'static str {
         match self {
             Tab::Appearance => "Appearance",
             Tab::Advanced => "Advanced",
             Tab::Shortcuts => "Shortcuts",
+            Tab::Extend => "Extend",
         }
     }
 
-    /// The footer line; Appearance has none, as on macOS.
+    /// The footer line; Appearance and Extend have none, as on macOS.
     fn hint(self) -> Option<SharedString> {
         match self {
-            Tab::Appearance => None,
+            Tab::Appearance | Tab::Extend => None,
             Tab::Advanced => Some(
                 format!(
                     "Save Config applies changes immediately. {} is only needed after editing .look/config manually.",
@@ -444,6 +447,7 @@ pub struct Settings {
     /// Why the last extra scan dir was refused, under that list until the
     /// next add or remove, as macOS's `extraScanDirectoryMessage`.
     extra_dir_message: Option<String>,
+    extend: extend::Extend,
 }
 
 impl Settings {
@@ -465,16 +469,26 @@ impl Settings {
             save_message: None,
             save_seq: 0,
             extra_dir_message: None,
+            extend: extend::Extend::default(),
         }
     }
 
     pub fn enter(&mut self, cx: &mut Context<Launcher>) {
         self.tab = Tab::default();
         self.shortcuts_view = shortcuts::View::default();
+        self.extend = extend::Extend::default();
         self.scroll.set_offset(Default::default());
         self.edited.clear();
         self.load(true, cx);
         self.fetch_fonts(cx);
+    }
+
+    /// The Extend tab reads what is installed whenever it comes into view
+    /// or the config reloads, so a fixed problem leaves the screen.
+    fn read_extend(&mut self, cx: &mut Context<Launcher>) {
+        if self.tab == Tab::Extend {
+            self.extend.read(cx);
+        }
     }
 
     pub fn kept(&self) -> Kept {
@@ -505,6 +519,7 @@ impl Settings {
             self.load(true, cx);
         }
         self.fetch_fonts(cx);
+        self.read_extend(cx);
     }
 
     fn fetch_fonts(&mut self, cx: &mut Context<Launcher>) {
@@ -530,6 +545,7 @@ impl Settings {
     pub fn reload(&mut self, cx: &mut Context<Launcher>) {
         self.edited.clear();
         self.load(true, cx);
+        self.read_extend(cx);
     }
 
     /// `read` takes the entries from the file; a resume keeps its own, and
@@ -647,6 +663,7 @@ impl Settings {
             "tab" => {
                 self.tab = self.tab.step(shift);
                 self.scroll.set_offset(Default::default());
+                self.read_extend(cx);
                 cx.notify();
                 KeyOutcome::Consumed
             }
@@ -997,6 +1014,7 @@ impl Settings {
             Tab::Appearance => self.appearance(th, cx).into_any_element(),
             Tab::Advanced => self.advanced(th, update, cx).into_any_element(),
             Tab::Shortcuts => self.shortcuts(th, cx).into_any_element(),
+            Tab::Extend => self.extend(th, cx).into_any_element(),
         };
         div()
             .size_full()
@@ -1024,16 +1042,22 @@ impl Settings {
     /// is one: no row of its own, the user's call ahead of macOS. The frame
     /// places it, since an absolute child anchors to its own parent. It
     /// occludes, or a click on it also lands on the slider scrolled under it.
-    pub fn save_float(&self, th: &Theme, cx: &mut Context<Launcher>) -> AnyElement {
-        deferred(
-            div()
-                .occlude()
-                .absolute()
-                .bottom(px(SAVE_FLOAT_INSET))
-                .right(px(SAVE_FLOAT_INSET))
-                .child(self.save_controls(th, cx)),
+    /// Nothing on Extend is a setting to save, so it has no button.
+    pub fn save_float(&self, th: &Theme, cx: &mut Context<Launcher>) -> Option<AnyElement> {
+        if self.tab == Tab::Extend {
+            return None;
+        }
+        Some(
+            deferred(
+                div()
+                    .occlude()
+                    .absolute()
+                    .bottom(px(SAVE_FLOAT_INSET))
+                    .right(px(SAVE_FLOAT_INSET))
+                    .child(self.save_controls(th, cx)),
+            )
+            .into_any_element(),
         )
-        .into_any_element()
     }
 
     /// The Saved pill, then Save Config.
@@ -1075,7 +1099,10 @@ impl Settings {
                     .flex_1()
                     .py(px(TAB_PADDING_Y))
                     .rounded(px(th.control_radius()))
-                    .text_center()
+                    // Centred by the flex pass, not by text alignment, which
+                    // measures before the tab has its width.
+                    .flex()
+                    .justify_center()
                     .text_size(px(th.font_size - 1.0))
                     .font_weight(FontWeight::MEDIUM)
                     .cursor_pointer()
@@ -1093,6 +1120,7 @@ impl Settings {
                         this.settings.tab = tab;
                         this.settings.scroll.set_offset(Default::default());
                         this.settings.leave();
+                        this.settings.read_extend(cx);
                         cx.notify();
                     }))
                     .child(tab.label())
@@ -1329,8 +1357,9 @@ mod tests {
     #[test]
     fn tabs_cycle_both_ways() {
         assert_eq!(Tab::Appearance.step(false), Tab::Advanced);
-        assert_eq!(Tab::Shortcuts.step(false), Tab::Appearance);
-        assert_eq!(Tab::Appearance.step(true), Tab::Shortcuts);
+        assert_eq!(Tab::Shortcuts.step(false), Tab::Extend);
+        assert_eq!(Tab::Extend.step(false), Tab::Appearance);
+        assert_eq!(Tab::Appearance.step(true), Tab::Extend);
     }
 
     #[test]
@@ -1340,8 +1369,9 @@ mod tests {
     }
 
     #[test]
-    fn appearance_alone_has_no_footer() {
+    fn appearance_and_extend_have_no_footer() {
         assert!(Tab::Appearance.hint().is_none());
+        assert!(Tab::Extend.hint().is_none());
         assert!(Tab::Advanced.hint().is_some());
         assert!(Tab::Shortcuts.hint().is_some());
     }
