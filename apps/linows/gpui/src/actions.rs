@@ -55,8 +55,11 @@ pub enum ActionId {
     OpenAllPicked,
     ClearPicked,
     DeleteClipboard,
-    /// A block's `then` target, by block id.
-    Target(String),
+    /// A block's `then` target, by block id, with its name for the banner.
+    Target {
+        block_id: String,
+        name: String,
+    },
     /// A verb the connector behind the row plans: the question comes from
     /// it, so this asks rather than performs.
     Plan(String),
@@ -210,7 +213,10 @@ pub fn descriptors(
                 id: if target.plans {
                     ActionId::Plan(target.id.clone())
                 } else {
-                    ActionId::Target(target.id.clone())
+                    ActionId::Target {
+                        block_id: target.id.clone(),
+                        name: target.name.clone(),
+                    }
                 },
                 // The ellipsis says this one lists rather than runs.
                 title: if target.performs {
@@ -453,7 +459,13 @@ mod tests {
     #[test]
     fn the_question_starts_on_cancel() {
         let mut menu = Menu::new(Vec::new());
-        menu.ask(Some("Delete main?".into()), ActionId::Target("b".into()));
+        menu.ask(
+            Some("Delete main?".into()),
+            ActionId::Target {
+                block_id: "b".into(),
+                name: "Drop".into(),
+            },
+        );
         assert_eq!(menu.focused, 1);
         assert_eq!(menu.items[0].id, ActionId::Yes);
         menu.move_by(1);

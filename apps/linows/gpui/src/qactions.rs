@@ -261,7 +261,9 @@ impl Preview {
         let row_id = actions.row_id.clone();
         let title = actions.actions[index].descriptor.title.clone();
         bg::fetch(cx, work, move |this, outcome, cx| {
-            // A later apply, or a later visit to the row, owns the flag now.
+            // The outcome is the user's wherever they are now; the flag and
+            // the re-read belong to a later apply or visit if there was one.
+            cx.emit(notice(&title, outcome));
             let Some(actions) = this.actions.as_mut().filter(|a| {
                 a.row_id == row_id
                     && a.actions
@@ -271,7 +273,6 @@ impl Preview {
                 return;
             };
             actions.busy = false;
-            cx.emit(notice(&title, outcome));
             this.read_action(index, cx);
         });
     }

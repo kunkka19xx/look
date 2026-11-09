@@ -73,7 +73,7 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 /// How long a keystroke waits for the next before the query runs; the
 /// webview uses the same.
 const COPY_FAILED: &str = "Copy failed";
-const NOT_RUN: &str = "not run, the selection moved";
+const NOT_RUN: &str = "not run, you moved on";
 /// Told to run, not reported on yet.
 const VERB_STARTED: &str = "started";
 const VERB_FAILED: &str = "failed";
@@ -1942,11 +1942,10 @@ impl Launcher {
             self.ask_connector(block_id, item.title, cx);
             return;
         }
-        // The target's title comes from the menu it was picked in, so the
-        // menu goes after the action reads it.
-        self.menu_token += 1;
-        self.run_action(item.id, cx);
+        // Closed first, so a question the action asks is not mistaken for
+        // one this menu left behind.
         self.close_menu();
+        self.run_action(item.id, cx);
         cx.notify();
     }
 
@@ -1971,7 +1970,7 @@ impl Launcher {
             ActionId::DeleteClipboard => {
                 self.delete(cx);
             }
-            ActionId::Target(block_id) => self.run_target(block_id, cx),
+            ActionId::Target { block_id, name } => self.run_target(block_id, name, cx),
             ActionId::RunPlan { plan, title } => self.run_planned(plan, title, cx),
             // Asked in `activate_menu_item`, which still has the menu.
             ActionId::Plan(_) | ActionId::Yes | ActionId::No => {}
@@ -2063,11 +2062,11 @@ impl Launcher {
                     actions::BANNER_SECONDS,
                     cx,
                 ),
-                // A menu came and went meanwhile; the question is stale.
-                Performed::Asks(_) if this.menu_token != token => {}
-                // The selection moved while the block was read.
+                // The selection moved, or a menu came and went, while the
+                // block was read.
                 Performed::Asks(_) | Performed::Presses
-                    if this.selected_row().is_none_or(|r| r.id != panel_row.id) =>
+                    if this.menu_token != token
+                        || this.selected_row().is_none_or(|r| r.id != panel_row.id) =>
                 {
                     this.banner.show(
                         format!("{title}: {NOT_RUN}"),
@@ -2182,22 +2181,10 @@ impl Launcher {
 
     /// A `then` target against the selected row: performed, or a level to
     /// descend into when it produces rows.
-    fn run_target(&mut self, block_id: String, cx: &mut Context<Self>) {
+    fn run_target(&mut self, block_id: String, title: String, cx: &mut Context<Self>) {
         let Some(row) = self.selected_row().cloned() else {
             return;
         };
-        let title = self
-            .menu
-            .as_ref()
-            .and_then(|m| {
-                m.items.iter().find_map(|item| match &item.id {
-                    ActionId::Target(id) if *id == block_id => {
-                        Some(item.title.trim_end_matches('\u{2026}').to_string())
-                    }
-                    _ => None,
-                })
-            })
-            .unwrap_or_else(|| block_id.clone());
         let args = actions::row_args(&row, &self.levels.ancestors(), &self.query(cx));
         let shell = self.shell.clone();
         let id = block_id.clone();
