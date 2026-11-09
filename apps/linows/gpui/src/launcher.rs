@@ -46,6 +46,7 @@ use crate::modes::Mode;
 use crate::motion;
 use crate::picked::{self, Picked};
 use crate::preview::{self, ClipDeleted, Preview};
+use crate::qactions::Press;
 use crate::query;
 use crate::rows::{Icon, Open, Row};
 use crate::running::RunningApps;
@@ -72,7 +73,6 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 /// How long a keystroke waits for the next before the query runs; the
 /// webview uses the same.
 const COPY_FAILED: &str = "Copy failed";
-const NO_CONTROL: &str = "nothing to press";
 const NOT_RUN: &str = "not run, the selection moved";
 /// Told to run, not reported on yet.
 const VERB_STARTED: &str = "started";
@@ -2026,6 +2026,7 @@ impl Launcher {
         let title = row.title.clone();
         let panel_row = row.clone();
         let shell = self.shell.clone();
+        let token = self.menu_token;
         bg::fetch(
             cx,
             move || {
@@ -2062,6 +2063,8 @@ impl Launcher {
                     actions::BANNER_SECONDS,
                     cx,
                 ),
+                // A menu came and went meanwhile; the question is stale.
+                Performed::Asks(_) if this.menu_token != token => {}
                 // The selection moved while the block was read.
                 Performed::Asks(_) | Performed::Presses
                     if this.selected_row().is_none_or(|r| r.id != panel_row.id) =>
@@ -2087,15 +2090,17 @@ impl Launcher {
                         preview.sync_actions(&panel_row, cx);
                         preview.press_first(cx)
                     });
-                    if pressed {
-                        engine::record_usage(app_state(), &panel_row.id, USAGE_EXECUTE);
-                    } else {
-                        this.banner.show(
-                            format!("{title}: {NO_CONTROL}"),
+                    match pressed {
+                        Press::Started => {
+                            engine::record_usage(app_state(), &panel_row.id, USAGE_EXECUTE);
+                        }
+                        Press::Busy => {}
+                        Press::Refused(reason) => this.banner.show(
+                            format!("{title}: {reason}"),
                             Tone::Error,
                             actions::BANNER_SECONDS,
                             cx,
-                        );
+                        ),
                     }
                 }
                 Performed::Done => {}

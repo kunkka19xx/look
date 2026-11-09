@@ -35,6 +35,16 @@ const DOT: f32 = 7.0;
 const DOT_BORDER: f32 = 1.5;
 const INERT_OPACITY: f32 = 0.5;
 const NONE_CONNECTED: &str = "None connected";
+const NO_CONTROL: &str = "nothing to press";
+
+/// How Enter on a control-only row went.
+pub(crate) enum Press {
+    Started,
+    /// An apply is still in flight.
+    Busy,
+    /// Nothing to press, or the control said why it does not apply.
+    Refused(String),
+}
 
 /// One counter for every control shown, so a read from an earlier visit
 /// never matches a later one.
@@ -97,16 +107,22 @@ impl Preview {
         self.read_actions(cx);
     }
 
-    /// Enter on a control-only row: press the first control, whatever has
-    /// been read so far. False when the row has none.
-    pub(crate) fn press_first(&mut self, cx: &mut Context<Self>) -> bool {
+    /// Enter on a control-only row: press the first control, unless a read
+    /// already said it does not apply here.
+    pub(crate) fn press_first(&mut self, cx: &mut Context<Self>) -> Press {
         let Some(actions) = self.actions.as_ref().filter(|a| !a.actions.is_empty()) else {
-            return false;
+            return Press::Refused(NO_CONTROL.into());
         };
-        if !actions.busy {
-            self.press(0, ActionIntent::Run, cx);
+        if actions.busy {
+            return Press::Busy;
         }
-        true
+        if let Some(status) = &actions.actions[0].status
+            && let ActionState::Unavailable { reason } = &status.state
+        {
+            return Press::Refused(reason.clone());
+        }
+        self.press(0, ActionIntent::Run, cx);
+        Press::Started
     }
 
     /// Ctrl+O: flip the first toggle. False when the row has none.
@@ -240,11 +256,18 @@ impl Preview {
         let Some(actions) = self.actions.as_mut() else {
             return;
         };
-        actions.actions[index].generation = next_generation();
+        let generation = next_generation();
+        actions.actions[index].generation = generation;
         let row_id = actions.row_id.clone();
         let title = actions.actions[index].descriptor.title.clone();
         bg::fetch(cx, work, move |this, outcome, cx| {
-            let Some(actions) = this.actions.as_mut().filter(|a| a.row_id == row_id) else {
+            // A later apply, or a later visit to the row, owns the flag now.
+            let Some(actions) = this.actions.as_mut().filter(|a| {
+                a.row_id == row_id
+                    && a.actions
+                        .get(index)
+                        .is_some_and(|it| it.generation == generation)
+            }) else {
                 return;
             };
             actions.busy = false;
