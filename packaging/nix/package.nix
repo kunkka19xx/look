@@ -12,6 +12,7 @@
   alsa-lib,
   dbus,
   openssl,
+  sqlite,
   fontconfig,
   freetype,
   xdg-utils,
@@ -114,6 +115,7 @@ rustPlatform.buildRustPackage {
     alsa-lib
     dbus
     openssl
+    sqlite
     fontconfig
     freetype
   ];
