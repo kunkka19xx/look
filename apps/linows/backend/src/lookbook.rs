@@ -1,15 +1,175 @@
-//! What a lookbook entry would do on this machine, and installing it. One
-//! hop each into `look_engine::lookbook`, shared with macOS.
+//! The lookbook catalog, and what an entry would do on this machine before
+//! installing it. Fetching lives here, as it does in the macOS shell, so the
+//! engine makes no network calls; the rest is one hop each into
+//! `look_engine::lookbook`.
 
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
+use look_answers::http;
 use look_engine::lookbook::{
     InstallOutcome, InstallRequest, NamedFile, Present, PresentRequest, Preview,
 };
+use serde::Deserialize;
 
 use crate::state::AppState;
 
 const NO_HOME: &str = "no home directory";
+const INDEX_URL: &str = "https://raw.githubusercontent.com/kunkka19xx/lookbook/main/index.json";
+/// Points the browser at a checkout instead of GitHub, a path or a URL.
+/// The same key as macOS.
+const INDEX_OVERRIDE: &str = "LOOK_LOOKBOOK_INDEX";
+const FETCH_TIMEOUT_SECS: u32 = 15;
+const SCHEME_MARK: &str = "://";
+const RAW_HOST: &str = "https://raw.githubusercontent.com/";
+const PAGES_HOST: &str = "https://github.com/";
+const PAGES_BLOB: &str = "blob";
+/// Owner, repo and ref: the parts a raw URL and a page URL share.
+const REPO_PARTS: usize = 3;
+const UNREACHABLE: &str = "Could not reach lookbook.";
+const UNREADABLE: &str = "Could not read the lookbook catalog.";
+/// What the catalog's `platforms` calls this machine.
+pub const THIS_PLATFORM: &str = if cfg!(windows) { "windows" } else { "linux" };
+
+/// One ready-made source, as `index.json` describes it.
+#[derive(Clone, Deserialize)]
+pub struct Entry {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    /// Where it works as written. Listed elsewhere, installable only here.
+    pub platforms: Vec<String>,
+    /// Programs it cannot work without, usually run by a helper script.
+    pub requires: Vec<String>,
+    /// Declarations, copied into `~/.look/sources`.
+    pub files: Vec<String>,
+    /// Helper scripts, copied into `~/.look/bin`.
+    pub bin: Vec<String>,
+    pub readme: String,
+    /// Where its files sit, relative to the catalog's base.
+    pub path: String,
+}
+
+#[derive(Deserialize)]
+struct Index {
+    base: String,
+    /// The same files as rendered pages, for a README somebody clicks.
+    web: Option<String>,
+    sources: Vec<Entry>,
+}
+
+#[derive(Clone)]
+pub struct Catalog {
+    base: String,
+    web: String,
+    /// The checkout the override points into, where files are read instead
+    /// of fetched.
+    local: Option<PathBuf>,
+    pub entries: Vec<Entry>,
+}
+
+impl Catalog {
+    /// Every program any entry asks for, once each.
+    pub fn requires(&self) -> Vec<String> {
+        let mut wanted: Vec<String> = self
+            .entries
+            .iter()
+            .flat_map(|entry| entry.requires.iter().cloned())
+            .collect();
+        wanted.sort();
+        wanted.dedup();
+        wanted
+    }
+
+    /// The rendered README on the web, even from a checkout: a local `.md`
+    /// opens as raw text in an editor.
+    pub fn readme(&self, entry: &Entry) -> Option<String> {
+        (!self.web.is_empty()).then(|| format!("{}{}", self.web, entry.readme))
+    }
+
+    /// An entry's files in the order they will be written. `Err` rather
+    /// than a partial set: a declaration whose script failed to arrive is a
+    /// row that does nothing.
+    pub fn files(&self, entry: &Entry) -> Result<InstallRequest, String> {
+        let read = |name: String, within: &str| {
+            let contents = self
+                .text(&format!("{}{within}{name}", entry.path))
+                .ok_or_else(|| format!("Could not read {} from lookbook.", entry.id))?;
+            Ok(NamedFile {
+                name,
+                contents,
+                answers: Vec::new(),
+            })
+        };
+        Ok(InstallRequest {
+            declarations: entry
+                .files
+                .iter()
+                .map(|name| read(name.clone(), ""))
+                .collect::<Result<_, String>>()?,
+            scripts: entry
+                .bin
+                .iter()
+                .map(|name| read(name.clone(), "bin/"))
+                .collect::<Result<_, String>>()?,
+        })
+    }
+
+    fn text(&self, relative: &str) -> Option<String> {
+        match &self.local {
+            Some(root) => fs::read_to_string(root.join(relative)).ok(),
+            None => fetch(&format!("{}{relative}", self.base)),
+        }
+    }
+}
+
+/// Reads the catalog: the override when set, GitHub otherwise.
+pub fn catalog() -> Result<Catalog, String> {
+    let (body, local) = match std::env::var(INDEX_OVERRIDE).ok().filter(|v| !v.is_empty()) {
+        Some(url) if url.contains(SCHEME_MARK) => (fetch(&url), None),
+        Some(path) => {
+            let path = PathBuf::from(path);
+            let root = path.parent().map(Path::to_path_buf);
+            (fs::read_to_string(&path).ok(), root)
+        }
+        None => (fetch(INDEX_URL), None),
+    };
+    let index: Index =
+        serde_json::from_str(&body.ok_or(UNREACHABLE)?).map_err(|_| UNREADABLE.to_string())?;
+    Ok(Catalog {
+        web: index.web.unwrap_or_else(|| pages_base(&index.base)),
+        base: index.base,
+        local,
+        entries: index.sources,
+    })
+}
+
+fn fetch(url: &str) -> Option<String> {
+    String::from_utf8(http::get_bytes(url, FETCH_TIMEOUT_SECS)?).ok()
+}
+
+/// `raw.githubusercontent.com/<owner>/<repo>/<ref>/` and
+/// `github.com/<owner>/<repo>/blob/<ref>/` address the same files, so the
+/// page base derives from the raw one. Empty for any other host: a guessed
+/// page URL is a link to a 404.
+pub fn pages_base(raw: &str) -> String {
+    let Some(rest) = raw.strip_prefix(RAW_HOST) else {
+        return String::new();
+    };
+    let parts: Vec<&str> = rest.split('/').filter(|part| !part.is_empty()).collect();
+    if parts.len() < REPO_PARTS {
+        return String::new();
+    }
+    let mut base = format!(
+        "{PAGES_HOST}{}/{}/{PAGES_BLOB}/{}/",
+        parts[0], parts[1], parts[2]
+    );
+    for within in &parts[REPO_PARTS..] {
+        base.push_str(within);
+        base.push('/');
+    }
+    base
+}
 
 /// What `toml` declares and what it would need here, or why it is not a file
 /// of blocks at all.
@@ -46,4 +206,58 @@ pub fn install(request: &InstallRequest, state: &AppState) -> Result<InstallOutc
 
 fn home() -> Result<PathBuf, String> {
     crate::sources::home().ok_or_else(|| NO_HOME.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_raw_base_turns_into_its_pages_base() {
+        assert_eq!(
+            pages_base("https://raw.githubusercontent.com/kunkka19xx/lookbook/main/"),
+            "https://github.com/kunkka19xx/lookbook/blob/main/"
+        );
+        assert_eq!(
+            pages_base("https://raw.githubusercontent.com/o/r/main/sources/"),
+            "https://github.com/o/r/blob/main/sources/"
+        );
+        assert_eq!(pages_base("https://raw.githubusercontent.com/o/r"), "");
+        assert_eq!(pages_base("https://example.com/o/r/main/"), "");
+    }
+
+    #[test]
+    fn a_checkout_reads_files_next_to_its_index() {
+        let dir = std::env::temp_dir().join(format!("look-lookbook-{}", std::process::id()));
+        let entry = dir.join("sources/demo");
+        fs::create_dir_all(entry.join("bin")).unwrap();
+        fs::write(entry.join("demo.toml"), "[demo]\n").unwrap();
+        fs::write(entry.join("bin/demo-rows"), "#!/bin/sh\n").unwrap();
+        fs::write(
+            dir.join("index.json"),
+            r#"{"base":"https://raw.githubusercontent.com/o/r/main/","sources":[{"id":"demo",
+            "name":"Demo","description":"","platforms":["linux"],"requires":[],
+            "files":["demo.toml"],"bin":["demo-rows"],"readme":"sources/demo/README.md",
+            "path":"sources/demo/"}]}"#,
+        )
+        .unwrap();
+        let catalog = Catalog {
+            base: String::new(),
+            web: pages_base("https://raw.githubusercontent.com/o/r/main/"),
+            local: Some(dir.clone()),
+            entries: serde_json::from_str::<Index>(
+                &fs::read_to_string(dir.join("index.json")).unwrap(),
+            )
+            .unwrap()
+            .sources,
+        };
+        let files = catalog.files(&catalog.entries[0]).unwrap();
+        assert_eq!(files.declarations[0].contents, "[demo]\n");
+        assert_eq!(files.scripts[0].name, "demo-rows");
+        assert_eq!(
+            catalog.readme(&catalog.entries[0]).as_deref(),
+            Some("https://github.com/o/r/blob/main/sources/demo/README.md")
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
 }

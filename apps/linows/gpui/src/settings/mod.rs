@@ -3,6 +3,7 @@
 //! Config writes the lot to the file in one go, Esc discards.
 
 mod advanced;
+mod browse;
 mod extend;
 mod shortcuts;
 
@@ -380,6 +381,13 @@ pub(super) enum FieldKind {
     Number(&'static advanced::Number),
     /// Filters as typed, so Enter only closes the box.
     ShortcutSearch,
+    LookbookFilter,
+    /// A `[[setup]]` field in the install sheet: the file's and the
+    /// field's places in it.
+    Setup {
+        file: usize,
+        field: usize,
+    },
 }
 
 /// A box while it edits.
@@ -407,6 +415,7 @@ pub struct Kept {
     loaded: bool,
     edited: HashSet<String>,
     pending: HashMap<&'static str, String>,
+    browse: browse::Browse,
 }
 
 impl Kept {
@@ -448,6 +457,7 @@ pub struct Settings {
     /// next add or remove, as macOS's `extraScanDirectoryMessage`.
     extra_dir_message: Option<String>,
     extend: extend::Extend,
+    browse: browse::Browse,
 }
 
 impl Settings {
@@ -470,6 +480,7 @@ impl Settings {
             save_seq: 0,
             extra_dir_message: None,
             extend: extend::Extend::default(),
+            browse: browse::Browse::default(),
         }
     }
 
@@ -477,6 +488,7 @@ impl Settings {
         self.tab = Tab::default();
         self.shortcuts_view = shortcuts::View::default();
         self.extend.forget();
+        self.browse.forget();
         self.scroll.set_offset(Default::default());
         self.edited.clear();
         self.load(true, cx);
@@ -488,6 +500,7 @@ impl Settings {
     pub fn read_extend(&mut self, cx: &mut Context<Launcher>) {
         if self.tab == Tab::Extend {
             self.extend.read(cx);
+            self.browse.read(cx);
         }
     }
 
@@ -500,6 +513,7 @@ impl Settings {
             loaded: self.loaded,
             edited: self.edited.clone(),
             pending: self.recorder.pending(),
+            browse: self.browse.clone(),
         }
     }
 
@@ -512,6 +526,7 @@ impl Settings {
         self.recorder.resume(kept.pending);
         self.entries = kept.entries;
         self.edited = kept.edited;
+        self.browse = kept.browse;
         if kept.loaded {
             self.load(false, cx);
             self.apply(cx);
@@ -643,12 +658,17 @@ impl Settings {
         }
         if let Some(kind) = self.field.as_ref().map(|f| f.kind) {
             return match (kind, ks.key.as_str()) {
-                (_, "escape") | (FieldKind::ShortcutSearch, "enter") => {
+                (_, "escape")
+                | (FieldKind::ShortcutSearch | FieldKind::LookbookFilter, "enter") => {
                     self.field = None;
                     cx.notify();
                     KeyOutcome::Consumed
                 }
                 (FieldKind::Number(spec), "enter" | "tab") => self.commit_number(spec, cx),
+                (FieldKind::Setup { file, field }, "enter" | "tab") => {
+                    self.commit_setup(file, field, cx);
+                    KeyOutcome::Consumed
+                }
                 (FieldKind::Font, "enter") => {
                     self.commit_font(cx);
                     KeyOutcome::Consumed
@@ -659,6 +679,15 @@ impl Settings {
             };
         }
         match ks.key.as_str() {
+            // The sheet owns Escape and Enter while it is up.
+            "escape" if self.sheet_open() => {
+                self.close_sheet(cx);
+                KeyOutcome::Consumed
+            }
+            "enter" if self.sheet_open() => {
+                self.browse.install(cx);
+                KeyOutcome::Consumed
+            }
             "escape" => KeyOutcome::Exit,
             "tab" => {
                 self.tab = self.tab.step(shift);

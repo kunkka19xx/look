@@ -2,6 +2,7 @@
 //! and the ones an app installed, and where one goes off or away. The
 //! macOS `ExtendSettingsTab`.
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use gpui::prelude::*;
@@ -244,22 +245,34 @@ fn state_of(block: &InstalledBlock) -> &'static str {
 }
 
 impl Settings {
+    /// The two installed lists with the lookbook under them, or the sheet
+    /// reading one entry in their place.
     pub(super) fn extend(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let body = div()
             .pt(px(SECTION_PADDING_TOP))
             .flex()
             .flex_col()
             .gap(px(SECTION_GAP));
-        match &self.extend.reading {
+        if self.sheet_open() {
+            return body.child(self.sheet(th, cx));
+        }
+        let mut present = HashSet::new();
+        let body = match &self.extend.reading {
             Reading::Pending => body,
             Reading::Unreadable => body.child(warning(UNREADABLE, th)),
-            Reading::Ready(inventory) => body.child(self.extend_sections(inventory, th, cx)),
-        }
+            Reading::Ready(inventory) => {
+                body.child(self.extend_sections(inventory, &mut present, th, cx))
+            }
+        };
+        body.child(self.browse_section(&present, th, cx))
     }
 
-    fn extend_sections(
+    /// `present` collects the file names in the sources directory, which
+    /// is what tells the lookbook an entry is already here.
+    fn extend_sections<'a>(
         &self,
-        inventory: &Inventory,
+        inventory: &'a Inventory,
+        present: &mut HashSet<&'a str>,
         th: &Theme,
         cx: &mut Context<Launcher>,
     ) -> Div {
@@ -270,6 +283,7 @@ impl Settings {
             .iter()
             .enumerate()
             .partition(|(_, d)| d.installed_by_app(connectors.as_deref()));
+        present.extend(yours.iter().map(|(_, d)| file_name(d.file)));
         let clean = inventory.problems.is_empty()
             && inventory.blocks.iter().all(|block| block.needs.is_empty());
         div()
@@ -427,13 +441,18 @@ impl Settings {
     }
 }
 
-fn pill_id(verb: &'static str, index: usize) -> ElementId {
+pub(super) fn pill_id(verb: &'static str, index: usize) -> ElementId {
     ElementId::NamedInteger(verb.into(), index as u64)
 }
 
 /// One verb in a pill of its own. Bordered, so four in a row read apart,
 /// and `tint` says which one is the odd verb.
-fn pill(id: ElementId, label: &'static str, tint: Option<Rgba>, th: &Theme) -> Stateful<Div> {
+pub(super) fn pill(
+    id: ElementId,
+    label: impl Into<SharedString>,
+    tint: Option<Rgba>,
+    th: &Theme,
+) -> Stateful<Div> {
     div()
         .id(id)
         .flex_shrink_0()
@@ -450,7 +469,7 @@ fn pill(id: ElementId, label: &'static str, tint: Option<Rgba>, th: &Theme) -> S
         .text_color(tint.unwrap_or(th.accent))
         .cursor_pointer()
         .hover(|s| s.bg(th.panel_fill))
-        .child(label)
+        .child(label.into())
 }
 
 fn block_lines(block: &InstalledBlock, th: &Theme) -> Div {
