@@ -6,10 +6,11 @@ use std::path::Path;
 
 use gpui::prelude::*;
 use gpui::{Context, Div, ElementId, FontWeight, Rgba, SharedString, Stateful, div, px, svg};
-use linows_backend::host::LauncherWindow;
+use linows_backend::look_engine::config_path;
 use linows_backend::look_engine::sources::{InstalledBlock, Inventory, Reported};
+use linows_backend::look_sources;
 use linows_backend::sources::RowArgs;
-use linows_backend::{launch, sources, tools, trash};
+use linows_backend::{sources, tools, trash};
 
 use super::Settings;
 use crate::Shell;
@@ -21,12 +22,18 @@ use crate::launchpad::Tone;
 use crate::theme::Theme;
 
 const UNREADABLE: &str = "Could not read what is installed.";
-const APPS_TITLE: &str = "Installed by apps";
-const APPS_WHERE: &str = "~/.look/connectors";
-const APPS_EMPTY: &str = "No app has installed anything yet.";
-const YOURS_TITLE: &str = "Yours";
-const YOURS_WHERE: &str = "~/.look/sources";
-const YOURS_EMPTY: &str = "Nothing declared yet.";
+const APPS: Section = Section {
+    title: "Installed by apps",
+    at: "~/.look/connectors",
+    empty: "No app has installed anything yet.",
+    from_app: true,
+};
+const YOURS: Section = Section {
+    title: "Yours",
+    at: "~/.look/sources",
+    empty: "Nothing declared yet.",
+    from_app: false,
+};
 const NO_PROBLEMS: &str = "No problems.";
 const TURN_ON: &str = "Turn on";
 const TURN_OFF: &str = "Turn off";
@@ -37,8 +44,6 @@ const KIND_CONNECT: &str = "connect";
 const STATE_OFF: &str = "off";
 const STATE_RUNNING: &str = "running";
 const STATE_STOPPED: &str = "not running";
-/// A file that parsed to nothing has no block to say who wrote it.
-const CONNECTORS_DIR: &str = "/.look/connectors/";
 const SECTION_GAP: f32 = 14.0;
 const SECTION_PADDING_TOP: f32 = 8.0;
 const ROW_GAP: f32 = 8.0;
@@ -53,6 +58,15 @@ const PILL_PADDING_Y: f32 = 3.0;
 const WARNING_GLYPH: f32 = 12.0;
 /// Long enough to read a config key out of.
 const FAILURE_SECONDS: f32 = 4.0;
+
+/// One of the two lists: its heading, where its files live, and what it
+/// says when there are none.
+struct Section {
+    title: &'static str,
+    at: &'static str,
+    empty: &'static str,
+    from_app: bool,
+}
 
 /// The three states this screen has. An unread inventory must not render
 /// as an empty one: every line below is a claim about what is installed.
@@ -78,6 +92,12 @@ fn failed(launcher: &mut Launcher, text: String, cx: &mut Context<Launcher>) {
 }
 
 impl Extend {
+    /// A fresh settings session: nothing read yet. The counter stays, so a
+    /// read still in flight from the last session cannot land as this one's.
+    pub(super) fn forget(&mut self) {
+        self.reading = Reading::Pending;
+    }
+
     pub(super) fn read(&mut self, cx: &mut Context<Launcher>) {
         self.reads += 1;
         let read = self.reads;
@@ -89,9 +109,9 @@ impl Extend {
         });
     }
 
-    /// Writes `on` into every block of the file, then reloads: the bytes are
-    /// on disk and nothing has read them, and the reload is what stops a
-    /// connector just turned off.
+    /// Writes `on` into every block of the file, then reloads the sources:
+    /// the bytes are on disk and nothing has read them, and the reload is
+    /// what stops a connector just turned off.
     fn set_enabled(&mut self, file: String, on: bool, cx: &mut Context<Launcher>) {
         bg::fetch(
             cx,
@@ -99,7 +119,7 @@ impl Extend {
             |this, (switched, file), cx| match switched {
                 Some(switched) if switched.problems.is_empty() => {
                     if switched.changed {
-                        this.reload_config(cx);
+                        this.reload_sources(cx);
                     }
                 }
                 Some(switched) => failed(this, switched.problems.join("\n"), cx),
@@ -123,13 +143,20 @@ impl Extend {
                     ),
                     cx,
                 ),
-                None => this.reload_config(cx),
+                None => this.reload_sources(cx),
             },
         );
     }
 
-    /// Through the declared `text_editor`, as Ctrl+E on a row is.
-    fn edit(&mut self, file: String, shell: Shell, cx: &mut Context<Launcher>) {
+    /// Edit or Reveal through the declared tools, as Ctrl+E and Ctrl+F on a
+    /// row are. The action hides the launcher itself.
+    fn tool(
+        &mut self,
+        action: &'static str,
+        file: String,
+        shell: Shell,
+        cx: &mut Context<Launcher>,
+    ) {
         let args = RowArgs {
             candidate_id: String::new(),
             row_title: file_name(&file).to_string(),
@@ -139,22 +166,11 @@ impl Extend {
         };
         bg::fetch(
             cx,
-            move || tools::perform_tool_action(&shell, actions::EDIT, args, Some(false)),
+            move || tools::perform_tool_action(&shell, action, args, Some(false)),
             |this, outcome, cx| {
                 if let Some(reason) = outcome.and_then(|r| r.reason) {
                     failed(this, reason, cx);
                 }
-            },
-        );
-    }
-
-    fn reveal(&mut self, file: String, shell: Shell, cx: &mut Context<Launcher>) {
-        bg::fetch(
-            cx,
-            move || launch::reveal_path(&file),
-            move |this, outcome, cx| match outcome {
-                Ok(()) => shell.hide(),
-                Err(err) => failed(this, err, cx),
             },
         );
     }
@@ -169,10 +185,13 @@ struct Declaration<'a> {
 }
 
 impl Declaration<'_> {
-    fn installed_by_app(&self) -> bool {
-        self.blocks
-            .first()
-            .map_or_else(|| self.file.contains(CONNECTORS_DIR), |b| b.from_app)
+    /// A file that parsed to nothing has no block to say who wrote it, so
+    /// its directory answers, by the rule core applies.
+    fn installed_by_app(&self, connectors: Option<&Path>) -> bool {
+        self.blocks.first().map_or_else(
+            || connectors.is_some_and(|dir| Path::new(self.file).starts_with(dir)),
+            |b| b.from_app,
+        )
     }
 
     /// Blocks that disagree read as on, so one press turns the rest off.
@@ -244,18 +263,20 @@ impl Settings {
         cx: &mut Context<Launcher>,
     ) -> Div {
         let declarations = declarations(inventory);
+        let connectors =
+            config_path::home().map(|home| look_sources::connectors_dir(Path::new(&home)));
         let (apps, yours): (Vec<_>, Vec<_>) = declarations
             .iter()
             .enumerate()
-            .partition(|(_, d)| d.installed_by_app());
+            .partition(|(_, d)| d.installed_by_app(connectors.as_deref()));
         let clean = inventory.problems.is_empty()
             && inventory.blocks.iter().all(|block| block.needs.is_empty());
         div()
             .flex()
             .flex_col()
             .gap(px(SECTION_GAP))
-            .child(self.extend_section(APPS_TITLE, APPS_WHERE, &apps, APPS_EMPTY, th, cx))
-            .child(self.extend_section(YOURS_TITLE, YOURS_WHERE, &yours, YOURS_EMPTY, th, cx))
+            .child(self.extend_section(&APPS, &apps, th, cx))
+            .child(self.extend_section(&YOURS, &yours, th, cx))
             .when(clean, |el| {
                 el.child(muted(NO_PROBLEMS, th.font_size - 3.0, th))
             })
@@ -263,13 +284,17 @@ impl Settings {
 
     fn extend_section(
         &self,
-        title: &'static str,
-        at: &'static str,
+        section: &Section,
         items: &[(usize, &Declaration)],
-        empty: &'static str,
         th: &Theme,
         cx: &mut Context<Launcher>,
     ) -> Div {
+        let Section {
+            title,
+            at,
+            empty,
+            from_app,
+        } = *section;
         let header = div()
             .flex()
             .items_center()
@@ -296,17 +321,16 @@ impl Settings {
             .when(items.is_empty(), |el| {
                 el.child(muted(empty, th.font_size - 2.0, th))
             })
-            .children(
-                items
-                    .iter()
-                    .map(|(index, declaration)| self.declaration_card(*index, declaration, th, cx)),
-            )
+            .children(items.iter().map(|(index, declaration)| {
+                self.declaration_card(*index, declaration, from_app, th, cx)
+            }))
     }
 
     fn declaration_card(
         &self,
         index: usize,
         declaration: &Declaration,
+        from_app: bool,
         th: &Theme,
         cx: &mut Context<Launcher>,
     ) -> Div {
@@ -347,7 +371,9 @@ impl Settings {
                 pill(pill_id("extend-edit", index), EDIT, None, th).on_click(cx.listener(
                     move |this, _, _, cx| {
                         let shell = this.shell.clone();
-                        this.settings.extend.edit(path.clone(), shell, cx);
+                        this.settings
+                            .extend
+                            .tool(actions::EDIT, path.clone(), shell, cx);
                     },
                 ))
             })
@@ -356,12 +382,14 @@ impl Settings {
                 pill(pill_id("extend-reveal", index), REVEAL, None, th).on_click(cx.listener(
                     move |this, _, _, cx| {
                         let shell = this.shell.clone();
-                        this.settings.extend.reveal(path.clone(), shell, cx);
+                        this.settings
+                            .extend
+                            .tool(actions::REVEAL, path.clone(), shell, cx);
                     },
                 ))
             })
             // Only what the user wrote: an app would write its manifest back.
-            .when(!declaration.installed_by_app(), |el| {
+            .when(!from_app, |el| {
                 let path = file.clone();
                 el.child(
                     pill(
@@ -527,11 +555,16 @@ mod tests {
             }],
         };
         let listed = declarations(&inventory);
+        let connectors = Some(Path::new("/h/.look/connectors"));
         assert_eq!(listed.len(), 2);
         assert_eq!(listed[0].blocks.len(), 2);
         assert!(!listed[0].off(), "blocks that disagree read as on");
-        assert!(!listed[0].installed_by_app());
-        assert!(listed[1].blocks.is_empty() && listed[1].installed_by_app());
+        assert!(!listed[0].installed_by_app(connectors));
+        assert!(listed[1].blocks.is_empty());
+        assert_eq!(listed[1].problems.len(), 1);
+        assert_eq!(listed[1].problems[0].message, "bad");
+        assert!(listed[1].installed_by_app(connectors));
+        assert!(!listed[1].installed_by_app(None), "no home, no claim");
     }
 
     #[test]

@@ -1116,6 +1116,25 @@ impl Launcher {
         cx.notify();
     }
 
+    /// A source file changed from the Extend tab: the engine reads the
+    /// sources again and restarts connectors, the block catalog follows,
+    /// and the tab re-reads once that is done. The config and the settings'
+    /// working copy are left alone.
+    pub(crate) fn reload_sources(&mut self, cx: &mut Context<Self>) {
+        bg::fetch(
+            cx,
+            || {
+                engine::reload_config(app_state(), || {});
+                blocks::refresh();
+            },
+            |this, (), cx| {
+                if this.settings_open {
+                    this.settings.read_extend(cx);
+                }
+            },
+        );
+    }
+
     /// Create Fresh Config: the question, then the defaults written over
     /// the file and everything that reads it read again.
     pub(crate) fn fresh_config(&mut self, cx: &mut Context<Self>) {

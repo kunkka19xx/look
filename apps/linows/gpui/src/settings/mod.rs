@@ -476,7 +476,7 @@ impl Settings {
     pub fn enter(&mut self, cx: &mut Context<Launcher>) {
         self.tab = Tab::default();
         self.shortcuts_view = shortcuts::View::default();
-        self.extend = extend::Extend::default();
+        self.extend.forget();
         self.scroll.set_offset(Default::default());
         self.edited.clear();
         self.load(true, cx);
@@ -484,8 +484,8 @@ impl Settings {
     }
 
     /// The Extend tab reads what is installed whenever it comes into view
-    /// or the config reloads, so a fixed problem leaves the screen.
-    fn read_extend(&mut self, cx: &mut Context<Launcher>) {
+    /// or the sources reload, so a fixed problem leaves the screen.
+    pub fn read_extend(&mut self, cx: &mut Context<Launcher>) {
         if self.tab == Tab::Extend {
             self.extend.read(cx);
         }
