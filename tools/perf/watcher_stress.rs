@@ -206,6 +206,7 @@ fn simulate_after(
                     apps: apps_dirty,
                     files: files_dirty,
                     settings: false,
+                    sources: false,
                 };
                 let cost = if scope.is_all() {
                     cost_all_ms

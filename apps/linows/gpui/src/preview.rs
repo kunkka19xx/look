@@ -10,11 +10,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{
-    AnyElement, Context, Div, Entity, EventEmitter, FontWeight, HighlightStyle, Hsla,
-    ListAlignment, ListState, ObjectFit, ScrollHandle, SharedString, Stateful, StyledText, Task,
-    div, img, list, prelude::*, px, relative, svg,
+    AnyElement, Context, Div, ElementId, Entity, EventEmitter, FontStyle, FontWeight,
+    HighlightStyle, Hsla, InteractiveText, ListAlignment, ListState, ObjectFit, Rgba, ScrollHandle,
+    SharedString, Stateful, StyledText, Task, UnderlineStyle, div, img, list, prelude::*, px,
+    relative, svg,
 };
 use linows_backend::highlight::{self, TokenType};
+use linows_backend::look_markdown::{self, Block as MdBlock, Span};
+use linows_backend::look_sources::DetailBlock;
 use linows_backend::process::ProcDetail;
 use linows_backend::{clipboard, clipimage, files, launch, process};
 
@@ -25,7 +28,7 @@ use crate::icons::{IconRequest, IconStore};
 use crate::imagecache::PreviewImages;
 use crate::launchpad::Notice;
 use crate::modes::Mode;
-use crate::qactions::QuickActions;
+use crate::qactions::{self, QuickActions};
 use crate::rows::{self, Clip, ClipImage, Icon, Open, Process, Row};
 use crate::theme::{self, Theme};
 
@@ -33,6 +36,24 @@ use crate::theme::{self, Theme};
 /// costs nothing. The webview dwells the same on text files. Rows that read
 /// no file skip it, see `reads_file`.
 const DWELL: Duration = Duration::from_millis(120);
+/// How long a block row stays selected before its declared `preview` runs
+/// or its connector is asked, macOS `Layout.previewDebounceNanoseconds`.
+const PREVIEW_DWELL: Duration = Duration::from_millis(150);
+const RUNNING: &str = "Running\u{2026}";
+/// Captured output is held to this many lines, macOS `PreviewText.visibleLines`.
+const CAPTURED_LINES: usize = 200;
+/// One element draws the capture, so bytes are capped as well as lines.
+const CAPTURED_BYTES: usize = 64 * 1024;
+/// A code block inside a panel is at most this tall and scrolls past it.
+const CODE_BLOCK_LINES: usize = 20;
+const PIECE_GAP: f32 = 10.0;
+const FIELD_GAP: f32 = 4.0;
+const ITEM_GAP: f32 = 6.0;
+const MARKDOWN_GAP: f32 = 6.0;
+const LINK_UNDERLINE: f32 = 1.0;
+/// The schemes a markdown link opens; `file://` and app schemes stay styled
+/// but inert, since a note is not trusted input.
+const CLICKABLE_SCHEMES: &[&str] = &["http://", "https://", "mailto:"];
 /// Previews kept for the session, so bouncing between rows re-reads nothing.
 const CACHE_LIMIT: usize = 64;
 /// Past this many lines, or bytes, a text body is a list of its lines and
@@ -118,13 +139,11 @@ pub enum Content {
     },
     /// The "How to use" half of an empty clipboard history.
     Help(Mode),
-    /// A block's row with nothing on disk: what Enter is about to run.
+    /// A block's row: what Enter is about to run, and what its `preview`
+    /// shows once it has answered.
     Block {
-        title: String,
-        name: String,
-        steps: Vec<String>,
-        file: Option<String>,
-        preview: Option<Result<String, String>>,
+        panel: BlockPanel,
+        preview: Option<Detail>,
     },
     /// A row with nothing on disk: the calculator or a URL. One centred card
     /// saying what Enter does.
@@ -160,6 +179,74 @@ pub enum Body {
         items: Vec<(String, bool, Option<u64>)>,
         truncated: bool,
     },
+    /// A markdown file as prose, by blocks so only those in view are laid
+    /// out: a 64 KB document is a few hundred of them.
+    Markdown {
+        pieces: Arc<[Piece]>,
+        truncated: bool,
+    },
+}
+
+/// What a block row says about itself before its `preview` is asked.
+#[derive(Clone)]
+pub struct BlockPanel {
+    title: String,
+    name: String,
+    steps: Vec<String>,
+    file: Option<String>,
+    /// The row's own path, when the block gave it one.
+    path: String,
+}
+
+/// A block's declared `preview`, as the panel draws it.
+pub enum Detail {
+    /// Nothing has arrived yet.
+    Running,
+    /// Why there is nothing to show.
+    Error(String),
+    Blocks(Vec<Piece>),
+}
+
+/// One block of a panel, ready to draw: markdown parsed, code tokenised,
+/// output capped. Built off the UI thread.
+pub enum Piece {
+    Fields(Vec<(String, String)>),
+    /// Each label and whether it is on.
+    List(Vec<(String, bool)>),
+    /// Captured output, how many lines were dropped past the cap, and
+    /// whether the last shown line was cut at the byte cap.
+    Text {
+        text: SharedString,
+        dropped: usize,
+        cut: bool,
+    },
+    Code {
+        text: SharedString,
+        highlights: Vec<(Range<usize>, TokenType)>,
+    },
+    Heading {
+        level: u8,
+        spans: Vec<Span>,
+    },
+    Paragraph(Vec<Span>),
+    Items {
+        ordered: bool,
+        start: usize,
+        items: Vec<Vec<Span>>,
+    },
+}
+
+impl Content {
+    /// A block panel whose `preview` is still to come.
+    fn waiting(&self) -> bool {
+        matches!(
+            self,
+            Content::Block {
+                preview: Some(Detail::Running),
+                ..
+            }
+        )
+    }
 }
 
 /// A body's text: whole while short, by lines once long, see
@@ -201,6 +288,9 @@ pub struct Preview {
     /// A long text body's lines, and the body they were last reset for.
     lines: ListState,
     lines_for: Option<Arc<[TextLine]>>,
+    /// A markdown body's blocks, the same way.
+    pieces: ListState,
+    pieces_for: Option<Arc<[Piece]>>,
     /// The CPU reading of the process on screen, by pid, so a sample for a
     /// row the user has left is dropped.
     cpu: Option<(u32, String)>,
@@ -222,6 +312,8 @@ impl Preview {
             body_scroll: ScrollHandle::new(),
             lines: ListState::new(0, ListAlignment::Top, px(TEXT_OVERDRAW)),
             lines_for: None,
+            pieces: ListState::new(0, ListAlignment::Top, px(TEXT_OVERDRAW)),
+            pieces_for: None,
             cpu: None,
             _load: None,
             _cpu: None,
@@ -298,21 +390,35 @@ impl Preview {
 
     /// Show `row`: at once from the cache, else after the dwell from the
     /// backend. The old preview stays up until the new one lands, so the
-    /// column does not blink between rows.
-    pub fn show(&mut self, row: &Row, ancestors: String, cx: &mut Context<Self>) {
+    /// column does not blink between rows. A block's declared `preview`
+    /// lands later still, see `PREVIEW_DWELL`.
+    pub fn show(&mut self, row: &Row, ancestors: String, query: String, cx: &mut Context<Self>) {
         self.sync_actions(row, cx);
-        // A block row is a different panel at a different depth.
-        let key = if row.declared() {
-            format!("{}\u{0}{}", row.id, ancestors)
+        // A block row is a different panel at a different depth, and its
+        // steps follow what was typed.
+        let key = if is_block_row(row) {
+            format!("{}\u{0}{}\u{0}{}", row.id, ancestors, query)
         } else {
             row.id.clone()
         };
-        if self.current.as_ref().is_some_and(|(k, _)| *k == key) {
+        if self.wanted.as_deref() == Some(key.as_str()) {
+            return;
+        }
+        // Back on the shown row: drop what the row in between started. A
+        // panel still waiting asks again, leaving cancelled its ask.
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|(k, content)| *k == key && !content.waiting())
+        {
+            self.wanted = None;
+            self._load = None;
             return;
         }
         if let Some(content) = self.cache.get(&key) {
             self.current = Some((key, content.clone()));
             self.wanted = None;
+            self._load = None;
             self.body_scroll.set_offset(Default::default());
             self.lines_for = None;
             cx.notify();
@@ -325,25 +431,70 @@ impl Preview {
             if dwell {
                 cx.background_executor().timer(DWELL).await;
             }
-            let content = cx
+            let content = {
+                let (row, ancestors, query) = (row.clone(), ancestors.clone(), query.clone());
+                cx.background_executor()
+                    .spawn(async move { Arc::new(load(&row, &ancestors, &query)) })
+                    .await
+            };
+            let asks = content.waiting();
+            let landed = this
+                .update(cx, |this, cx| this.land(&key, content, cx))
+                .unwrap_or(false);
+            if !(asks && landed) {
+                return;
+            }
+            // The preview spawns or asks a connector, so a row arrowed past
+            // never reaches it.
+            cx.background_executor().timer(PREVIEW_DWELL).await;
+            let detail = cx
                 .background_executor()
-                .spawn(async move { Arc::new(load(&row, &ancestors)) })
+                .spawn(async move { preview_detail(&row, &ancestors, &query) })
                 .await;
             let _ = this.update(cx, |this, cx| {
-                if this.wanted.as_deref() != Some(key.as_str()) {
+                let shown = this.current.as_ref().filter(|(shown, _)| *shown == key);
+                let Some((_, content)) = shown else {
                     return;
-                }
-                if this.cache.len() >= CACHE_LIMIT {
-                    this.cache.clear();
-                }
-                this.cache.insert(key.clone(), content.clone());
+                };
+                let Content::Block { panel, .. } = content.as_ref() else {
+                    return;
+                };
+                let content = Arc::new(Content::Block {
+                    panel: panel.clone(),
+                    preview: detail,
+                });
+                this.remember(&key, content.clone());
                 this.current = Some((key, content));
                 this.wanted = None;
-                this.body_scroll.set_offset(Default::default());
-                this.lines_for = None;
                 cx.notify();
             });
         }));
+    }
+
+    /// Shows what arrived for `key`, unless the panel has moved on. A waiting
+    /// panel is not cached and stays wanted, so coming back asks again and
+    /// showing the same row does not.
+    fn land(&mut self, key: &str, content: Arc<Content>, cx: &mut Context<Self>) -> bool {
+        if self.wanted.as_deref() != Some(key) {
+            return false;
+        }
+        if !content.waiting() {
+            self.remember(key, content.clone());
+            self.wanted = None;
+        }
+        self.current = Some((key.to_string(), content));
+        self.body_scroll.set_offset(Default::default());
+        self.lines_for = None;
+        self.pieces_for = None;
+        cx.notify();
+        true
+    }
+
+    fn remember(&mut self, key: &str, content: Arc<Content>) {
+        if self.cache.len() >= CACHE_LIMIT {
+            self.cache.clear();
+        }
+        self.cache.insert(key.to_string(), content);
     }
 
     pub fn render_in(&mut self, th: &Theme, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -536,14 +687,43 @@ impl Preview {
             }
             Content::Help(mode) => panel.child(help(*mode, th)),
             Content::Block {
-                title,
-                name,
-                steps,
-                file,
+                panel: block,
                 preview,
             } => {
-                let mut panel = panel
-                    .child(header(None, glyphs::ZAP, title, name, None, true, th))
+                let shell = self.shell.clone();
+                let body = match preview {
+                    None => None,
+                    Some(Detail::Running) => Some(muted(RUNNING, th)),
+                    Some(Detail::Error(error)) => Some(muted(error.clone(), th)),
+                    Some(Detail::Blocks(pieces)) => Some(
+                        div().flex().flex_col().gap(px(PIECE_GAP)).children(
+                            pieces
+                                .iter()
+                                .enumerate()
+                                .map(|(index, piece)| piece_element(index, piece, th, &shell)),
+                        ),
+                    ),
+                };
+                let has_body = body.is_some();
+                let mut info: Vec<(&'static str, String)> = Vec::new();
+                if !block.path.is_empty() {
+                    info.push(("Path", block.path.clone()));
+                }
+                if let Some(file) = &block.file {
+                    info.push(("Declared in", file.clone()));
+                }
+                let steps = &block.steps;
+                panel
+                    .child(header(
+                        None,
+                        glyphs::ZAP,
+                        &block.title,
+                        &block.name,
+                        None,
+                        true,
+                        th,
+                    ))
+                    .children(self.actions_section(th, cx))
                     .when(!steps.is_empty(), |el| {
                         el.child(clip_label("Enter runs", th)).child(
                             div()
@@ -556,33 +736,18 @@ impl Preview {
                                 .flex_col()
                                 .children(steps.iter().map(|step| div().child(step.clone()))),
                         )
-                    });
-                if let Some(preview) = preview {
-                    let (text, colour) = match preview {
-                        Ok(text) => (text.clone(), th.text_secondary),
-                        Err(err) => (err.clone(), th.danger),
-                    };
-                    panel = panel.child(clip_label("Preview", th)).child(
-                        div()
-                            .id("block-preview")
-                            .max_h(px(CLIP_CARD_MAX_H))
-                            .min_h_0()
-                            .overflow_y_scroll()
-                            .track_scroll(&self.body_scroll)
-                            .p(px(CODE_PADDING))
-                            .rounded(px(th.control_radius()))
-                            .bg(th.control_fill)
-                            .font_family(th.mono_family.clone())
-                            .text_size(px(th.font_size - 2.0))
-                            .text_color(colour)
-                            .child(SharedString::from(text)),
-                    );
-                }
-                let mut info: Vec<(&'static str, String)> = Vec::new();
-                if let Some(file) = file {
-                    info.push(("Declared in", file.clone()));
-                }
-                panel.child(info_rows(&info, th))
+                    })
+                    .when_some(body, |el, body| {
+                        el.child(clip_label("Preview", th)).child(
+                            div()
+                                .id("block-preview")
+                                .min_h_0()
+                                .overflow_y_scroll()
+                                .track_scroll(&self.body_scroll)
+                                .child(body),
+                        )
+                    })
+                    .child(info_rows(&info, th).when(has_body, |r| r.mt_auto()))
             }
             Content::Card {
                 glyph,
@@ -737,14 +902,7 @@ impl Preview {
                 .child(StyledText::new(text.clone()).with_highlights(syntax_runs(highlights, th)))
                 .into_any_element(),
             TextBody::Lines(lines) => {
-                if !self
-                    .lines_for
-                    .as_ref()
-                    .is_some_and(|shown| Arc::ptr_eq(shown, lines))
-                {
-                    self.lines.reset(lines.len());
-                    self.lines_for = Some(lines.clone());
-                }
+                sync_list(&self.lines, &mut self.lines_for, lines);
                 let lines = lines.clone();
                 let th = theme::get();
                 list(self.lines.clone(), move |ix, _, _| {
@@ -906,7 +1064,46 @@ impl Preview {
                 })
                 .into_any_element()
             }
+            Body::Markdown { pieces, truncated } => {
+                sync_list(&self.pieces, &mut self.pieces_for, pieces);
+                let pieces = pieces.clone();
+                let th_owned = theme::get();
+                div()
+                    .mt(px(BODY_MARGIN))
+                    .flex_1()
+                    .min_h_0()
+                    .rounded(px(th.control_radius()))
+                    .bg(th.control_fill)
+                    .flex()
+                    .flex_col()
+                    .child(
+                        list(self.pieces.clone(), move |ix, _, _| {
+                            let Some(piece) = pieces.get(ix) else {
+                                return div().into_any_element();
+                            };
+                            div()
+                                .pb(px(MARKDOWN_GAP))
+                                .child(piece_element(ix, piece, &th_owned, &shell))
+                                .into_any_element()
+                        })
+                        .flex_1()
+                        .min_h_0()
+                        .p(px(CODE_PADDING)),
+                    )
+                    .when(*truncated, |el| {
+                        el.child(truncated_note(TRUNCATED_NOTE, th))
+                    })
+                    .into_any_element()
+            }
         }
+    }
+}
+
+/// Resets a lazy list when the items behind it change.
+fn sync_list<T>(state: &ListState, shown: &mut Option<Arc<[T]>>, items: &Arc<[T]>) {
+    if !shown.as_ref().is_some_and(|s| Arc::ptr_eq(s, items)) {
+        state.reset(items.len());
+        *shown = Some(items.clone());
     }
 }
 
@@ -1010,18 +1207,21 @@ fn reads_file(row: &Row) -> bool {
     }
 }
 
-fn load(row: &Row, ancestors: &str) -> Content {
-    if row.declared() && row.path.is_empty() {
-        let args = crate::actions::row_args(row, ancestors);
+/// A row a block produced, drawn as the block panel. Keyed on the kind, as
+/// macOS is: a `dir` block's rows are files and get the file panel.
+fn is_block_row(row: &Row) -> bool {
+    row.declared() && row.kind == rows::KIND_ACTION
+}
+
+fn load(row: &Row, ancestors: &str, query: &str) -> Content {
+    if is_block_row(row) {
+        let args = crate::actions::row_args(row, ancestors, query);
         let detail = linows_backend::sources::source_block(args);
-        let preview = detail.as_ref().filter(|d| d.has_preview).and_then(|_| {
-            linows_backend::sources::source_preview(crate::actions::row_args(row, ancestors)).map(
-                |p| match p.error {
-                    Some(err) => Err(err),
-                    None => Ok(p.text),
-                },
-            )
-        });
+        // Asked later, once the selection settles, see `Preview::show`.
+        let preview = detail
+            .as_ref()
+            .is_some_and(|d| d.has_preview)
+            .then_some(Detail::Running);
         let home = crate::blocks::get().home.clone();
         let tilde = |path: String| match &home {
             Some(home) if path.starts_with(&format!("{home}/")) => {
@@ -1030,13 +1230,16 @@ fn load(row: &Row, ancestors: &str) -> Content {
             _ => path,
         };
         return Content::Block {
-            title: row.title.clone(),
-            name: detail
-                .as_ref()
-                .map(|d| d.name.clone())
-                .unwrap_or_else(|| row.title.clone()),
-            steps: detail.as_ref().map(|d| d.steps.clone()).unwrap_or_default(),
-            file: detail.and_then(|d| d.file).map(tilde),
+            panel: BlockPanel {
+                title: row.title.clone(),
+                name: detail
+                    .as_ref()
+                    .map(|d| d.name.clone())
+                    .unwrap_or_else(|| row.title.clone()),
+                steps: detail.as_ref().map(|d| d.steps.clone()).unwrap_or_default(),
+                file: detail.and_then(|d| d.file).map(tilde),
+                path: row.path.clone(),
+            },
             preview,
         };
     }
@@ -1081,6 +1284,363 @@ fn load(row: &Row, ancestors: &str) -> Content {
             hint: "Press Enter to search the web",
         },
     }
+}
+
+/// A block's declared `preview` against the row: error, blocks, text, in
+/// that order, as macOS `blockPreviewBody` reads them.
+fn preview_detail(row: &Row, ancestors: &str, query: &str) -> Option<Detail> {
+    let args = crate::actions::row_args(row, ancestors, query);
+    let preview = linows_backend::sources::source_preview(args)?;
+    match preview.error {
+        Some(error) => Some(Detail::Error(error)),
+        None if !preview.blocks.is_empty() => Some(Detail::Blocks(pieces_of(preview.blocks))),
+        None if !preview.text.is_empty() => Some(Detail::Blocks(vec![text_piece(preview.text)])),
+        None => None,
+    }
+}
+
+/// A layout's blocks as drawable pieces; a markdown block becomes the
+/// pieces of its prose.
+fn pieces_of(blocks: Vec<DetailBlock>) -> Vec<Piece> {
+    let mut pieces = Vec::new();
+    for block in blocks {
+        match block {
+            DetailBlock::Fields { rows } => pieces.push(Piece::Fields(
+                rows.into_iter().map(|row| (row.label, row.value)).collect(),
+            )),
+            DetailBlock::List { items } => pieces.push(Piece::List(
+                items
+                    .into_iter()
+                    .map(|item| (item.label, item.on == Some(true)))
+                    .collect(),
+            )),
+            DetailBlock::Text { text } => pieces.push(text_piece(text)),
+            DetailBlock::Code { language, text } => {
+                pieces.push(code_piece(language.as_deref(), text))
+            }
+            DetailBlock::Markdown { text } => pieces.extend(markdown_pieces(&text)),
+        }
+    }
+    pieces
+}
+
+/// `core/markdown` decides what a block is; this decides how one looks.
+fn markdown_pieces(text: &str) -> Vec<Piece> {
+    look_markdown::blocks(text)
+        .into_iter()
+        .map(|block| match block {
+            MdBlock::Heading { level, spans } => Piece::Heading { level, spans },
+            MdBlock::Paragraph { spans } => Piece::Paragraph(spans),
+            MdBlock::List {
+                ordered,
+                start,
+                items,
+            } => Piece::Items {
+                ordered,
+                start,
+                items,
+            },
+            MdBlock::Code { language, text } => code_piece(language.as_deref(), text),
+        })
+        .collect()
+}
+
+fn code_piece(language: Option<&str>, text: String) -> Piece {
+    let highlights = highlight::highlight_text(&text, language)
+        .into_iter()
+        .map(|span| (span.start..span.end, span.token))
+        .collect();
+    Piece::Code {
+        text: text.into(),
+        highlights,
+    }
+}
+
+/// Captured output, held to the line and byte caps.
+fn text_piece(text: String) -> Piece {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut kept = 0;
+    let mut bytes = 0;
+    while kept < lines.len().min(CAPTURED_LINES) {
+        bytes += lines[kept].len() + 1;
+        if bytes > CAPTURED_BYTES && kept > 0 {
+            break;
+        }
+        kept += 1;
+    }
+    let dropped = lines.len() - kept;
+    let mut shown = if dropped == 0 {
+        text
+    } else {
+        lines[..kept].join("\n")
+    };
+    let cut = shown.len() > CAPTURED_BYTES;
+    if cut {
+        let mut at = CAPTURED_BYTES;
+        while !shown.is_char_boundary(at) {
+            at -= 1;
+        }
+        shown.truncate(at);
+    }
+    Piece::Text {
+        text: shown.into(),
+        dropped,
+        cut,
+    }
+}
+
+fn muted(text: impl Into<SharedString>, th: &Theme) -> Div {
+    div()
+        .text_size(px(th.font_size - 2.0))
+        .text_color(th.text_muted)
+        .child(text.into())
+}
+
+/// Headings reach body size by the third level; weight carries the rest.
+fn heading_size(base: f32, level: u8) -> f32 {
+    base + (3 - i32::from(level)).max(0) as f32
+}
+
+/// One block of a panel, at one text size so mixed blocks read as one.
+fn piece_element(index: usize, piece: &Piece, th: &Theme, shell: &Shell) -> AnyElement {
+    let base = th.font_size - 2.0;
+    match piece {
+        Piece::Fields(rows) => div()
+            .flex()
+            .flex_col()
+            .gap(px(FIELD_GAP))
+            .text_size(px(base))
+            .children(
+                rows.iter()
+                    .map(|(label, value)| info_row(label.clone(), value.clone(), th)),
+            )
+            .into_any_element(),
+        Piece::List(items) => div()
+            .flex()
+            .flex_col()
+            .gap(px(FIELD_GAP))
+            .text_size(px(base))
+            .children(items.iter().map(|(label, on)| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(ITEM_GAP))
+                    .child(qactions::status_dot(*on, th))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .text_color(th.text_secondary)
+                            .child(SharedString::from(label.clone())),
+                    )
+            }))
+            .into_any_element(),
+        Piece::Text { text, dropped, cut } => div()
+            .p(px(CODE_PADDING))
+            .rounded(px(th.control_radius()))
+            .bg(th.control_fill)
+            .font_family(th.mono_family.clone())
+            .text_size(px(base))
+            .text_color(th.text_secondary)
+            .flex()
+            .flex_col()
+            .child(text.clone())
+            .when(*dropped > 0 || *cut, |el| {
+                let cap = CAPTURED_BYTES / 1024;
+                let note = match (*cut, *dropped) {
+                    (true, 0) => format!("\u{2026} cut at {cap} KiB"),
+                    (true, more) => format!("\u{2026} cut at {cap} KiB, {more} more lines"),
+                    (false, more) => format!("\u{2026} {more} more lines"),
+                };
+                el.child(
+                    div()
+                        .font_family(th.font_family.clone())
+                        .text_size(px(base - 1.0))
+                        .text_color(th.text_muted)
+                        .child(note),
+                )
+            })
+            .into_any_element(),
+        Piece::Code { text, highlights } => {
+            let look = TextLook {
+                size: base,
+                line_height: Some(base * CODE_LINE_HEIGHT),
+                color: Some(theme::hsla_of(th.text_secondary)),
+            };
+            look.apply(div(), th)
+                .id(("piece-code", index))
+                .max_h(px(
+                    CODE_BLOCK_LINES as f32 * base * CODE_LINE_HEIGHT + 2.0 * CODE_PADDING
+                ))
+                .overflow_y_scroll()
+                .p(px(CODE_PADDING))
+                .rounded(px(th.control_radius()))
+                .bg(th.control_fill)
+                .child(StyledText::new(text.clone()).with_highlights(syntax_runs(highlights, th)))
+                .into_any_element()
+        }
+        Piece::Heading { level, spans } => prose(
+            ("md", index),
+            spans,
+            heading_size(base, *level),
+            FontWeight::SEMIBOLD,
+            th.text,
+            th,
+            shell,
+        )
+        .into_any_element(),
+        Piece::Paragraph(spans) => prose(
+            ("md", index),
+            spans,
+            base,
+            FontWeight::NORMAL,
+            th.text_secondary,
+            th,
+            shell,
+        )
+        .into_any_element(),
+        Piece::Items {
+            ordered,
+            start,
+            items,
+        } => div()
+            .flex()
+            .flex_col()
+            .gap(px(FIELD_GAP))
+            .children(items.iter().enumerate().map(|(i, item)| {
+                let marker = if *ordered {
+                    format!("{}.", start + i)
+                } else {
+                    "\u{2022}".to_string()
+                };
+                div()
+                    .flex()
+                    .items_baseline()
+                    .gap(px(ITEM_GAP))
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .text_size(px(base))
+                            .text_color(th.text_muted)
+                            .when(*ordered, |el| el.font_family(th.mono_family.clone()))
+                            .child(marker),
+                    )
+                    .child(div().flex_1().min_w_0().child(prose(
+                        ElementId::NamedInteger(format!("md-{index}").into(), i as u64),
+                        item,
+                        base,
+                        FontWeight::NORMAL,
+                        th.text_secondary,
+                        th,
+                        shell,
+                    )))
+            }))
+            .into_any_element(),
+    }
+}
+
+/// Inline markdown as one text: the runs that differ from the enclosing
+/// style, and the links that open.
+#[derive(Default)]
+struct Inline {
+    text: String,
+    highlights: Vec<(Range<usize>, HighlightStyle)>,
+    links: Vec<(Range<usize>, String)>,
+}
+
+fn inline(spans: &[Span], th: &Theme) -> Inline {
+    let accent = theme::hsla_of(th.accent);
+    let mut out = Inline::default();
+    for span in spans {
+        let start = out.text.len();
+        let (text, style) = match span {
+            Span::Text { text } => (text, None),
+            Span::Bold { text } => (
+                text,
+                Some(HighlightStyle {
+                    font_weight: Some(FontWeight::SEMIBOLD),
+                    ..Default::default()
+                }),
+            ),
+            Span::Italic { text } => (
+                text,
+                Some(HighlightStyle {
+                    font_style: Some(FontStyle::Italic),
+                    ..Default::default()
+                }),
+            ),
+            // A run cannot change family, so code is marked by colour and fill.
+            Span::Code { text } => (
+                text,
+                Some(HighlightStyle {
+                    color: Some(accent),
+                    background_color: Some(theme::hsla_of(th.control_fill)),
+                    ..Default::default()
+                }),
+            ),
+            Span::Link { text, href } => {
+                let end = start + text.len();
+                if CLICKABLE_SCHEMES
+                    .iter()
+                    .any(|scheme| href.to_ascii_lowercase().starts_with(scheme))
+                {
+                    out.links.push((start..end, href.clone()));
+                }
+                (
+                    text,
+                    Some(HighlightStyle {
+                        color: Some(accent),
+                        underline: Some(UnderlineStyle {
+                            thickness: px(LINK_UNDERLINE),
+                            color: Some(accent),
+                            wavy: false,
+                        }),
+                        ..Default::default()
+                    }),
+                )
+            }
+        };
+        out.text.push_str(text);
+        if let Some(style) = style {
+            out.highlights.push((start..out.text.len(), style));
+        }
+    }
+    out
+}
+
+/// A run of inline markdown at one size, its links clickable.
+fn prose(
+    id: impl Into<ElementId>,
+    spans: &[Span],
+    size: f32,
+    weight: FontWeight,
+    color: Rgba,
+    th: &Theme,
+    shell: &Shell,
+) -> Div {
+    let inline = inline(spans, th);
+    let styled =
+        StyledText::new(SharedString::from(inline.text)).with_highlights(inline.highlights);
+    let text = if inline.links.is_empty() {
+        styled.into_any_element()
+    } else {
+        let (ranges, hrefs): (Vec<Range<usize>>, Vec<String>) = inline.links.into_iter().unzip();
+        let shell = shell.clone();
+        InteractiveText::new(id, styled)
+            .on_click(ranges, move |at, _, _| {
+                if let Some(href) = hrefs.get(at)
+                    && let Err(err) = launch::open_path(&shell, href.clone(), Some("browser"), None)
+                {
+                    eprintln!("open {href}: {err}");
+                }
+            })
+            .into_any_element()
+    };
+    div()
+        .text_size(px(size))
+        .font_weight(weight)
+        .text_color(color)
+        .child(text)
 }
 
 /// Which history a Delete button acts on.
@@ -1224,15 +1784,22 @@ fn standard(row: &Row) -> Content {
         } else if meta.is_image {
             body = Body::Image(PathBuf::from(&row.path));
         } else if let Some(runs) = highlight::highlight_runs(&row.path) {
-            body = Body::Code {
-                text: TextBody::new(
-                    runs.text,
-                    runs.spans
-                        .into_iter()
-                        .map(|s| (s.start..s.end, s.token))
-                        .collect(),
-                ),
-                truncated: runs.truncated,
+            body = if highlight::is_markdown(&row.path) {
+                Body::Markdown {
+                    pieces: markdown_pieces(&runs.text).into(),
+                    truncated: runs.truncated,
+                }
+            } else {
+                Body::Code {
+                    text: TextBody::new(
+                        runs.text,
+                        runs.spans
+                            .into_iter()
+                            .map(|s| (s.start..s.end, s.token))
+                            .collect(),
+                    ),
+                    truncated: runs.truncated,
+                }
             };
         }
     }
@@ -1511,6 +2078,84 @@ mod tests {
         for line in &lines {
             assert_eq!(line.highlights, [(0..line.text.len(), TokenType::String)]);
         }
+    }
+
+    #[test]
+    fn captured_output_is_held_to_the_cap() {
+        let short = text_piece("a\nb".into());
+        assert!(matches!(
+            short,
+            Piece::Text {
+                dropped: 0,
+                cut: false,
+                ..
+            }
+        ));
+        let long = text_piece("x\n".repeat(CAPTURED_LINES + 5));
+        let Piece::Text { text, dropped, cut } = long else {
+            panic!("a text piece");
+        };
+        assert_eq!(dropped, 6, "the trailing newline counts as a line");
+        assert_eq!(text.split('\n').count(), CAPTURED_LINES);
+        assert!(!cut);
+        let wide = text_piece(format!("{}\nnext", "é".repeat(CAPTURED_BYTES)));
+        let Piece::Text { text, dropped, cut } = wide else {
+            panic!("a text piece");
+        };
+        assert_eq!(dropped, 1, "a line past the byte cap stands alone");
+        assert!(cut, "and says it was cut");
+        assert!(text.len() <= CAPTURED_BYTES && text.chars().all(|c| c == 'é'));
+    }
+
+    #[test]
+    fn a_markdown_block_becomes_its_pieces() {
+        let pieces = pieces_of(vec![
+            DetailBlock::Markdown {
+                text: "# Title\n\nSome *prose*.\n\n```rust\nfn main() {}\n```".into(),
+            },
+            DetailBlock::Code {
+                language: Some("rust".into()),
+                text: "fn main() {}".into(),
+            },
+        ]);
+        assert!(matches!(pieces[0], Piece::Heading { level: 1, .. }));
+        assert!(matches!(pieces[1], Piece::Paragraph(_)));
+        let Piece::Code { highlights, .. } = &pieces[2] else {
+            panic!("a fenced code piece");
+        };
+        assert!(!highlights.is_empty(), "the fence tag picks the language");
+        let Piece::Code { highlights, .. } = &pieces[3] else {
+            panic!("a code block piece");
+        };
+        assert!(!highlights.is_empty(), "a code block keeps its language");
+    }
+
+    #[test]
+    fn only_web_links_open() {
+        let th = theme::get();
+        let spans = [
+            Span::Link {
+                text: "site".into(),
+                href: "https://example.com".into(),
+            },
+            Span::Text { text: " ".into() },
+            Span::Link {
+                text: "local".into(),
+                href: "file:///etc/passwd".into(),
+            },
+        ];
+        let inline = inline(&spans, &th);
+        assert_eq!(inline.text, "site local");
+        assert_eq!(inline.links.len(), 1);
+        assert_eq!(inline.links[0].0, 0..4);
+        assert_eq!(inline.highlights.len(), 2, "both are styled as links");
+    }
+
+    #[test]
+    fn headings_reach_body_size_by_the_third_level() {
+        assert_eq!(heading_size(10.0, 1), 12.0);
+        assert_eq!(heading_size(10.0, 3), 10.0);
+        assert_eq!(heading_size(10.0, 6), 10.0);
     }
 
     #[test]

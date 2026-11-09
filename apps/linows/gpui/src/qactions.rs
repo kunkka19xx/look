@@ -3,6 +3,8 @@
 //! flips the first toggle, a device row connects or disconnects it, the
 //! outcome goes to the banner, and the state is read again after every apply.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use gpui::{Context, Div, ElementId, FontWeight, SharedString, div, prelude::*, px};
 use linows_backend::look_qactions::{ActionDescriptor, ControlKind};
 use linows_backend::qactions::{
@@ -33,6 +35,24 @@ const DOT: f32 = 7.0;
 const DOT_BORDER: f32 = 1.5;
 const INERT_OPACITY: f32 = 0.5;
 const NONE_CONNECTED: &str = "None connected";
+const NO_CONTROL: &str = "nothing to press";
+
+/// How Enter on a control-only row went.
+pub(crate) enum Press {
+    Started,
+    /// An apply is still in flight.
+    Busy,
+    /// Nothing to press, or the control said why it does not apply.
+    Refused(String),
+}
+
+/// One counter for every control shown, so a read from an earlier visit
+/// never matches a later one.
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+
+fn next_generation() -> u64 {
+    GENERATION.fetch_add(1, Ordering::Relaxed)
+}
 
 /// The actions of the row on screen.
 pub struct QuickActions {
@@ -47,6 +67,8 @@ struct Action {
     status: Option<QuickActionStatus>,
     /// The switch as drawn: flipped at the press, confirmed by the re-read.
     on: Option<bool>,
+    /// Renewed by every apply; a read that set out before one is dropped.
+    generation: u64,
 }
 
 impl Action {
@@ -77,11 +99,30 @@ impl Preview {
                     descriptor,
                     status: None,
                     on: None,
+                    generation: next_generation(),
                 })
                 .collect(),
             busy: false,
         });
         self.read_actions(cx);
+    }
+
+    /// Enter on a control-only row: press the first control, unless a read
+    /// already said it does not apply here.
+    pub(crate) fn press_first(&mut self, cx: &mut Context<Self>) -> Press {
+        let Some(actions) = self.actions.as_ref().filter(|a| !a.actions.is_empty()) else {
+            return Press::Refused(NO_CONTROL.into());
+        };
+        if actions.busy {
+            return Press::Busy;
+        }
+        if let Some(status) = &actions.actions[0].status
+            && let ActionState::Unavailable { reason } = &status.state
+        {
+            return Press::Refused(reason.clone());
+        }
+        self.press(0, ActionIntent::Run, cx);
+        Press::Started
     }
 
     /// Ctrl+O: flip the first toggle. False when the row has none.
@@ -111,6 +152,7 @@ impl Preview {
             return;
         };
         let row_id = actions.row_id.clone();
+        let generation = actions.actions[index].generation;
         let descriptor = &actions.actions[index].descriptor;
         let id = descriptor.action_id.clone();
         let keys: Vec<String> = descriptor
@@ -122,7 +164,7 @@ impl Preview {
             cx,
             move || qactions::quick_action_state(&id, &keys),
             move |this, status, _| {
-                if let Some(action) = this.action_mut(&row_id, index) {
+                if let Some(action) = this.action_mut(&row_id, generation, index) {
                     action.on = match status.state {
                         ActionState::On => Some(true),
                         ActionState::Off => Some(false),
@@ -134,31 +176,41 @@ impl Preview {
         );
     }
 
-    fn action_mut(&mut self, row_id: &str, index: usize) -> Option<&mut Action> {
+    fn action_mut(&mut self, row_id: &str, generation: u64, index: usize) -> Option<&mut Action> {
         self.actions
             .as_mut()
             .filter(|a| a.row_id == row_id)
             .and_then(|a| a.actions.get_mut(index))
+            .filter(|action| action.generation == generation)
     }
 
     /// The switch or the button. A switch press asks for the opposite of
     /// what is drawn, so a stale panel still does what the user sees.
     fn run_action(&mut self, index: usize, cx: &mut Context<Self>) {
-        let Some(actions) = self.actions.as_mut().filter(|a| !a.busy) else {
+        let Some(actions) = self.actions.as_ref().filter(|a| !a.busy) else {
             return;
         };
-        let action = &mut actions.actions[index];
+        let action = &actions.actions[index];
         if !action.available() {
             return;
         }
         let intent = match (action.descriptor.control, action.on) {
             (ControlKind::Button, _) => ActionIntent::Run,
-            (ControlKind::Toggle, Some(on)) => {
-                action.on = Some(!on);
-                ActionIntent::SetOn(!on)
-            }
+            (ControlKind::Toggle, Some(on)) => ActionIntent::SetOn(!on),
             (ControlKind::Toggle, None) => ActionIntent::Toggle,
         };
+        self.press(index, intent, cx);
+    }
+
+    /// The switch flips as it is pressed; the re-read corrects it.
+    fn press(&mut self, index: usize, intent: ActionIntent, cx: &mut Context<Self>) {
+        let Some(actions) = self.actions.as_mut() else {
+            return;
+        };
+        let action = &mut actions.actions[index];
+        if let Some(on) = action.on {
+            action.on = Some(!on);
+        }
         actions.busy = true;
         let id = action.descriptor.action_id.clone();
         self.apply(index, move || qactions::quick_action_apply(&id, intent), cx);
@@ -201,17 +253,26 @@ impl Preview {
         work: impl FnOnce() -> ActionOutcome + Send + 'static,
         cx: &mut Context<Self>,
     ) {
-        let Some(actions) = &self.actions else {
+        let Some(actions) = self.actions.as_mut() else {
             return;
         };
+        let generation = next_generation();
+        actions.actions[index].generation = generation;
         let row_id = actions.row_id.clone();
         let title = actions.actions[index].descriptor.title.clone();
         bg::fetch(cx, work, move |this, outcome, cx| {
-            let Some(actions) = this.actions.as_mut().filter(|a| a.row_id == row_id) else {
+            // The outcome is the user's wherever they are now; the flag and
+            // the re-read belong to a later apply or visit if there was one.
+            cx.emit(notice(&title, outcome));
+            let Some(actions) = this.actions.as_mut().filter(|a| {
+                a.row_id == row_id
+                    && a.actions
+                        .get(index)
+                        .is_some_and(|it| it.generation == generation)
+            }) else {
                 return;
             };
             actions.busy = false;
-            cx.emit(notice(&title, outcome));
             this.read_action(index, cx);
         });
     }
@@ -356,15 +417,7 @@ impl Preview {
                     .on_click(cx.listener(move |this, _, _, cx| this.run_item(index, &clicked, cx)))
             })
             .when(clickable && busy, |el| el.opacity(INERT_OPACITY))
-            .child(
-                div()
-                    .size(px(DOT))
-                    .flex_shrink_0()
-                    .rounded_full()
-                    .border(px(DOT_BORDER))
-                    .border_color(if connected { th.accent } else { th.text_muted })
-                    .when(connected, |el| el.bg(th.accent)),
-            )
+            .child(status_dot(connected, th))
             .child(
                 div()
                     .min_w_0()
@@ -374,6 +427,17 @@ impl Preview {
                     .child(SharedString::from(item.label.clone())),
             )
     }
+}
+
+/// A dot, hollow when off and filled when on.
+pub(crate) fn status_dot(on: bool, th: &Theme) -> Div {
+    div()
+        .size(px(DOT))
+        .flex_shrink_0()
+        .rounded_full()
+        .border(px(DOT_BORDER))
+        .border_color(if on { th.accent } else { th.text_muted })
+        .when(on, |el| el.bg(th.accent))
 }
 
 fn connected_count(items: &[ListItem]) -> String {

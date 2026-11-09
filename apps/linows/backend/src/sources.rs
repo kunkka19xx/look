@@ -4,11 +4,14 @@
 //! Every one of these is a hop into `look_engine::sources`, which owns the
 //! whole answer and is shared with macOS, so the two shells cannot disagree
 //! about what `confirm` expands to or how a drilled id is spelled. Four of them
-//! spawn processes, so the shell runs them off its request thread: a `run`
-//! block the user wrote may take seconds.
+//! spawn processes and three wait on a connector, so the shell runs them off
+//! its request thread: a `run` block the user wrote may take seconds.
+
+use std::path::{Path, PathBuf};
 
 use look_engine::sources::{
-    BlockDetail, BlockSummary, Level, PerformOutcome, PreviewOutcome, RefreshOutcome,
+    BlockDetail, BlockSummary, ControlState, Inventory, Level, PerformOutcome, PlanOutcome,
+    PreviewOutcome, RefreshOutcome, RunOutcome, Switched,
 };
 
 /// The row a command acts on, as the frontend holds it. One struct because the
@@ -102,6 +105,39 @@ pub fn source_preview(row: RowArgs) -> Option<PreviewOutcome> {
 /// pass. A block that fails keeps the rows it had.
 pub fn refresh_run_blocks() -> RefreshOutcome {
     look_engine::sources::refresh_run_blocks()
+}
+
+/// Asks the connector that owns the row what `block_id`'s verb would do to
+/// it: the question the user confirms. Waits on the connector.
+pub fn plan_verb(block_id: String, row: RowArgs) -> PlanOutcome {
+    look_engine::sources::plan_verb(&block_id, &row.candidate_id, &row.context())
+}
+
+/// Runs a plan the user confirmed. A connector that has not answered yet
+/// comes back `ok` with no summary.
+pub fn run_verb(candidate_id: &str, plan: u64) -> RunOutcome {
+    look_engine::sources::run_verb(candidate_id, plan)
+}
+
+/// Reads a declared control, or presses it and reads where it ended up.
+pub fn control(action_id: &str, press: bool) -> ControlState {
+    look_engine::sources::control(action_id, press)
+}
+
+/// Everything declared and everything that could not be, for the Extend
+/// tab. Reads both source directories. `None` when there is no home to read.
+pub fn inventory() -> Option<Inventory> {
+    home().map(|home| look_engine::sources::inventory(&home))
+}
+
+/// Turns every block in `file` on or off by writing `enabled` into it. The
+/// caller reloads afterwards: the bytes are on disk and nothing has read them.
+pub fn set_enabled(file: &Path, on: bool) -> Option<Switched> {
+    home().map(|home| look_engine::sources::set_enabled(file, on, &home))
+}
+
+pub(crate) fn home() -> Option<PathBuf> {
+    look_engine::config_path::home().map(PathBuf::from)
 }
 
 /// The levels a row was reached through, nearest parent first, in the form
