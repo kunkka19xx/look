@@ -49,7 +49,7 @@ apps/linows/gpui/src/qactions.rs                          renders controls, load
 
 ## Steps
 
-1. **Declare** the descriptor once in the shared `core/qactions` catalog: id, the control kind (toggle/button), on/off labels, and any info fields. Then bind the result id(s) that trigger it in the per-OS `binding_for` arms (result ids differ per OS: `setting:com.apple.bluetoothsettings` on macOS, `setting:bluetooth` on Linux). The key hint is derived from the control kind (a toggle shows `⌘O` / `Ctrl+O`), so you do not set it.
+1. **Declare** the descriptor once in the shared `core/qactions` catalog: id, the control kind (toggle/button), on/off labels, and any info fields. Then bind the result id(s) that trigger it in the per-OS `binding_for` arms (result ids differ per OS: `setting:com.apple.bluetoothsettings` on macOS, `setting:bluetooth` on Linux). The key hint is derived from the control kind (a toggle shows `⌘O` / `Ctrl+O`), so you do not set it. Ids of the form `declared:<block>#<control>` belong to connector controls: linows routes those to the connector, so a native control must not use that shape.
 2. **Implement** the adapter for each OS you support. Copy the reference (`BluetoothControl.swift` on macOS, `controls/bluetooth.rs` on linows), rename the type, and fill in `state()` and `apply(_:)` (plus `info()` on linows if the descriptor declares info fields). Keep **all** OS-specific and private-API code inside this one file. An OS without an adapter shows the action as unavailable there; that is fine.
 3. **Register** it: one line per OS - `ActionAdapterRegistry.adapters` (`"wifi": WiFiControl()`) on macOS, the `native_adapter()` match in `qactions/mod.rs` (`"wifi" => Some(&controls::wifi::WifiControl)`) on linows.
 

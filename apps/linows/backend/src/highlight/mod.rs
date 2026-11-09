@@ -122,6 +122,12 @@ mod tests {
     fn a_fence_tag_names_a_language_or_nothing() {
         assert!(!highlight_text("fn main() {}", Some("rust")).is_empty());
         assert!(!highlight_text("fn main() {}", Some("rs")).is_empty());
+        assert!(
+            highlight_text("def", Some("python"))
+                .iter()
+                .any(|span| span.start == 0 && span.end == 3 && span.token == TokenType::Keyword),
+            "a tag names its own language, not the first one"
+        );
         assert!(highlight_text("fn main() {}", Some("brainfuck")).is_empty());
         assert!(highlight_text("fn main() {}", None).is_empty());
         assert!(is_markdown("/notes/today.md") && !is_markdown("/notes/today.rst"));

@@ -42,6 +42,9 @@ const PREVIEW_DWELL: Duration = Duration::from_millis(150);
 const RUNNING: &str = "Running\u{2026}";
 /// Captured output is held to this many lines, macOS `PreviewText.visibleLines`.
 const CAPTURED_LINES: usize = 200;
+/// One text element draws the capture, so a long line is cut as well as a
+/// long list of them. Matches the highlighter's display cap.
+const CAPTURED_BYTES: usize = 64 * 1024;
 /// A code block inside a panel is at most this tall and scrolls past it.
 const CODE_BLOCK_LINES: usize = 20;
 const PIECE_GAP: f32 = 10.0;
@@ -397,12 +400,25 @@ impl Preview {
         } else {
             row.id.clone()
         };
-        if self.current.as_ref().is_some_and(|(k, _)| *k == key) {
+        if self.wanted.as_deref() == Some(key.as_str()) {
+            return;
+        }
+        // Back on the shown row: whatever the row in between started is
+        // dropped. A panel still waiting on its preview asks again, since
+        // leaving cancelled that ask.
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|(k, content)| *k == key && !content.waiting())
+        {
+            self.wanted = None;
+            self._load = None;
             return;
         }
         if let Some(content) = self.cache.get(&key) {
             self.current = Some((key, content.clone()));
             self.wanted = None;
+            self._load = None;
             self.body_scroll.set_offset(Default::default());
             self.lines_for = None;
             cx.notify();
@@ -447,7 +463,7 @@ impl Preview {
                         panel: panel.clone(),
                         preview: detail,
                     });
-                    this.cache.insert(key.clone(), content.clone());
+                    this.remember(&key, content.clone());
                     this.current = Some((key, content));
                     cx.notify();
                 }
@@ -462,10 +478,7 @@ impl Preview {
             return false;
         }
         if !content.waiting() {
-            if self.cache.len() >= CACHE_LIMIT {
-                self.cache.clear();
-            }
-            self.cache.insert(key.to_string(), content.clone());
+            self.remember(key, content.clone());
         }
         self.current = Some((key.to_string(), content));
         self.wanted = None;
@@ -474,6 +487,13 @@ impl Preview {
         self.pieces_for = None;
         cx.notify();
         true
+    }
+
+    fn remember(&mut self, key: &str, content: Arc<Content>) {
+        if self.cache.len() >= CACHE_LIMIT {
+            self.cache.clear();
+        }
+        self.cache.insert(key.to_string(), content);
     }
 
     pub fn render_in(&mut self, th: &Theme, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -1340,15 +1360,31 @@ fn code_piece(language: Option<&str>, text: String) -> Piece {
 /// dropped.
 fn text_piece(text: String) -> Piece {
     let lines: Vec<&str> = text.split('\n').collect();
-    if lines.len() <= CAPTURED_LINES {
-        return Piece::Text {
-            text: text.into(),
-            dropped: 0,
-        };
+    let mut kept = 0;
+    let mut bytes = 0;
+    while kept < lines.len().min(CAPTURED_LINES) {
+        bytes += lines[kept].len() + 1;
+        if bytes > CAPTURED_BYTES && kept > 0 {
+            break;
+        }
+        kept += 1;
+    }
+    let dropped = lines.len() - kept;
+    let mut shown = if dropped == 0 {
+        text
+    } else {
+        lines[..kept].join("\n")
+    };
+    if shown.len() > CAPTURED_BYTES {
+        let mut cut = CAPTURED_BYTES;
+        while !shown.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        shown.truncate(cut);
     }
     Piece::Text {
-        text: lines[..CAPTURED_LINES].join("\n").into(),
-        dropped: lines.len() - CAPTURED_LINES,
+        text: shown.into(),
+        dropped,
     }
 }
 
@@ -2050,13 +2086,19 @@ mod tests {
         };
         assert_eq!(dropped, 6, "the trailing newline counts as a line");
         assert_eq!(text.split('\n').count(), CAPTURED_LINES);
+        let wide = text_piece(format!("{}\nnext", "é".repeat(CAPTURED_BYTES)));
+        let Piece::Text { text, dropped } = wide else {
+            panic!("a text piece");
+        };
+        assert_eq!(dropped, 1, "a line past the byte cap stands alone");
+        assert!(text.len() <= CAPTURED_BYTES && text.chars().all(|c| c == 'é'));
     }
 
     #[test]
     fn a_markdown_block_becomes_its_pieces() {
         let pieces = pieces_of(vec![
             DetailBlock::Markdown {
-                text: "# Title\n\nSome *prose*.".into(),
+                text: "# Title\n\nSome *prose*.\n\n```rust\nfn main() {}\n```".into(),
             },
             DetailBlock::Code {
                 language: Some("rust".into()),
@@ -2066,9 +2108,13 @@ mod tests {
         assert!(matches!(pieces[0], Piece::Heading { level: 1, .. }));
         assert!(matches!(pieces[1], Piece::Paragraph(_)));
         let Piece::Code { highlights, .. } = &pieces[2] else {
-            panic!("a code piece");
+            panic!("a fenced code piece");
         };
         assert!(!highlights.is_empty(), "the fence tag picks the language");
+        let Piece::Code { highlights, .. } = &pieces[3] else {
+            panic!("a code block piece");
+        };
+        assert!(!highlights.is_empty(), "a code block keeps its language");
     }
 
     #[test]

@@ -47,6 +47,9 @@ struct Action {
     status: Option<QuickActionStatus>,
     /// The switch as drawn: flipped at the press, confirmed by the re-read.
     on: Option<bool>,
+    /// Bumped by every apply, so a read that set out before one cannot
+    /// draw over the state the apply reached.
+    generation: u64,
 }
 
 impl Action {
@@ -77,6 +80,7 @@ impl Preview {
                     descriptor,
                     status: None,
                     on: None,
+                    generation: 0,
                 })
                 .collect(),
             busy: false,
@@ -127,6 +131,7 @@ impl Preview {
             return;
         };
         let row_id = actions.row_id.clone();
+        let generation = actions.actions[index].generation;
         let descriptor = &actions.actions[index].descriptor;
         let id = descriptor.action_id.clone();
         let keys: Vec<String> = descriptor
@@ -138,7 +143,7 @@ impl Preview {
             cx,
             move || qactions::quick_action_state(&id, &keys),
             move |this, status, _| {
-                if let Some(action) = this.action_mut(&row_id, index) {
+                if let Some(action) = this.action_mut(&row_id, generation, index) {
                     action.on = match status.state {
                         ActionState::On => Some(true),
                         ActionState::Off => Some(false),
@@ -150,11 +155,12 @@ impl Preview {
         );
     }
 
-    fn action_mut(&mut self, row_id: &str, index: usize) -> Option<&mut Action> {
+    fn action_mut(&mut self, row_id: &str, generation: u64, index: usize) -> Option<&mut Action> {
         self.actions
             .as_mut()
             .filter(|a| a.row_id == row_id)
             .and_then(|a| a.actions.get_mut(index))
+            .filter(|action| action.generation == generation)
     }
 
     /// The switch or the button. A switch press asks for the opposite of
@@ -226,9 +232,10 @@ impl Preview {
         work: impl FnOnce() -> ActionOutcome + Send + 'static,
         cx: &mut Context<Self>,
     ) {
-        let Some(actions) = &self.actions else {
+        let Some(actions) = self.actions.as_mut() else {
             return;
         };
+        actions.actions[index].generation += 1;
         let row_id = actions.row_id.clone();
         let title = actions.actions[index].descriptor.title.clone();
         bg::fetch(cx, work, move |this, outcome, cx| {

@@ -48,8 +48,10 @@ const ROW_GAP: f32 = 16.0;
 pub enum ActionId {
     Open,
     /// Enter on a block row once its `confirm` was answered, so the second
-    /// pass performs rather than asks again.
-    OpenConfirmed,
+    /// pass performs rather than asks again. Carries the row's id: the
+    /// question was asked about that row, not about whatever is selected
+    /// when Yes lands.
+    OpenConfirmed(String),
     Tool(&'static str),
     CopyPath,
     OpenAllPicked,

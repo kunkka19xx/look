@@ -37,11 +37,12 @@ pub fn present(request: &PresentRequest) -> Result<Present, String> {
 }
 
 /// Writes an entry into the user's directories and re-reads the sources,
-/// since no watcher covers them. Blocks on that read.
+/// since no watcher covers them. Blocks on that read, or queues a full one
+/// behind whatever refresh is already running.
 pub fn install(request: &InstallRequest, state: &AppState) -> Result<InstallOutcome, String> {
     let outcome = look_engine::lookbook::install(request, &home()?);
-    if !outcome.written.is_empty() {
-        state.refresh_sources_now();
+    if !outcome.written.is_empty() && !state.refresh_sources_now() {
+        state.request_index_refresh();
     }
     Ok(outcome)
 }

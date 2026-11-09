@@ -76,6 +76,7 @@ const COPY_FAILED: &str = "Copy failed";
 const NO_CONTROL: &str = "nothing to press";
 /// A verb the connector was told to run and has not reported on.
 const VERB_STARTED: &str = "started";
+const VERB_FAILED: &str = "failed";
 
 /// How Enter on a block row went, decided off the draw thread.
 enum Performed {
@@ -1955,8 +1956,8 @@ impl Launcher {
             ActionId::Open => {
                 self.open_selected(cx);
             }
-            ActionId::OpenConfirmed => {
-                if let Some(row) = self.selected_row().cloned() {
+            ActionId::OpenConfirmed(row_id) => {
+                if let Some(row) = self.selected_row().filter(|r| r.id == row_id).cloned() {
                     self.perform_source_row(row, true, cx);
                 }
             }
@@ -2024,6 +2025,8 @@ impl Launcher {
         let query = self.query(cx);
         let args = actions::row_args(&row, &ancestors, &query);
         let title = row.title.clone();
+        let row_id = row.id.clone();
+        let panel_row = row.clone();
         let shell = self.shell.clone();
         bg::fetch(
             cx,
@@ -2054,18 +2057,23 @@ impl Launcher {
                 }
             },
             move |this, outcome, cx| match outcome {
+                // The user moved on while the block was read: its question or
+                // press would land on the row they are looking at now.
+                _ if this.selected_row().is_none_or(|r| r.id != row_id) => {}
                 // Asked in the menu rather than a modal, as a `then` target is.
                 Performed::Asks(question) => {
                     let mut menu = Menu::new(Vec::new());
-                    menu.ask(Some(question), ActionId::OpenConfirmed);
+                    menu.ask(Some(question), ActionId::OpenConfirmed(row_id));
                     this.menu_token += 1;
                     this.menu = Some(menu);
                 }
-                // The panel owns the control, so it presses and re-reads.
+                // The panel owns the control, so it presses and re-reads. The
+                // compact layout has no panel, so the control is loaded here.
                 Performed::Presses => {
-                    let pressed = this
-                        .preview
-                        .update(cx, |preview, cx| preview.press_first(cx));
+                    let pressed = this.preview.update(cx, |preview, cx| {
+                        preview.sync_actions(&panel_row, cx);
+                        preview.press_first(cx)
+                    });
                     if !pressed {
                         this.banner.show(
                             format!("{title}: {NO_CONTROL}"),
@@ -2093,6 +2101,8 @@ impl Launcher {
         let Some(row) = self.selected_row().cloned() else {
             return;
         };
+        // A newer verb outranks one still being planned.
+        self.menu_token += 1;
         let token = self.menu_token;
         let args = actions::row_args(&row, &self.levels.ancestors(), &self.query(cx));
         bg::fetch(
@@ -2148,10 +2158,15 @@ impl Launcher {
                 let (text, tone, seconds) = match ran.summary {
                     Some(summary) if ran.ok => (summary, Tone::Info, actions::BANNER_SECONDS),
                     Some(summary) => (summary, Tone::Warning, banner::LONG),
-                    None => (
+                    None if ran.ok => (
                         format!("{title}: {VERB_STARTED}"),
                         Tone::Info,
                         actions::BANNER_SECONDS,
+                    ),
+                    None => (
+                        format!("{title}: {VERB_FAILED}"),
+                        Tone::Warning,
+                        banner::LONG,
                     ),
                 };
                 this.banner.show(text, tone, seconds, cx);
@@ -2589,6 +2604,8 @@ impl Launcher {
             .gap(px(theme::SEARCH_GAP))
             .rounded(px(th.control_radius()))
             .on_click(cx.listener(move |this, _, _, cx| {
+                // A question asked about another row does not survive the click.
+                this.close_menu();
                 this.selected = i;
                 this.sync_preview(cx);
                 this.enter(cx);
