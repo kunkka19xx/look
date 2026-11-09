@@ -5,8 +5,7 @@
 use super::{ActionIntent, ActionOutcome, ActionState, SystemControl};
 
 pub struct ConnectorControl {
-    /// `declared:<block>#<control>`, so the press reaches whoever produced
-    /// the row whatever is selected when it lands.
+    /// `declared:<block>#<control>`: the press reaches whoever produced the row.
     action_id: String,
 }
 
@@ -17,8 +16,7 @@ impl ConnectorControl {
         }
     }
 
-    /// What the connector reached, never what was asked for: a connector may
-    /// refuse, and a toggle that lies is worse than a slow one.
+    /// What the connector reached, never what was asked: it may refuse.
     fn read(&self, press: bool) -> ActionState {
         let answer = crate::sources::control(&self.action_id, press);
         match answer.error {

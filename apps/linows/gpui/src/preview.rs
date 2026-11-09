@@ -42,8 +42,7 @@ const PREVIEW_DWELL: Duration = Duration::from_millis(150);
 const RUNNING: &str = "Running\u{2026}";
 /// Captured output is held to this many lines, macOS `PreviewText.visibleLines`.
 const CAPTURED_LINES: usize = 200;
-/// One text element draws the capture, so a long line is cut as well as a
-/// long list of them. Matches the highlighter's display cap.
+/// One element draws the capture, so bytes are capped as well as lines.
 const CAPTURED_BYTES: usize = 64 * 1024;
 /// A code block inside a panel is at most this tall and scrolls past it.
 const CODE_BLOCK_LINES: usize = 20;
@@ -405,9 +404,8 @@ impl Preview {
         if self.wanted.as_deref() == Some(key.as_str()) {
             return;
         }
-        // Back on the shown row: whatever the row in between started is
-        // dropped. A panel still waiting on its preview asks again, since
-        // leaving cancelled that ask.
+        // Back on the shown row: drop what the row in between started. A
+        // panel still waiting asks again, leaving cancelled its ask.
         if self
             .current
             .as_ref()
@@ -454,29 +452,28 @@ impl Preview {
                 .spawn(async move { preview_detail(&row, &ancestors, &query) })
                 .await;
             let _ = this.update(cx, |this, cx| {
-                let Some((shown, content)) = this.current.as_ref() else {
+                let shown = this.current.as_ref().filter(|(shown, _)| *shown == key);
+                let Some((_, content)) = shown else {
                     return;
                 };
                 let Content::Block { panel, .. } = content.as_ref() else {
                     return;
                 };
-                if *shown == key {
-                    let content = Arc::new(Content::Block {
-                        panel: panel.clone(),
-                        preview: detail,
-                    });
-                    this.remember(&key, content.clone());
-                    this.current = Some((key, content));
-                    this.wanted = None;
-                    cx.notify();
-                }
+                let content = Arc::new(Content::Block {
+                    panel: panel.clone(),
+                    preview: detail,
+                });
+                this.remember(&key, content.clone());
+                this.current = Some((key, content));
+                this.wanted = None;
+                cx.notify();
             });
         }));
     }
 
-    /// Shows what arrived for `key`, unless the panel has moved on. A panel
-    /// still waiting is not cached, so coming back asks again, and stays
-    /// wanted, so the same row shown again does not restart the ask.
+    /// Shows what arrived for `key`, unless the panel has moved on. A waiting
+    /// panel is not cached and stays wanted, so coming back asks again and
+    /// showing the same row does not.
     fn land(&mut self, key: &str, content: Arc<Content>, cx: &mut Context<Self>) -> bool {
         if self.wanted.as_deref() != Some(key) {
             return false;
@@ -1327,8 +1324,7 @@ fn pieces_of(blocks: Vec<DetailBlock>) -> Vec<Piece> {
     pieces
 }
 
-/// `core/markdown` decides what a block is, so every shell agrees; this
-/// decides how one looks.
+/// `core/markdown` decides what a block is; this decides how one looks.
 fn markdown_pieces(text: &str) -> Vec<Piece> {
     look_markdown::blocks(text)
         .into_iter()
@@ -1360,8 +1356,7 @@ fn code_piece(language: Option<&str>, text: String) -> Piece {
     }
 }
 
-/// Output a command produced, held to the line cap and saying what it
-/// dropped.
+/// Captured output, held to the line and byte caps.
 fn text_piece(text: String) -> Piece {
     let lines: Vec<&str> = text.split('\n').collect();
     let mut kept = 0;
@@ -1401,14 +1396,12 @@ fn muted(text: impl Into<SharedString>, th: &Theme) -> Div {
         .child(text.into())
 }
 
-/// Headings reach body size by the third level: a glance surface carries
-/// the level on weight rather than spending the pane on a title.
+/// Headings reach body size by the third level; weight carries the rest.
 fn heading_size(base: f32, level: u8) -> f32 {
     base + (3 - i32::from(level)).max(0) as f32
 }
 
-/// One block of a panel, drawn the way the same content is drawn elsewhere.
-/// Every block's text is one size, or mixed blocks read as several panels.
+/// One block of a panel, at one text size so mixed blocks read as one.
 fn piece_element(index: usize, piece: &Piece, th: &Theme, shell: &Shell) -> AnyElement {
     let base = th.font_size - 2.0;
     match piece {
@@ -1576,8 +1569,7 @@ fn inline(spans: &[Span], th: &Theme) -> Inline {
                     ..Default::default()
                 }),
             ),
-            // A run cannot change family, so code is told apart by colour
-            // and a fill rather than by a monospace face.
+            // A run cannot change family, so code is marked by colour and fill.
             Span::Code { text } => (
                 text,
                 Some(HighlightStyle {

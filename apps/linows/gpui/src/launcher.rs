@@ -72,9 +72,9 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 /// How long a keystroke waits for the next before the query runs; the
 /// webview uses the same.
 const COPY_FAILED: &str = "Copy failed";
-/// A block said Enter presses its control, and the panel found none to press.
 const NO_CONTROL: &str = "nothing to press";
-/// A verb the connector was told to run and has not reported on.
+const NOT_RUN: &str = "not run, the selection moved";
+/// Told to run, not reported on yet.
 const VERB_STARTED: &str = "started";
 const VERB_FAILED: &str = "failed";
 
@@ -1937,8 +1937,7 @@ impl Launcher {
             cx.notify();
             return;
         }
-        // The menu stays up while the connector thinks: the question lands
-        // where the user's eyes already are.
+        // The menu stays up while the connector plans.
         if let ActionId::Plan(block_id) = item.id {
             self.ask_connector(block_id, item.title, cx);
             return;
@@ -2025,7 +2024,6 @@ impl Launcher {
         let query = self.query(cx);
         let args = actions::row_args(&row, &ancestors, &query);
         let title = row.title.clone();
-        let row_id = row.id.clone();
         let panel_row = row.clone();
         let shell = self.shell.clone();
         bg::fetch(
@@ -2039,14 +2037,15 @@ impl Launcher {
                     }
                 }
                 let outcome = sources::perform_block(block_id, args, false);
+                // A press counts once it lands.
+                if outcome.presses_control {
+                    return Performed::Presses;
+                }
                 engine::record_usage(app_state(), &row.id, USAGE_EXECUTE);
                 if outcome.opens_path {
                     let _ =
                         launch::open_path(&shell, row.path.clone(), Some(&row.kind), Some(&row.id));
                     return Performed::Done;
-                }
-                if outcome.presses_control {
-                    return Performed::Presses;
                 }
                 match outcome.errors.into_iter().next() {
                     Some(failure) => Performed::Failed(failure),
@@ -2063,24 +2062,34 @@ impl Launcher {
                     actions::BANNER_SECONDS,
                     cx,
                 ),
-                // The user moved on while the block was read: its question or
-                // press would land on the row they are looking at now.
-                _ if this.selected_row().is_none_or(|r| r.id != row_id) => {}
+                // The selection moved while the block was read.
+                Performed::Asks(_) | Performed::Presses
+                    if this.selected_row().is_none_or(|r| r.id != panel_row.id) =>
+                {
+                    this.banner.show(
+                        format!("{title}: {NOT_RUN}"),
+                        Tone::Info,
+                        actions::BANNER_SECONDS,
+                        cx,
+                    );
+                }
                 // Asked in the menu rather than a modal, as a `then` target is.
                 Performed::Asks(question) => {
                     let mut menu = Menu::new(Vec::new());
-                    menu.ask(Some(question), ActionId::OpenConfirmed(row_id));
+                    menu.ask(Some(question), ActionId::OpenConfirmed(panel_row.id));
                     this.menu_token += 1;
                     this.menu = Some(menu);
                 }
-                // The panel owns the control, so it presses and re-reads. The
-                // compact layout has no panel, so the control is loaded here.
+                // The panel presses and re-reads; compact layout has no panel,
+                // so its controls are loaded first.
                 Performed::Presses => {
                     let pressed = this.preview.update(cx, |preview, cx| {
                         preview.sync_actions(&panel_row, cx);
                         preview.press_first(cx)
                     });
-                    if !pressed {
+                    if pressed {
+                        engine::record_usage(app_state(), &panel_row.id, USAGE_EXECUTE);
+                    } else {
                         this.banner.show(
                             format!("{title}: {NO_CONTROL}"),
                             Tone::Error,
@@ -2094,9 +2103,8 @@ impl Launcher {
         );
     }
 
-    /// Asks the connector what the verb would do to the selected row, then
-    /// swaps the menu to that question. An answer after the menu closed is
-    /// dropped, or it would put an old question on a new row.
+    /// Asks the connector what the verb would do to the selected row and
+    /// swaps the menu to that question.
     fn ask_connector(&mut self, block_id: String, title: String, cx: &mut Context<Self>) {
         let Some(row) = self.selected_row().cloned() else {
             return;
@@ -2153,21 +2161,14 @@ impl Launcher {
                         .show(format!("{title}: {error}"), Tone::Error, banner::LONG, cx);
                     return;
                 }
-                // No summary means the connector has not answered yet, which
-                // is not the same as it having finished.
-                let (text, tone, seconds) = match ran.summary {
-                    Some(summary) if ran.ok => (summary, Tone::Info, actions::BANNER_SECONDS),
-                    Some(summary) => (summary, Tone::Warning, banner::LONG),
-                    None if ran.ok => (
-                        format!("{title}: {VERB_STARTED}"),
-                        Tone::Info,
-                        actions::BANNER_SECONDS,
-                    ),
-                    None => (
-                        format!("{title}: {VERB_FAILED}"),
-                        Tone::Warning,
-                        banner::LONG,
-                    ),
+                let text = ran.summary.unwrap_or_else(|| {
+                    let state = if ran.ok { VERB_STARTED } else { VERB_FAILED };
+                    format!("{title}: {state}")
+                });
+                let (tone, seconds) = if ran.ok {
+                    (Tone::Info, actions::BANNER_SECONDS)
+                } else {
+                    (Tone::Warning, banner::LONG)
                 };
                 this.banner.show(text, tone, seconds, cx);
             },
@@ -2604,7 +2605,6 @@ impl Launcher {
             .gap(px(theme::SEARCH_GAP))
             .rounded(px(th.control_radius()))
             .on_click(cx.listener(move |this, _, _, cx| {
-                // A question asked about another row does not survive the click.
                 this.close_menu();
                 this.selected = i;
                 this.sync_preview(cx);

@@ -36,8 +36,8 @@ const DOT_BORDER: f32 = 1.5;
 const INERT_OPACITY: f32 = 0.5;
 const NONE_CONNECTED: &str = "None connected";
 
-/// One counter for every control ever shown, so a read from an earlier
-/// visit to a row can never match a generation on a later one.
+/// One counter for every control shown, so a read from an earlier visit
+/// never matches a later one.
 static GENERATION: AtomicU64 = AtomicU64::new(0);
 
 fn next_generation() -> u64 {
@@ -57,8 +57,7 @@ struct Action {
     status: Option<QuickActionStatus>,
     /// The switch as drawn: flipped at the press, confirmed by the re-read.
     on: Option<bool>,
-    /// Renewed by every apply, so a read that set out before one cannot
-    /// draw over the state the apply reached.
+    /// Renewed by every apply; a read that set out before one is dropped.
     generation: u64,
 }
 
@@ -98,16 +97,12 @@ impl Preview {
         self.read_actions(cx);
     }
 
-    /// Enter on a row whose block supplies a control and nothing else: a
-    /// press, whatever the panel has read so far, since the connector answers
-    /// with where it ended up. False when the row has no control.
+    /// Enter on a control-only row: press the first control, whatever has
+    /// been read so far. False when the row has none.
     pub(crate) fn press_first(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(actions) = self.actions.as_ref() else {
+        let Some(actions) = self.actions.as_ref().filter(|a| !a.actions.is_empty()) else {
             return false;
         };
-        if actions.actions.is_empty() {
-            return false;
-        }
         if !actions.busy {
             self.press(0, ActionIntent::Run, cx);
         }
@@ -410,8 +405,7 @@ impl Preview {
     }
 }
 
-/// A dot, hollow when off and filled when on: the mark a device row and a
-/// connector's list share.
+/// A dot, hollow when off and filled when on.
 pub(crate) fn status_dot(on: bool, th: &Theme) -> Div {
     div()
         .size(px(DOT))

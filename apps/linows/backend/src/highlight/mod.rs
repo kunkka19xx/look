@@ -86,9 +86,8 @@ fn preview_bytes(path: &str) -> Option<(Vec<u8>, bool)> {
     Some((data, truncated))
 }
 
-/// Token spans for text whose language is named rather than read off a path,
-/// as a fenced block's tag names it. An unknown or missing name highlights
-/// nothing.
+/// Token spans for text whose language a fence tag names. An unknown or
+/// missing tag highlights nothing.
 pub fn highlight_text(text: &str, language: Option<&str>) -> Vec<Span> {
     match language.and_then(Language::from_name) {
         Some(lang) => tokenizer::tokenize(text.as_bytes(), lang),

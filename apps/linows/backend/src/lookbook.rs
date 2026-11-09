@@ -1,6 +1,5 @@
-//! What a lookbook entry would do on this machine, and installing it. Every
-//! call is one hop into `look_engine::lookbook`, shared with macOS, so the
-//! two shells say the same thing about the same file.
+//! What a lookbook entry would do on this machine, and installing it. One
+//! hop each into `look_engine::lookbook`, shared with macOS.
 
 use std::path::PathBuf;
 
@@ -18,27 +17,25 @@ pub fn preview(toml: &str) -> Result<Preview, String> {
     look_engine::lookbook::preview(toml, &home()?)
 }
 
-/// The same for a declaration whose answers are already chosen, so the sheet
-/// shows what Install would land rather than what the author shipped.
+/// The same with the answers filled in, so the sheet shows what Install
+/// would write.
 pub fn preview_filled(file: &NamedFile) -> Result<Preview, String> {
     look_engine::lookbook::preview_filled(file, &home()?)
 }
 
-/// Which of `programs` are not installed here. For a catalog entry's
-/// `requires`, which names a program with no block behind it.
+/// Which of a catalog entry's `requires` are not installed here.
 pub fn missing_programs(programs: &[String]) -> Vec<String> {
     look_engine::lookbook::missing_programs(programs)
 }
 
 /// Which of an entry's files are already on disk, so the sheet can say what
-/// it would replace before it writes.
+/// it would replace.
 pub fn present(request: &PresentRequest) -> Result<Present, String> {
     Ok(look_engine::lookbook::present(request, &home()?))
 }
 
-/// Writes an entry into the user's directories and re-reads the sources,
-/// since no watcher covers them. Blocks on that read, or queues a full one
-/// behind whatever refresh is already running.
+/// Writes an entry and re-reads the sources, which no watcher covers. Queues
+/// a full refresh when one is already running.
 pub fn install(request: &InstallRequest, state: &AppState) -> Result<InstallOutcome, String> {
     let outcome = look_engine::lookbook::install(request, &home()?);
     if !outcome.written.is_empty() && !state.refresh_sources_now() {

@@ -113,9 +113,8 @@ pub fn plan_verb(block_id: String, row: RowArgs) -> PlanOutcome {
     look_engine::sources::plan_verb(&block_id, &row.candidate_id, &row.context())
 }
 
-/// Runs a plan the user confirmed and says how it went. A connector that has
-/// not answered yet comes back `ok` with no summary: it was told to run and
-/// may well be running.
+/// Runs a plan the user confirmed. A connector that has not answered yet
+/// comes back `ok` with no summary.
 pub fn run_verb(candidate_id: &str, plan: u64) -> RunOutcome {
     look_engine::sources::run_verb(candidate_id, plan)
 }

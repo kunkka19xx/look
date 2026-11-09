@@ -48,9 +48,8 @@ impl Language {
         }
     }
 
-    /// The language a fence tag names, as macOS `Language.from(token:)` reads
-    /// it: extensions and full names alike. `None` for a tag no table knows,
-    /// which highlights nothing rather than guessing.
+    /// The language a fence tag names, extension or full name, as macOS
+    /// `Language.from(token:)` reads it. `None` for a tag no table knows.
     pub fn from_name(tag: &str) -> Option<Self> {
         let lowered = tag.to_ascii_lowercase();
         let named = match lowered.as_str() {
