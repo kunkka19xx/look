@@ -3,6 +3,8 @@
 //! flips the first toggle, a device row connects or disconnects it, the
 //! outcome goes to the banner, and the state is read again after every apply.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use gpui::{Context, Div, ElementId, FontWeight, SharedString, div, prelude::*, px};
 use linows_backend::look_qactions::{ActionDescriptor, ControlKind};
 use linows_backend::qactions::{
@@ -34,6 +36,14 @@ const DOT_BORDER: f32 = 1.5;
 const INERT_OPACITY: f32 = 0.5;
 const NONE_CONNECTED: &str = "None connected";
 
+/// One counter for every control ever shown, so a read from an earlier
+/// visit to a row can never match a generation on a later one.
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+
+fn next_generation() -> u64 {
+    GENERATION.fetch_add(1, Ordering::Relaxed)
+}
+
 /// The actions of the row on screen.
 pub struct QuickActions {
     row_id: String,
@@ -47,7 +57,7 @@ struct Action {
     status: Option<QuickActionStatus>,
     /// The switch as drawn: flipped at the press, confirmed by the re-read.
     on: Option<bool>,
-    /// Bumped by every apply, so a read that set out before one cannot
+    /// Renewed by every apply, so a read that set out before one cannot
     /// draw over the state the apply reached.
     generation: u64,
 }
@@ -80,7 +90,7 @@ impl Preview {
                     descriptor,
                     status: None,
                     on: None,
-                    generation: 0,
+                    generation: next_generation(),
                 })
                 .collect(),
             busy: false,
@@ -235,7 +245,7 @@ impl Preview {
         let Some(actions) = self.actions.as_mut() else {
             return;
         };
-        actions.actions[index].generation += 1;
+        actions.actions[index].generation = next_generation();
         let row_id = actions.row_id.clone();
         let title = actions.actions[index].descriptor.title.clone();
         bg::fetch(cx, work, move |this, outcome, cx| {

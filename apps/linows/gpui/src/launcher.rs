@@ -2057,6 +2057,12 @@ impl Launcher {
                 }
             },
             move |this, outcome, cx| match outcome {
+                Performed::Failed(failure) => this.banner.show(
+                    format!("{title}: {failure}"),
+                    Tone::Error,
+                    actions::BANNER_SECONDS,
+                    cx,
+                ),
                 // The user moved on while the block was read: its question or
                 // press would land on the row they are looking at now.
                 _ if this.selected_row().is_none_or(|r| r.id != row_id) => {}
@@ -2083,12 +2089,6 @@ impl Launcher {
                         );
                     }
                 }
-                Performed::Failed(failure) => this.banner.show(
-                    format!("{title}: {failure}"),
-                    Tone::Error,
-                    actions::BANNER_SECONDS,
-                    cx,
-                ),
                 Performed::Done => {}
             },
         );

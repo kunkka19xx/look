@@ -214,10 +214,12 @@ pub enum Piece {
     Fields(Vec<(String, String)>),
     /// Each label and whether it is on.
     List(Vec<(String, bool)>),
-    /// Captured output, and how many lines were dropped past the cap.
+    /// Captured output, how many lines were dropped past the cap, and
+    /// whether the last shown line was cut at the byte cap.
     Text {
         text: SharedString,
         dropped: usize,
+        cut: bool,
     },
     Code {
         text: SharedString,
@@ -465,6 +467,7 @@ impl Preview {
                     });
                     this.remember(&key, content.clone());
                     this.current = Some((key, content));
+                    this.wanted = None;
                     cx.notify();
                 }
             });
@@ -472,16 +475,17 @@ impl Preview {
     }
 
     /// Shows what arrived for `key`, unless the panel has moved on. A panel
-    /// still waiting is not cached, so coming back asks again.
+    /// still waiting is not cached, so coming back asks again, and stays
+    /// wanted, so the same row shown again does not restart the ask.
     fn land(&mut self, key: &str, content: Arc<Content>, cx: &mut Context<Self>) -> bool {
         if self.wanted.as_deref() != Some(key) {
             return false;
         }
         if !content.waiting() {
             self.remember(key, content.clone());
+            self.wanted = None;
         }
         self.current = Some((key.to_string(), content));
-        self.wanted = None;
         self.body_scroll.set_offset(Default::default());
         self.lines_for = None;
         self.pieces_for = None;
@@ -1375,16 +1379,18 @@ fn text_piece(text: String) -> Piece {
     } else {
         lines[..kept].join("\n")
     };
-    if shown.len() > CAPTURED_BYTES {
-        let mut cut = CAPTURED_BYTES;
-        while !shown.is_char_boundary(cut) {
-            cut -= 1;
+    let cut = shown.len() > CAPTURED_BYTES;
+    if cut {
+        let mut at = CAPTURED_BYTES;
+        while !shown.is_char_boundary(at) {
+            at -= 1;
         }
-        shown.truncate(cut);
+        shown.truncate(at);
     }
     Piece::Text {
         text: shown.into(),
         dropped,
+        cut,
     }
 }
 
@@ -1436,7 +1442,7 @@ fn piece_element(index: usize, piece: &Piece, th: &Theme, shell: &Shell) -> AnyE
                     )
             }))
             .into_any_element(),
-        Piece::Text { text, dropped } => div()
+        Piece::Text { text, dropped, cut } => div()
             .p(px(CODE_PADDING))
             .rounded(px(th.control_radius()))
             .bg(th.control_fill)
@@ -1446,13 +1452,19 @@ fn piece_element(index: usize, piece: &Piece, th: &Theme, shell: &Shell) -> AnyE
             .flex()
             .flex_col()
             .child(text.clone())
-            .when(*dropped > 0, |el| {
+            .when(*dropped > 0 || *cut, |el| {
+                let cap = CAPTURED_BYTES / 1024;
+                let note = match (*cut, *dropped) {
+                    (true, 0) => format!("\u{2026} cut at {cap} KiB"),
+                    (true, more) => format!("\u{2026} cut at {cap} KiB, {more} more lines"),
+                    (false, more) => format!("\u{2026} {more} more lines"),
+                };
                 el.child(
                     div()
                         .font_family(th.font_family.clone())
                         .text_size(px(base - 1.0))
                         .text_color(th.text_muted)
-                        .child(format!("\u{2026} {dropped} more lines")),
+                        .child(note),
                 )
             })
             .into_any_element(),
@@ -2079,18 +2091,27 @@ mod tests {
     #[test]
     fn captured_output_is_held_to_the_cap() {
         let short = text_piece("a\nb".into());
-        assert!(matches!(short, Piece::Text { dropped: 0, .. }));
+        assert!(matches!(
+            short,
+            Piece::Text {
+                dropped: 0,
+                cut: false,
+                ..
+            }
+        ));
         let long = text_piece("x\n".repeat(CAPTURED_LINES + 5));
-        let Piece::Text { text, dropped } = long else {
+        let Piece::Text { text, dropped, cut } = long else {
             panic!("a text piece");
         };
         assert_eq!(dropped, 6, "the trailing newline counts as a line");
         assert_eq!(text.split('\n').count(), CAPTURED_LINES);
+        assert!(!cut);
         let wide = text_piece(format!("{}\nnext", "é".repeat(CAPTURED_BYTES)));
-        let Piece::Text { text, dropped } = wide else {
+        let Piece::Text { text, dropped, cut } = wide else {
             panic!("a text piece");
         };
         assert_eq!(dropped, 1, "a line past the byte cap stands alone");
+        assert!(cut, "and says it was cut");
         assert!(text.len() <= CAPTURED_BYTES && text.chars().all(|c| c == 'é'));
     }
 
