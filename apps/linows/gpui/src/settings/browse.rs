@@ -337,24 +337,30 @@ impl Browse {
             cx,
             move || lookbook::install(&request, crate::state()),
             move |this, outcome, cx| {
-                let Some(sheet) = this.settings.browse.sheet_mut(opened) else {
-                    return;
-                };
-                sheet.writing = false;
-                let outcome = match outcome {
-                    Ok(outcome) => outcome,
-                    Err(_) => {
-                        sheet.failure = Some(INSTALL_FAILED.to_string());
-                        return;
+                let browse = &mut this.settings.browse;
+                let written = outcome
+                    .as_ref()
+                    .is_ok_and(|outcome| !outcome.written.is_empty());
+                let failure = match &outcome {
+                    Err(_) => Some(INSTALL_FAILED.to_string()),
+                    Ok(outcome) if !outcome.problems.is_empty() => {
+                        Some(outcome.problems.join("\n"))
                     }
+                    Ok(_) => None,
                 };
-                if !outcome.problems.is_empty() {
-                    sheet.failure = Some(outcome.problems.join("\n"));
-                } else {
-                    this.settings.browse.installed.insert(id);
-                    this.settings.browse.sheet = None;
+                if failure.is_none() {
+                    browse.installed.insert(id);
                 }
-                if !outcome.written.is_empty() {
+                // Closed meanwhile, by Escape or another tab: the files are
+                // on disk all the same, so the sheet is the optional part.
+                if let Some(sheet) = browse.sheet_mut(opened) {
+                    sheet.writing = false;
+                    match failure {
+                        Some(message) => sheet.failure = Some(message),
+                        None => browse.sheet = None,
+                    }
+                }
+                if written {
                     this.reload_sources(cx);
                 }
             },
