@@ -417,6 +417,9 @@ jobs:
     runs-on: windows-latest
     needs: changes
     if: needs.changes.outputs.linows_windows == 'true'
+    env:
+      # Nothing here reads a PDB, and MSVC spends minutes writing them.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@v7
         with:
@@ -427,18 +430,15 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      # On windows-2025-vs2026, the rust-cache post-step's `tar` call hangs/
-      # crashes when archiving the full `target/` dir (no error surfaced, job
-      # ends FAILURE even though the build itself passes). Skipping target
-      # caching keeps registry/git caching - the win that matters for cargo
-      # fetch - while sidestepping the tar issue. Target rebuild on Windows
-      # in this job is ~2 min, acceptable.
+      # Target caching was off here from May 2026 after the post-step tar
+      # hung on the windows-2025-vs2026 image. The cold rebuild has grown
+      # from 2 to 13 minutes since gpui, so it is back on; if the hang
+      # returns, sccache is the next thing to try, not cache-targets: false.
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: apps/linows
-          cache-targets: false
 
       - name: Check formatting
         run: cargo fmt --all --manifest-path apps/linows/Cargo.toml -- --check

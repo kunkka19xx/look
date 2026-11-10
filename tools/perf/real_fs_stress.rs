@@ -159,6 +159,7 @@ fn main() {
                         apps: apps_dirty,
                         files: files_dirty,
                         settings: false,
+                        sources: false,
                     };
                     apps_dirty = false;
                     files_dirty = false;

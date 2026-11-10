@@ -32,8 +32,8 @@ pub use def::{
 pub use detail::{DetailBlock, DetailField, DetailItem, parse as parse_detail};
 pub use install::{Installed, Installing, install, install_into};
 pub use load::{
-    CONNECTORS_DIR_ENV, Loaded, Problem, SOURCES_DIR_ENV, connectors_dir, load_connectors,
-    load_dir, scripts_dir, sources_dir,
+    CONNECTORS_DIR_ENV, DECLARATION_EXTENSION, Loaded, Problem, SOURCES_DIR_ENV, connectors_dir,
+    load_connectors, load_dir, scripts_dir, sources_dir,
 };
 pub use rows::{SourceRow, parse_rows};
 pub use run::{

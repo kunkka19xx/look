@@ -3,6 +3,8 @@
 //! Config writes the lot to the file in one go, Esc discards.
 
 mod advanced;
+mod browse;
+mod extend;
 mod shortcuts;
 
 use std::collections::{HashMap, HashSet};
@@ -15,18 +17,17 @@ use gpui::{
 };
 use linows_backend::config::{self, ConfigUpdate, LauncherLayout};
 use linows_backend::platform::{self, CandidateDrive};
-use linows_backend::search as engine;
 use linows_backend::{autostart, cli_path, files, hotkey};
 
 use crate::bg;
 use crate::bindings;
+use crate::blocks;
 use crate::commands::KeyOutcome;
 use crate::controls::{self, Option_, Range, SliderEvent, SliderPhase};
 use crate::fonts;
 use crate::launcher::Launcher;
 use crate::launchpad::Tone;
 use crate::search::{Changed, SearchInput, input_for, search_field};
-use crate::state as app_state;
 use crate::theme::{self, Theme};
 use crate::update::Update;
 
@@ -335,23 +336,25 @@ pub enum Tab {
     Appearance,
     Advanced,
     Shortcuts,
+    Extend,
 }
 
 impl Tab {
-    const ALL: [Tab; 3] = [Tab::Appearance, Tab::Advanced, Tab::Shortcuts];
+    const ALL: [Tab; 4] = [Tab::Appearance, Tab::Advanced, Tab::Shortcuts, Tab::Extend];
 
     fn label(self) -> &'static str {
         match self {
             Tab::Appearance => "Appearance",
             Tab::Advanced => "Advanced",
             Tab::Shortcuts => "Shortcuts",
+            Tab::Extend => "Extend",
         }
     }
 
-    /// The footer line; Appearance has none, as on macOS.
+    /// The footer line; Appearance and Extend have none, as on macOS.
     fn hint(self) -> Option<SharedString> {
         match self {
-            Tab::Appearance => None,
+            Tab::Appearance | Tab::Extend => None,
             Tab::Advanced => Some(
                 format!(
                     "Save Config applies changes immediately. {} is only needed after editing .look/config manually.",
@@ -377,6 +380,13 @@ pub(super) enum FieldKind {
     Number(&'static advanced::Number),
     /// Filters as typed, so Enter only closes the box.
     ShortcutSearch,
+    LookbookFilter,
+    /// A `[[setup]]` field in the install sheet: the file's and the
+    /// field's places in it.
+    Setup {
+        file: usize,
+        field: usize,
+    },
 }
 
 /// A box while it edits.
@@ -404,6 +414,7 @@ pub struct Kept {
     loaded: bool,
     edited: HashSet<String>,
     pending: HashMap<&'static str, String>,
+    browse: browse::Browse,
 }
 
 impl Kept {
@@ -444,6 +455,8 @@ pub struct Settings {
     /// Why the last extra scan dir was refused, under that list until the
     /// next add or remove, as macOS's `extraScanDirectoryMessage`.
     extra_dir_message: Option<String>,
+    extend: extend::Extend,
+    browse: browse::Browse,
 }
 
 impl Settings {
@@ -465,16 +478,29 @@ impl Settings {
             save_message: None,
             save_seq: 0,
             extra_dir_message: None,
+            extend: extend::Extend::default(),
+            browse: browse::Browse::default(),
         }
     }
 
     pub fn enter(&mut self, cx: &mut Context<Launcher>) {
         self.tab = Tab::default();
         self.shortcuts_view = shortcuts::View::default();
+        self.extend.forget();
+        self.browse.forget();
         self.scroll.set_offset(Default::default());
         self.edited.clear();
         self.load(true, cx);
         self.fetch_fonts(cx);
+    }
+
+    /// The Extend tab reads what is installed whenever it comes into view
+    /// or the sources reload, so a fixed problem leaves the screen.
+    pub fn read_extend(&mut self, cx: &mut Context<Launcher>) {
+        if self.tab == Tab::Extend {
+            self.extend.read(cx);
+            self.browse.read(cx);
+        }
     }
 
     pub fn kept(&self) -> Kept {
@@ -486,6 +512,7 @@ impl Settings {
             loaded: self.loaded,
             edited: self.edited.clone(),
             pending: self.recorder.pending(),
+            browse: self.browse.clone(),
         }
     }
 
@@ -498,6 +525,8 @@ impl Settings {
         self.recorder.resume(kept.pending);
         self.entries = kept.entries;
         self.edited = kept.edited;
+        self.browse = kept.browse;
+        self.browse.resume(cx);
         if kept.loaded {
             self.load(false, cx);
             self.apply(cx);
@@ -505,6 +534,7 @@ impl Settings {
             self.load(true, cx);
         }
         self.fetch_fonts(cx);
+        self.read_extend(cx);
     }
 
     fn fetch_fonts(&mut self, cx: &mut Context<Launcher>) {
@@ -513,6 +543,20 @@ impl Settings {
                 this.settings.fonts = fonts;
             });
         }
+    }
+
+    /// Every way onto another tab, key or click. The sheet is drawn on
+    /// Extend only; left open it would still take Enter and Escape from
+    /// elsewhere.
+    fn switch_tab(&mut self, tab: Tab, cx: &mut Context<Launcher>) {
+        if self.sheet_open() {
+            self.close_sheet(cx);
+        }
+        self.leave();
+        self.tab = tab;
+        self.scroll.set_offset(Default::default());
+        self.read_extend(cx);
+        cx.notify();
     }
 
     pub fn leave(&mut self) {
@@ -530,6 +574,7 @@ impl Settings {
     pub fn reload(&mut self, cx: &mut Context<Launcher>) {
         self.edited.clear();
         self.load(true, cx);
+        self.read_extend(cx);
     }
 
     /// `read` takes the entries from the file; a resume keeps its own, and
@@ -627,12 +672,17 @@ impl Settings {
         }
         if let Some(kind) = self.field.as_ref().map(|f| f.kind) {
             return match (kind, ks.key.as_str()) {
-                (_, "escape") | (FieldKind::ShortcutSearch, "enter") => {
+                (_, "escape")
+                | (FieldKind::ShortcutSearch | FieldKind::LookbookFilter, "enter") => {
                     self.field = None;
                     cx.notify();
                     KeyOutcome::Consumed
                 }
                 (FieldKind::Number(spec), "enter" | "tab") => self.commit_number(spec, cx),
+                (FieldKind::Setup { file, field }, "enter" | "tab") => {
+                    self.commit_setup(file, field, cx);
+                    KeyOutcome::Consumed
+                }
                 (FieldKind::Font, "enter") => {
                     self.commit_font(cx);
                     KeyOutcome::Consumed
@@ -643,11 +693,18 @@ impl Settings {
             };
         }
         match ks.key.as_str() {
+            // The sheet owns Escape and Enter while it is up.
+            "escape" if self.sheet_open() => {
+                self.close_sheet(cx);
+                KeyOutcome::Consumed
+            }
+            "enter" if self.sheet_open() => {
+                self.browse.install(cx);
+                KeyOutcome::Consumed
+            }
             "escape" => KeyOutcome::Exit,
             "tab" => {
-                self.tab = self.tab.step(shift);
-                self.scroll.set_offset(Default::default());
-                cx.notify();
+                self.switch_tab(self.tab.step(shift), cx);
                 KeyOutcome::Consumed
             }
             _ => KeyOutcome::Consumed,
@@ -929,7 +986,7 @@ impl Settings {
                 if let Err(err) = config::write_config(updates, &removals) {
                     return (false, Err(err));
                 }
-                engine::reload_config(app_state(), || {});
+                blocks::reload_engine();
                 let os = autostart::set_autostart(launch).and_then(|()| {
                     if cfg!(windows) {
                         cli_path::set_cli_path(add_to_path)
@@ -997,6 +1054,7 @@ impl Settings {
             Tab::Appearance => self.appearance(th, cx).into_any_element(),
             Tab::Advanced => self.advanced(th, update, cx).into_any_element(),
             Tab::Shortcuts => self.shortcuts(th, cx).into_any_element(),
+            Tab::Extend => self.extend(th, cx).into_any_element(),
         };
         div()
             .size_full()
@@ -1024,16 +1082,22 @@ impl Settings {
     /// is one: no row of its own, the user's call ahead of macOS. The frame
     /// places it, since an absolute child anchors to its own parent. It
     /// occludes, or a click on it also lands on the slider scrolled under it.
-    pub fn save_float(&self, th: &Theme, cx: &mut Context<Launcher>) -> AnyElement {
-        deferred(
-            div()
-                .occlude()
-                .absolute()
-                .bottom(px(SAVE_FLOAT_INSET))
-                .right(px(SAVE_FLOAT_INSET))
-                .child(self.save_controls(th, cx)),
+    /// Nothing on Extend is a setting to save, so it has no button.
+    pub fn save_float(&self, th: &Theme, cx: &mut Context<Launcher>) -> Option<AnyElement> {
+        if self.tab == Tab::Extend {
+            return None;
+        }
+        Some(
+            deferred(
+                div()
+                    .occlude()
+                    .absolute()
+                    .bottom(px(SAVE_FLOAT_INSET))
+                    .right(px(SAVE_FLOAT_INSET))
+                    .child(self.save_controls(th, cx)),
+            )
+            .into_any_element(),
         )
-        .into_any_element()
     }
 
     /// The Saved pill, then Save Config.
@@ -1075,7 +1139,10 @@ impl Settings {
                     .flex_1()
                     .py(px(TAB_PADDING_Y))
                     .rounded(px(th.control_radius()))
-                    .text_center()
+                    // Centred by the flex pass, not by text alignment, which
+                    // measures before the tab has its width.
+                    .flex()
+                    .justify_center()
                     .text_size(px(th.font_size - 1.0))
                     .font_weight(FontWeight::MEDIUM)
                     .cursor_pointer()
@@ -1090,10 +1157,7 @@ impl Settings {
                         }
                     })
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.settings.tab = tab;
-                        this.settings.scroll.set_offset(Default::default());
-                        this.settings.leave();
-                        cx.notify();
+                        this.settings.switch_tab(tab, cx);
                     }))
                     .child(tab.label())
             }))
@@ -1329,8 +1393,9 @@ mod tests {
     #[test]
     fn tabs_cycle_both_ways() {
         assert_eq!(Tab::Appearance.step(false), Tab::Advanced);
-        assert_eq!(Tab::Shortcuts.step(false), Tab::Appearance);
-        assert_eq!(Tab::Appearance.step(true), Tab::Shortcuts);
+        assert_eq!(Tab::Shortcuts.step(false), Tab::Extend);
+        assert_eq!(Tab::Extend.step(false), Tab::Appearance);
+        assert_eq!(Tab::Appearance.step(true), Tab::Extend);
     }
 
     #[test]
@@ -1340,8 +1405,9 @@ mod tests {
     }
 
     #[test]
-    fn appearance_alone_has_no_footer() {
+    fn appearance_and_extend_have_no_footer() {
         assert!(Tab::Appearance.hint().is_none());
+        assert!(Tab::Extend.hint().is_none());
         assert!(Tab::Advanced.hint().is_some());
         assert!(Tab::Shortcuts.hint().is_some());
     }

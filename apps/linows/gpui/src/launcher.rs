@@ -11,10 +11,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Div, Entity,
-    FontWeight, KeyDownEvent, PaintQuad, Pixels, Render, ScrollStrategy, SharedString, Stateful,
-    Task, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred, div, img,
-    point, prelude::*, px, relative, size, svg, uniform_list,
+    Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Deferred, Div,
+    Entity, FontWeight, KeyDownEvent, PaintQuad, Pixels, Render, ScrollStrategy, SharedString,
+    Stateful, Task, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred,
+    div, img, point, prelude::*, px, relative, size, svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
@@ -46,6 +46,7 @@ use crate::modes::Mode;
 use crate::motion;
 use crate::picked::{self, Picked};
 use crate::preview::{self, ClipDeleted, Preview};
+use crate::qactions::Press;
 use crate::query;
 use crate::rows::{Icon, Open, Row};
 use crate::running::RunningApps;
@@ -72,6 +73,26 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 /// How long a keystroke waits for the next before the query runs; the
 /// webview uses the same.
 const COPY_FAILED: &str = "Copy failed";
+const NOT_RUN: &str = "not run, you moved on";
+/// Told to run, not reported on yet.
+const VERB_STARTED: &str = "started";
+const VERB_FAILED: &str = "failed";
+
+#[derive(Default)]
+struct SourcesReload {
+    running: bool,
+    again: bool,
+}
+
+/// How Enter on a block row went, decided off the draw thread.
+enum Performed {
+    /// The block asks first; the question goes to the menu.
+    Asks(String),
+    /// The block supplies a control and nothing else.
+    Presses,
+    Failed(String),
+    Done,
+}
 const DEBOUNCE: Duration = Duration::from_millis(70);
 /// A row's picture, or the glyph that stands in for it.
 const EMPTY_STATE_H: f32 = 200.0;
@@ -218,6 +239,9 @@ pub struct Launcher {
     pub(crate) settings: Settings,
     /// Ctrl+Shift+, : the settings screen is up, in the command screen's frame.
     settings_open: bool,
+    /// A sources reload in flight, and whether another was asked for
+    /// meanwhile: run one at a time, so an older pass cannot publish last.
+    sources_reload: SourcesReload,
     /// Ctrl+H: the help screen, in the same frame.
     pub(crate) help: Help,
     /// Version and update status, shown by settings and help.
@@ -347,6 +371,7 @@ impl Launcher {
             command_mode: false,
             settings: Settings::new(cx),
             settings_open: false,
+            sources_reload: SourcesReload::default(),
             help: Help::new(cx),
             update: Update::new(),
             levels: Levels::default(),
@@ -1076,7 +1101,7 @@ impl Launcher {
         bg::fetch(
             cx,
             || {
-                engine::reload_config(app_state(), || {});
+                blocks::reload_engine();
                 qactions::launchpad_layout()
             },
             |this, layout, cx| {
@@ -1101,6 +1126,26 @@ impl Launcher {
         cx.notify();
     }
 
+    /// A source file changed from the Extend tab: the engine reads the
+    /// sources again and restarts connectors, the block catalog follows,
+    /// and the tab re-reads once that is done. The config and the settings'
+    /// working copy are left alone.
+    pub(crate) fn reload_sources(&mut self, cx: &mut Context<Self>) {
+        if self.sources_reload.running {
+            self.sources_reload.again = true;
+            return;
+        }
+        self.sources_reload.running = true;
+        bg::fetch(cx, blocks::reload_engine, |this, (), cx| {
+            this.sources_reload.running = false;
+            if std::mem::take(&mut this.sources_reload.again) {
+                this.reload_sources(cx);
+            } else if this.settings_open {
+                this.settings.read_extend(cx);
+            }
+        });
+    }
+
     /// Create Fresh Config: the question, then the defaults written over
     /// the file and everything that reads it read again.
     pub(crate) fn fresh_config(&mut self, cx: &mut Context<Self>) {
@@ -1109,7 +1154,7 @@ impl Launcher {
                 cx,
                 || {
                     config::reset_config()?;
-                    engine::reload_config(app_state(), || {});
+                    blocks::reload_engine();
                     app_state().force_index_refresh();
                     Ok::<(), String>(())
                 },
@@ -1225,9 +1270,10 @@ impl Launcher {
         let row = self.selected_row().cloned();
         let mode = self.mode;
         let ancestors = self.levels.ancestors();
+        let query = self.query(cx);
         self.preview.update(cx, |preview, cx| match row {
             Some(row) if (split && !mode.is_menu()) || matches!(row.open, Open::Process(_)) => {
-                preview.show(&row, ancestors, cx)
+                preview.show(&row, ancestors, query, cx)
             }
             None if split && mode.is_clipboard() => preview.show_help(mode, cx),
             _ => preview.clear(cx),
@@ -1250,7 +1296,7 @@ impl Launcher {
             return true;
         };
         match row.open {
-            Open::Path { .. } if row.declared() => self.perform_source_row(row, cx),
+            Open::Path { .. } if row.declared() => self.perform_source_row(row, false, cx),
             Open::Path { usage } => {
                 match launch::open_path(&self.shell, row.path, Some(&row.kind), Some(&row.id)) {
                     Ok(()) => {
@@ -1325,7 +1371,7 @@ impl Launcher {
             return true;
         }
         if row.path.is_empty() && row.declared() {
-            let args = actions::row_args(&row, &self.levels.ancestors());
+            let args = actions::row_args(&row, &self.levels.ancestors(), &self.query(cx));
             let shell = self.shell.clone();
             bg::fetch(
                 cx,
@@ -1877,9 +1923,10 @@ impl Launcher {
             )
         };
         let ancestors = self.levels.ancestors();
+        let query = self.query(cx);
         bg::fetch(
             cx,
-            move || actions::descriptors(&row, ancestors, panel),
+            move || actions::descriptors(&row, ancestors, query, panel),
             move |this, items, cx| {
                 if this.menu_token != token {
                     return;
@@ -1920,11 +1967,15 @@ impl Launcher {
             cx.notify();
             return;
         }
-        // The target's title comes from the menu it was picked in, so the
-        // menu goes after the action reads it.
-        self.menu_token += 1;
-        self.run_action(item.id, cx);
+        // The menu stays up while the connector plans.
+        if let ActionId::Plan(block_id) = item.id {
+            self.ask_connector(block_id, item.title, cx);
+            return;
+        }
+        // Closed first, so a question the action asks is not mistaken for
+        // one this menu left behind.
         self.close_menu();
+        self.run_action(item.id, cx);
         cx.notify();
     }
 
@@ -1932,6 +1983,11 @@ impl Launcher {
         match id {
             ActionId::Open => {
                 self.open_selected(cx);
+            }
+            ActionId::OpenConfirmed(row_id) => {
+                if let Some(row) = self.selected_row().filter(|r| r.id == row_id).cloned() {
+                    self.perform_source_row(row, true, cx);
+                }
             }
             ActionId::Tool(action) => {
                 self.run_tool(action, cx);
@@ -1944,8 +2000,10 @@ impl Launcher {
             ActionId::DeleteClipboard => {
                 self.delete(cx);
             }
-            ActionId::Target(block_id) => self.run_target(block_id, cx),
-            ActionId::Yes | ActionId::No => {}
+            ActionId::Target { block_id, name } => self.run_target(block_id, name, cx),
+            ActionId::RunPlan { plan, title } => self.run_planned(plan, title, cx),
+            // Asked in `activate_menu_item`, which still has the menu.
+            ActionId::Plan(_) | ActionId::Yes | ActionId::No => {}
         }
     }
 
@@ -1960,7 +2018,7 @@ impl Launcher {
         {
             return true;
         }
-        let args = actions::row_args(&row, &self.levels.ancestors());
+        let args = actions::row_args(&row, &self.levels.ancestors(), &self.query(cx));
         let is_dir = actions::is_dir(&row);
         let shell = self.shell.clone();
         bg::fetch(
@@ -1979,8 +2037,9 @@ impl Launcher {
     }
 
     /// Enter on a block row: what the block's `open` says, with its question
-    /// asked first in the menu. Core says whether the row's own path opens.
-    fn perform_source_row(&mut self, row: Row, cx: &mut Context<Self>) {
+    /// asked first in the menu unless `confirmed` says it already was. Core
+    /// says whether the row's own path opens or its control is pressed.
+    fn perform_source_row(&mut self, row: Row, confirmed: bool, cx: &mut Context<Self>) {
         let Some(block_id) = actions::block_id_of(&row.id).map(str::to_string) else {
             self.banner.show(
                 "Couldn't tell which block this row belongs to".into(),
@@ -1991,69 +2050,172 @@ impl Launcher {
             return;
         };
         let ancestors = self.levels.ancestors();
-        let args = actions::row_args(&row, &ancestors);
+        let query = self.query(cx);
+        let args = actions::row_args(&row, &ancestors, &query);
         let title = row.title.clone();
+        let panel_row = row.clone();
         let shell = self.shell.clone();
+        let token = self.menu_token;
         bg::fetch(
             cx,
             move || {
-                let declared = sources::source_block(actions::row_args(&row, &ancestors));
-                if let Some(question) = declared.and_then(|d| d.confirm) {
-                    return Err(question);
+                if !confirmed {
+                    let declared =
+                        sources::source_block(actions::row_args(&row, &ancestors, &query));
+                    if let Some(question) = declared.and_then(|d| d.confirm) {
+                        return Performed::Asks(question);
+                    }
                 }
                 let outcome = sources::perform_block(block_id, args, false);
+                // A press counts once it lands.
+                if outcome.presses_control {
+                    return Performed::Presses;
+                }
                 engine::record_usage(app_state(), &row.id, USAGE_EXECUTE);
                 if outcome.opens_path {
                     let _ =
                         launch::open_path(&shell, row.path.clone(), Some(&row.kind), Some(&row.id));
-                    return Ok(None);
+                    return Performed::Done;
                 }
                 match outcome.errors.into_iter().next() {
-                    Some(failure) => Ok(Some(failure)),
+                    Some(failure) => Performed::Failed(failure),
                     None => {
                         shell.hide();
-                        Ok(None)
+                        Performed::Done
                     }
                 }
             },
             move |this, outcome, cx| match outcome {
-                // Asked in the menu rather than a modal, as a `then` target is.
-                Err(question) => {
-                    let mut menu = Menu::new(Vec::new());
-                    menu.ask(Some(question), ActionId::Open);
-                    this.menu_token += 1;
-                    this.menu = Some(menu);
-                }
-                Ok(Some(failure)) => this.banner.show(
+                Performed::Failed(failure) => this.banner.show(
                     format!("{title}: {failure}"),
                     Tone::Error,
                     actions::BANNER_SECONDS,
                     cx,
                 ),
-                Ok(None) => {}
+                // The selection moved, or a menu came and went, while the
+                // block was read.
+                Performed::Asks(_) | Performed::Presses
+                    if this.menu_token != token
+                        || this.selected_row().is_none_or(|r| r.id != panel_row.id) =>
+                {
+                    this.banner.show(
+                        format!("{title}: {NOT_RUN}"),
+                        Tone::Info,
+                        actions::BANNER_SECONDS,
+                        cx,
+                    );
+                }
+                // Asked in the menu rather than a modal, as a `then` target is.
+                Performed::Asks(question) => {
+                    let mut menu = Menu::new(Vec::new());
+                    menu.ask(Some(question), ActionId::OpenConfirmed(panel_row.id));
+                    this.menu_token += 1;
+                    this.menu = Some(menu);
+                }
+                // The panel presses and re-reads; compact layout has no panel,
+                // so its controls are loaded first.
+                Performed::Presses => {
+                    let pressed = this.preview.update(cx, |preview, cx| {
+                        preview.sync_actions(&panel_row, cx);
+                        preview.press_first(cx)
+                    });
+                    match pressed {
+                        Press::Started => {
+                            engine::record_usage(app_state(), &panel_row.id, USAGE_EXECUTE);
+                        }
+                        Press::Busy => {}
+                        Press::Refused(reason) => this.banner.show(
+                            format!("{title}: {reason}"),
+                            Tone::Error,
+                            actions::BANNER_SECONDS,
+                            cx,
+                        ),
+                    }
+                }
+                Performed::Done => {}
+            },
+        );
+    }
+
+    /// Asks the connector what the verb would do to the selected row and
+    /// swaps the menu to that question.
+    fn ask_connector(&mut self, block_id: String, title: String, cx: &mut Context<Self>) {
+        let Some(row) = self.selected_row().cloned() else {
+            return;
+        };
+        // A newer verb outranks one still being planned.
+        self.menu_token += 1;
+        let token = self.menu_token;
+        let args = actions::row_args(&row, &self.levels.ancestors(), &self.query(cx));
+        bg::fetch(
+            cx,
+            move || sources::plan_verb(block_id, args),
+            move |this, planned, cx| {
+                if this.menu_token != token {
+                    return;
+                }
+                if let Some(error) = planned.error {
+                    this.close_menu();
+                    this.banner
+                        .show(format!("{title}: {error}"), Tone::Error, banner::LONG, cx);
+                    cx.notify();
+                    return;
+                }
+                let question = [Some(planned.title), planned.detail]
+                    .into_iter()
+                    .flatten()
+                    .filter(|part| !part.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(": ");
+                if let Some(menu) = this.menu.as_mut() {
+                    menu.ask_planned(
+                        question,
+                        ActionId::RunPlan {
+                            plan: planned.plan,
+                            title,
+                        },
+                    );
+                }
+                cx.notify();
+            },
+        );
+    }
+
+    /// Runs what the user just confirmed, and says how it went.
+    fn run_planned(&mut self, plan: u64, title: String, cx: &mut Context<Self>) {
+        let Some(row) = self.selected_row().cloned() else {
+            return;
+        };
+        bg::fetch(
+            cx,
+            move || sources::run_verb(&row.id, plan),
+            move |this, ran, cx| {
+                if let Some(error) = ran.error {
+                    this.banner
+                        .show(format!("{title}: {error}"), Tone::Error, banner::LONG, cx);
+                    return;
+                }
+                let text = ran.summary.unwrap_or_else(|| {
+                    let state = if ran.ok { VERB_STARTED } else { VERB_FAILED };
+                    format!("{title}: {state}")
+                });
+                let (tone, seconds) = if ran.ok {
+                    (Tone::Info, actions::BANNER_SECONDS)
+                } else {
+                    (Tone::Warning, banner::LONG)
+                };
+                this.banner.show(text, tone, seconds, cx);
             },
         );
     }
 
     /// A `then` target against the selected row: performed, or a level to
     /// descend into when it produces rows.
-    fn run_target(&mut self, block_id: String, cx: &mut Context<Self>) {
+    fn run_target(&mut self, block_id: String, title: String, cx: &mut Context<Self>) {
         let Some(row) = self.selected_row().cloned() else {
             return;
         };
-        let title = self
-            .menu
-            .as_ref()
-            .and_then(|m| {
-                m.items.iter().find_map(|item| match &item.id {
-                    ActionId::Target(id) if *id == block_id => {
-                        Some(item.title.trim_end_matches('\u{2026}').to_string())
-                    }
-                    _ => None,
-                })
-            })
-            .unwrap_or_else(|| block_id.clone());
-        let args = actions::row_args(&row, &self.levels.ancestors());
+        let args = actions::row_args(&row, &self.levels.ancestors(), &self.query(cx));
         let shell = self.shell.clone();
         let id = block_id.clone();
         bg::fetch(
@@ -2102,7 +2264,9 @@ impl Launcher {
         // No copyright on this screen: the footer is the tab's hint alone.
         let trailing = hint.as_ref().map(|_| div().into_any_element());
         // The question's bar takes the corner while it asks.
-        let float = (self.confirm.is_none()).then(|| self.settings.save_float(&th, cx));
+        let float = (self.confirm.is_none())
+            .then(|| self.settings.save_float(&th, cx))
+            .flatten();
         self.screen(body, hint, trailing, float, &th, cx)
     }
 
@@ -2121,13 +2285,27 @@ impl Launcher {
     ) -> Div {
         let radius = th.tile_radius();
         let frosted = th.frosted();
-        let banner = self.banner.render(th, cx).map(|banner| {
-            div()
-                .mx(px(theme::CONTENT_PADDING))
-                .mt(px(theme::CONTENT_PADDING))
-                .flex()
-                .child(banner)
-        });
+        // A toast floats over the card where it floats over the rows; the
+        // sticky notice takes a place in the flow above the card.
+        let toast = self.banner.showing_toast();
+        let banner = self
+            .banner
+            .render(th, cx)
+            .map(|banner| div().flex_1().min_w_0().child(banner));
+        let (toast_card, sticky_card) = match banner {
+            Some(card) if toast => (Some(toast_float(card, th)), None),
+            Some(card) => (
+                None,
+                Some(
+                    div()
+                        .mx(px(theme::CONTENT_PADDING))
+                        .mt(px(theme::CONTENT_PADDING))
+                        .flex()
+                        .child(card),
+                ),
+            ),
+            None => (None, None),
+        };
         // The focused field (the panel's box, or a row's open field) is where
         // the keys dispatch from, so this root must track that handle.
         let focus_handle = self.focus_target(cx);
@@ -2150,7 +2328,7 @@ impl Launcher {
             .child(blur_commit(frosted))
             .flex()
             .flex_col()
-            .children(banner)
+            .children(sticky_card)
             .child(
                 div()
                     .flex_1()
@@ -2192,6 +2370,7 @@ impl Launcher {
                             .children(float),
                     ),
             )
+            .children(toast_card)
             .children(confirm)
     }
 
@@ -2465,6 +2644,7 @@ impl Launcher {
             .gap(px(theme::SEARCH_GAP))
             .rounded(px(th.control_radius()))
             .on_click(cx.listener(move |this, _, _, cx| {
+                this.close_menu();
                 this.selected = i;
                 this.sync_preview(cx);
                 this.enter(cx);
@@ -3100,24 +3280,7 @@ impl Launcher {
             .render(&th, cx)
             .map(|banner| div().flex_1().min_w_0().child(banner));
         let (toast_card, sticky_card) = match banner {
-            Some(card) if toast => {
-                let top = theme::CONTENT_PADDING
-                    + theme::TOP_ROW_HEIGHT
-                    + 2.0 * theme::INPUT_PADDING_Y
-                    + gap;
-                // Occludes, or a click on it would open the row under it.
-                let card = deferred(
-                    div()
-                        .occlude()
-                        .absolute()
-                        .top(px(top))
-                        .left(px(theme::CONTENT_PADDING))
-                        .right(px(theme::CONTENT_PADDING))
-                        .flex()
-                        .child(card),
-                );
-                (Some(card), None)
-            }
+            Some(card) if toast => (Some(toast_float(card, &th)), None),
             Some(card) => (
                 None,
                 Some(
@@ -3232,7 +3395,7 @@ fn hide_app(name: &str) -> Result<bool, String> {
         key: APP_EXCLUDE_KEY.into(),
         value: config_list::render(&names),
     }])?;
-    engine::reload_config(app_state(), || {});
+    blocks::reload_engine();
     Ok(true)
 }
 
@@ -3460,6 +3623,27 @@ pub(crate) fn backdrop_layer(radius: f32, th: &Theme) -> Option<impl IntoElement
 }
 
 /// The band's leading at the hint's size.
+/// The toast's place on every screen: just under the bar, over whatever
+/// is below it. Occludes, or a click on it would land on the row under it.
+fn toast_float(card: Div, th: &Theme) -> Deferred {
+    let gap = if th.floating() {
+        th.inner_gap
+    } else {
+        theme::ROW_INSET
+    };
+    let top = theme::CONTENT_PADDING + theme::TOP_ROW_HEIGHT + 2.0 * theme::INPUT_PADDING_Y + gap;
+    deferred(
+        div()
+            .occlude()
+            .absolute()
+            .top(px(top))
+            .left(px(theme::CONTENT_PADDING))
+            .right(px(theme::CONTENT_PADDING))
+            .flex()
+            .child(card),
+    )
+}
+
 fn hint_line_height(th: &Theme) -> f32 {
     (th.font_size - 1.0) * theme::LABEL_LINE_HEIGHT
 }

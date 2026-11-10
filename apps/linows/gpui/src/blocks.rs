@@ -3,10 +3,10 @@
 //! before the first read costs a row its name until the next open.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use linows_backend::look_engine::sources::BlockSummary;
-use linows_backend::{files, sources};
+use linows_backend::{files, search, sources};
 
 #[derive(Default)]
 pub struct Catalog {
@@ -32,6 +32,20 @@ pub fn get() -> Arc<Catalog> {
         .unwrap_or_else(|p| p.into_inner())
         .clone()
         .unwrap_or_default()
+}
+
+/// Reloads run one at a time. Two at once, say the sources watcher firing
+/// while a settings save is still running, would let the older one sweep
+/// the cached rows of a block only the newer one knew about.
+static RELOADING: Mutex<()> = Mutex::new(());
+
+/// The engine reads the config and the sources again, then the catalog
+/// follows: every reload comes through here, so a row never dresses from
+/// the blocks as they were before the file changed. Blocking, like `refresh`.
+pub fn reload_engine() {
+    let _one_at_a_time = RELOADING.lock().unwrap_or_else(|p| p.into_inner());
+    search::reload_config(crate::state(), || {});
+    refresh();
 }
 
 /// Read the blocks again. Blocking, so it runs on the background executor.

@@ -48,6 +48,26 @@ impl Language {
         }
     }
 
+    /// The language a fence tag names, extension or full name, as macOS
+    /// `Language.from(token:)` reads it. `None` for a tag no table knows.
+    pub fn from_name(tag: &str) -> Option<Self> {
+        let lowered = tag.to_ascii_lowercase();
+        let named = match lowered.as_str() {
+            "golang" => Self::Go,
+            "rust" => Self::Rust,
+            "python" => Self::Python,
+            "ruby" => Self::Ruby,
+            "javascript" => Self::JavaScript,
+            "typescript" => Self::TypeScript,
+            "objc" | "objective-c" => Self::C,
+            "c++" => Self::Cpp,
+            "kotlin" => Self::Java,
+            "shell" | "console" => Self::Shell,
+            _ => Self::from_path(&format!(".{lowered}")),
+        };
+        (named != Self::Plain).then_some(named)
+    }
+
     pub fn keywords(self) -> &'static [&'static str] {
         match self {
             Self::Go => &[

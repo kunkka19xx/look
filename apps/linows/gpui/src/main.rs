@@ -94,6 +94,8 @@ pub enum Command {
     Wheel(Point<Pixels>, f32),
     /// The index finished a refresh; the open query re-runs.
     Refresh,
+    /// A declaration changed on disk; the engine reads the sources again.
+    ReloadSources,
     /// The backend's setup problems changed; the sticky notice follows.
     Health(Vec<HealthIssue>),
     /// The backend wants the clipboard owned for these forms; the reply says
@@ -160,6 +162,10 @@ impl Host for Shell {
 
     fn health_changed(&self, issues: Vec<HealthIssue>) {
         self.send(Command::Health(issues));
+    }
+
+    fn sources_changed(&self) {
+        self.send(Command::ReloadSources);
     }
 
     /// Text goes through gpui's clipboard on the main loop. A file or image
@@ -545,6 +551,15 @@ fn apply(command: Command, cx: &mut App) {
         Command::Drag(from, to) => mouse(cx, &[from, to]),
         Command::Wheel(at, lines) => wheel(cx, at, lines),
         Command::Refresh => with_launcher(cx, |launcher, cx| launcher.refresh(cx)),
+        // With a launcher it serialises the reload and the Extend tab
+        // follows; without one, the engine alone, off the main loop.
+        Command::ReloadSources => match launcher(cx) {
+            Some(launcher) => launcher.update(cx, |launcher, cx| launcher.reload_sources(cx)),
+            None => cx
+                .background_executor()
+                .spawn(async { blocks::reload_engine() })
+                .detach(),
+        },
         // Shown, not merely a window: Windows keeps a parked one while hidden.
         Command::ReloadConfig if shown(cx) => {
             with_launcher(cx, |launcher, cx| launcher.reload_config(cx))
@@ -567,9 +582,7 @@ fn apply(command: Command, cx: &mut App) {
             }
             cx.spawn(async move |cx| {
                 cx.background_executor()
-                    .spawn(async {
-                        linows_backend::search::reload_config(state(), || {});
-                    })
+                    .spawn(async { blocks::reload_engine() })
                     .await;
                 cx.update(|_| crate::hotkey::set_active(true));
             })
@@ -693,6 +706,7 @@ fn main() {
     state().start_bootstrap();
     // Off the startup path: it reads directories and spawns processes.
     std::thread::spawn(|| linows_backend::connectors::start(state()));
+    linows_backend::sources_watch::start();
     // The histories `c"` and `ci"` list: loaded from disk now, then kept by
     // the poll thread.
     linows_backend::clipboard::start_monitor();

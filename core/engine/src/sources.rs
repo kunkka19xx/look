@@ -133,7 +133,7 @@ pub struct Reported {
 /// written in is valid. Not a `Reported` problem: nothing failed to load, the
 /// block simply names a folder or a program that is not here, which is the one
 /// thing a copied example almost always gets wrong.
-#[derive(Serialize, Debug)]
+#[derive(Clone, Serialize, Debug)]
 pub struct Needed {
     /// The key to change: a producer key, `cwd`, `preview`, or a verb.
     pub key: String,
@@ -424,17 +424,20 @@ pub fn block_detail(candidate_id: &str, row: &RowContext) -> Option<BlockDetail>
 }
 
 fn then_target(target: &Block, row: &RowContext) -> ThenTarget {
+    let plans = matches!(target.producer, Producer::Ask { .. });
     ThenTarget {
         id: target.id.clone(),
         name: target.name.clone(),
         icon: target.icon.clone(),
         performs: target.performs(),
-        plans: matches!(target.producer, Producer::Ask { .. }),
+        plans,
         // Expanded here so the question names the row the user is looking at
-        // ("Delete main?"), not the template.
+        // ("Delete main?"), not the template. A planned verb gets its question
+        // from the connector, so a declared one is not offered beside it.
         confirm: target
             .confirm
             .as_deref()
+            .filter(|_| !plans)
             .map(|question| look_sources::expand(question, row)),
     }
 }
@@ -1814,7 +1817,7 @@ mod tests {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let _fixture = Fixture::new(
             "targets",
-            "[branches]\nfile = \"/tmp/rows.txt\"\nopen = \"git checkout {id}\"\nthen = [\"drop\", \"logs\", \"missing\"]\n\n[drop]\nname = \"Delete branch\"\nconfirm = \"Delete local branch {id}?\"\ndo = [\"git branch -d {id}\"]\n\n[logs]\nname = \"Commits\"\nrun = \"git log {id}\"\n",
+            "[branches]\nfile = \"/tmp/rows.txt\"\nopen = \"git checkout {id}\"\nthen = [\"drop\", \"logs\", \"archive\", \"missing\"]\n\n[drop]\nname = \"Delete branch\"\nconfirm = \"Delete local branch {id}?\"\ndo = [\"git branch -d {id}\"]\n\n[logs]\nname = \"Commits\"\nrun = \"git log {id}\"\n\n[archive]\nname = \"Archive\"\nconfirm = \"Archive {id}?\"\nask = \"archive\"\n",
         );
 
         let row = row_context("src:branches:main", "main", "", "", Vec::new());
@@ -1826,7 +1829,7 @@ mod tests {
 
         // A `then` naming a block that does not exist is reported by the
         // loader, not offered as a target.
-        assert_eq!(block.then.len(), 2);
+        assert_eq!(block.then.len(), 3);
         // The question names the row the user is looking at, not the template.
         // Shell-quoted like every other substitution, since the same expansion
         // serves the command that runs if the answer is yes.
@@ -1838,6 +1841,10 @@ mod tests {
         // A target that lists is a level to descend into, and says so.
         assert!(!block.then[1].performs, "rows to pick from");
         assert!(block.then[1].confirm.is_none());
+        // A planned verb asks the connector, so its declared question is not
+        // asked first: the shell would answer it and never request the plan.
+        assert!(block.then[2].plans);
+        assert!(block.then[2].confirm.is_none());
         // The row's own block asks nothing, so Enter on it runs straight away.
         assert!(block.confirm.is_none());
 
