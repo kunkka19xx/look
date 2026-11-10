@@ -104,6 +104,9 @@ struct Sheet {
     files: Option<InstallRequest>,
     /// One per declaration, in the same order.
     previews: Vec<Preview>,
+    /// Bumped per answer to a declaration, so an older preview cannot
+    /// land over a newer one.
+    edits: Vec<u64>,
     failure: Option<String>,
     writing: bool,
 }
@@ -194,6 +197,7 @@ impl Browse {
             replaces: Vec::new(),
             files: None,
             previews: Vec::new(),
+            edits: Vec::new(),
             failure: None,
             writing: false,
         });
@@ -217,6 +221,7 @@ impl Browse {
                 sheet.replaces = replaces;
                 match read {
                     Ok((files, previews)) => {
+                        sheet.edits = vec![0; previews.len()];
                         sheet.files = Some(files);
                         sheet.previews = previews;
                     }
@@ -231,8 +236,9 @@ impl Browse {
     /// the form is to stop them being true.
     fn answer(&mut self, file: usize, field: usize, value: String, cx: &mut Context<Launcher>) {
         // A pick lands after a hide and a show, by when the sheet may be
-        // another one or gone.
-        let Some(sheet) = self.sheet.as_mut() else {
+        // another one or gone. While a write runs, the request is already
+        // on its way and a change here would be lost with the sheet.
+        let Some(sheet) = self.sheet.as_mut().filter(|sheet| !sheet.writing) else {
             return;
         };
         let opened = sheet.opened;
@@ -248,20 +254,55 @@ impl Browse {
             return;
         };
         let value = value.trim().to_string();
-        let given = !value.is_empty() && current != Some(value.as_str());
         let declaration = &mut files.declarations[file];
+        // Committing what the box already shows, a click away from it
+        // mostly, changes nothing and must not lose the answer.
+        let shown = declaration.answers[field].as_deref().or(current);
+        if shown.unwrap_or_default() == value {
+            return;
+        }
+        let given = !value.is_empty() && current != Some(value.as_str());
         declaration.answers[field] = given.then_some(value);
         let filled = declaration.clone();
+        sheet.edits[file] += 1;
+        let edit = sheet.edits[file];
         bg::fetch(
             cx,
             move || lookbook::preview_filled(&filled),
             move |this, found, _| {
-                if let (Some(sheet), Ok(preview)) = (this.settings.browse.sheet_mut(opened), found)
-                {
-                    sheet.previews[file] = preview;
+                let Some(sheet) = this.settings.browse.sheet_mut(opened) else {
+                    return;
+                };
+                if sheet.edits[file] != edit {
+                    return;
+                }
+                match found {
+                    Ok(preview) => sheet.previews[file] = preview,
+                    // The form stays up with the answer in it; the line
+                    // under the file says why it would not fill.
+                    Err(message) => sheet.previews[file].problems = vec![message],
                 }
             },
         );
+    }
+
+    /// Back from a hide. Work in flight died with the old launcher: a read
+    /// runs again, and a write is on disk by now, so the sources reload and
+    /// the installed list says what landed.
+    pub(super) fn resume(&mut self, cx: &mut Context<Launcher>) {
+        let Some(sheet) = self.sheet.take() else {
+            return;
+        };
+        if sheet.writing {
+            let launcher = cx.weak_entity();
+            cx.defer(move |cx| {
+                let _ = launcher.update(cx, |this, cx| this.reload_sources(cx));
+            });
+        } else if sheet.working() {
+            self.open(sheet.entry, cx);
+        } else {
+            self.sheet = Some(sheet);
+        }
     }
 
     /// Picking beats retyping somebody else's path from memory.
@@ -788,18 +829,26 @@ impl Settings {
                 )
             })
             // The same check the Extend screen runs, so this cannot promise
-            // something the screen then contradicts.
-            .children(preview.blocks.iter().flat_map(|block| {
-                block.needs.iter().map(|need| {
-                    div()
-                        .text_size(px(th.font_size - 3.0))
-                        .text_color(th.warning)
-                        .child(SharedString::from(format!(
-                            "{}: {}",
-                            block.id, need.message
-                        )))
-                })
-            }))
+            // something the screen then contradicts. Then the parts that did
+            // not parse, which Install would silently leave out.
+            .children(
+                preview
+                    .blocks
+                    .iter()
+                    .flat_map(|block| {
+                        block
+                            .needs
+                            .iter()
+                            .map(|need| format!("{}: {}", block.id, need.message))
+                    })
+                    .chain(preview.problems.iter().cloned())
+                    .map(|line| {
+                        div()
+                            .text_size(px(th.font_size - 3.0))
+                            .text_color(th.warning)
+                            .child(SharedString::from(line))
+                    }),
+            )
             .child(
                 div()
                     .p(px(CONTENTS_PADDING))
@@ -995,6 +1044,7 @@ mod tests {
                 }],
                 problems: Vec::new(),
             }],
+            edits: vec![0],
             failure: None,
             writing: false,
         };

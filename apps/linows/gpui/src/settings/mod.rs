@@ -527,6 +527,7 @@ impl Settings {
         self.entries = kept.entries;
         self.edited = kept.edited;
         self.browse = kept.browse;
+        self.browse.resume(cx);
         if kept.loaded {
             self.load(false, cx);
             self.apply(cx);
@@ -690,6 +691,11 @@ impl Settings {
             }
             "escape" => KeyOutcome::Exit,
             "tab" => {
+                // The sheet is drawn on Extend only; left open it would
+                // still take Enter from another tab.
+                if self.sheet_open() {
+                    self.close_sheet(cx);
+                }
                 self.tab = self.tab.step(shift);
                 self.scroll.set_offset(Default::default());
                 self.read_extend(cx);
