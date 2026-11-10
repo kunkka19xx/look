@@ -25,10 +25,13 @@ pub fn start() {
     let Some(home) = crate::sources::home() else {
         return;
     };
+    // Absolute, so an override given relative to the working directory
+    // compares equal to the paths notify reports, and has a parent to watch.
     let dirs = [
         look_sources::sources_dir(&home),
         look_sources::connectors_dir(&home),
-    ];
+    ]
+    .map(|dir| std::path::absolute(&dir).unwrap_or(dir));
     // A failed spawn leaves reloads manual, as before.
     let _ = std::thread::Builder::new()
         .name("look-sources-watch".into())
@@ -57,8 +60,10 @@ fn run(dirs: &[PathBuf], debounce: Duration, on_change: &dyn Fn()) {
         }
     };
     for dir in dirs {
-        if let Some(parent) = dir.parent() {
-            let _ = watcher.watch(parent, RecursiveMode::NonRecursive);
+        if let Some(parent) = dir.parent()
+            && let Err(err) = watcher.watch(parent, RecursiveMode::NonRecursive)
+        {
+            eprintln!("[sources] failed to watch {}: {err}", parent.display());
         }
         arm(&mut watcher, dir);
     }
