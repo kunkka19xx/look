@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::sources::Needed;
 
 /// A declaration read without installing it.
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct Preview {
     pub blocks: Vec<PreviewBlock>,
     /// What the example asks the installer for, in the order declared.
@@ -34,7 +34,7 @@ pub struct Preview {
 /// Declared rather than inferred, which is what lets it reach a value the
 /// check cannot see: `vault=look` is a working string that happens to be
 /// somebody else's vault.
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct Field {
     pub label: String,
     /// `folder`, `file`, `text` or `choice`, deciding the control shown.
@@ -46,7 +46,7 @@ pub struct Field {
 }
 
 /// One block the declaration would add, and what it would want changed.
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct PreviewBlock {
     pub id: String,
     pub name: String,
@@ -160,7 +160,7 @@ pub fn present(request: &PresentRequest, home: &Path) -> Present {
 }
 
 /// What the shell fetched, ready to write.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct InstallRequest {
     #[serde(default)]
     pub declarations: Vec<NamedFile>,
@@ -170,7 +170,7 @@ pub struct InstallRequest {
     pub scripts: Vec<NamedFile>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct NamedFile {
     pub name: String,
     pub contents: String,

@@ -1,4 +1,4 @@
-//! The folder and image pickers. gpui's own path prompt hands the portal the
+//! The folder, file and image pickers. gpui's own path prompt hands the portal the
 //! focused surface as the dialog's parent through xdg_foreign, and a
 //! layer-shell surface is no xdg toplevel: the compositor answers with a
 //! fatal protocol error and the Wayland connection dies with it. On Linux
@@ -22,6 +22,7 @@ use crate::launchpad::Tone;
 #[derive(Clone, Copy)]
 enum Want {
     Folder,
+    File,
     Image,
 }
 
@@ -30,7 +31,7 @@ impl Want {
     fn missing(self) -> &'static str {
         match self {
             Want::Folder => "No folder dialog",
-            Want::Image => "No file dialog",
+            Want::File | Want::Image => "No file dialog",
         }
     }
 }
@@ -46,6 +47,15 @@ pub fn folder(
     then: impl FnOnce(&mut Launcher, PathBuf, &mut Context<Launcher>) + 'static,
 ) {
     pick(Want::Folder, prompt, cx, Box::new(then))
+}
+
+/// Open the system file dialog, any file.
+pub fn file(
+    prompt: &'static str,
+    cx: &mut Context<Launcher>,
+    then: impl FnOnce(&mut Launcher, PathBuf, &mut Context<Launcher>) + 'static,
+) {
+    pick(Want::File, prompt, cx, Box::new(then))
 }
 
 /// Open the system file dialog narrowed to pictures.
@@ -127,6 +137,7 @@ async fn portal_pick(want: Want, prompt: &str) -> Result<Option<PathBuf>, String
         Want::Folder => OpenFileRequest::default()
             .title("Open Folder")
             .directory(true),
+        Want::File => OpenFileRequest::default().title("Choose File"),
         Want::Image => OpenFileRequest::default()
             .title("Choose Image")
             .filter(FileFilter::new("Images").mimetype(IMAGE_MIME)),

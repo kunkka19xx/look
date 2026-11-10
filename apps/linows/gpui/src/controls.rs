@@ -283,7 +283,7 @@ pub fn select(
 /// A text box: the field while it edits, the text as a button otherwise.
 /// The caller binds the click that starts editing.
 pub fn text_box(
-    id: &'static str,
+    id: impl Into<ElementId>,
     width: f32,
     content: AnyElement,
     editing: bool,

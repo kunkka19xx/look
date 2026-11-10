@@ -133,7 +133,7 @@ pub struct Reported {
 /// written in is valid. Not a `Reported` problem: nothing failed to load, the
 /// block simply names a folder or a program that is not here, which is the one
 /// thing a copied example almost always gets wrong.
-#[derive(Serialize, Debug)]
+#[derive(Clone, Serialize, Debug)]
 pub struct Needed {
     /// The key to change: a producer key, `cwd`, `preview`, or a verb.
     pub key: String,
