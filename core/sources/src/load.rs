@@ -20,7 +20,9 @@ pub const CONNECTORS_DIR_ENV: &str = "LOOK_CONNECTORS_DIR";
 const SOURCES_DIR_NAME: &str = ".look/sources";
 const CONNECTORS_DIR_NAME: &str = ".look/connectors";
 const SCRIPTS_DIR_NAME: &str = ".look/bin";
-const DECLARATION_EXTENSION: &str = "toml";
+/// What a declaration or manifest file ends in; anything else in the two
+/// directories is left alone.
+pub const DECLARATION_EXTENSION: &str = "toml";
 /// Between a manifest's name and a block's own id.
 const NAMESPACE: char = '.';
 

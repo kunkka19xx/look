@@ -36,6 +36,7 @@ pub mod query_retention;
 pub mod search;
 pub mod shell;
 pub mod sources;
+pub mod sources_watch;
 pub mod startup;
 pub mod state;
 pub mod sysinfo;

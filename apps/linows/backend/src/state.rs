@@ -10,7 +10,7 @@ use std::sync::{Mutex, RwLock, mpsc};
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-const WATCHER_DEBOUNCE_SECS: u64 = 2;
+pub(crate) const WATCHER_DEBOUNCE_SECS: u64 = 2;
 const WATCHER_POLL_MS: u64 = 500;
 /// Minimum gap, in milliseconds, between two watcher-triggered refreshes.
 /// Bounds CPU/IO when something (sync client, active downloader, package
