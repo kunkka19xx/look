@@ -111,7 +111,8 @@ fn concerns(path: &Path, dirs: &[PathBuf]) -> bool {
     dirs.iter().any(|dir| path.parent() == Some(dir.as_path()))
         && path
             .extension()
-            .is_some_and(|ext| ext == look_sources::DECLARATION_EXTENSION)
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case(look_sources::DECLARATION_EXTENSION))
 }
 
 #[cfg(test)]
@@ -194,6 +195,11 @@ mod tests {
     fn a_declaration_in_either_directory_counts() {
         assert!(concerns(
             Path::new("/home/me/.look/sources/notes.toml"),
+            &dirs()
+        ));
+        // The loader reads it, so the watcher must see it.
+        assert!(concerns(
+            Path::new("/home/me/.look/sources/Notes.TOML"),
             &dirs()
         ));
         assert!(concerns(
