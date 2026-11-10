@@ -17,18 +17,17 @@ use gpui::{
 };
 use linows_backend::config::{self, ConfigUpdate, LauncherLayout};
 use linows_backend::platform::{self, CandidateDrive};
-use linows_backend::search as engine;
 use linows_backend::{autostart, cli_path, files, hotkey};
 
 use crate::bg;
 use crate::bindings;
+use crate::blocks;
 use crate::commands::KeyOutcome;
 use crate::controls::{self, Option_, Range, SliderEvent, SliderPhase};
 use crate::fonts;
 use crate::launcher::Launcher;
 use crate::launchpad::Tone;
 use crate::search::{Changed, SearchInput, input_for, search_field};
-use crate::state as app_state;
 use crate::theme::{self, Theme};
 use crate::update::Update;
 
@@ -987,7 +986,7 @@ impl Settings {
                 if let Err(err) = config::write_config(updates, &removals) {
                     return (false, Err(err));
                 }
-                engine::reload_config(app_state(), || {});
+                blocks::reload_engine();
                 let os = autostart::set_autostart(launch).and_then(|()| {
                     if cfg!(windows) {
                         cli_path::set_cli_path(add_to_path)

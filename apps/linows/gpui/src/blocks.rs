@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use linows_backend::look_engine::sources::BlockSummary;
-use linows_backend::{files, sources};
+use linows_backend::{files, search, sources};
 
 #[derive(Default)]
 pub struct Catalog {
@@ -32,6 +32,14 @@ pub fn get() -> Arc<Catalog> {
         .unwrap_or_else(|p| p.into_inner())
         .clone()
         .unwrap_or_default()
+}
+
+/// The engine reads the config and the sources again, then the catalog
+/// follows: every reload comes through here, so a row never dresses from
+/// the blocks as they were before the file changed. Blocking, like `refresh`.
+pub fn reload_engine() {
+    search::reload_config(crate::state(), || {});
+    refresh();
 }
 
 /// Read the blocks again. Blocking, so it runs on the background executor.

@@ -1101,7 +1101,7 @@ impl Launcher {
         bg::fetch(
             cx,
             || {
-                engine::reload_config(app_state(), || {});
+                blocks::reload_engine();
                 qactions::launchpad_layout()
             },
             |this, layout, cx| {
@@ -1136,21 +1136,14 @@ impl Launcher {
             return;
         }
         self.sources_reload.running = true;
-        bg::fetch(
-            cx,
-            || {
-                engine::reload_config(app_state(), || {});
-                blocks::refresh();
-            },
-            |this, (), cx| {
-                this.sources_reload.running = false;
-                if std::mem::take(&mut this.sources_reload.again) {
-                    this.reload_sources(cx);
-                } else if this.settings_open {
-                    this.settings.read_extend(cx);
-                }
-            },
-        );
+        bg::fetch(cx, blocks::reload_engine, |this, (), cx| {
+            this.sources_reload.running = false;
+            if std::mem::take(&mut this.sources_reload.again) {
+                this.reload_sources(cx);
+            } else if this.settings_open {
+                this.settings.read_extend(cx);
+            }
+        });
     }
 
     /// Create Fresh Config: the question, then the defaults written over
@@ -1161,7 +1154,7 @@ impl Launcher {
                 cx,
                 || {
                     config::reset_config()?;
-                    engine::reload_config(app_state(), || {});
+                    blocks::reload_engine();
                     app_state().force_index_refresh();
                     Ok::<(), String>(())
                 },
@@ -3402,7 +3395,7 @@ fn hide_app(name: &str) -> Result<bool, String> {
         key: APP_EXCLUDE_KEY.into(),
         value: config_list::render(&names),
     }])?;
-    engine::reload_config(app_state(), || {});
+    blocks::reload_engine();
     Ok(true)
 }
 

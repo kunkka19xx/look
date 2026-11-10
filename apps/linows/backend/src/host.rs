@@ -17,6 +17,9 @@ pub trait Host: Send + Sync {
     fn index_ready(&self);
     /// The setup health list changed; the UI shows the new snapshot.
     fn health_changed(&self, issues: Vec<HealthIssue>);
+    /// A declaration appeared, changed or went in one of the two source
+    /// directories; the shell has the engine read the sources again.
+    fn sources_changed(&self);
     /// Become the clipboard owner for `forms`, answering each MIME type on
     /// demand. `false` when the shell cannot, so the caller shells out instead.
     #[cfg(target_os = "linux")]
