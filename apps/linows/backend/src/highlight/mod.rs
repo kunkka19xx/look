@@ -8,9 +8,16 @@
 mod lang;
 mod tokenizer;
 
+use std::borrow::Cow;
+
 use lang::Language;
 
 pub use tokenizer::{Span, TokenType};
+
+/// Columns a tab advances to. The shaper has no glyph for a tab and draws a
+/// box, so the text is spaced out before it is tokenised; four keeps a
+/// tab-indented file readable in a panel this narrow.
+const TAB_WIDTH: usize = 4;
 
 /// Text extensions eligible for syntax preview.
 /// Matches macOS `QuickLookPreviewService.textExtensions`.
@@ -86,6 +93,35 @@ fn preview_bytes(path: &str) -> Option<(Vec<u8>, bool)> {
     Some((data, truncated))
 }
 
+/// Tabs as spaces, to the next tab stop, so columns a formatter aligned
+/// with tabs still line up. Every text a preview draws goes through here
+/// before it is tokenised, so the spans match what is shown.
+pub fn expand_tabs(text: &str) -> Cow<'_, str> {
+    if !text.contains('\t') {
+        return Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len() + text.len() / 8);
+    let mut column = 0;
+    for ch in text.chars() {
+        match ch {
+            '\t' => {
+                let width = TAB_WIDTH - column % TAB_WIDTH;
+                out.extend(std::iter::repeat_n(' ', width));
+                column += width;
+            }
+            '\n' => {
+                out.push(ch);
+                column = 0;
+            }
+            _ => {
+                out.push(ch);
+                column += 1;
+            }
+        }
+    }
+    Cow::Owned(out)
+}
+
 /// Token spans for text whose language a fence tag names. An unknown or
 /// missing tag highlights nothing.
 pub fn highlight_text(text: &str, language: Option<&str>) -> Vec<Span> {
@@ -98,11 +134,14 @@ pub fn highlight_text(text: &str, language: Option<&str>) -> Vec<Span> {
 /// Read a file and return its text with token spans.
 pub fn highlight_runs(path: &str) -> Option<HighlightRuns> {
     let (data, truncated) = preview_bytes(path)?;
-    let spans = tokenizer::tokenize(&data, Language::from_path(path));
     let (text, spans) = match String::from_utf8(data) {
-        Ok(text) => (text, spans),
+        Ok(text) => {
+            let text = expand_tabs(&text).into_owned();
+            let spans = tokenizer::tokenize(text.as_bytes(), Language::from_path(path));
+            (text, spans)
+        }
         Err(err) => (
-            String::from_utf8_lossy(err.as_bytes()).into_owned(),
+            expand_tabs(&String::from_utf8_lossy(err.as_bytes())).into_owned(),
             Vec::new(),
         ),
     };
@@ -130,5 +169,13 @@ mod tests {
         assert!(highlight_text("fn main() {}", Some("brainfuck")).is_empty());
         assert!(highlight_text("fn main() {}", None).is_empty());
         assert!(is_markdown("/notes/today.md") && !is_markdown("/notes/today.rst"));
+    }
+
+    #[test]
+    fn tabs_land_on_tab_stops_and_restart_per_line() {
+        assert_eq!(expand_tabs("\tx"), "    x");
+        assert_eq!(expand_tabs("ab\tc\td"), "ab  c   d");
+        assert_eq!(expand_tabs("abcd\te\n\tf"), "abcd    e\n    f");
+        assert!(matches!(expand_tabs("no tabs"), Cow::Borrowed(_)));
     }
 }

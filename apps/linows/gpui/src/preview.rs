@@ -1261,7 +1261,7 @@ fn load(row: &Row, ancestors: &str, query: &str) -> Content {
         Open::Path { .. } => standard(row),
         Open::Clip(clip) => Content::Clip {
             clip: clip.clone(),
-            text: TextBody::new(clip.text.clone(), Vec::new()),
+            text: TextBody::new(highlight::expand_tabs(&clip.text).into_owned(), Vec::new()),
         },
         Open::ClipImage(meta) => Content::ClipImage {
             meta: meta.clone(),
@@ -1348,6 +1348,7 @@ fn markdown_pieces(text: &str) -> Vec<Piece> {
 }
 
 fn code_piece(language: Option<&str>, text: String) -> Piece {
+    let text = highlight::expand_tabs(&text).into_owned();
     let highlights = highlight::highlight_text(&text, language)
         .into_iter()
         .map(|span| (span.start..span.end, span.token))
@@ -1360,6 +1361,7 @@ fn code_piece(language: Option<&str>, text: String) -> Piece {
 
 /// Captured output, held to the line and byte caps.
 fn text_piece(text: String) -> Piece {
+    let text = highlight::expand_tabs(&text).into_owned();
     let lines: Vec<&str> = text.split('\n').collect();
     let mut kept = 0;
     let mut bytes = 0;
