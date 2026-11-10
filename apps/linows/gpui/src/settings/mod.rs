@@ -546,6 +546,20 @@ impl Settings {
         }
     }
 
+    /// Every way onto another tab, key or click. The sheet is drawn on
+    /// Extend only; left open it would still take Enter and Escape from
+    /// elsewhere.
+    fn switch_tab(&mut self, tab: Tab, cx: &mut Context<Launcher>) {
+        if self.sheet_open() {
+            self.close_sheet(cx);
+        }
+        self.leave();
+        self.tab = tab;
+        self.scroll.set_offset(Default::default());
+        self.read_extend(cx);
+        cx.notify();
+    }
+
     pub fn leave(&mut self) {
         self.field = None;
         self.select = None;
@@ -691,15 +705,7 @@ impl Settings {
             }
             "escape" => KeyOutcome::Exit,
             "tab" => {
-                // The sheet is drawn on Extend only; left open it would
-                // still take Enter from another tab.
-                if self.sheet_open() {
-                    self.close_sheet(cx);
-                }
-                self.tab = self.tab.step(shift);
-                self.scroll.set_offset(Default::default());
-                self.read_extend(cx);
-                cx.notify();
+                self.switch_tab(self.tab.step(shift), cx);
                 KeyOutcome::Consumed
             }
             _ => KeyOutcome::Consumed,
@@ -1152,11 +1158,7 @@ impl Settings {
                         }
                     })
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.settings.tab = tab;
-                        this.settings.scroll.set_offset(Default::default());
-                        this.settings.leave();
-                        this.settings.read_extend(cx);
-                        cx.notify();
+                        this.settings.switch_tab(tab, cx);
                     }))
                     .child(tab.label())
             }))
