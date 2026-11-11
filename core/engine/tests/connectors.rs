@@ -9,6 +9,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+/// What `hello` tells the reference connector, which does not read it.
+const APP_VERSION: &str = "0.0.0-test";
+
 /// The directories and the row cache are named by environment variables, which
 /// are per process, so these run one at a time.
 fn alone() -> std::sync::MutexGuard<'static, ()> {
@@ -115,7 +118,7 @@ fn a_connector_pushes_rows_into_the_cache() {
     fixture.install("serve");
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows);
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows);
     until(&count, 1, Duration::from_secs(10));
     look_engine::connectors::stop();
 
@@ -133,7 +136,7 @@ fn a_dead_connector_is_restarted() {
     fixture.install("once");
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows.clone());
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows.clone());
     until(&count, 1, Duration::from_secs(10));
 
     // The frame is handled before the child has necessarily exited, and
@@ -158,7 +161,7 @@ fn the_same_rows_again_are_not_news() {
     fixture.install("same");
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows);
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows);
     until(&count, 1, Duration::from_secs(10));
     // Past the second send, which the connector spaces out on purpose.
     std::thread::sleep(Duration::from_millis(700));
@@ -176,7 +179,7 @@ fn a_verb_is_planned_then_run() {
     fixture.install_with_verb("serve");
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows);
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows);
     until(&count, 1, Duration::from_secs(10));
 
     let candidate =
@@ -207,7 +210,7 @@ fn a_control_is_read_and_pressed() {
     fixture.install_with_control();
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows);
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows);
     until(&count, 1, Duration::from_secs(10));
 
     let action = look_engine::qactions::control_action_id("myapp.notes", "lamp");
@@ -234,7 +237,7 @@ fn a_tile_reads_and_presses_the_same_control() {
     fixture.install_with_control();
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows);
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows);
     until(&count, 1, Duration::from_secs(10));
 
     let def = look_engine::launchpad::TileDef {
@@ -291,7 +294,7 @@ fn a_frame_at_the_cap_is_read() {
     fixture.install("atcap");
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows);
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows);
     until(&count, 1, Duration::from_secs(10));
     look_engine::connectors::stop();
 
@@ -307,7 +310,7 @@ fn an_oversized_frame_ends_the_connector_rather_than_look() {
     fixture.install("oversized");
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows);
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows);
     std::thread::sleep(Duration::from_secs(2));
     look_engine::connectors::stop();
 
@@ -327,7 +330,7 @@ fn a_reload_keeps_a_connectors_rows() {
     fixture.install("serve");
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows);
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows);
     until(&count, 1, Duration::from_secs(10));
     look_engine::connectors::stop();
 
@@ -347,7 +350,7 @@ fn rows_of_a_connector_nobody_declares_are_swept() {
     fixture.install("serve");
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows);
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows);
     until(&count, 1, Duration::from_secs(10));
     look_engine::connectors::stop();
 
@@ -375,7 +378,7 @@ fn the_same_rows_return_after_the_cache_was_cleared() {
     fixture.install("serve");
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows.clone());
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows.clone());
     until(&count, 1, Duration::from_secs(10));
     look_engine::connectors::stop();
 
@@ -386,7 +389,7 @@ fn the_same_rows_return_after_the_cache_was_cleared() {
     // The same connector, the same rows, a new process: remembering what was
     // written without checking the file would skip this write.
     let (again, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows);
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows);
     until(&again, 1, Duration::from_secs(10));
     look_engine::connectors::stop();
 
@@ -410,7 +413,7 @@ fn a_wedged_connector_does_not_pile_up_writers() {
     );
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows);
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows);
     until(&count, 1, Duration::from_secs(10));
 
     // Enough to fill the pipe several times over, which is what it takes for
@@ -443,7 +446,7 @@ fn a_connector_that_keeps_dying_backs_off() {
     fixture.install("once");
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows.clone());
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows.clone());
     until(&count, 1, Duration::from_secs(10));
 
     // The first death restarts at once: "restarted on next use".
@@ -481,7 +484,7 @@ fn a_connectors_trouble_reaches_the_inventory() {
     fixture.install("serve");
 
     let (count, on_rows) = counter();
-    look_engine::connectors::start(&fixture.base, on_rows);
+    look_engine::connectors::start(&fixture.base, APP_VERSION, on_rows);
     until(&count, 1, Duration::from_secs(10));
 
     // `refcon` answers a preview of a row it does not have with `error`.

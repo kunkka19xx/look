@@ -7,10 +7,10 @@ Xcode project and app source now live here:
 - `apps/macos/look-app.xcodeproj`
 - `apps/macos/look-app/`
 
-Planned shell responsibilities:
+Shell responsibilities:
 
 - global hotkey registration
 - launcher window lifecycle
 - keyboard-first result navigation
 - action dispatch (open, reveal in Finder, clipboard history copy/delete)
-- settings UI for hotkey/indexed paths/exclusions
+- settings UI: appearance, indexed paths and exclusions, shortcuts, and the Extend tab (declared sources, connectors, lookbook)

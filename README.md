@@ -30,7 +30,7 @@ Results land as fast as you can type. A Rust core under a native SwiftUI app on 
 | Free, no paid tier | ✅                      | ✅           | ❌ Pro $8-10/mo         | ❌ Powerpack £34  | ✅         | ✅         |
 | No account needed  | ✅                      | ✅           | ✅ core, ❌ sync and AI | ✅                | ✅         | ✅         |
 | Clipboard history  | ✅ text and images      | ✅ macOS 26+ | ✅ (free: 3 months)     | ❌ Powerpack only | ❌         | ❌         |
-| Extension store    | ❌                      | ❌           | ✅                      | ✅ Workflows      | ✅         | ❌         |
+| Extension store    | ✅ lookbook             | ❌           | ✅                      | ✅ Workflows      | ✅         | ❌         |
 
 </details>
 
@@ -295,7 +295,7 @@ Switch in `Settings > Appearance`.
 - [Features](docs/features.md) - what's shipped, what's planned
 - [Contributing](CONTRIBUTING.md) - how to contribute
 - [Your own sources](docs/user-sources.md) - declare custom rows from directories, files, and commands
-- [lookbook](https://github.com/kunkka19xx/lookbook) - ready-made sources to copy: git, ssh, docker, projects
+- [lookbook](https://github.com/kunkka19xx/lookbook) - ready-made sources (git, ssh, docker, projects), browsable and installable from `Settings > Extend`
 - [Writing a control](docs/writing-controls.md) - add a Quick Action toggle/button to the panel
 - [Development](DEVELOPMENT.md) - building locally, repo layout, release process
 

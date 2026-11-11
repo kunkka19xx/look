@@ -41,6 +41,7 @@ flowchart LR
 
     Engine --> Sources[core/sources\n~/.look/sources blocks]
     Sources --> Shell[Login shell\nrun producers, do steps, verbs]
+    Engine --> Connectors[core/engine connectors\nconnect blocks: long-lived child processes]
 
     App --> OS[macOS APIs\nAppKit / NSWorkspace / Carbon]
     OS --> User
@@ -57,17 +58,18 @@ flowchart LR
   - `ClipboardHistoryStore`, `KeyboardSelectionMonitor`, `GlobalHotKeyManager`
 - `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid) and semantic color tokens
 - `Support/UI/`: shared UI primitives - `Motion` (all animation constants and the reveal modifiers), `ToggleSwitch`, `HoverTooltip`, `HoverBubble`
-- `bridge/ffi`: narrow C ABI surface for search, usage recording, config reload, translation, todo load/save, speed test, and error payloads.
+- `bridge/ffi`: narrow C ABI surface for search, usage recording, config reload, translation, todo load/save, speed test, declared sources and connectors (`sources_api.rs`, `connectors_api.rs`), lookbook preview and install (`lookbook_api.rs`), markdown (`markdown_api.rs`), and error payloads.
 - `core/answers`: platform-agnostic, network-backed "web answer" lookups shared by every shell (macOS via `bridge/ffi`, Windows/Linux via the linows backend). Instant answers (currency/weather/crypto), search suggestions, knowledge sources, and translation. Best-effort and panic-free: every entry point returns "no answer" on failure, with cheap network-free pattern-gating (`has_match`) so callers can fire speculatively while typing. No async runtime - HTTP is a blocking `curl` subprocess.
-- `core/ai`: the AI brain - one place for prompts, parsers, and precedence so they cannot drift as tiers are added. The routing ladder (`route.rs`), the planner prompt/aliases/mapping (`planner.rs`, `plan.rs`), tool resolution with the ambiguity gate, dates, previews, and undo recipes (`resolve.rs`), the `@` grammar (`explicit.rs`), the date/word lexicon and window grammar (`lexicon.rs`, `window.rs`), natural-language file recall (`files.rs`), clipboard text-ops, conversations and long-term memory (crash-safe JSON stores), markdown segmentation, and the streamed chat transport (`chat.rs`: a curl child plus a reader thread, polled by the shell - chosen because polling crosses a C ABI without an async runtime). Data-only across the boundary: JSON in, JSON out, no closures. **This crate's surface is macOS-only and no linows `core/ai` is being built** (wanted on Linux/Windows? open an issue - but local inference needs hardware those machines may not have, and Linux has no unified system calendar); the shared `core/answers` features above do run on linows. The crate is Rust so the logic is testable without a UI and prompts/parsers live in one place, not because a port is scheduled. See `docs/ai-architecture.md`.
-- `core/sources`: user-declared source blocks. Parsing (`def.rs`), reading the sources directory (`load.rs`), turning a block into rows (`collect.rs`, `rows.rs`), performing steps through the user's login shell with shell-escaped placeholder substitution (`run.rs`), and the block-verb-before-preferred-tool rule (`tools.rs`). Parsing and collection are pure; process execution is the shell's seam, so a `run` block's command is spawned by the shell and its rows handed back through `core/engine`'s row cache. `example.toml` is the annotated format reference, asserted against the parser by a test. See `docs/user-sources.md`.
+- `core/ai`: the AI brain - one place for prompts, parsers, and precedence so they cannot drift as tiers are added. The routing ladder (`route.rs`), the planner prompt/aliases/mapping (`planner.rs`, `plan.rs`), tool resolution with the ambiguity gate, dates, previews, and undo recipes (`resolve.rs`), the `@` grammar (`explicit.rs`), the date/word lexicon and window grammar (`lexicon.rs`, `window.rs`), natural-language file recall (`files.rs`), clipboard text-ops, conversations and long-term memory (crash-safe JSON stores), and the streamed chat transport (`chat.rs`: a curl child plus a reader thread, polled by the shell - chosen because polling crosses a C ABI without an async runtime). Data-only across the boundary: JSON in, JSON out, no closures. **This crate's surface is macOS-only and no linows `core/ai` is being built** (wanted on Linux/Windows? open an issue - but local inference needs hardware those machines may not have, and Linux has no unified system calendar); the shared `core/answers` features above do run on linows. The crate is Rust so the logic is testable without a UI and prompts/parsers live in one place, not because a port is scheduled. See `docs/ai-architecture.md`.
+- `core/sources`: user-declared source blocks. Parsing (`def.rs`), reading the sources and connectors directories (`load.rs`), turning a block into rows (`collect.rs`, `rows.rs`), performing steps through the user's login shell with shell-escaped placeholder substitution (`run.rs`), the block-verb-before-preferred-tool rule (`tools.rs`), the connector wire protocol (`connect.rs`), preview layouts (`detail.rs`), whether a declaration can work on this machine (`check.rs`), and writing one into place: installing (`install.rs`), filling `[[setup]]` values (`setup.rs`), and turning it off (`toggle.rs`). Parsing and collection are pure; process execution is the shell's seam, so a `run` block's command is spawned by the shell and its rows handed back through `core/engine`'s row cache. `example.toml` is the annotated format reference, asserted against the parser by a test. See `docs/user-sources.md`.
+- `core/markdown`: the one markdown reader every surface uses (the preview pane, the AI answer views, a connector's preview). Deliberately not CommonMark: anything it does not recognise stays literal. Data only; each shell decides how a heading or a link looks.
 - `core/indexing`: candidate model and indexing helpers used by engine/storage flows.
 - `core/matching`: exact/prefix/fuzzy matching primitives.
 - `core/ranking`: ranking helpers (usage/recency-aware adjustments and score composition).
 - `core/storage`: SQLite integration, schema/migrations, candidate/usage persistence.
 - `core/todo`: shared store for the `/todo` command. Owns the `todo_tasks` table inside the app's existing `look.db` (full-set load/save, one-year retention). macOS reaches it via `bridge/ffi`, linows via its backend layer. `examples/seed.rs` fills a dev database with demo history, including near-today extension-window cases for `/todo` UI testing.
 - `core/netspeed`: the `/speed` measurement, shared by every shell. A latency probe (the best of several TCP handshakes against a pre-resolved address, rather than a subtraction of two of curl's cumulative timers, whose order is not portable across curl builds), download and upload phases (four parallel `curl` streams each), and the plain-language verdicts and display strings both shells print, so a reading reads identically everywhere. Cloudflare's keyless endpoints are the primary source; when they rate-limit a connection the download phase falls back to the nearest of several public test mirrors, ranked by a round-trip probe. No async runtime, and every phase is timeout-bounded. macOS reaches it via `bridge/ffi`, linows via its backend layer.
-- `core/engine`: query parsing, indexing orchestration, scoring, top-k retrieval, in-memory cache management.
+- `core/engine`: query parsing, indexing orchestration, scoring, top-k retrieval, in-memory cache management. Also hosts the processes behind `connect` blocks (`connectors.rs`: one long-lived child per block, rows into the same cache a `run` block uses), what a declared row does (`sources.rs`), reading a lookbook entry before installing it (`lookbook.rs`, which never fetches: the shell does), and the reference connector `refcon` (`refcon.rs`).
 
 ```mermaid
 flowchart TB
@@ -173,6 +175,7 @@ Watcher policy (linows, see `apps/linows/backend/src/state.rs`):
 - **scoped refresh** - `QueryEngine::bootstrap_sqlite_scoped(path, scope)` re-walks only the dirty source family (apps-only / files-only / all). Stale deletion is scoped to the same id prefixes so unrelated rows survive,
 - **off-thread reindex** - the watcher loop spawns a worker thread to run the bootstrap, so subsequent events keep draining instead of queuing in the kernel buffer,
 - **RAII slot guard** ensures a panic inside the worker still releases the in-progress flag.
+- **source directories** (`~/.look/sources`, `~/.look/connectors`) have a watcher of their own (`apps/linows/backend/src/sources_watch.rs`), outside the index watcher: a settled change to a `.toml` there means a sources reload (connectors restarted, `run` blocks re-run), not an index pass. macOS has no equivalent and reloads on `Cmd+Shift+;`.
 
 Benchmarks for this path live in `tools/perf/` (see [tools/perf/WATCHER_PERF.md](../tools/perf/WATCHER_PERF.md)).
 
@@ -239,8 +242,9 @@ erDiagram
 program reads them through a contract, never directly:
 
 - rows and actions come from the user-declared sources contract
-  (`core/sources`, documented in `user-sources.md`), which is the public,
-  versioned surface,
+  (`core/sources`, documented in `user-sources.md`), and for an app from the
+  connector protocol (`core/sources/src/connect.rs`, documented in
+  `integrating.md`), which are the public, versioned surfaces,
 - inside the repo, `core/storage` owns the schema and every other crate goes
   through it,
 - `LOOK_CONFIG_PATH`, `LOOK_DB_PATH` and `LOOK_SOURCES_DIR` exist for tests and
@@ -463,7 +467,7 @@ All settings are persisted to `.look/config`:
 **File Scanning:**
 
 - `file_scan_depth` - max depth (1-12), default: 4
-- `file_scan_limit` - max files (500-50000), default: 4000
+- `file_scan_limit` - max files (500-50000), default: 8000
 - `file_exclude_paths` - comma-separated paths to exclude
 
 **Runtime:**

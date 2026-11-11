@@ -188,7 +188,11 @@ fn running() -> &'static Mutex<BTreeMap<String, Running>> {
 /// Starts every declared connector not already running, and stops any whose
 /// block is gone or whose command changed. Safe to call repeatedly: it is how
 /// a reload reaches connectors.
-pub fn start(home: &Path, on_rows: OnRows) {
+///
+/// `app_version` is what `hello` tells a connector Look is. The shell knows it;
+/// this crate's own version is not the app's.
+pub fn start(home: &Path, app_version: &str, on_rows: OnRows) {
+    *APP_VERSION.lock().unwrap_or_else(|err| err.into_inner()) = app_version.to_string();
     let declared: BTreeMap<String, Declared> = crate::sources::declared(home)
         .blocks
         .into_iter()
@@ -224,6 +228,9 @@ pub fn start(home: &Path, on_rows: OnRows) {
         }
     }
 }
+
+/// Kept from `start` for the respawns that `restart_dead` does without it.
+static APP_VERSION: Mutex<String> = Mutex::new(String::new());
 
 /// A connector as its block declares it.
 struct Declared {
@@ -597,7 +604,10 @@ fn spawn(id: &str, found: &Declared, on_rows: OnRows) -> Result<(Child, Option<P
     if let Some(stdin) = stdin.as_mut() {
         let hello = Ask::Hello {
             v: PROTOCOL_VERSION,
-            look: env!("CARGO_PKG_VERSION").to_string(),
+            look: APP_VERSION
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .clone(),
         };
         let _ = stdin.write_all(hello.line().as_bytes());
         let _ = stdin.flush();

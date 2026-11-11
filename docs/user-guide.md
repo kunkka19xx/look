@@ -41,7 +41,7 @@ Look is designed to need as few macOS permissions as possible:
 - **No Accessibility permission** is required.
 - **No Full Disk Access** is required. Look indexes standard user directories (`~`, `/Applications`, `~/Documents`, `~/Downloads`, etc.). To index a directory outside those defaults, add it via `file_scan_extra_roots` in `~/.look/config`.
 - **No Screen Recording** is required.
-- **Network access** is used for explicit actions - `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search - and, when **AI features** are enabled (macOS, on by default), for live Google search suggestions and the DuckDuckGo/Wikipedia answer card as you type. The AI model runs wherever you point it. Apple Intelligence is on-device and Ollama defaults to `localhost`, so by default no prompt leaves the machine. If you change `ollama_host` to a non-loopback address, or select a cloud-routed Ollama model (a `-cloud` tag, which the local daemon proxies to Ollama's service), then **your prompt travels over the network to that provider**. Separately from the prompt, your calendar, clipboard, and remembered facts are attached only when inference is on this machine; for anything remote they are withheld until you turn on `ai_allow_remote_context` in Settings. Turn the AI/web features off by setting `ai_enabled = false` in `~/.look/config` (or via Settings). Local search and indexing never make network calls.
+- **Network access** is used for explicit actions - `t"` translation, `tw"` dictionary lookup, `Cmd+Enter` web search, and the lookbook catalog, fetched only while `Settings > Extend` is open - and, when **AI features** are enabled (macOS, on by default), for live Google search suggestions and the DuckDuckGo/Wikipedia answer card as you type. The AI model runs wherever you point it. Apple Intelligence is on-device and Ollama defaults to `localhost`, so by default no prompt leaves the machine. If you change `ollama_host` to a non-loopback address, or select a cloud-routed Ollama model (a `-cloud` tag, which the local daemon proxies to Ollama's service), then **your prompt travels over the network to that provider**. Separately from the prompt, your calendar, clipboard, and remembered facts are attached only when inference is on this machine; for anything remote they are withheld until you turn on `ai_allow_remote_context` in Settings. Turn the AI/web features off by setting `ai_enabled = false` in `~/.look/config` (or via Settings). Local search and indexing never make network calls.
 - **Finder Automation** is requested only when you empty the Trash (`Cmd+D` on the pinned Trash folder). The Trash is protected by macOS, so Look asks Finder to empty it; macOS prompts once, and you can manage it under `System Settings > Privacy & Security > Automation`. Moving individual files to the Trash needs no permission.
 
 **Settings > AI > Permissions** lists every capability that needs OS access (Calendar, Reminders), what Look does with it, and whether it's connected. **Grant all** asks for the outstanding ones in turn; macOS has no single "allow everything" prompt, so each still appears on its own. Once a permission has been answered - granted or denied - only System Settings can change it, so those rows link straight to the right pane. Look also asks the first time you use a feature that needs access, which is why `join` may prompt for Calendar.
@@ -438,6 +438,8 @@ Each `[block]` has a `name` you can type and exactly one producer key that says 
 | `file`   | the lines of a text file                |
 | `run`    | the lines a command prints              |
 
+A fifth, `connect`, is a program Look keeps running that sends rows whenever it likes. It is how an app puts its own rows in Look, usually from a manifest the app installs in `~/.look/connectors/`; see [Integrating your app](integrating.md).
+
 ```toml
 # ~/.look/sources/mine.toml
 
@@ -460,7 +462,9 @@ Commands are shell text, run by your login shell, so your own scripts are first-
 
 **Full guide: [Declaring your own sources](user-sources.md)** - every key, every placeholder, limits, troubleshooting, and recipes.
 
-**Ready-made ones: [lookbook](https://github.com/kunkka19xx/lookbook)** - copy a file into `~/.look/sources/`, reload, done. Also the place to share one you wrote.
+**Ready-made ones: [lookbook](https://github.com/kunkka19xx/lookbook)** - browse and install from `Settings > Extend`, or copy a file into `~/.look/sources/` and reload. Also the place to share one you wrote.
+
+`Settings > Extend` lists every declaration Look loaded, yours and the ones an app installed, with what each block needs changed to work on this machine and any problem reading the file. It also turns a file off (`enabled = false`, written into it) or moves one you wrote to the Trash.
 
 ## Settings and config
 
@@ -548,7 +552,7 @@ Saved as `running_apps_placement=<value>` in `~/.look/config` (`none` = off, any
 Default values:
 
 - **File Scan Depth**: 4 (range: 1-12)
-- **File Scan Limit**: 4000 (range: 500-50000)
+- **File Scan Limit**: 8000 (range: 500-50000)
 - **Lazy indexing**: On
 
 Advanced controls:
@@ -567,9 +571,10 @@ Lazy indexing behavior:
 ### Other Settings
 
 - settings-only blur multiplier (`Settings Blur`) for readability when settings is open
-- translation privacy and backend log level
+- backend log level (`Privacy & Logs`)
 - launch at login
 - the **Shortcuts** tab: every rebindable chord listed by topic with a search box, a recorder on each key capsule, `Reset` per row and `Reset all`, and a notice when two live chords collide. The launcher toggle records here too on macOS and Windows. See [Keyboard shortcuts](#keyboard-shortcuts-quick-reference)
+- the **Extend** tab: your declared sources and the connectors apps installed, what each needs to work here, a connector's recent errors, `Turn off` / `Remove`, and **Browse lookbook** to install ready-made sources. See [Your own sources](#your-own-sources)
 
 Runtime config file:
 
@@ -606,7 +611,7 @@ homeConfigurations."me" = home-manager.lib.homeManagerConfiguration {
 }
 ```
 
-Activation merges those keys into `~/.look/config` instead of replacing it, so settings you change in the app are kept and only the keys declared in Nix are overwritten. Removing a key from the Nix config removes it from the file on the next rebuild. Nix wins on every activation, so for the keys it manages, edit the Nix config and rebuild rather than using Look's in-app Save Config button. The first activation copies the pre-Nix file to `~/.look.config.hm-backup`. See `apps/linows/BUILDING.md` for the full option list.
+Activation merges those keys into `~/.look/config` instead of replacing it, so settings you change in the app are kept and only the keys declared in Nix are overwritten. Removing a key from the Nix config removes it from the file on the next rebuild. Nix wins on every activation, so for the keys it manages, edit the Nix config and rebuild rather than using Look's in-app Save Config button. The first activation copies the pre-Nix file to `~/.look/config.hm-backup`. See `apps/linows/BUILDING.md` for the full option list.
 
 If the window never shows after a system update and Look logs `EGL_BAD_PARAMETER`, add `inputs.nixpkgs.follows = "nixpkgs";` to the `look` input (builds locally, no Cachix).
 
@@ -789,7 +794,7 @@ rm -rf "$HOME/Library/Application Support/look"
 rm -f "$HOME/.look.config"   # only if a pre-0.6 config was left behind
 ```
 
-Those are the default paths. If you moved anything with an environment override, remove it yourself as well: `LOOK_CONFIG_PATH` (the config file), `LOOK_SOURCES_DIR` (your declared sources), and `LOOK_ROWS_CACHE_DIR` (the rows a `run` block cached).
+Those are the default paths. If you moved anything with an environment override, remove it yourself as well: `LOOK_CONFIG_PATH` (the config file), `LOOK_SOURCES_DIR` (your declared sources), `LOOK_CONNECTORS_DIR` (manifests apps installed), and `LOOK_ROWS_CACHE_DIR` (the rows a `run` block cached).
 
 ## Related docs
 
@@ -797,3 +802,4 @@ Those are the default paths. If you moved anything with an environment override,
 - Feature status: `docs/features.md`
 - Backend contributor guide: `docs/backend-guide.md`
 - Declaring your own sources: `docs/user-sources.md`
+- Integrating your app (connectors): `docs/integrating.md`
