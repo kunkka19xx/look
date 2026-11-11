@@ -379,6 +379,12 @@ final class ThemeStore: ObservableObject {
         return .systemFont(ofSize: resolvedSize, weight: weight)
     }
 
+    /// Code and other fixed-width text in the preview: the system mono face,
+    /// scaled like `uiFont` so it zooms with the prose beside it.
+    func monoNSFont(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+        .monospacedSystemFont(ofSize: max(8, size * uiScale), weight: weight)
+    }
+
     func fontNameSuggestions(for input: String, limit: Int = 8) -> [String] {
         let allFonts = cachedFontFamilies
         let query = input.trimmingCharacters(in: .whitespacesAndNewlines)
