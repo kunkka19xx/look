@@ -136,7 +136,11 @@ This document tracks what `look` supports today and what is planned next.
 - `run` rows are refreshed on reload (`Cmd+Shift+;`) and cached in `~/.look/cache/rows/`, so a failed command keeps the last good rows and their ranking
 - a second directory, `~/.look/connectors/`, read with the same schema, for manifests an app installs rather than ones you write. A manifest's blocks are namespaced by its file name (`[notes]` in `myapp.toml` is `myapp.notes`), so an app cannot collide with your own blocks and uninstalling it is one file. `LOOK_CONNECTORS_DIR` repoints it
 - `Settings > Extend` lists every declaration loaded from both directories with what each block needs to work here, a connector's recent trouble in its own words (so a connector that is down says why, rather than only on stderr), and turns one off (`enabled = false`, written into the file) or moves it to the Trash. Removing is offered for your own files only, since an app rewrites its own manifest
-- shared `core/sources` engine on macOS, Linux, and Windows. See [`docs/user-sources.md`](user-sources.md), and [lookbook](https://github.com/kunkka19xx/lookbook) for ready-made sources to copy
+- **Browse lookbook** in `Settings > Extend` (macOS, Linux, Windows): the [lookbook](https://github.com/kunkka19xx/lookbook) catalog as cards, each saying whether it works on this platform, which required programs are missing, and linking its README. Install reads the declaration first (its commands, what will need changing here, the values its `[[setup]]` fields ask for), writes declarations to `~/.look/sources/` and helper scripts to `~/.look/bin/`, and reloads; an entry already present reads Reconfigure and names the files it would replace. The catalog is fetched only while the tab is open
+- `[[setup]]` fields in a shared declaration name the values the install sheet asks for (folder, file, text, or choice), filled in by rewriting only that value so comments survive
+- a `preview` that prints a JSON array of `fields` / `list` / `text` / `code` / `markdown` blocks is drawn as a layout; any other output stays text
+- on Linux and Windows, `~/.look/sources/` and `~/.look/connectors/` are watched and a changed `.toml` reloads the sources by itself; macOS reloads on `Cmd+Shift+;`
+- shared `core/sources` engine on macOS, Linux, and Windows. See [`docs/user-sources.md`](user-sources.md)
 
 ### Settings and runtime config
 

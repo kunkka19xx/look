@@ -104,10 +104,11 @@ pub extern "C" fn look_record_usage_json(
 }
 
 /// Starts every declared connector, and restarts any that died. Safe to call
-/// repeatedly; the shell calls it at launch and after a reload.
+/// repeatedly; the shell calls it at launch and after a reload. `app_version`
+/// is the shell's own, which `hello` passes on to each connector.
 #[unsafe(no_mangle)]
-pub extern "C" fn look_connectors_start() {
-    let _ = std::panic::catch_unwind(connectors_api::start);
+pub extern "C" fn look_connectors_start(app_version: *const c_char) {
+    let _ = std::panic::catch_unwind(|| connectors_api::start(app_version));
 }
 
 /// Ends every connector. Their rows stay cached, so the next launch shows what

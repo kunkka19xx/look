@@ -4,7 +4,9 @@ Look indexes apps, files, and System Settings out of the box. **Sources** are ho
 
 No plugin to install, no API to learn. One directory, one file format, four keys to remember.
 
-**In a hurry?** [lookbook](https://github.com/kunkka19xx/lookbook) is a collection of ready-made sources: git branches, SSH hosts, docker containers, project folders. Copy one in, reload, done. Come back here when you want to change it.
+**In a hurry?** [lookbook](https://github.com/kunkka19xx/lookbook) is a collection of ready-made sources: git branches, SSH hosts, docker containers, project folders. Browse it from `Settings > Extend` (**Browse lookbook**, under what you already have), or copy one in by hand and reload. Come back here when you want to change it.
+
+In the browser, each card says whether the entry works on this platform and which programs it needs that you do not have, and its name links to the entry's README. `Install` opens the declaration before anything is written: the commands it will run, what will need changing on this machine, and any values the author asked you to fill in (see [Values to fill in when installing](#values-to-fill-in-when-installing-setup)). Declarations land in `~/.look/sources/`, helper scripts in `~/.look/bin/`, and Look reloads. An entry you already have reads `Reconfigure`, and the sheet names the files it would replace. The catalog is fetched only when that tab is open, never on launch.
 
 A copied example usually needs one or two lines changed to match your machine, and Look says which. Settings -> Extend lists every declaration it loaded, and under each block the values that cannot work here: a folder that is not there, a command that is not installed, a path left pointing at the author's home directory. Nothing is run to find that out, so a `do` block is read rather than performed.
 
@@ -45,6 +47,7 @@ That screen is also where a declaration goes off or away: `Turn off` writes `ena
 - [When things refresh](#when-things-refresh)
 - [Limits](#limits)
 - [Troubleshooting](#troubleshooting)
+- [Values to fill in when installing](#values-to-fill-in-when-installing-setup)
 - [Recipes](#recipes)
 - [The whole format in one file](#the-whole-format-in-one-file)
 
@@ -219,6 +222,15 @@ preview = "git -C ~/dev/look log -10 --format='%h %s' {id}"
 ```
 
 `preview` is not part of the producer: it runs for whichever row you have selected, in that row's own folder, and its output fills the right panel. It always gets 5 seconds, whatever `timeout` says, because you are watching it happen. Any block can declare one, not just `run`.
+
+A `preview` that prints a JSON array of blocks is drawn as a layout rather than as text. Each block has a `type`: `fields` (`rows` of `{label, value}`), `list` (`items` of `{label}`, optionally with `id` and `on`), `text` (`text`), `code` (`text`, optional `language`), or `markdown` (`text`). Anything else, including a command that happens to print its own JSON or a block of an unknown type, is shown as the plain text it always was:
+
+```json
+[
+  { "type": "fields", "rows": [{ "label": "Branch", "value": "main" }] },
+  { "type": "code", "language": "diff", "text": "+ added line" }
+]
+```
 
 If the command fails, times out, or prints nothing, **the rows it produced last time are kept**. Losing them would also lose the ranking those rows had earned, which is worse than showing something slightly stale.
 
@@ -448,6 +460,13 @@ only     = "dirs"
 edit     = "nvim {path}"
 terminal = "tmux new-session -As {title} -c {path}"
 ```
+
+Writing one of these:
+
+- **Leave it out unless these rows need something different.** Left out, or empty (`edit = ""`), the key uses your tools from `~/.look/config`, which already know whether an editor is an app or needs a terminal.
+- **It is a command, so its program has to be installed.** `code {path}` needs VS Code's `code` command, which VS Code does not add by itself. A missing program does nothing when you press the key; `Settings > Extend` lists it under the block.
+- **An app by name:** `open -a 'Zed' {path}` on macOS.
+- **A terminal editor** (`nvim {path}`, `hx {path}`) opens in your `terminal`, the same as a global `text_editor = nvim` does. With no `terminal` declared, Look says so instead of running it with nowhere to draw.
 
 The rule for `Enter`:
 
@@ -736,6 +755,8 @@ Remember that `bias` applies to **every** query, not only the one you had in min
 
 Reload is `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux, Windows). It re-reads every file in the sources directory, re-runs every enabled `run` block, and re-indexes. Editing a block and reloading is the whole development loop.
 
+On Linux and Windows, Look also watches `~/.look/sources/` and `~/.look/connectors/` (or their overrides) and reloads by itself about two seconds after a `.toml` in either is created, changed, or removed, so a manifest an app installs while Look runs is picked up without a keypress. macOS has no such watcher yet: press reload.
+
 `run` rows are cached in `~/.look/cache/rows/<block-id>`, which is what makes a failed refresh harmless.
 
 Drill-down levels are different: those rows are produced **live** every time you descend, because they depend on the row you came from.
@@ -757,14 +778,14 @@ Blocks below one second of remaining budget are skipped rather than handed a sli
 
 **My block does not appear at all.**
 
-- Does it declare exactly one of `do`, `dir`, `file`, `run`? Zero or two is an error and the block is skipped.
+- Does it declare exactly one of `do`, `dir`, `file`, `run`, `connect`, `ask`? Zero or two is an error and the block is skipped.
 - Does its producer, or its `cwd`, mention `{path}`, `{id}`, or another placeholder? Then it is a `then` target by design and never a top-level row. That is [the rule above](#placeholders).
 - Is `enabled = false` still sitting in it?
 - Is the file extension exactly `.toml`?
 
-**A `run` block shows nothing, or shows stale rows.** Run the command in a terminal first. If it prints nothing, or exits non-zero, or takes longer than the timeout, Look keeps the previous rows.
+**A `run` block shows nothing, or shows stale rows.** Run the command in a terminal first. If it prints nothing, or exits non-zero, or takes longer than the timeout, Look keeps the previous rows. That failure is not a declaration error, so it is not in `Settings > Extend`: on macOS it shows as a banner in the launcher when the block refreshes.
 
-**Errors are printed to stderr**, one line per problem, prefixed `look sources:`. Launch Look from a terminal to read them. If you have the repo checked out, the parser will also tell you what it made of a directory:
+**Errors in a declaration are listed in `Settings > Extend`**, under the file or block they belong to, and printed to stderr, one line per problem, prefixed `look sources:`. Launch Look from a terminal to read the stderr copy. If you have the repo checked out, the parser will also tell you what it made of a directory:
 
 ```bash
 cargo run -p look-sources --example parse_check -- ~/.look/sources
@@ -776,7 +797,7 @@ It prints every problem, then every block it loaded with its resolved name, icon
 
 | Message                                                    | Meaning                                                                                                               |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `needs one of do, dir, file, or run`                       | The block declares no producer                                                                                        |
+| `needs one of do, dir, file, run, connect, or ask`         | The block declares no producer                                                                                        |
 | `declares dir and run, but a block is one thing: pick one` | Two producers in one block                                                                                            |
 | `a block id cannot contain ":"`                            | Rename the `[header]`                                                                                                 |
 | `then names unknown block "x"`                             | A typo, or the target was deleted                                                                                     |
@@ -793,6 +814,42 @@ It prints every problem, then every block it loaded with its resolved name, icon
 - **A relative path.** A `run` block with no `cwd` starts at `/`, not at home. See [Where a command runs](#where-a-command-runs).
 - **You quoted a placeholder.** They are escaped for you, so `open "{path}"` is doubly quoted and resolves to nothing. Write `open {path}`.
 - **It wants a terminal.** Steps get no stdin and no TTY, so anything that prompts, pages, or draws a full-screen UI will not work. Wrap it in your terminal emulator instead: `open -a Ghostty --args -e top`.
+
+## Values to fill in when installing (`[[setup]]`)
+
+For a file you mean to share. The readiness check catches a folder or a program that is not on this machine, but not a value that is valid and simply yours, like a vault name inside a URL. Name those in `[[setup]]` tables and the install sheet asks for them, with your label beside a folder picker, a file picker, a text box, or a list:
+
+```toml
+[notes]
+name = "Notes"
+dir  = "~/Documents/my-vault"
+open = "open 'obsidian://open?vault=my-vault&file={path:url}'"
+
+[[setup]]
+label = "Vault folder"
+type  = "folder"
+block = "notes"
+key   = "dir"
+
+[[setup]]
+label = "Vault name"
+block = "notes"
+key   = "open"
+match = "my-vault"
+note  = "The name Obsidian shows for the vault, URL-encoded: My%20Vault for My Vault"
+```
+
+| Key       | What it does                                                                                          |
+| --------- | ----------------------------------------------------------------------------------------------------- |
+| `label`   | Shown beside the control                                                                              |
+| `type`    | `folder`, `file`, `text` (the default), or `choice`                                                   |
+| `block`   | The block the value lives in                                                                          |
+| `key`     | The key within it. Without `match` it must be a string, and the whole value is replaced               |
+| `match`   | The exact text to replace inside that value, which must appear in it exactly once                     |
+| `options` | The choices, for `choice`. The value as written must be one of them                                   |
+| `note`    | A hint shown under the control                                                                        |
+
+The file still works as written: a field points at a real value, not a placeholder, so copying the `.toml` by hand is unaffected. Filling a value in rewrites only that value, so your comments survive the install. `setup` is reserved as an array of tables and is not a block; the loader skips it.
 
 ## Recipes
 

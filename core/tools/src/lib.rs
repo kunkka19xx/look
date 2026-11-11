@@ -15,7 +15,9 @@ pub use catalog::{
     AppleScript, CommandStyle, DEFAULT_COMMAND_STYLE, Surface, TERMINAL_NAMES, TERMINALS,
     TTY_TOOLS, Terminal, command_style, entry, surface,
 };
-pub use compose::{Action, Launch, Target, Unavailable, edit, reveal, terminal_here};
+pub use compose::{
+    Action, Launch, Target, Unavailable, command_in_terminal, edit, reveal, terminal_here,
+};
 pub use quote::{applescript_quote, cmd_quote, shell_quote};
 pub use windows_terminals::{WINDOWS_TERMINALS, WindowsTerminal};
 

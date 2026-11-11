@@ -209,12 +209,18 @@ fn is_terminal(name: &str) -> bool {
 /// A declared name reduced to a catalog key. Case, a trailing `.app`, and a
 /// leading directory are things a user should not have to get right: naming a
 /// specific build (`/opt/homebrew/bin/nvim`) still means nvim.
-fn normalize(tool: &str) -> String {
+pub(crate) fn normalize(tool: &str) -> String {
     let trimmed = tool.trim();
-    let name = trimmed.rsplit('/').next().unwrap_or(trimmed);
+    let name = trimmed.rsplit(['/', '\\']).next().unwrap_or(trimmed);
     let lowered = name.to_ascii_lowercase();
-    lowered.strip_suffix(".app").unwrap_or(&lowered).to_string()
+    APP_SUFFIXES
+        .iter()
+        .find_map(|suffix| lowered.strip_suffix(suffix))
+        .unwrap_or(&lowered)
+        .to_string()
 }
+
+const APP_SUFFIXES: [&str; 2] = [".app", ".exe"];
 
 #[cfg(test)]
 mod tests {
@@ -222,6 +228,14 @@ mod tests {
 
     // These three police contributions to the tables, so a bad new row fails the
     // build rather than failing quietly on someone's machine.
+
+    #[test]
+    fn a_windows_editor_path_is_still_the_editor() {
+        assert_eq!(
+            surface(r"C:\Program Files\Neovim\bin\nvim.exe"),
+            Surface::Tty
+        );
+    }
 
     #[test]
     fn every_entry_cites_its_source() {

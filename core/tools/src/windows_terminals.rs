@@ -9,6 +9,8 @@
 //! To add a terminal, append to [`WINDOWS_TERMINALS`] and cite the page its
 //! flags were read from; the tests enforce both.
 
+use crate::catalog::normalize;
+
 /// Replaced by the directory the window should open in.
 const DIR: &str = "{dir}";
 
@@ -97,14 +99,6 @@ fn entry(terminal: &str) -> &'static WindowsTerminal {
         .iter()
         .find(|candidate| candidate.names.contains(&name.as_str()))
         .unwrap_or(&INHERITS_DIRECTORY)
-}
-
-/// A declared name reduced to a table key: `C:\Tools\wt.exe` still means wt.
-fn normalize(terminal: &str) -> String {
-    let trimmed = terminal.trim();
-    let name = trimmed.rsplit(['/', '\\']).next().unwrap_or(trimmed);
-    let lowered = name.to_ascii_lowercase();
-    lowered.strip_suffix(".exe").unwrap_or(&lowered).to_string()
 }
 
 #[cfg(test)]

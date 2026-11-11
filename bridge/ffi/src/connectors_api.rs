@@ -1,15 +1,23 @@
 //! Starting and stopping the processes behind `connect` blocks.
 
 use crate::state::{home_dir, refresh_sources_now};
+use std::ffi::{CStr, c_char};
 
 /// Starts every declared connector, and restarts any that died. Called at
 /// launch and on reload, since a reload is how a newly installed manifest is
 /// noticed.
-pub(crate) fn start() {
+pub(crate) fn start(app_version: *const c_char) {
     let Some(home) = home_dir() else {
         return;
     };
-    look_engine::connectors::start(&home, on_rows());
+    let app_version = if app_version.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(app_version) }
+            .to_str()
+            .unwrap_or("")
+    };
+    look_engine::connectors::start(&home, app_version, on_rows());
 }
 
 /// Respawns any connector that died. Called when the launcher opens, which is

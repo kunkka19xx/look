@@ -239,7 +239,7 @@ struct ThemeSettings: Codable, Equatable {
     var settingsBlurMultiplier: Double = 0.5
 
     var fileScanDepth: Int = 4
-    var fileScanLimit: Int = 4000
+    var fileScanLimit: Int = AppConstants.FileScan.defaultLimit
     var lazyIndexingEnabled: Bool = true
     var backendLogLevel: BackendLogLevel = .error
     var launchAtLogin: Bool = true

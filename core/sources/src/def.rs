@@ -561,11 +561,14 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
     }
     let producer = producer_from(&raw)?;
 
+    // Empty means undeclared, so the user's global tool takes it: how an
+    // example leaves `edit` for an installer to fill in or leave alone.
+    let declared = |verb: Option<String>| verb.filter(|command| !command.trim().is_empty());
     let verbs = Verbs {
-        open: raw.open,
-        edit: raw.edit,
-        terminal: raw.terminal,
-        reveal: raw.reveal,
+        open: declared(raw.open),
+        edit: declared(raw.edit),
+        terminal: declared(raw.terminal),
+        reveal: declared(raw.reveal),
     };
     // A bundle IS the action, so a verb on it would be a second, hidden meaning
     // for Enter.
@@ -861,6 +864,16 @@ edit = "nvim {path}"
             block.verbs.declared(),
             [("open", "open {path}"), ("edit", "nvim {path}")]
         );
+    }
+
+    #[test]
+    fn an_empty_verb_leaves_the_action_to_the_global_tool() {
+        let block = one(r#"
+[projects]
+dir  = "~/dev"
+edit = ""
+"#);
+        assert!(block.verbs.declared().is_empty());
     }
 
     #[test]

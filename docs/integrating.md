@@ -27,6 +27,12 @@ icon    = "🗂️"
 connect = "/Applications/MyApp.app/Contents/Helpers/look-connector"
 ```
 
+Look reads the directory at launch and on a reload (`Cmd+Shift+;` on macOS,
+`Ctrl+Shift+;` on Linux and Windows); on Linux
+and Windows it also notices a manifest written, changed or deleted while it
+runs, and reloads by itself. On macOS a manifest installed while Look runs
+waits for the next reload or launch.
+
 Uninstall by deleting the file. A user can also turn your manifest off from
 `Settings > Extend`, which writes `enabled = false` into every block in it, so
 reinstalling or rewriting the file is how that choice gets undone: read it
@@ -48,11 +54,12 @@ line in its own log, prefixed with your block, so `starting up` becomes
 waits on it, so it is yours to use. A line longer than 4 KB continues on the
 next one.
 
-An `error` frame lands in that same log, written the same way. **Neither
-reaches the user**, who would have to launch Look from a terminal to see
-either, so do not use one to tell somebody their credentials expired. Send an
-`error` when you have no stderr to write to, or when you would rather say it in
-the protocol than in a log line.
+An `error` frame lands in that same log, written the same way. Both also show
+under your block in `Settings > Extend` (see
+[Finding out what went wrong](#finding-out-what-went-wrong)), but only there:
+nothing pops up in the launcher, so do not use one to tell somebody their
+credentials expired. Send an `error` when you have no stderr to write to, or
+when you would rather say it in the protocol than in a log line.
 
 Look opens with a hello, and you answer when you have something to say:
 
