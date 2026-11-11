@@ -241,10 +241,8 @@ struct ExtendSettingsTab: View {
                             .padding(.leading, 12)
                     }
 
-                    // What the connector itself said went wrong. Newest first
-                    // here, unlike the engine's order: the last thing it
-                    // complained about is the one worth reading, and only a
-                    // few fit under a row.
+                    // Newest first, unlike the engine's order: the last
+                    // complaint is the one worth reading.
                     ForEach(Array(block.log.suffix(logLines).reversed().enumerated()), id: \.offset) { line in
                         Text(line.element)
                             .font(.system(size: CGFloat(themeStore.settings.fontSize - 3), design: .monospaced))
@@ -364,8 +362,8 @@ struct ExtendSettingsTab: View {
     /// is a declaration, and saying "stopped" about a folder listing would be
     /// inventing a state it does not have.
     ///
-    /// A connector that is down says why when it told us: "not running" on its
-    /// own sends somebody to look through a log they cannot reach.
+    /// A connector that is down says why: "not running" alone sends somebody
+    /// to a log they cannot reach.
     private func state(of block: InstalledBlock) -> String {
         if !block.enabled { return "off" }
         guard block.kind == "connect" else { return "" }
@@ -374,8 +372,7 @@ struct ExtendSettingsTab: View {
         return "not running: \(last)"
     }
 
-    /// How many of a connector's complaints fit under one row before the list
-    /// of what is installed stops being a list.
+    /// Complaints shown under a row before the list stops being a list.
     private var logLines: Int { 3 }
 
     private func fileName(_ path: String) -> String {

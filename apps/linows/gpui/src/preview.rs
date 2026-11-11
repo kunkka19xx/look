@@ -283,9 +283,8 @@ pub struct Preview {
     cache: HashMap<String, Arc<Content>>,
     /// The row the panel is waiting on; an answer for another is dropped.
     wanted: Option<String>,
-    /// The row on screen whose panel a connector answered, if any. Such a
-    /// panel is never reused: not from `cache`, which it is kept out of, and
-    /// not from `current` either, which is its own reuse path.
+    /// The row on screen whose panel a connector answered. Never reused: it
+    /// is kept out of `cache`, and `current` below is its own reuse path.
     live: Option<String>,
     /// The body's own scroll, reset per row.
     body_scroll: ScrollHandle,
@@ -410,9 +409,8 @@ impl Preview {
             return;
         }
         // Back on the shown row: drop what the row in between started. A
-        // panel still waiting asks again, leaving cancelled its ask. One a
-        // connector answered asks again too: its data has moved on, and this
-        // is the same staleness the cache is kept clear of.
+        // panel still waiting asks again, leaving cancelled its ask. So does
+        // one a connector answered: its data has moved on.
         if self.live.as_deref() != Some(key.as_str())
             && self
                 .current
@@ -471,8 +469,7 @@ impl Preview {
                     panel: panel.clone(),
                     preview: detail,
                 });
-                // One or the other, never both: a live panel is the one the
-                // reuse paths have to leave alone.
+                // One or the other: a live panel is what reuse must skip.
                 this.live = live.then(|| key.clone());
                 if !live {
                     this.remember(&key, content.clone());
@@ -1304,9 +1301,8 @@ fn load(row: &Row, ancestors: &str, query: &str) -> Content {
 /// A block's declared `preview` against the row: error, blocks, text, in
 /// that order, as macOS `blockPreviewBody` reads them.
 ///
-/// Also whether a connector answered it, which decides if it may be cached: a
-/// live producer's panel is stale as soon as its data moves, and coming back
-/// to the row would otherwise show what it said earlier in the session.
+/// Also whether a connector answered it, which decides if it may be cached:
+/// a live producer's panel is stale as soon as its data moves.
 fn preview_detail(row: &Row, ancestors: &str, query: &str) -> (Option<Detail>, bool) {
     let args = crate::actions::row_args(row, ancestors, query);
     let Some(preview) = linows_backend::sources::source_preview(args) else {

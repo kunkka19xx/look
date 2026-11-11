@@ -136,16 +136,15 @@ impl Sheet {
 }
 
 impl Browse {
-    /// A fresh settings session: the sheet and this visit's installs are gone.
+    /// A fresh settings session: the catalog is read again, and the sheet
+    /// and this visit's installs are gone.
     ///
-    /// The catalog is kept, as it is on macOS. It changes when somebody merges
-    /// a PR to lookbook, which is not often enough to fetch on every open, and
-    /// `read` re-probes what is installed here either way: that is the part
-    /// that can change between two visits. A fetch that failed is retried.
+    /// Read again rather than kept for the process, as macOS does. Keeping it
+    /// leaves the list, the per-platform gate and the file list all able to
+    /// disagree with the files an install then fetches from a moving branch.
+    /// The catalog is a few KB and this is an explicit action.
     pub(super) fn forget(&mut self) {
-        if !matches!(self.reading, Reading::Ready(_)) {
-            self.reading = Reading::Pending;
-        }
+        self.reading = Reading::Pending;
         self.installed.clear();
         self.sheet = None;
         self.reads += 1;
@@ -210,23 +209,6 @@ impl Browse {
         bg::fetch(
             cx,
             move || {
-                // The catalog is kept for the session, so this entry's file
-                // list can be older than the files `read_entry` is about to
-                // fetch from a branch that moves. One fetch here, on an
-                // explicit install, keeps the two from the same revision: an
-                // entry that gained a helper script would otherwise install
-                // without it, replacing a working row with a broken one.
-                //
-                // A failed fetch keeps what was in hand. `read_entry` needs
-                // the network too, so it will say so rather than install
-                // something half-known.
-                let (catalog, entry) = match lookbook::catalog() {
-                    Ok(fresh) => {
-                        let same = fresh.entries.iter().find(|e| e.id == entry.id).cloned();
-                        (fresh, same.unwrap_or(entry))
-                    }
-                    Err(_) => (catalog, entry),
-                };
                 let present = lookbook::present(&PresentRequest {
                     declarations: entry.files.clone(),
                     scripts: entry.bin.clone(),

@@ -57,9 +57,8 @@ fn main() {
         // either: the point is exactly which one lands.
         "atcap" => say(&sized(&block, look_engine::connectors::MAX_FRAME_BYTES)),
         "oversized" => say(&sized(&block, look_engine::connectors::MAX_FRAME_BYTES + 1)),
-        // Alive and pushing, but never reads another ask: a connector that
-        // forgot its loop, or wedged inside it. Look must not accumulate a
-        // thread per ask against this.
+        // Alive and pushing, but never reads another ask. Look must not
+        // accumulate a thread per ask against this.
         "wedged" => {
             rows(&block);
             loop {

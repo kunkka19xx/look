@@ -9,9 +9,8 @@
 //!
 //! A row carries only its candidate id, so every entry point starts by
 //! resolving `src:<block>:<row>` back to the block that declared it. The parse
-//! is kept only for as long as a stat of both directories says nothing moved,
-//! so a file the user just edited takes effect without a reindex and selecting
-//! a row does not re-read every declaration.
+//! is kept while a stat of both directories says nothing moved: an edit still
+//! lands without a reindex, and selecting a row re-reads nothing.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -171,8 +170,7 @@ pub struct InstalledBlock {
     pub running: bool,
     /// What to change before this block works here. Empty is the normal case.
     pub needs: Vec<Needed>,
-    /// Recent trouble from this block's connector, oldest first. Empty for
-    /// every other kind, and for a connector that has not complained.
+    /// This connector's recent trouble, oldest first. Empty for other kinds.
     pub log: Vec<String>,
 }
 
@@ -214,8 +212,7 @@ pub fn inventory(home: &Path) -> Inventory {
                     message: format!("[{}] {message}", block.id),
                 });
             }
-            // Only a connector has one, and asking for any other kind would
-            // read a map that can never hold it.
+            // Only a connector has one.
             let log = match block.producer {
                 Producer::Connect { .. } => crate::connectors::log_of(&block.id),
                 _ => Vec::new(),
@@ -345,8 +342,8 @@ pub struct PreviewOutcome {
     /// The same output read as a layout, when it is one. `text` is kept beside
     /// it so a shell that does not draw blocks still shows something.
     pub blocks: Vec<look_sources::DetailBlock>,
-    /// True when a connector answered it, which is a shell's cue not to cache
-    /// it: a live producer's preview is stale as soon as its data moves.
+    /// A connector answered it, so a shell must not cache it: a live
+    /// producer's preview is stale as soon as its data moves.
     pub live: bool,
 }
 
@@ -925,6 +922,8 @@ const CONNECTOR_PREVIEW_WAIT: Duration = Duration::from_millis(400);
 /// and an error line would read as broken. Not running is an error, because
 /// nothing is ever going to arrive.
 fn connector_preview(block: &str, row: &str) -> PreviewOutcome {
+    // Live either way, silence included: a blank panel from a slow connector
+    // must not be kept.
     let Some(req) = crate::connectors::ask_preview(block, row) else {
         return PreviewOutcome {
             live: true,
@@ -958,8 +957,7 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
     let Some(home) = home_dir() else {
         return RefreshOutcome::default();
     };
-    // A reload is the gesture that exists to pick up an edit, so it never
-    // trusts the stamp.
+    // The gesture that exists to pick up an edit never trusts the stamp.
     invalidate_declared();
 
     let mut outcome = RefreshOutcome::default();
@@ -971,9 +969,9 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
     // cache directory belongs to a block that no longer exists.
     let mut keep: BTreeSet<String> = BTreeSet::new();
     for block in declared(&home).blocks {
-        // A connector writes to the same cache under the same name, so its id
-        // has to be claimed here or the sweep below takes rows this function
-        // never wrote. Nothing to run: the process pushes on its own clock.
+        // A connector writes the same cache under the same name, so its id
+        // must be claimed or the sweep below takes rows this never wrote.
+        // Nothing to run: the process pushes on its own clock.
         if matches!(block.producer, Producer::Connect { .. }) {
             if block.enabled {
                 keep.insert(block.id);
@@ -1066,11 +1064,11 @@ pub fn declared(home: &Path) -> look_sources::Loaded {
     loaded
 }
 
-/// The same, with the parse kept until the files themselves change.
+/// The same, with the parse kept until the files change.
 ///
-/// `find_block` runs while a panel is built, once per selection, and parsing
-/// both directories there was the per-selection cost. The stamp below is a
-/// readdir and a stat per file, against reading and parsing every one.
+/// `find_block` runs per selection while a panel is built, and parsing both
+/// directories there was the cost. The stamp is a readdir and a stat per
+/// file, against reading and parsing every one.
 fn declared_fresh(home: &Path) -> look_sources::Loaded {
     let dirs = [sources_dir(home), look_sources::connectors_dir(home)];
     let stamp: Vec<Stamp> = dirs.iter().flat_map(stamp_of).collect();
@@ -1094,8 +1092,8 @@ fn declared_cache() -> &'static DeclaredCache {
     CACHED.get_or_init(|| Mutex::new(None))
 }
 
-/// One file as the stamp sees it: a change to any part means a re-read. Name,
-/// size and modified time, which is what a stat already answers.
+/// Name, size and modified time: what a stat already answers. A change to
+/// any part means a re-read.
 type Stamp = (std::ffi::OsString, u64, Option<std::time::SystemTime>);
 
 fn stamp_of(dir: &std::path::PathBuf) -> Vec<Stamp> {
@@ -1109,15 +1107,14 @@ fn stamp_of(dir: &std::path::PathBuf) -> Vec<Stamp> {
             Some((entry.file_name(), data.len(), data.modified().ok()))
         })
         .collect();
-    // `read_dir` is in whatever order the filesystem gives, which is not
-    // stable, and an unsorted stamp would compare unequal to itself.
+    // `read_dir` order is not stable, and an unsorted stamp would compare
+    // unequal to itself.
     found.sort();
     found
 }
 
-/// Drops the cached parse, for the gesture whose whole job is picking up an
-/// edit. A stamp cannot tell two writes apart inside its clock's resolution,
-/// and a reload is exactly when that must not matter.
+/// Drops the cached parse. A stamp cannot tell two writes apart inside its
+/// clock's resolution, and a reload is when that must not matter.
 fn invalidate_declared() {
     *declared_cache()
         .lock()

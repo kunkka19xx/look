@@ -99,16 +99,10 @@ fn schedule_read(refresh: Arc<dyn Fn() -> bool + Send + Sync>) {
     });
 }
 
-/// Recent trouble, per block, for somebody who did not launch Look from a
-/// terminal. Everything here is printed to stderr as well, which is still the
-/// better place when there is one.
-///
-/// A connector's own failures are otherwise invisible in the app: the common
-/// first mistake, forgetting to echo `req`, shows as a panel that stays blank
-/// with the reason on a stream nobody is reading.
+/// Recent trouble per block, for a user who did not launch from a terminal.
+/// A connector's failures are otherwise invisible in the app.
 const LOG_LINES: usize = 20;
-/// Blocks remembered at once. A connector may name any block in its own
-/// namespace, declared or not, so this is bounded rather than trusted.
+/// A connector may name any block in its own namespace, declared or not.
 const LOG_BLOCKS: usize = 64;
 
 fn logs() -> &'static Mutex<BTreeMap<String, std::collections::VecDeque<String>>> {
@@ -117,17 +111,13 @@ fn logs() -> &'static Mutex<BTreeMap<String, std::collections::VecDeque<String>>
     LOGS.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
-/// Says it once to stderr and once where a settings screen can read it.
+/// Says it to stderr and to the Extend screen.
 ///
-/// Not `eprintln!`, which panics when the sink fails: this is called from the
-/// threads that own a connector's pipes, and unwinding there would close one
-/// for the sake of a log line.
+/// Not `eprintln!`, which panics when the sink fails: the caller owns a
+/// connector's pipe, and unwinding would close it for a log line.
 fn note(block: &str, message: &str) {
     let _ = writeln!(std::io::stderr(), "look connectors: [{block}] {message}");
-    // Held to the same line length the stderr reader uses. An `error` frame
-    // may carry nearly a megabyte, and twenty of those per block across
-    // sixty-four blocks is memory nobody asked for. The whole message went to
-    // stderr above, which is where a long one belongs.
+    // An `error` frame may carry nearly a megabyte; stderr above kept it all.
     let mut end = message.len().min(MAX_LOG_LINE);
     while end > 0 && !message.is_char_boundary(end) {
         end -= 1;
@@ -167,16 +157,13 @@ struct Running {
     command: String,
     /// The file that declared it: the namespace it may speak for.
     manifest: String,
-    /// How many times this block has been launched, and when the last one
-    /// went: a connector that dies on start is otherwise respawned on every
-    /// open for the life of the process.
+    /// A connector that dies on start is otherwise respawned on every open.
     attempts: u32,
     launched_at: std::time::Instant,
 }
 
-/// How long a connector that keeps dying waits before the next launch, by the
-/// number of launches behind it. The first death restarts at once, which is
-/// what "restarted on next use" promises; a crash loop then backs off.
+/// Wait before relaunching, by launches behind it. The first death restarts at
+/// once, as "restarted on next use" promises; a crash loop backs off.
 const BACKOFF: [Duration; 5] = [
     Duration::ZERO,
     Duration::from_secs(5),
@@ -189,8 +176,8 @@ fn backoff(attempts: u32) -> Duration {
     BACKOFF[(attempts.max(1) as usize - 1).min(BACKOFF.len() - 1)]
 }
 
-/// Set by `stop` and cleared by `start`, so a respawn pass still on its thread
-/// when the shell quits launches nothing.
+/// Set by `stop`, cleared by `start`: a respawn pass in flight at quit
+/// launches nothing.
 static STOPPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn running() -> &'static Mutex<BTreeMap<String, Running>> {
@@ -245,11 +232,9 @@ struct Declared {
 }
 
 /// Respawns connectors that died, and nothing else. Reads no directories, so
-/// the shell can call it every time the launcher opens; noticing a manifest
-/// installed since launch is what `start` is for.
-///
-/// Returns at once: killing and spawning processes is not the work of the
-/// thread that opened the launcher. One pass at a time, since every open asks.
+/// the shell can call it on every open; a manifest installed since launch is
+/// what `start` is for. Returns at once, since spawning is not the opening
+/// thread's work, and runs one pass at a time.
 pub fn restart_dead(on_rows: OnRows) {
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -264,8 +249,8 @@ pub fn restart_dead(on_rows: OnRows) {
     });
 }
 
-/// One respawn pass. A connector still inside its backoff is left dead, so
-/// `running_ids` keeps reporting it down and the next open asks again.
+/// One pass. A connector inside its backoff is left dead, so `running_ids`
+/// keeps reporting it down and the next open asks again.
 fn respawn(on_rows: &OnRows) {
     let mut running = locked();
     if STOPPING.load(std::sync::atomic::Ordering::Acquire) {
@@ -350,61 +335,66 @@ pub struct Outcome {
 
 /// Answers waiting to be collected, by the number of the ask that wanted them.
 ///
-/// A map rather than one slot: a press and a control read can be in flight at
-/// once, and the one that answers first must not decide the other. Holding a
-/// single answer meant a read landing first made the press report "no answer"
-/// while the press had in fact happened, which is the one outcome a
-/// non-idempotent action must never produce.
-///
-/// Nothing is keyed by block or by connector. The number already distinguishes
-/// every ask in the process, so a second connector's late reply cannot collide
-/// with this one's.
+/// A map, not one slot: a press and a control read are in flight at once when
+/// the selection changes mid-press, and whichever answers first must not
+/// decide the other. A press reported as "no answer" is pressed again and
+/// flipped back. The number is unique per process, so no block keying either.
 struct Slot<T> {
-    held: Mutex<BTreeMap<u64, T>>,
+    held: Mutex<Waiting<T>>,
     arrived: Condvar,
 }
 
-/// Answers kept while nobody has come back for them. A caller that timed out
-/// is never coming, and its connector may still answer afterwards, so this is
-/// bounded rather than left to grow.
+struct Waiting<T> {
+    answers: BTreeMap<u64, T>,
+    /// Asks still inside `take`. Never evicted, however old.
+    claimed: std::collections::BTreeSet<u64>,
+}
+
+/// A caller that timed out never comes back, but its connector may still
+/// answer, so uncollected answers are bounded.
 const MAX_WAITING: usize = 32;
 
 impl<T> Slot<T> {
     const fn new() -> Self {
         Self {
-            held: Mutex::new(BTreeMap::new()),
+            held: Mutex::new(Waiting {
+                answers: BTreeMap::new(),
+                claimed: std::collections::BTreeSet::new(),
+            }),
             arrived: Condvar::new(),
         }
     }
 
     fn put(&self, req: u64, value: T) {
         let mut held = self.held.lock().unwrap_or_else(|err| err.into_inner());
-        // Lowest first: the numbers only go up, so the oldest ask is the one
-        // whose caller gave up longest ago.
-        while held.len() >= MAX_WAITING {
-            let Some(oldest) = held.keys().next().copied() else {
+        // Split so the scan and the removal borrow separately.
+        let Waiting { answers, claimed } = &mut *held;
+        while answers.len() >= MAX_WAITING {
+            // Lowest unclaimed: numbers only go up, so that caller gave up
+            // longest ago. Skipping the claimed is what protects a press.
+            let Some(stale) = answers.keys().copied().find(|req| !claimed.contains(req)) else {
                 break;
             };
-            held.remove(&oldest);
+            answers.remove(&stale);
         }
-        held.insert(req, value);
+        answers.insert(req, value);
         self.arrived.notify_all();
     }
 
-    /// Waits up to `wait` for the answer to `req`, and takes it.
-    ///
-    /// Removed either way. On a timeout that drops the entry this ask would
-    /// have landed in, so an answer that arrives afterwards is not left for
-    /// somebody else to trip over.
+    /// Waits up to `wait` for the answer to `req` and takes it. Removed on a
+    /// timeout too, so a late answer is not left for anyone else.
     fn take(&self, req: u64, wait: Duration) -> Option<T> {
-        let held = self.held.lock().unwrap_or_else(|err| err.into_inner());
-        // Checks before it waits, so an answer already here costs nothing, and
-        // re-checks on every wake, so a spurious one does not end the wait.
+        let mut held = self.held.lock().unwrap_or_else(|err| err.into_inner());
+        // Before the wait: an answer arriving while asleep must not be evicted.
+        held.claimed.insert(req);
+        // Checks before waiting, and on every wake so a spurious one does not
+        // end it.
         let (mut held, _) = self
             .arrived
-            .wait_timeout_while(held, wait, |held| !held.contains_key(&req))
+            .wait_timeout_while(held, wait, |held| !held.answers.contains_key(&req))
             .unwrap_or_else(|err| err.into_inner());
-        held.remove(&req)
+        held.claimed.remove(&req);
+        held.answers.remove(&req)
     }
 }
 
@@ -456,13 +446,9 @@ fn tell(block: &str, ask: Ask, must_arrive: bool) -> bool {
 
 static WRITERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-/// Threads currently trying to write a frame to a connector.
-///
-/// This is the number that grew without bound while a control read waited for
-/// a pipe, so it is what the wedged-connector test watches; nothing in the app
-/// reads it. At most one writer can be stuck on a connector that stopped
-/// reading its stdin: it holds the pipe, and every frame after it gives up
-/// rather than queueing.
+/// Threads currently writing a frame to a connector. Watched by the
+/// wedged-connector test; nothing in the app reads it. At most one sticks: it
+/// holds the pipe and every frame after it gives up rather than queueing.
 pub fn writers_in_flight() -> usize {
     WRITERS.load(std::sync::atomic::Ordering::Acquire)
 }
@@ -542,11 +528,8 @@ pub fn ask_control(block: &str, control: &str, press: bool) -> Option<u64> {
             req,
         }
     };
-    // A read is sent like a preview and a press like a verb: a read happens on
-    // every selection and a lost one costs nothing, while a dropped press
-    // would be reported as a press that landed. Waiting for the pipe on a read
-    // leaks a thread per selection against a connector that stopped reading
-    // its stdin.
+    // A read like a preview, a press like a verb: waiting for the pipe on a
+    // read leaks a thread per selection against a connector gone deaf.
     tell(&block, ask, press).then_some(req)
 }
 
@@ -814,12 +797,9 @@ fn store(block: &str, rows: &[SourceRow]) -> Result<(), String> {
         })
         .collect();
     let text = serde_json::to_string(&json).map_err(|err| err.to_string())?;
-    // The same rows again is the normal state of a connector watching
-    // something unchanged, and it costs this comparison: for a full block,
-    // about 30us of page-cached read and memcmp, measured by the
-    // `connector_push` example. Remembering a hash of what was last written
-    // instead was tried and is slower, because hashing 236 KiB costs more
-    // than reading it back from the page cache.
+    // The normal state of a connector watching something unchanged, and it
+    // costs about 30us for a full block. Hashing instead of reading the file
+    // back was tried and is slower: see `connector_push`.
     if crate::index::run_cache_holds(block, &text) {
         return Err(String::new());
     }
@@ -864,9 +844,7 @@ mod tests {
             .get_or_init(|| Mutex::new(()))
             .lock()
             .unwrap_or_else(|err| err.into_inner());
-        // Emptied, since these tests use literal numbers and the real asks
-        // use a counter: an answer left behind by the test before would
-        // otherwise be collected by this one.
+        // These tests use literal numbers where the real asks use a counter.
         for drain in [
             &PREVIEWS.held as &Mutex<dyn Drain>,
             &PLANS.held,
@@ -878,15 +856,16 @@ mod tests {
         guard
     }
 
-    /// Emptying four maps of different value types, without `Slot` carrying a
-    /// method only the tests want.
+    /// Four maps of different value types, without `Slot` growing a method
+    /// only the tests want.
     trait Drain {
         fn empty(&mut self);
     }
 
-    impl<T> Drain for BTreeMap<u64, T> {
+    impl<T> Drain for Waiting<T> {
         fn empty(&mut self) {
-            self.clear();
+            self.answers.clear();
+            self.claimed.clear();
         }
     }
 
@@ -938,10 +917,8 @@ mod tests {
 
     #[test]
     fn an_answer_is_collected_once() {
-        // Asks used to clear the slot so the answer to the last identical
-        // question could not be handed back. Numbers come from a counter, so
-        // there is no identical question to guard against; what matters now is
-        // that collecting an answer takes it.
+        // Numbers come from a counter, so there is no identical question to
+        // guard against. What matters is that collecting an answer takes it.
         let _alone = one_at_a_time();
         store_preview(1, Content::Text, "mine".into());
         assert_eq!(
@@ -955,12 +932,9 @@ mod tests {
 
     #[test]
     fn a_press_and_a_read_in_flight_together_each_get_their_own_answer() {
-        // The press is slow and the read lands first, which happens whenever
-        // a selection changes while a press is still going. One shared slot
-        // meant the read's answer evicted the press's, and `control` then
-        // reported "connector did not answer" for a press that had happened.
-        // A press is not idempotent, so the user presses again and flips it
-        // back: the worst outcome this code has.
+        // A selection changing mid-press. One shared slot let the read's
+        // answer evict the press's, and `control` then reported "did not
+        // answer" for a press that happened.
         let _alone = one_at_a_time();
         STATES.put(11, true);
         STATES.put(10, false);
@@ -973,18 +947,46 @@ mod tests {
     }
 
     #[test]
+    fn a_claimed_answer_is_never_evicted() {
+        // The press's answer is the lowest number, so eviction by age alone
+        // drops it for reads a slow connector is still answering.
+        //
+        // The invariant, not the race: forcing 32 puts between one
+        // `notify_all` and the waiter re-taking the lock is not reliable.
+        let _alone = one_at_a_time();
+        let press = 1_u64;
+        // As `take` does before it sleeps.
+        STATES
+            .held
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .claimed
+            .insert(press);
+        STATES.put(press, true);
+        for req in 2..(MAX_WAITING as u64 * 3) {
+            STATES.put(req, false);
+        }
+
+        let held = STATES.held.lock().unwrap_or_else(|err| err.into_inner());
+        assert!(
+            held.answers.contains_key(&press),
+            "the press lost its answer to eviction"
+        );
+        assert!(held.answers.len() <= MAX_WAITING);
+    }
+
+    #[test]
     fn answers_nobody_came_back_for_do_not_pile_up() {
-        // Every timed-out ask may still be answered afterwards, and nothing
-        // collects those.
+        // A timed-out ask may still be answered, and nothing collects those.
         let _alone = one_at_a_time();
         for req in 0..(MAX_WAITING as u64 * 3) {
             STATES.put(req, true);
         }
         let held = STATES.held.lock().unwrap_or_else(|err| err.into_inner());
-        assert!(held.len() <= MAX_WAITING, "{} answers held", held.len());
-        // The newest survive: the oldest ask is the one whose caller gave up
-        // longest ago.
-        assert!(held.contains_key(&(MAX_WAITING as u64 * 3 - 1)));
+        let kept = held.answers.len();
+        assert!(kept <= MAX_WAITING, "{kept} answers held");
+        // The newest survive: the oldest caller gave up longest ago.
+        assert!(held.answers.contains_key(&(MAX_WAITING as u64 * 3 - 1)));
     }
 
     #[test]
@@ -1038,9 +1040,8 @@ mod tests {
 
     #[test]
     fn a_later_answer_is_not_evicted_by_an_earlier_one() {
-        // The slots are shared by every connector, so a second connector's
-        // late reply to its own older ask must not take the answer a waiter is
-        // about to read. It used to, and that waiter then timed out.
+        // A second connector's late reply must not take an answer a waiter
+        // is about to read.
         let _alone = one_at_a_time();
         store_preview(5, Content::Text, "mine".into());
         store_preview(3, Content::Text, "somebody else's, and late".into());
@@ -1054,17 +1055,13 @@ mod tests {
 
     #[test]
     fn a_crash_loop_waits_longer_every_time() {
-        // The first death restarts at once, which is what "restarted on next
-        // use" promises. Anything past that backs off instead of forking on
-        // every launcher open for the life of the process.
+        // The first death restarts at once; past that it backs off.
         assert_eq!(backoff(1), Duration::ZERO);
         assert!(backoff(2) > Duration::ZERO);
         assert!(backoff(3) > backoff(2));
-        // Capped rather than growing without end, and never panics past the
-        // table: a connector can die any number of times.
+        // Never panics past the table: a connector can die any number of times.
         assert_eq!(backoff(99), *BACKOFF.last().expect("a backoff"));
-        // `attempts` is never 0 for a launched connector, but the floor keeps
-        // the index in range if it ever is.
+        // Never 0 for a launched connector, but the floor keeps it in range.
         assert_eq!(backoff(0), Duration::ZERO);
     }
 
@@ -1087,8 +1084,7 @@ mod tests {
         );
         assert!(log_of("myapp.never-complained").is_empty());
 
-        // An `error` frame may carry nearly a megabyte. The ring must not, and
-        // the cut must land on a character boundary: a 3-byte character means
+        // The cut must land on a character boundary: with a 3-byte character
         // the cap itself falls mid-character, which would panic on a slice.
         note("myapp.loud", &"\u{20ac}".repeat(MAX_LOG_LINE));
         let loud = log_of("myapp.loud");

@@ -132,10 +132,9 @@ pub fn catalog() -> Result<Catalog, String> {
     let index: Index =
         serde_json::from_str(&body.ok_or(UNREACHABLE)?).map_err(|_| UNREADABLE.to_string())?;
     Ok(Catalog {
-        // Declared by the catalog, never derived from `base`: see "What Look
-        // reads from index.json" in lookbook's CONTRIBUTING. Empty only for a
-        // catalog old enough to predate the field, and `readme` then offers no
-        // link, which is the same as the README being unreachable.
+        // Declared, never derived from `base`: see "What Look reads from
+        // index.json" in lookbook's CONTRIBUTING. Empty only for a catalog
+        // predating the field, and `readme` then offers no link.
         web: index.web.unwrap_or_default(),
         base: index.base,
         local,

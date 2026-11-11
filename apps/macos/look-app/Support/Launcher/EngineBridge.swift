@@ -1888,9 +1888,8 @@ nonisolated struct InstalledBlock: Decodable, Identifiable {
     let running: Bool
     /// What to change before this block works here. Empty is the normal case.
     let needs: [Needed]
-    /// Recent trouble from this block's connector, oldest first. The only
-    /// place it is visible to somebody who did not launch Look from a
-    /// terminal, which is everybody.
+    /// This connector's recent trouble, oldest first. The only place it is
+    /// visible without a terminal.
     let log: [String]
 }
 

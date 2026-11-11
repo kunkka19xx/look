@@ -45,8 +45,7 @@ const KIND_CONNECT: &str = "connect";
 const STATE_OFF: &str = "off";
 const STATE_RUNNING: &str = "running";
 const STATE_STOPPED: &str = "not running";
-/// How many of a connector's complaints fit under one row before the list of
-/// what is installed stops being a list.
+/// Complaints shown under a row before the list stops being a list.
 const LOG_LINES: usize = 3;
 const SECTION_GAP: f32 = 14.0;
 const SECTION_PADDING_TOP: f32 = 8.0;
@@ -236,8 +235,8 @@ fn file_name(path: &str) -> &str {
 
 /// Only a `connect` block has a process to be up or down.
 ///
-/// A connector that is down says why when it told us: "not running" on its own
-/// sends somebody to look through a log they have no way to reach.
+/// A connector that is down says why: "not running" alone sends somebody to a
+/// log they cannot reach.
 fn state_of(block: &InstalledBlock) -> String {
     if !block.enabled {
         STATE_OFF.to_string()
@@ -519,9 +518,8 @@ fn block_lines(block: &InstalledBlock, th: &Theme) -> Div {
                 .text_color(th.warning)
                 .child(SharedString::from(need.message.clone()))
         }))
-        // What the connector itself said went wrong. Newest first, unlike the
-        // engine's order: the last complaint is the one worth reading, and
-        // only a few fit under a row.
+        // Newest first, unlike the engine's order: the last complaint is the
+        // one worth reading.
         .children(
             block
                 .log
@@ -630,7 +628,7 @@ mod tests {
 
     #[test]
     fn a_connector_that_is_down_says_what_it_said() {
-        // "not running" on its own is the state this screen exists to explain.
+        // The state this screen exists to explain.
         let mut b = block("/f", true, false);
         b.log = vec!["first".into(), "spawn failed: no such file".into()];
         assert_eq!(

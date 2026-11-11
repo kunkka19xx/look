@@ -31,11 +31,9 @@ struct ConnectorControl: SystemControl {
         return .failed(reason)
     }
 
-    /// Off the main actor, because `read` blocks and this target isolates to
-    /// it by default: the core waits on the connector for up to 400ms on a
-    /// read, 1.5s on a press and 5s on a run, and a read happens on every
-    /// selection. `ResultPreviewView` detaches its preview call for the same
-    /// reason.
+    /// Off the main actor, which this target isolates to by default: `read`
+    /// blocks up to 400ms on a read and 5s on a run, and a read happens on
+    /// every selection. `ResultPreviewView` detaches for the same reason.
     private nonisolated func detached(press: Bool) async -> ActionState {
         await Task.detached(priority: .userInitiated) { [actionID] in
             ConnectorControl(actionID: actionID).read(press: press)

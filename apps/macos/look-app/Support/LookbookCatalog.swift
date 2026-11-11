@@ -119,10 +119,9 @@ final class LookbookCatalog: ObservableObject {
 
             let index = try JSONDecoder().decode(Index.self, from: data)
             base = index.base
-            // Declared by the catalog, never derived from `base`: see "What
-            // Look reads from index.json" in lookbook's CONTRIBUTING. Empty
-            // only for a catalog old enough to predate the field, and a README
-            // nobody can reach is the same as no README at all.
+            // Declared, never derived from `base`: see "What Look reads
+            // from index.json" in lookbook's CONTRIBUTING. Empty only for a
+            // catalog predating the field.
             web = index.web ?? ""
             reading = .ready(index.sources)
             await probeRequirements(of: index.sources)
