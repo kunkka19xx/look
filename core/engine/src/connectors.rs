@@ -124,6 +124,15 @@ fn logs() -> &'static Mutex<BTreeMap<String, std::collections::VecDeque<String>>
 /// for the sake of a log line.
 fn note(block: &str, message: &str) {
     let _ = writeln!(std::io::stderr(), "look connectors: [{block}] {message}");
+    // Held to the same line length the stderr reader uses. An `error` frame
+    // may carry nearly a megabyte, and twenty of those per block across
+    // sixty-four blocks is memory nobody asked for. The whole message went to
+    // stderr above, which is where a long one belongs.
+    let mut end = message.len().min(MAX_LOG_LINE);
+    while end > 0 && !message.is_char_boundary(end) {
+        end -= 1;
+    }
+    let message = &message[..end];
     let mut logs = logs().lock().unwrap_or_else(|err| err.into_inner());
     if logs.len() >= LOG_BLOCKS && !logs.contains_key(block) {
         return;
@@ -339,62 +348,63 @@ pub struct Outcome {
     pub summary: Option<String>,
 }
 
-/// One answer at a time, matched to the ask that wanted it.
+/// Answers waiting to be collected, by the number of the ask that wanted them.
 ///
-/// Not a cache: the panel asks about one thing at a time, so the answer to the
-/// question before it is already stale. Bounded by construction rather than by
-/// an eviction rule nobody would exercise.
+/// A map rather than one slot: a press and a control read can be in flight at
+/// once, and the one that answers first must not decide the other. Holding a
+/// single answer meant a read landing first made the press report "no answer"
+/// while the press had in fact happened, which is the one outcome a
+/// non-idempotent action must never produce.
+///
+/// Nothing is keyed by block or by connector. The number already distinguishes
+/// every ask in the process, so a second connector's late reply cannot collide
+/// with this one's.
 struct Slot<T> {
-    held: Mutex<Option<(u64, T)>>,
+    held: Mutex<BTreeMap<u64, T>>,
     arrived: Condvar,
 }
 
-impl<T: Clone> Slot<T> {
+/// Answers kept while nobody has come back for them. A caller that timed out
+/// is never coming, and its connector may still answer afterwards, so this is
+/// bounded rather than left to grow.
+const MAX_WAITING: usize = 32;
+
+impl<T> Slot<T> {
     const fn new() -> Self {
         Self {
-            held: Mutex::new(None),
+            held: Mutex::new(BTreeMap::new()),
             arrived: Condvar::new(),
         }
     }
 
-    /// Emptied before asking, or the answer to the last identical question is
-    /// still sitting there and `take` returns it without waiting.
-    fn clear(&self) {
-        *self.held.lock().unwrap_or_else(|err| err.into_inner()) = None;
-    }
-
-    /// A later answer never loses to an earlier one. The slot is shared by
-    /// every connector, so without this a second connector's late reply to its
-    /// own older ask could evict the answer a waiter was about to read, and
-    /// that waiter would then time out on an answer that did arrive.
     fn put(&self, req: u64, value: T) {
         let mut held = self.held.lock().unwrap_or_else(|err| err.into_inner());
-        if held.as_ref().is_some_and(|(answered, _)| *answered > req) {
-            return;
+        // Lowest first: the numbers only go up, so the oldest ask is the one
+        // whose caller gave up longest ago.
+        while held.len() >= MAX_WAITING {
+            let Some(oldest) = held.keys().next().copied() else {
+                break;
+            };
+            held.remove(&oldest);
         }
-        *held = Some((req, value));
+        held.insert(req, value);
         self.arrived.notify_all();
     }
 
-    /// Waits up to `wait` for the answer to `req`, and to no other: one that
-    /// came late, or early for somebody else, is not this caller's.
+    /// Waits up to `wait` for the answer to `req`, and takes it.
+    ///
+    /// Removed either way. On a timeout that drops the entry this ask would
+    /// have landed in, so an answer that arrives afterwards is not left for
+    /// somebody else to trip over.
     fn take(&self, req: u64, wait: Duration) -> Option<T> {
         let held = self.held.lock().unwrap_or_else(|err| err.into_inner());
-        // Checks before it waits, so an answer already in the slot costs
-        // nothing, and re-checks on every wake, so a spurious one does not end
-        // the wait.
-        let (held, expired) = self
+        // Checks before it waits, so an answer already here costs nothing, and
+        // re-checks on every wake, so a spurious one does not end the wait.
+        let (mut held, _) = self
             .arrived
-            .wait_timeout_while(
-                held,
-                wait,
-                |slot| !matches!(slot.as_ref(), Some((answered, _)) if *answered == req),
-            )
+            .wait_timeout_while(held, wait, |held| !held.contains_key(&req))
             .unwrap_or_else(|err| err.into_inner());
-        if expired.timed_out() {
-            return None;
-        }
-        held.as_ref().map(|(_, value)| value.clone())
+        held.remove(&req)
     }
 }
 
@@ -460,7 +470,6 @@ pub fn writers_in_flight() -> usize {
 /// Asks for a row's preview, and gives back the number to wait for.
 pub fn ask_preview(block: &str, row: &str) -> Option<u64> {
     let req = next_req();
-    PREVIEWS.clear();
     tell(
         block,
         Ask::Preview {
@@ -480,7 +489,6 @@ pub fn preview_of(req: u64, wait: Duration) -> Option<Preview> {
 /// Asks what `verb` would do to those rows, and gives back the plan number.
 pub fn ask_plan(block: &str, verb: &str, ids: Vec<String>) -> Option<u64> {
     let plan = next_req();
-    PLANS.clear();
     tell(
         block,
         Ask::Plan {
@@ -501,7 +509,6 @@ pub fn planned_of(plan: u64, wait: Duration) -> Option<Planned> {
 /// Runs a plan the connector already described. The same number: it is the
 /// plan the user confirmed, not a new question.
 pub fn run_plan(block: &str, plan: u64) -> bool {
-    RESULTS.clear();
     tell(
         block,
         Ask::Run {
@@ -535,7 +542,6 @@ pub fn ask_control(block: &str, control: &str, press: bool) -> Option<u64> {
             req,
         }
     };
-    STATES.clear();
     // A read is sent like a preview and a press like a verb: a read happens on
     // every selection and a lost one costs nothing, while a dropped press
     // would be reported as a press that landed. Waiting for the pipe on a read
@@ -858,14 +864,30 @@ mod tests {
             .get_or_init(|| Mutex::new(()))
             .lock()
             .unwrap_or_else(|err| err.into_inner());
-        // From an empty slot, as an ask leaves it: `put` refuses a number
-        // older than the one held, so a number left behind by the test before
-        // would otherwise decide this one.
-        PREVIEWS.clear();
-        PLANS.clear();
-        RESULTS.clear();
-        STATES.clear();
+        // Emptied, since these tests use literal numbers and the real asks
+        // use a counter: an answer left behind by the test before would
+        // otherwise be collected by this one.
+        for drain in [
+            &PREVIEWS.held as &Mutex<dyn Drain>,
+            &PLANS.held,
+            &RESULTS.held,
+            &STATES.held,
+        ] {
+            drain.lock().unwrap_or_else(|err| err.into_inner()).empty();
+        }
         guard
+    }
+
+    /// Emptying four maps of different value types, without `Slot` carrying a
+    /// method only the tests want.
+    trait Drain {
+        fn empty(&mut self);
+    }
+
+    impl<T> Drain for BTreeMap<u64, T> {
+        fn empty(&mut self) {
+            self.clear();
+        }
     }
 
     fn owner(manifest: &str, block: &str) -> Owner {
@@ -909,18 +931,60 @@ mod tests {
     #[test]
     fn waiting_for_an_answer_that_never_comes_gives_up() {
         let _alone = one_at_a_time();
-        PREVIEWS.clear();
         let began = std::time::Instant::now();
         assert!(preview_of(1, Duration::from_millis(30)).is_none());
         assert!(began.elapsed() >= Duration::from_millis(25));
     }
 
     #[test]
-    fn asking_again_does_not_hand_back_the_last_answer() {
+    fn an_answer_is_collected_once() {
+        // Asks used to clear the slot so the answer to the last identical
+        // question could not be handed back. Numbers come from a counter, so
+        // there is no identical question to guard against; what matters now is
+        // that collecting an answer takes it.
         let _alone = one_at_a_time();
-        store_preview(1, Content::Text, "old".into());
-        ask_preview("b", "r");
+        store_preview(1, Content::Text, "mine".into());
+        assert_eq!(
+            preview_of(1, Duration::from_millis(0))
+                .expect("preview")
+                .text,
+            "mine"
+        );
         assert!(preview_of(1, Duration::from_millis(0)).is_none());
+    }
+
+    #[test]
+    fn a_press_and_a_read_in_flight_together_each_get_their_own_answer() {
+        // The press is slow and the read lands first, which happens whenever
+        // a selection changes while a press is still going. One shared slot
+        // meant the read's answer evicted the press's, and `control` then
+        // reported "connector did not answer" for a press that had happened.
+        // A press is not idempotent, so the user presses again and flips it
+        // back: the worst outcome this code has.
+        let _alone = one_at_a_time();
+        STATES.put(11, true);
+        STATES.put(10, false);
+        assert_eq!(state_of(11, Duration::from_millis(0)), Some(true));
+        assert_eq!(
+            state_of(10, Duration::from_millis(0)),
+            Some(false),
+            "the press lost its answer to a read that answered first"
+        );
+    }
+
+    #[test]
+    fn answers_nobody_came_back_for_do_not_pile_up() {
+        // Every timed-out ask may still be answered afterwards, and nothing
+        // collects those.
+        let _alone = one_at_a_time();
+        for req in 0..(MAX_WAITING as u64 * 3) {
+            STATES.put(req, true);
+        }
+        let held = STATES.held.lock().unwrap_or_else(|err| err.into_inner());
+        assert!(held.len() <= MAX_WAITING, "{} answers held", held.len());
+        // The newest survive: the oldest ask is the one whose caller gave up
+        // longest ago.
+        assert!(held.contains_key(&(MAX_WAITING as u64 * 3 - 1)));
     }
 
     #[test]
@@ -1022,6 +1086,18 @@ mod tests {
             &format!("line {}", LOG_LINES * 2 - 1)
         );
         assert!(log_of("myapp.never-complained").is_empty());
+
+        // An `error` frame may carry nearly a megabyte. The ring must not, and
+        // the cut must land on a character boundary: a 3-byte character means
+        // the cap itself falls mid-character, which would panic on a slice.
+        note("myapp.loud", &"\u{20ac}".repeat(MAX_LOG_LINE));
+        let loud = log_of("myapp.loud");
+        assert!(
+            loud[0].len() <= MAX_LOG_LINE,
+            "{} bytes kept",
+            loud[0].len()
+        );
+        assert!(!loud[0].is_empty());
     }
 
     #[test]

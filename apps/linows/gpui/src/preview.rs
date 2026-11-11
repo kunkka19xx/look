@@ -283,6 +283,10 @@ pub struct Preview {
     cache: HashMap<String, Arc<Content>>,
     /// The row the panel is waiting on; an answer for another is dropped.
     wanted: Option<String>,
+    /// The row on screen whose panel a connector answered, if any. Such a
+    /// panel is never reused: not from `cache`, which it is kept out of, and
+    /// not from `current` either, which is its own reuse path.
+    live: Option<String>,
     /// The body's own scroll, reset per row.
     body_scroll: ScrollHandle,
     /// A long text body's lines, and the body they were last reset for.
@@ -309,6 +313,7 @@ impl Preview {
             current: None,
             cache: HashMap::new(),
             wanted: None,
+            live: None,
             body_scroll: ScrollHandle::new(),
             lines: ListState::new(0, ListAlignment::Top, px(TEXT_OVERDRAW)),
             lines_for: None,
@@ -405,11 +410,14 @@ impl Preview {
             return;
         }
         // Back on the shown row: drop what the row in between started. A
-        // panel still waiting asks again, leaving cancelled its ask.
-        if self
-            .current
-            .as_ref()
-            .is_some_and(|(k, content)| *k == key && !content.waiting())
+        // panel still waiting asks again, leaving cancelled its ask. One a
+        // connector answered asks again too: its data has moved on, and this
+        // is the same staleness the cache is kept clear of.
+        if self.live.as_deref() != Some(key.as_str())
+            && self
+                .current
+                .as_ref()
+                .is_some_and(|(k, content)| *k == key && !content.waiting())
         {
             self.wanted = None;
             self._load = None;
@@ -463,6 +471,9 @@ impl Preview {
                     panel: panel.clone(),
                     preview: detail,
                 });
+                // One or the other, never both: a live panel is the one the
+                // reuse paths have to leave alone.
+                this.live = live.then(|| key.clone());
                 if !live {
                     this.remember(&key, content.clone());
                 }

@@ -54,8 +54,8 @@ fn main() {
     println!("read and compare: {:.4} ms per push", each(reading));
     println!("hash:             {:.4} ms per push", each(hashing));
     println!(
-        "ratio:            {:.1}x cheaper",
-        reading.as_secs_f64() / hashing.as_secs_f64()
+        "so hashing costs {:.1}x the read it was meant to replace",
+        hashing.as_secs_f64() / reading.as_secs_f64()
     );
 
     let _ = std::fs::remove_dir_all(&dir);

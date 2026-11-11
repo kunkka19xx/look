@@ -210,9 +210,12 @@ Look re-read the declared sources. It rate-limits that, but it cannot make it
 free.
 
 **Read your stdin, even if you have nothing to answer.** A connector that stops
-reading fills its pipe, and the asks Look sends you then go nowhere. Look gives
-up on them rather than queueing, so nothing breaks, but your previews and
-controls stop working while you still look like you are running.
+reading fills its pipe, and what happens next depends on the frame. A preview
+or a control state is dropped rather than queued, so those simply stop working
+while you still look like you are running. A press or a verb is not dropped:
+Look waits for the pipe, so one can reach you long after the caller gave up and
+told the user nothing came back. Do not treat a late `press` or `run` as a
+duplicate of something you already did.
 
 ## A worked example
 
