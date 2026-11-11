@@ -50,13 +50,15 @@ jobs:
             echo "::warning::Tag is $VERSION but apps/linows/Cargo.toml says $WS_VERSION; Nix builds report the latter until it is bumped."
           fi
 
+      # Cached so a slow or unreachable Ubuntu mirror does not stall a release.
       - name: Install system dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libxcb-xkb-dev \
-            libwayland-dev libasound2-dev libdbus-1-dev libssl-dev \
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: >-
+            libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libxcb-xkb-dev
+            libwayland-dev libasound2-dev libdbus-1-dev libssl-dev
             libfontconfig1-dev libfreetype-dev pkg-config file
+          version: 1
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
