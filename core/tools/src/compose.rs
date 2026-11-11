@@ -19,6 +19,8 @@ const CURRENT_DIR: &str = ".";
 /// is already running and drops the arguments.
 const MACOS_OPEN: &str = "open -na";
 const MACOS_OPEN_ARGS: &str = "--args";
+/// How a source's command line runs on Windows, as it does outside a terminal.
+const WINDOWS_COMMAND_SHELL: [&str; 4] = ["cmd", "/D", "/S", "/C"];
 
 #[cfg(target_os = "macos")]
 const IS_MACOS: bool = true;
@@ -221,8 +223,22 @@ pub fn edit(tools: &Tools, target: &Target) -> Result<Launch, Unavailable> {
             tool: editor.to_string(),
             path: target.path().to_string(),
         }),
-        Surface::Tty => in_terminal(tools, target, Some(editor)),
+        Surface::Tty => in_terminal(tools, target, Hosted::Editor(editor)),
     }
+}
+
+/// A source's own command line, opened in the declared terminal when the
+/// program it starts needs one (`nvim {path}`). Run bare it gets no terminal and
+/// exits at once, which reads as the action doing nothing. `None` when the
+/// program does not need a terminal and the line can run as it is.
+pub fn command_in_terminal(
+    tools: &Tools,
+    target: &Target,
+    line: &str,
+) -> Option<Result<Launch, Unavailable>> {
+    let program = line.split_whitespace().next()?;
+    (surface(program) == Surface::Tty)
+        .then(|| in_terminal(tools, target, Hosted::Command { program, line }))
 }
 
 /// A declared name, trimmed, or `None` when the key is absent or blank.
@@ -234,33 +250,41 @@ fn declared(value: &Option<String>) -> Option<&str> {
 }
 
 pub fn terminal_here(tools: &Tools, target: &Target) -> Result<Launch, Unavailable> {
-    in_terminal(tools, target, None)
+    in_terminal(tools, target, Hosted::Shell)
 }
 
-/// `editor` is the TTY tool needing a host, or `None` when the terminal is the
-/// point of the action.
-fn in_terminal(
-    tools: &Tools,
-    target: &Target,
-    editor: Option<&str>,
-) -> Result<Launch, Unavailable> {
-    let terminal = declared(&tools.terminal).ok_or_else(|| match editor {
-        None => Unavailable::NotDeclared { key: key::TERMINAL },
-        Some(tool) => Unavailable::TerminalRequired {
-            tool: tool.to_string(),
-            key: key::TERMINAL,
-        },
+/// What a terminal is opened to run.
+enum Hosted<'a> {
+    /// A shell in the target's directory: the terminal is the point.
+    Shell,
+    /// A declared TTY editor, handed the target's path.
+    Editor(&'a str),
+    /// A source's own command line, already expanded, starting `program`.
+    Command { program: &'a str, line: &'a str },
+}
+
+fn in_terminal(tools: &Tools, target: &Target, hosted: Hosted) -> Result<Launch, Unavailable> {
+    let terminal = declared(&tools.terminal).ok_or_else(|| match hosted {
+        Hosted::Shell => Unavailable::NotDeclared { key: key::TERMINAL },
+        Hosted::Editor(tool) | Hosted::Command { program: tool, .. } => {
+            Unavailable::TerminalRequired {
+                tool: tool.to_string(),
+                key: key::TERMINAL,
+            }
+        }
     })?;
 
     if !POSIX_SHELL_AVAILABLE {
-        return windows_launch(terminal, target, editor);
+        return windows_launch(terminal, target, &hosted);
     }
 
     // Quoted like the path: a tool declared as `/opt/my tools/nvim` is one
-    // word. A tool is a name, never a command with its own args.
-    let inner = match editor {
-        None => format!("cd {} && {INTERACTIVE_TAIL}", shell_quote(&target.dir())),
-        Some(tool) => format!("{} {}", shell_quote(tool), shell_quote(target.path())),
+    // word. A tool is a name, never a command with its own args. A source's
+    // line is already shell text, quoted by the expansion that built it.
+    let inner = match hosted {
+        Hosted::Shell => format!("cd {} && {INTERACTIVE_TAIL}", shell_quote(&target.dir())),
+        Hosted::Editor(tool) => format!("{} {}", shell_quote(tool), shell_quote(target.path())),
+        Hosted::Command { line, .. } => line.to_string(),
     };
 
     let command = match command_style(terminal) {
@@ -284,16 +308,13 @@ fn in_terminal(
 
 /// The Windows half: `windows_terminals` owns which argv a terminal takes.
 /// Paths go in with backslashes, the separator every console host parses.
-fn windows_launch(
-    terminal: &str,
-    target: &Target,
-    editor: Option<&str>,
-) -> Result<Launch, Unavailable> {
+fn windows_launch(terminal: &str, target: &Target, hosted: &Hosted) -> Result<Launch, Unavailable> {
     let cwd = native_path(&target.dir());
     let path = native_path(target.path());
-    let command: Vec<&str> = match editor {
-        None => Vec::new(),
-        Some(tool) => vec![tool, &path],
+    let command: Vec<&str> = match *hosted {
+        Hosted::Shell => Vec::new(),
+        Hosted::Editor(tool) => vec![tool, &path],
+        Hosted::Command { line, .. } => WINDOWS_COMMAND_SHELL.into_iter().chain([line]).collect(),
     };
 
     let args = crate::windows_terminals::argv(terminal, &cwd, &command).ok_or_else(|| {
@@ -765,6 +786,34 @@ mod tests {
                 "{reason:?} should name {mentions:?}: {message}"
             );
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_sources_tty_command_opens_in_the_terminal() {
+        let line = "nvim '/tmp/a.txt'";
+        assert_eq!(
+            command_in_terminal(&tools(None, None, None), &file(), line),
+            Some(Err(Unavailable::TerminalRequired {
+                tool: "nvim".into(),
+                key: key::TERMINAL
+            }))
+        );
+        let hosted = command_in_terminal(&tools(None, None, Some("alacritty")), &file(), line)
+            .map(shell_command)
+            .expect("nvim needs a terminal");
+        assert!(hosted.starts_with("'alacritty' -e "), "got: {hosted}");
+        assert!(hosted.contains("nvim"), "got: {hosted}");
+    }
+
+    #[test]
+    fn a_sources_gui_command_runs_as_it_is() {
+        let declared = tools(None, None, Some("alacritty"));
+        assert_eq!(
+            command_in_terminal(&declared, &file(), "code '/tmp/a.txt'"),
+            None
+        );
+        assert_eq!(command_in_terminal(&declared, &file(), "  "), None);
     }
 
     /// The exact composition, kept as a golden string: the nesting of a quoted

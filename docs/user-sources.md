@@ -461,6 +461,13 @@ edit     = "nvim {path}"
 terminal = "tmux new-session -As {title} -c {path}"
 ```
 
+Writing one of these:
+
+- **Leave it out unless these rows need something different.** Left out, or empty (`edit = ""`), the key uses your tools from `~/.look/config`, which already know whether an editor is an app or needs a terminal.
+- **It is a command, so its program has to be installed.** `code {path}` needs VS Code's `code` command, which VS Code does not add by itself. A missing program does nothing when you press the key; `Settings > Extend` lists it under the block.
+- **An app by name:** `open -a 'Zed' {path}` on macOS.
+- **A terminal editor** (`nvim {path}`, `hx {path}`) opens in your `terminal`, the same as a global `text_editor = nvim` does. With no `terminal` declared, Look says so instead of running it with nowhere to draw.
+
 The rule for `Enter`:
 
 1. If the block declares `open`, that runs.
