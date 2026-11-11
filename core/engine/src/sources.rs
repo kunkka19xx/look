@@ -8,12 +8,14 @@
 //! backend serializes these structs directly.
 //!
 //! A row carries only its candidate id, so every entry point starts by
-//! resolving `src:<block>:<row>` back to the block that declared it. Reading the
-//! directory again on demand (rather than caching it here) means a file the user
-//! just edited takes effect without a reindex.
+//! resolving `src:<block>:<row>` back to the block that declared it. The parse
+//! is kept only for as long as a stat of both directories says nothing moved,
+//! so a file the user just edited takes effect without a reindex and selecting
+//! a row does not re-read every declaration.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use look_indexing::CandidateIdKind;
@@ -169,6 +171,9 @@ pub struct InstalledBlock {
     pub running: bool,
     /// What to change before this block works here. Empty is the normal case.
     pub needs: Vec<Needed>,
+    /// Recent trouble from this block's connector, oldest first. Empty for
+    /// every other kind, and for a connector that has not complained.
+    pub log: Vec<String>,
 }
 
 /// Everything declared, from both directories, with the state a management
@@ -209,6 +214,12 @@ pub fn inventory(home: &Path) -> Inventory {
                     message: format!("[{}] {message}", block.id),
                 });
             }
+            // Only a connector has one, and asking for any other kind would
+            // read a map that can never hold it.
+            let log = match block.producer {
+                Producer::Connect { .. } => crate::connectors::log_of(&block.id),
+                _ => Vec::new(),
+            };
             InstalledBlock {
                 kind: block.producer.key(),
                 running: up.contains(&block.id),
@@ -219,6 +230,7 @@ pub fn inventory(home: &Path) -> Inventory {
                 enabled: block.enabled,
                 file,
                 needs,
+                log,
             }
         })
         .collect();
@@ -333,6 +345,9 @@ pub struct PreviewOutcome {
     /// The same output read as a layout, when it is one. `text` is kept beside
     /// it so a shell that does not draw blocks still shows something.
     pub blocks: Vec<look_sources::DetailBlock>,
+    /// True when a connector answered it, which is a shell's cue not to cache
+    /// it: a live producer's preview is stale as soon as its data moves.
+    pub live: bool,
 }
 
 impl PreviewOutcome {
@@ -341,6 +356,7 @@ impl PreviewOutcome {
             text,
             error: None,
             blocks,
+            live: false,
         }
     }
 
@@ -349,6 +365,7 @@ impl PreviewOutcome {
             text: String::new(),
             error: Some(message.into()),
             blocks: Vec::new(),
+            live: false,
         }
     }
 }
@@ -909,10 +926,16 @@ const CONNECTOR_PREVIEW_WAIT: Duration = Duration::from_millis(400);
 /// nothing is ever going to arrive.
 fn connector_preview(block: &str, row: &str) -> PreviewOutcome {
     let Some(req) = crate::connectors::ask_preview(block, row) else {
-        return PreviewOutcome::failed("connector is not running");
+        return PreviewOutcome {
+            live: true,
+            ..PreviewOutcome::failed("connector is not running")
+        };
     };
     let Some(found) = crate::connectors::preview_of(req, CONNECTOR_PREVIEW_WAIT) else {
-        return PreviewOutcome::default();
+        return PreviewOutcome {
+            live: true,
+            ..Default::default()
+        };
     };
     let text = found.text.clone();
     let block = if found.markdown {
@@ -920,7 +943,10 @@ fn connector_preview(block: &str, row: &str) -> PreviewOutcome {
     } else {
         look_sources::DetailBlock::Text { text: found.text }
     };
-    PreviewOutcome::shown(text, vec![block])
+    PreviewOutcome {
+        live: true,
+        ..PreviewOutcome::shown(text, vec![block])
+    }
 }
 
 /// Re-runs every enabled `run` block and stores its rows, so the next index pass
@@ -932,6 +958,9 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
     let Some(home) = home_dir() else {
         return RefreshOutcome::default();
     };
+    // A reload is the gesture that exists to pick up an edit, so it never
+    // trusts the stamp.
+    invalidate_declared();
 
     let mut outcome = RefreshOutcome::default();
     let started_at = Instant::now();
@@ -942,6 +971,18 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
     // cache directory belongs to a block that no longer exists.
     let mut keep: BTreeSet<String> = BTreeSet::new();
     for block in declared(&home).blocks {
+        // A connector writes to the same cache under the same name, so its id
+        // has to be claimed here or the sweep below takes rows this function
+        // never wrote. Nothing to run: the process pushes on its own clock.
+        if matches!(block.producer, Producer::Connect { .. }) {
+            if block.enabled {
+                keep.insert(block.id);
+            } else {
+                crate::index::clear_run_rows(&block.id);
+                outcome.changed = true;
+            }
+            continue;
+        }
         let Producer::Run {
             command,
             cwd,
@@ -1025,10 +1066,68 @@ pub fn declared(home: &Path) -> look_sources::Loaded {
     loaded
 }
 
-/// The block `block_id` names, read from the directory rather than a cache so
-/// an edited file takes effect on the next press.
+/// The same, with the parse kept until the files themselves change.
+///
+/// `find_block` runs while a panel is built, once per selection, and parsing
+/// both directories there was the per-selection cost. The stamp below is a
+/// readdir and a stat per file, against reading and parsing every one.
+fn declared_fresh(home: &Path) -> look_sources::Loaded {
+    let dirs = [sources_dir(home), look_sources::connectors_dir(home)];
+    let stamp: Vec<Stamp> = dirs.iter().flat_map(stamp_of).collect();
+    let mut held = declared_cache()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+    if let Some((seen, loaded)) = held.as_ref()
+        && *seen == stamp
+    {
+        return loaded.clone();
+    }
+    let loaded = declared(home);
+    *held = Some((stamp, loaded.clone()));
+    loaded
+}
+
+type DeclaredCache = Mutex<Option<(Vec<Stamp>, look_sources::Loaded)>>;
+
+fn declared_cache() -> &'static DeclaredCache {
+    static CACHED: OnceLock<DeclaredCache> = OnceLock::new();
+    CACHED.get_or_init(|| Mutex::new(None))
+}
+
+/// One file as the stamp sees it: a change to any part means a re-read. Name,
+/// size and modified time, which is what a stat already answers.
+type Stamp = (std::ffi::OsString, u64, Option<std::time::SystemTime>);
+
+fn stamp_of(dir: &std::path::PathBuf) -> Vec<Stamp> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut found: Vec<Stamp> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let data = entry.metadata().ok()?;
+            Some((entry.file_name(), data.len(), data.modified().ok()))
+        })
+        .collect();
+    // `read_dir` is in whatever order the filesystem gives, which is not
+    // stable, and an unsorted stamp would compare unequal to itself.
+    found.sort();
+    found
+}
+
+/// Drops the cached parse, for the gesture whose whole job is picking up an
+/// edit. A stamp cannot tell two writes apart inside its clock's resolution,
+/// and a reload is exactly when that must not matter.
+fn invalidate_declared() {
+    *declared_cache()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner()) = None;
+}
+
+/// The block `block_id` names. Re-read whenever either directory changes, so
+/// an edited file still takes effect on the next press.
 pub fn find_block(block_id: &str) -> Option<Block> {
-    declared(&home_dir()?)
+    declared_fresh(&home_dir()?)
         .blocks
         .into_iter()
         .find(|block| block.id == block_id)

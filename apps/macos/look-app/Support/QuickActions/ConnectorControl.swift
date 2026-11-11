@@ -19,14 +19,27 @@ struct ConnectorControl: SystemControl {
     private static let prefix = "declared:"
 
     func state() async -> ActionState {
-        read(press: false)
+        await detached(press: false)
     }
 
     /// Reads back what the connector reached, never what we asked for: a
     /// connector may refuse, and a toggle that lies is worse than a slow one.
     func apply(_ intent: ActionIntent) async -> ActionOutcome {
-        guard case .unavailable(let reason) = read(press: true) else { return .ok(banner: nil) }
+        guard case .unavailable(let reason) = await detached(press: true) else {
+            return .ok(banner: nil)
+        }
         return .failed(reason)
+    }
+
+    /// Off the main actor, because `read` blocks and this target isolates to
+    /// it by default: the core waits on the connector for up to 400ms on a
+    /// read, 1.5s on a press and 5s on a run, and a read happens on every
+    /// selection. `ResultPreviewView` detaches its preview call for the same
+    /// reason.
+    private nonisolated func detached(press: Bool) async -> ActionState {
+        await Task.detached(priority: .userInitiated) { [actionID] in
+            ConnectorControl(actionID: actionID).read(press: press)
+        }.value
     }
 
     func info(keys: [String]) async -> [String: InfoValue] { [:] }
@@ -35,7 +48,7 @@ struct ConnectorControl: SystemControl {
         .failed("That control has no items")
     }
 
-    private func read(press: Bool) -> ActionState {
+    private nonisolated func read(press: Bool) -> ActionState {
         guard let answer = EngineBridge.shared.control(actionID: actionID, press: press) else {
             return .unavailable("The core did not answer")
         }

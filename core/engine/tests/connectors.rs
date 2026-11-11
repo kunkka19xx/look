@@ -314,3 +314,195 @@ fn an_oversized_frame_ends_the_connector_rather_than_look() {
     // Nothing stored, and Look is still here to assert it.
     assert_eq!(count.load(Ordering::Acquire), 0);
 }
+
+/// A reload must not take a connector's rows with it. `refresh_run_blocks`
+/// sweeps the row cache, and a connector writes into that same cache under
+/// that same name, so its id has to be claimed or the sweep removes rows the
+/// refresh never wrote. Nothing re-pushes them: a connector whose command did
+/// not change is left running by the reload.
+#[test]
+fn a_reload_keeps_a_connectors_rows() {
+    let _alone = alone();
+    let fixture = Fixture::new("reload-keeps");
+    fixture.install("serve");
+
+    let (count, on_rows) = counter();
+    look_engine::connectors::start(&fixture.base, on_rows);
+    until(&count, 1, Duration::from_secs(10));
+    look_engine::connectors::stop();
+
+    let cached = fixture.cache.join("myapp.notes");
+    assert!(cached.exists(), "the push must have landed first");
+
+    let _ = look_engine::sources::refresh_run_blocks();
+    assert!(cached.exists(), "a reload swept the connector's rows");
+}
+
+/// The other half of the same rule: rows belonging to no declared block are
+/// still swept, or a connector uninstalled months ago would serve for good.
+#[test]
+fn rows_of_a_connector_nobody_declares_are_swept() {
+    let _alone = alone();
+    let fixture = Fixture::new("reload-sweeps");
+    fixture.install("serve");
+
+    let (count, on_rows) = counter();
+    look_engine::connectors::start(&fixture.base, on_rows);
+    until(&count, 1, Duration::from_secs(10));
+    look_engine::connectors::stop();
+
+    let cached = fixture.cache.join("myapp.notes");
+    assert!(cached.exists(), "the push must have landed first");
+
+    // What uninstalling is: the manifest goes, the cached rows should follow.
+    std::fs::remove_file(fixture.base.join("connectors").join("myapp.toml")).expect("uninstall");
+    let _ = look_engine::sources::refresh_run_blocks();
+    assert!(
+        !cached.exists(),
+        "rows outlived the block that declared them"
+    );
+}
+
+/// An unchanged push is compared against what was last written rather than
+/// against the file, so it costs a hash and no disk read. The cache can still
+/// go away under a connector that keeps pushing the same rows, and then the
+/// comparison has to notice: turning a block off clears its rows, and the
+/// identical push from the next process must put them back.
+#[test]
+fn the_same_rows_return_after_the_cache_was_cleared() {
+    let _alone = alone();
+    let fixture = Fixture::new("cleared");
+    fixture.install("serve");
+
+    let (count, on_rows) = counter();
+    look_engine::connectors::start(&fixture.base, on_rows.clone());
+    until(&count, 1, Duration::from_secs(10));
+    look_engine::connectors::stop();
+
+    let cached = fixture.cache.join("myapp.notes");
+    let first = std::fs::read_to_string(&cached).expect("rows cached");
+    std::fs::remove_file(&cached).expect("clear the cache");
+
+    // The same connector, the same rows, a new process: remembering what was
+    // written without checking the file would skip this write.
+    let (again, on_rows) = counter();
+    look_engine::connectors::start(&fixture.base, on_rows);
+    until(&again, 1, Duration::from_secs(10));
+    look_engine::connectors::stop();
+
+    assert_eq!(
+        std::fs::read_to_string(&cached).ok().as_deref(),
+        Some(first.as_str()),
+        "identical rows were not written back after the cache was cleared"
+    );
+}
+
+/// A connector that stays alive and stops reading its stdin must not cost a
+/// thread per ask. A control read is sent like a preview: it gives up on a
+/// busy pipe, because one is sent per selection and a lost one costs nothing.
+#[test]
+fn a_wedged_connector_does_not_pile_up_writers() {
+    let _alone = alone();
+    let fixture = Fixture::new("wedged");
+    fixture.write(
+        "wedged",
+        "control = { id = \"lamp\", kind = \"toggle\", title = \"Lamp\" }\n",
+    );
+
+    let (count, on_rows) = counter();
+    look_engine::connectors::start(&fixture.base, on_rows);
+    until(&count, 1, Duration::from_secs(10));
+
+    // Enough to fill the pipe several times over, which is what it takes for
+    // a waiting writer to block rather than merely queue. Asked without
+    // waiting for the answer that is never coming: the frames are the point,
+    // and a read through `sources::control` would cost its timeout each.
+    for _ in 0..3_000 {
+        look_engine::connectors::ask_control("myapp.notes", "lamp", false);
+    }
+
+    // At most the one holding the pipe: it is stuck in the write, and every
+    // frame after it gave up instead of queueing behind it.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while look_engine::connectors::writers_in_flight() > 1 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let left = look_engine::connectors::writers_in_flight();
+    look_engine::connectors::stop();
+
+    assert!(left <= 1, "{left} writers still waiting on a wedged pipe");
+}
+
+/// A connector that dies the moment it starts comes back once, then backs off
+/// rather than being forked again on every launcher open for the life of the
+/// process.
+#[test]
+fn a_connector_that_keeps_dying_backs_off() {
+    let _alone = alone();
+    let fixture = Fixture::new("backoff");
+    fixture.install("once");
+
+    let (count, on_rows) = counter();
+    look_engine::connectors::start(&fixture.base, on_rows.clone());
+    until(&count, 1, Duration::from_secs(10));
+
+    // The first death restarts at once: "restarted on next use".
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while count.load(Ordering::Acquire) < 2 && Instant::now() < deadline {
+        look_engine::connectors::restart_dead(on_rows.clone());
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        count.load(Ordering::Acquire),
+        2,
+        "the first death must restart"
+    );
+
+    // The second does not. Asking as often as a user opening the launcher
+    // would, for longer than the first restart took.
+    let until_then = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < until_then {
+        look_engine::connectors::restart_dead(on_rows.clone());
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let pushes = count.load(Ordering::Acquire);
+    look_engine::connectors::stop();
+
+    assert_eq!(pushes, 2, "a crash loop was respawned {pushes} times");
+}
+
+/// What a connector gets wrong has to be readable by somebody who did not
+/// launch Look from a terminal. `error` is the connector's own way of saying
+/// so, and the Extend screen reads it off the inventory.
+#[test]
+fn a_connectors_trouble_reaches_the_inventory() {
+    let _alone = alone();
+    let fixture = Fixture::new("trouble");
+    fixture.install("serve");
+
+    let (count, on_rows) = counter();
+    look_engine::connectors::start(&fixture.base, on_rows);
+    until(&count, 1, Duration::from_secs(10));
+
+    // `refcon` answers a preview of a row it does not have with `error`.
+    let asked = look_engine::connectors::ask_preview("myapp.notes", "no-such-row");
+    assert!(asked.is_some(), "the connector must be running");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while look_engine::connectors::log_of("myapp.notes").is_empty() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    let inventory = look_engine::sources::inventory(&fixture.base);
+    look_engine::connectors::stop();
+
+    let block = inventory
+        .blocks
+        .iter()
+        .find(|block| block.id == "myapp.notes")
+        .expect("the declared block");
+    assert!(
+        block.log.iter().any(|line| line.contains("no row")),
+        "the connector's own error never reached the screen: {:?}",
+        block.log
+    );
+}

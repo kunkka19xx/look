@@ -136,10 +136,16 @@ impl Sheet {
 }
 
 impl Browse {
-    /// A fresh settings session: the catalog is read again, and the sheet
-    /// and this visit's installs are gone.
+    /// A fresh settings session: the sheet and this visit's installs are gone.
+    ///
+    /// The catalog is kept, as it is on macOS. It changes when somebody merges
+    /// a PR to lookbook, which is not often enough to fetch on every open, and
+    /// `read` re-probes what is installed here either way: that is the part
+    /// that can change between two visits. A fetch that failed is retried.
     pub(super) fn forget(&mut self) {
-        self.reading = Reading::Pending;
+        if !matches!(self.reading, Reading::Ready(_)) {
+            self.reading = Reading::Pending;
+        }
         self.installed.clear();
         self.sheet = None;
         self.reads += 1;

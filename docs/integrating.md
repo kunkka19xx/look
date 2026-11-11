@@ -153,14 +153,15 @@ needed from you: declare it once and it works in both places. See
 
 - **A `rows` frame nobody asked for is a push.** That is the whole liveness
   story, and it costs nothing extra. Send one whenever your data changes.
-- **Send the same rows again as often as you like.** Look compares before it
-  writes, so an unchanged push costs one comparison and nothing else. You do
-  not need to track what you last sent.
+- **Send the same rows again as often as you like.** Look compares them with
+  what it last wrote and stops there. For a full 2,000-row block that is about
+  30us, measured in `docs/bench-notes/`. You do not need to track what you
+  last sent.
 - **Echo the number on every answer**, `req` on a preview and `plan` on a
   `planned` or `result`. It is how Look tells your answer from the one before
-  it. An answer without it is dropped, and Look says so on stderr.
+  it. An answer without it is dropped, and Look says so.
 - **You may only speak for blocks in your own manifest.** One app cannot
-  rewrite another's rows. Look drops frames that try, and logs it.
+  rewrite another's rows. Look drops frames that try, and says so.
 - **An `op` Look does not know is ignored, never fatal.** Hold yourself to the
   same rule: a Look newer than your connector will send frames you have not
   heard of.
@@ -168,7 +169,21 @@ needed from you: declare it once and it works in both places. See
   moves on. A later answer is not shown, so answer from memory rather than
   going to the network.
 - **If you exit, your rows stay** and Look starts you again the next time the
-  launcher opens.
+  launcher opens. Exit on start repeatedly and it backs off instead, so a
+  connector that cannot run does not fork on every open.
+
+## Finding out what went wrong
+
+Settings, Extend, under your block. Look shows your last few complaints there,
+and a block that is down says why on the same line. Everything it shows is
+also on stderr, which is the better place to read it when you started Look
+from a terminal, and the only place to read it before this existed.
+
+What reaches it: anything your program writes to its own **stderr**, an
+`{"op":"error","message":"..."}` frame, a spawn that failed, a frame over the
+cap, a frame for a block outside your manifest, and an answer with no number.
+So the first mistake everyone makes, forgetting to echo `req`, says so instead
+of showing an empty panel.
 
 ## Limits
 
@@ -186,12 +201,18 @@ needed from you: declare it once and it works in both places. See
 ## What it costs
 
 Mostly you, not Look. Keeping one connector running costs Look about 130 KB and
-a thread. Your own program is the real figure: a small compiled one is a
-fraction of a megabyte, a Python one is 10 to 15 MB before it does anything.
+two threads, one reading your stdout and one your stderr. Your own program is
+the real figure: a small compiled one is a fraction of a megabyte, a Python one
+is 10 to 15 MB before it does anything.
 
 Push when your data changes rather than on a timer, because every push makes
 Look re-read the declared sources. It rate-limits that, but it cannot make it
 free.
+
+**Read your stdin, even if you have nothing to answer.** A connector that stops
+reading fills its pipe, and the asks Look sends you then go nowhere. Look gives
+up on them rather than queueing, so nothing breaks, but your previews and
+controls stop working while you still look like you are running.
 
 ## A worked example
 

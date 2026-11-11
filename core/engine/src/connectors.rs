@@ -99,6 +99,52 @@ fn schedule_read(refresh: Arc<dyn Fn() -> bool + Send + Sync>) {
     });
 }
 
+/// Recent trouble, per block, for somebody who did not launch Look from a
+/// terminal. Everything here is printed to stderr as well, which is still the
+/// better place when there is one.
+///
+/// A connector's own failures are otherwise invisible in the app: the common
+/// first mistake, forgetting to echo `req`, shows as a panel that stays blank
+/// with the reason on a stream nobody is reading.
+const LOG_LINES: usize = 20;
+/// Blocks remembered at once. A connector may name any block in its own
+/// namespace, declared or not, so this is bounded rather than trusted.
+const LOG_BLOCKS: usize = 64;
+
+fn logs() -> &'static Mutex<BTreeMap<String, std::collections::VecDeque<String>>> {
+    static LOGS: OnceLock<Mutex<BTreeMap<String, std::collections::VecDeque<String>>>> =
+        OnceLock::new();
+    LOGS.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+/// Says it once to stderr and once where a settings screen can read it.
+///
+/// Not `eprintln!`, which panics when the sink fails: this is called from the
+/// threads that own a connector's pipes, and unwinding there would close one
+/// for the sake of a log line.
+fn note(block: &str, message: &str) {
+    let _ = writeln!(std::io::stderr(), "look connectors: [{block}] {message}");
+    let mut logs = logs().lock().unwrap_or_else(|err| err.into_inner());
+    if logs.len() >= LOG_BLOCKS && !logs.contains_key(block) {
+        return;
+    }
+    let lines = logs.entry(block.to_string()).or_default();
+    if lines.len() == LOG_LINES {
+        lines.pop_front();
+    }
+    lines.push_back(message.to_string());
+}
+
+/// What went wrong for this block lately, oldest first.
+pub fn log_of(block: &str) -> Vec<String> {
+    logs()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .get(block)
+        .map(|lines| lines.iter().cloned().collect())
+        .unwrap_or_default()
+}
+
 /// A connector's stdin, shared so a write never holds the registry.
 type Pipe = Arc<Mutex<ChildStdin>>;
 
@@ -112,7 +158,31 @@ struct Running {
     command: String,
     /// The file that declared it: the namespace it may speak for.
     manifest: String,
+    /// How many times this block has been launched, and when the last one
+    /// went: a connector that dies on start is otherwise respawned on every
+    /// open for the life of the process.
+    attempts: u32,
+    launched_at: std::time::Instant,
 }
+
+/// How long a connector that keeps dying waits before the next launch, by the
+/// number of launches behind it. The first death restarts at once, which is
+/// what "restarted on next use" promises; a crash loop then backs off.
+const BACKOFF: [Duration; 5] = [
+    Duration::ZERO,
+    Duration::from_secs(5),
+    Duration::from_secs(30),
+    Duration::from_secs(120),
+    Duration::from_secs(600),
+];
+
+fn backoff(attempts: u32) -> Duration {
+    BACKOFF[(attempts.max(1) as usize - 1).min(BACKOFF.len() - 1)]
+}
+
+/// Set by `stop` and cleared by `start`, so a respawn pass still on its thread
+/// when the shell quits launches nothing.
+static STOPPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn running() -> &'static Mutex<BTreeMap<String, Running>> {
     static RUNNING: OnceLock<Mutex<BTreeMap<String, Running>>> = OnceLock::new();
@@ -139,6 +209,7 @@ pub fn start(home: &Path, on_rows: OnRows) {
         })
         .collect();
 
+    STOPPING.store(false, std::sync::atomic::Ordering::Release);
     let mut running = locked();
 
     running.retain(|id, alive| {
@@ -153,7 +224,7 @@ pub fn start(home: &Path, on_rows: OnRows) {
 
     for (id, found) in declared {
         if !running.contains_key(&id) {
-            launch(&mut running, id, found, &on_rows);
+            launch(&mut running, id, found, &on_rows, 0);
         }
     }
 }
@@ -167,28 +238,52 @@ struct Declared {
 /// Respawns connectors that died, and nothing else. Reads no directories, so
 /// the shell can call it every time the launcher opens; noticing a manifest
 /// installed since launch is what `start` is for.
+///
+/// Returns at once: killing and spawning processes is not the work of the
+/// thread that opened the launcher. One pass at a time, since every open asks.
 pub fn restart_dead(on_rows: OnRows) {
-    let mut running = locked();
-    let dead: Vec<(String, Declared)> = running
-        .iter_mut()
-        .filter_map(|(id, alive)| {
-            matches!(alive.child.try_wait(), Ok(Some(_)) | Err(_)).then(|| {
-                (
-                    id.clone(),
-                    Declared {
-                        command: alive.command.clone(),
-                        manifest: alive.manifest.clone(),
-                    },
-                )
-            })
-        })
-        .collect();
+    use std::sync::atomic::{AtomicBool, Ordering};
 
-    for (id, found) in dead {
+    static PASS: AtomicBool = AtomicBool::new(false);
+
+    if PASS.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    std::thread::spawn(move || {
+        respawn(&on_rows);
+        PASS.store(false, Ordering::Release);
+    });
+}
+
+/// One respawn pass. A connector still inside its backoff is left dead, so
+/// `running_ids` keeps reporting it down and the next open asks again.
+fn respawn(on_rows: &OnRows) {
+    let mut running = locked();
+    if STOPPING.load(std::sync::atomic::Ordering::Acquire) {
+        return;
+    }
+
+    let mut dead: Vec<(String, Declared, u32)> = Vec::new();
+    for (id, alive) in running.iter_mut() {
+        let exited = matches!(alive.child.try_wait(), Ok(Some(_)) | Err(_));
+        if !exited || alive.launched_at.elapsed() < backoff(alive.attempts) {
+            continue;
+        }
+        dead.push((
+            id.clone(),
+            Declared {
+                command: alive.command.clone(),
+                manifest: alive.manifest.clone(),
+            },
+            alive.attempts,
+        ));
+    }
+
+    for (id, found, attempts) in dead {
         if let Some(mut gone) = running.remove(&id) {
             end(&mut gone);
         }
-        launch(&mut running, id, found, &on_rows);
+        launch(&mut running, id, found, on_rows, attempts);
     }
 }
 
@@ -198,7 +293,13 @@ fn locked() -> std::sync::MutexGuard<'static, BTreeMap<String, Running>> {
 
 /// Spawns one and records it. A connector that refuses to run is reported and
 /// left out rather than retried in a loop.
-fn launch(running: &mut BTreeMap<String, Running>, id: String, found: Declared, on_rows: &OnRows) {
+fn launch(
+    running: &mut BTreeMap<String, Running>,
+    id: String,
+    found: Declared,
+    on_rows: &OnRows,
+    attempts: u32,
+) {
     match spawn(&id, &found, on_rows.clone()) {
         Ok((child, stdin)) => {
             running.insert(
@@ -208,10 +309,12 @@ fn launch(running: &mut BTreeMap<String, Running>, id: String, found: Declared, 
                     stdin,
                     command: found.command,
                     manifest: found.manifest,
+                    attempts: attempts + 1,
+                    launched_at: std::time::Instant::now(),
                 },
             );
         }
-        Err(message) => eprintln!("look connectors: [{id}] {message}"),
+        Err(message) => note(&id, &message),
     }
 }
 
@@ -260,8 +363,16 @@ impl<T: Clone> Slot<T> {
         *self.held.lock().unwrap_or_else(|err| err.into_inner()) = None;
     }
 
+    /// A later answer never loses to an earlier one. The slot is shared by
+    /// every connector, so without this a second connector's late reply to its
+    /// own older ask could evict the answer a waiter was about to read, and
+    /// that waiter would then time out on an answer that did arrive.
     fn put(&self, req: u64, value: T) {
-        *self.held.lock().unwrap_or_else(|err| err.into_inner()) = Some((req, value));
+        let mut held = self.held.lock().unwrap_or_else(|err| err.into_inner());
+        if held.as_ref().is_some_and(|(answered, _)| *answered > req) {
+            return;
+        }
+        *held = Some((req, value));
         self.arrived.notify_all();
     }
 
@@ -319,6 +430,7 @@ fn tell(block: &str, ask: Ask, must_arrive: bool) -> bool {
     };
     let line = ask.line();
     std::thread::spawn(move || {
+        WRITERS.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         let pipe = match must_arrive {
             true => Some(handle.lock().unwrap_or_else(|err| err.into_inner())),
             false => handle.try_lock().ok(),
@@ -327,8 +439,22 @@ fn tell(block: &str, ask: Ask, must_arrive: bool) -> bool {
             let _ = stdin.write_all(line.as_bytes());
             let _ = stdin.flush();
         }
+        WRITERS.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
     });
     true
+}
+
+static WRITERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Threads currently trying to write a frame to a connector.
+///
+/// This is the number that grew without bound while a control read waited for
+/// a pipe, so it is what the wedged-connector test watches; nothing in the app
+/// reads it. At most one writer can be stuck on a connector that stopped
+/// reading its stdin: it holds the pipe, and every frame after it gives up
+/// rather than queueing.
+pub fn writers_in_flight() -> usize {
+    WRITERS.load(std::sync::atomic::Ordering::Acquire)
 }
 
 /// Asks for a row's preview, and gives back the number to wait for.
@@ -410,7 +536,12 @@ pub fn ask_control(block: &str, control: &str, press: bool) -> Option<u64> {
         }
     };
     STATES.clear();
-    tell(&block, ask, true).then_some(req)
+    // A read is sent like a preview and a press like a verb: a read happens on
+    // every selection and a lost one costs nothing, while a dropped press
+    // would be reported as a press that landed. Waiting for the pipe on a read
+    // leaks a thread per selection against a connector that stopped reading
+    // its stdin.
+    tell(&block, ask, press).then_some(req)
 }
 
 pub fn state_of(req: u64, wait: Duration) -> Option<bool> {
@@ -448,6 +579,7 @@ pub fn running_ids() -> std::collections::BTreeSet<String> {
 /// Ends every connector. The rows they sent stay cached, which is what a user
 /// who quit mid-sync should see on the way back in.
 pub fn stop() {
+    STOPPING.store(true, std::sync::atomic::Ordering::Release);
     let mut running = locked();
     for (_, mut alive) in std::mem::take(&mut *running) {
         end(&mut alive);
@@ -494,12 +626,7 @@ fn spawn(id: &str, found: &Declared, on_rows: OnRows) -> Result<(Child, Option<P
     if let Some(stderr) = stderr {
         let block = id.to_string();
         std::thread::spawn(move || {
-            log_lines(stderr, |line| {
-                // Not `eprintln!`, which panics when the sink fails. This
-                // thread owns the pipe, so unwinding would close it and the
-                // connector would take an EPIPE for the sake of a log line.
-                let _ = writeln!(std::io::stderr(), "look connectors: [{block}] {line}");
-            });
+            log_lines(stderr, |line| note(&block, line));
         });
     }
 
@@ -562,9 +689,9 @@ fn read_frames(owner: &Owner, stdout: std::process::ChildStdout, on_rows: &OnRow
             // No newline and past the cap: the line is longer than allowed.
             // Short of it, this is the last frame before the pipe closed.
             Ok(_) if frame.len() > MAX_FRAME_BYTES && !frame.ends_with(b"\n") => {
-                eprintln!(
-                    "look connectors: [{}] sent a frame over {MAX_FRAME_BYTES} bytes",
-                    owner.block
+                note(
+                    &owner.block,
+                    &format!("sent a frame over {MAX_FRAME_BYTES} bytes"),
                 );
                 return;
             }
@@ -585,10 +712,7 @@ fn handle(owner: &Owner, say: Say, on_rows: &OnRows) {
             // Taking any name it offered would let one app rewrite another's
             // rows, which is the same boundary `then` is held to.
             if !speaks_for(owner, &block) {
-                eprintln!(
-                    "look connectors: [{}] tried to send rows for [{block}]",
-                    owner.block
-                );
+                note(&owner.block, &format!("tried to send rows for [{block}]"));
                 return;
             }
             let rows: Vec<SourceRow> = rows.into_iter().map(SourceRow::from).collect();
@@ -596,7 +720,7 @@ fn handle(owner: &Owner, say: Say, on_rows: &OnRows) {
                 Ok(()) => on_rows(&block),
                 // An empty message is the same rows again, which is not news.
                 Err(message) if message.is_empty() => {}
-                Err(message) => eprintln!("look connectors: [{block}] {message}"),
+                Err(message) => note(&block, &message),
             }
         }
         Say::Preview {
@@ -628,9 +752,7 @@ fn handle(owner: &Owner, say: Say, on_rows: &OnRows) {
             answer(owner, &block, req, "state", |req| STATES.put(req, on))
         }
         Say::Ready { .. } => {}
-        Say::Error { message } => {
-            eprintln!("look connectors: [{}] {message}", owner.block)
-        }
+        Say::Error { message } => note(&owner.block, &message),
     }
 }
 
@@ -639,16 +761,14 @@ fn handle(owner: &Owner, say: Say, on_rows: &OnRows) {
 /// told from a late reply to an older ask.
 fn answer(owner: &Owner, block: &str, req: Option<u64>, what: &str, store: impl FnOnce(u64)) {
     if !speaks_for(owner, block) {
-        eprintln!(
-            "look connectors: [{}] tried to answer for [{block}]",
-            owner.block
-        );
+        note(&owner.block, &format!("tried to answer for [{block}]"));
         return;
     }
     match req {
         Some(req) => store(req),
-        None => eprintln!(
-            "look connectors: [{block}] a {what} with no number cannot be matched to an ask"
+        None => note(
+            block,
+            &format!("a {what} with no number cannot be matched to an ask"),
         ),
     }
 }
@@ -689,7 +809,11 @@ fn store(block: &str, rows: &[SourceRow]) -> Result<(), String> {
         .collect();
     let text = serde_json::to_string(&json).map_err(|err| err.to_string())?;
     // The same rows again is the normal state of a connector watching
-    // something unchanged, and should cost nothing beyond this comparison.
+    // something unchanged, and it costs this comparison: for a full block,
+    // about 30us of page-cached read and memcmp, measured by the
+    // `connector_push` example. Remembering a hash of what was last written
+    // instead was tried and is slower, because hashing 236 KiB costs more
+    // than reading it back from the page cache.
     if crate::index::run_cache_holds(block, &text) {
         return Err(String::new());
     }
@@ -730,10 +854,18 @@ mod tests {
     /// store from one test answers another test's read.
     fn one_at_a_time() -> std::sync::MutexGuard<'static, ()> {
         static ALONE: OnceLock<Mutex<()>> = OnceLock::new();
-        ALONE
+        let guard = ALONE
             .get_or_init(|| Mutex::new(()))
             .lock()
-            .unwrap_or_else(|err| err.into_inner())
+            .unwrap_or_else(|err| err.into_inner());
+        // From an empty slot, as an ask leaves it: `put` refuses a number
+        // older than the one held, so a number left behind by the test before
+        // would otherwise decide this one.
+        PREVIEWS.clear();
+        PLANS.clear();
+        RESULTS.clear();
+        STATES.clear();
+        guard
     }
 
     fn owner(manifest: &str, block: &str) -> Owner {
@@ -838,6 +970,58 @@ mod tests {
         assert!(ask_preview("nothing.running", "r1").is_none());
         assert!(ask_plan("nothing.running", "archive", vec!["r1".into()]).is_none());
         assert!(!run_plan("nothing.running", 1));
+    }
+
+    #[test]
+    fn a_later_answer_is_not_evicted_by_an_earlier_one() {
+        // The slots are shared by every connector, so a second connector's
+        // late reply to its own older ask must not take the answer a waiter is
+        // about to read. It used to, and that waiter then timed out.
+        let _alone = one_at_a_time();
+        store_preview(5, Content::Text, "mine".into());
+        store_preview(3, Content::Text, "somebody else's, and late".into());
+        assert_eq!(
+            preview_of(5, Duration::from_millis(0))
+                .expect("preview")
+                .text,
+            "mine"
+        );
+    }
+
+    #[test]
+    fn a_crash_loop_waits_longer_every_time() {
+        // The first death restarts at once, which is what "restarted on next
+        // use" promises. Anything past that backs off instead of forking on
+        // every launcher open for the life of the process.
+        assert_eq!(backoff(1), Duration::ZERO);
+        assert!(backoff(2) > Duration::ZERO);
+        assert!(backoff(3) > backoff(2));
+        // Capped rather than growing without end, and never panics past the
+        // table: a connector can die any number of times.
+        assert_eq!(backoff(99), *BACKOFF.last().expect("a backoff"));
+        // `attempts` is never 0 for a launched connector, but the floor keeps
+        // the index in range if it ever is.
+        assert_eq!(backoff(0), Duration::ZERO);
+    }
+
+    #[test]
+    fn trouble_is_kept_per_block_and_bounded() {
+        note("myapp.notes", "first");
+        note("myapp.notes", "second");
+        let log = log_of("myapp.notes");
+        assert_eq!(log.last().map(String::as_str), Some("second"));
+        assert!(log.contains(&"first".to_string()));
+        // A connector that fails in a loop must not grow this without end.
+        for line in 0..LOG_LINES * 2 {
+            note("myapp.noisy", &format!("line {line}"));
+        }
+        assert_eq!(log_of("myapp.noisy").len(), LOG_LINES);
+        // Oldest first, so the ring dropped the front and not the back.
+        assert_eq!(
+            log_of("myapp.noisy").last().expect("a line"),
+            &format!("line {}", LOG_LINES * 2 - 1)
+        );
+        assert!(log_of("myapp.never-complained").is_empty());
     }
 
     #[test]

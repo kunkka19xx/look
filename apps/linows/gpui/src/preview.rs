@@ -447,7 +447,7 @@ impl Preview {
             // The preview spawns or asks a connector, so a row arrowed past
             // never reaches it.
             cx.background_executor().timer(PREVIEW_DWELL).await;
-            let detail = cx
+            let (detail, live) = cx
                 .background_executor()
                 .spawn(async move { preview_detail(&row, &ancestors, &query) })
                 .await;
@@ -463,7 +463,9 @@ impl Preview {
                     panel: panel.clone(),
                     preview: detail,
                 });
-                this.remember(&key, content.clone());
+                if !live {
+                    this.remember(&key, content.clone());
+                }
                 this.current = Some((key, content));
                 this.wanted = None;
                 cx.notify();
@@ -1290,15 +1292,23 @@ fn load(row: &Row, ancestors: &str, query: &str) -> Content {
 
 /// A block's declared `preview` against the row: error, blocks, text, in
 /// that order, as macOS `blockPreviewBody` reads them.
-fn preview_detail(row: &Row, ancestors: &str, query: &str) -> Option<Detail> {
+///
+/// Also whether a connector answered it, which decides if it may be cached: a
+/// live producer's panel is stale as soon as its data moves, and coming back
+/// to the row would otherwise show what it said earlier in the session.
+fn preview_detail(row: &Row, ancestors: &str, query: &str) -> (Option<Detail>, bool) {
     let args = crate::actions::row_args(row, ancestors, query);
-    let preview = linows_backend::sources::source_preview(args)?;
-    match preview.error {
+    let Some(preview) = linows_backend::sources::source_preview(args) else {
+        return (None, false);
+    };
+    let live = preview.live;
+    let detail = match preview.error {
         Some(error) => Some(Detail::Error(error)),
         None if !preview.blocks.is_empty() => Some(Detail::Blocks(pieces_of(preview.blocks))),
         None if !preview.text.is_empty() => Some(Detail::Blocks(vec![text_piece(preview.text)])),
         None => None,
-    }
+    };
+    (detail, live)
 }
 
 /// A layout's blocks as drawable pieces; a markdown block becomes the
