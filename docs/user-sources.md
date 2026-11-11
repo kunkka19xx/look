@@ -783,9 +783,9 @@ Blocks below one second of remaining budget are skipped rather than handed a sli
 - Is `enabled = false` still sitting in it?
 - Is the file extension exactly `.toml`?
 
-**A `run` block shows nothing, or shows stale rows.** Run the command in a terminal first. If it prints nothing, or exits non-zero, or takes longer than the timeout, Look keeps the previous rows.
+**A `run` block shows nothing, or shows stale rows.** Run the command in a terminal first. If it prints nothing, or exits non-zero, or takes longer than the timeout, Look keeps the previous rows. That failure is not a declaration error, so it is not in `Settings > Extend`: on macOS it shows as a banner in the launcher when the block refreshes.
 
-**Errors are listed in `Settings > Extend`**, under the file or block they belong to, and printed to stderr, one line per problem, prefixed `look sources:`. Launch Look from a terminal to read the stderr copy. If you have the repo checked out, the parser will also tell you what it made of a directory:
+**Errors in a declaration are listed in `Settings > Extend`**, under the file or block they belong to, and printed to stderr, one line per problem, prefixed `look sources:`. Launch Look from a terminal to read the stderr copy. If you have the repo checked out, the parser will also tell you what it made of a directory:
 
 ```bash
 cargo run -p look-sources --example parse_check -- ~/.look/sources
@@ -836,7 +836,7 @@ label = "Vault name"
 block = "notes"
 key   = "open"
 match = "my-vault"
-note  = "The name Obsidian shows for the vault"
+note  = "The name Obsidian shows for the vault, URL-encoded: My%20Vault for My Vault"
 ```
 
 | Key       | What it does                                                                                          |

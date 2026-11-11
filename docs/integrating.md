@@ -27,7 +27,8 @@ icon    = "🗂️"
 connect = "/Applications/MyApp.app/Contents/Helpers/look-connector"
 ```
 
-Look reads the directory at launch and on a reload (`Cmd+Shift+;`); on Linux
+Look reads the directory at launch and on a reload (`Cmd+Shift+;` on macOS,
+`Ctrl+Shift+;` on Linux and Windows); on Linux
 and Windows it also notices a manifest written, changed or deleted while it
 runs, and reloads by itself. On macOS a manifest installed while Look runs
 waits for the next reload or launch.
