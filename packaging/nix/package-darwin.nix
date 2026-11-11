@@ -23,15 +23,14 @@ let
   # historical name. Both lines are rewritten by scripts/nix-bump-darwin.sh,
   # which .github/workflows/update-nix-darwin.yml runs after a release, so
   # edit them with that script rather than by hand.
-  #
-  # x86_64-darwin is absent rather than broken: the release workflow has an
-  # Intel matrix entry, but no Look-<version>-macOS-x86_64.zip is published
-  # yet, and the arm64 zip is thin so Rosetta cannot stand in. The bump script
-  # exits 3 when it spots such an asset; add the entry here then.
   sources = {
     aarch64-darwin = {
       url = "https://github.com/kunkka19xx/look/releases/download/v${version}/Look-${version}-macOS.zip";
       hash = "sha256-IQOPEYVAaCvUodtKShW0CyteRTRXMxc3tEB7YcusAD0=";
+    };
+    x86_64-darwin = {
+      url = "https://github.com/kunkka19xx/look/releases/download/v${version}/Look-${version}-macOS-x86_64.zip";
+      hash = "sha256-ucIkeoNwNz94S34M49RRcl9FDlcKXr/IDd7pYbVVWDY=";
     };
   };
 

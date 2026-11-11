@@ -22,9 +22,12 @@
         "x86_64-linux"
         "aarch64-linux"
       ];
-      # arm64 only, and the macOS app ships as a signed bundle rather than a
-      # source build. Both reasons live in packaging/nix/package-darwin.nix.
-      darwinSystems = [ "aarch64-darwin" ];
+      # The macOS app ships as a signed bundle rather than a source build; see
+      # packaging/nix/package-darwin.nix.
+      darwinSystems = [
+        "aarch64-darwin"
+        "x86_64-darwin"
+      ];
 
       forLinuxSystems = nixpkgs.lib.genAttrs linuxSystems;
       forDarwinSystems = nixpkgs.lib.genAttrs darwinSystems;
