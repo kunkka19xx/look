@@ -6,6 +6,7 @@
 //! the inner gap as every seam.
 
 use std::cell::{Cell, RefCell};
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -73,6 +74,7 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 /// How long a keystroke waits for the next before the query runs; the
 /// webview uses the same.
 const COPY_FAILED: &str = "Copy failed";
+const PICKS_MISSING: &str = "picked item(s) no longer exist, refreshing index";
 const NOT_RUN: &str = "not run, you moved on";
 /// Told to run, not reported on yet.
 const VERB_STARTED: &str = "started";
@@ -1733,8 +1735,24 @@ impl Launcher {
     }
 
     /// Shift+Enter: every pick, opened in turn, then the picks cleared.
+    /// Picks gone from disk are skipped and flagged, and the index refreshed.
     pub(crate) fn open_all_picked(&mut self, cx: &mut Context<Self>) {
-        for row in self.picked.items().to_vec() {
+        let (present, missing): (Vec<Row>, Vec<Row>) = self
+            .picked
+            .items()
+            .iter()
+            .cloned()
+            .partition(|row| Path::new(&row.path).exists());
+        if !missing.is_empty() {
+            self.banner.show(
+                format!("{} {PICKS_MISSING}", missing.len()),
+                Tone::Error,
+                banner::READ,
+                cx,
+            );
+            app_state().request_index_refresh();
+        }
+        for row in present {
             let usage = match row.open {
                 Open::Path { usage } => usage,
                 _ => continue,
@@ -1923,10 +1941,7 @@ impl Launcher {
         let panel = if theme::get().split() {
             Vec::new()
         } else {
-            actions::panel_items(
-                !self.picked.is_empty(),
-                row.kind == crate::rows::KIND_CLIPBOARD,
-            )
+            actions::panel_items(row.kind == crate::rows::KIND_CLIPBOARD)
         };
         let ancestors = self.levels.ancestors();
         let query = self.query(cx);
@@ -2001,8 +2016,6 @@ impl Launcher {
             ActionId::CopyPath => {
                 self.copy(cx);
             }
-            ActionId::OpenAllPicked => self.open_all_picked(cx),
-            ActionId::ClearPicked => self.clear_picked(cx),
             ActionId::DeleteClipboard => {
                 self.delete(cx);
             }

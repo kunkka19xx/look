@@ -7,9 +7,9 @@ use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Bounds, CursorStyle, Div, ElementId, FontWeight, HitboxBehavior, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, SharedString, Stateful,
-    Window, canvas, deferred, div, point, px, relative, size, svg,
+    AnyElement, App, Bounds, ClickEvent, CursorStyle, Div, ElementId, FontWeight, HitboxBehavior,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, SharedString,
+    Stateful, Window, canvas, deferred, div, point, px, relative, size, svg,
 };
 
 use crate::glyphs;
@@ -17,7 +17,12 @@ use crate::theme::{self, Theme};
 
 pub const LABEL_W: f32 = 140.0;
 /// The hover group of a pill's (x) button, see `remove_icon`.
-pub const REMOVE_GROUP: &str = "remove";
+const REMOVE_GROUP: &str = "remove";
+const PILL_GAP: f32 = 6.0;
+const PILL_PADDING_L: f32 = 8.0;
+const PILL_PADDING_R: f32 = 3.0;
+const PILL_PADDING_Y: f32 = 3.0;
+const PILL_REMOVE_PADDING: f32 = 4.0;
 const ROW_GAP: f32 = 10.0;
 const ROW_PADDING_Y: f32 = 4.0;
 const VALUE_W: f32 = 42.0;
@@ -71,8 +76,40 @@ pub fn section(title: &'static str, th: &Theme) -> Div {
         .child(title)
 }
 
+/// A round pill holding `content` and its (x): Settings' directory lists and
+/// the launcher's picks, as macOS's `RemovablePill`.
+pub fn removable_pill(
+    remove_id: impl Into<ElementId>,
+    content: impl IntoElement,
+    th: &Theme,
+    on_remove: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Div {
+    div()
+        .pl(px(PILL_PADDING_L))
+        .pr(px(PILL_PADDING_R))
+        .py(px(PILL_PADDING_Y))
+        .rounded_full()
+        .bg(th.control_fill)
+        .flex()
+        .items_center()
+        .gap(px(PILL_GAP))
+        .child(content)
+        .child(
+            div()
+                .id(remove_id)
+                .flex_shrink_0()
+                .group(REMOVE_GROUP)
+                .p(px(PILL_REMOVE_PADDING))
+                .rounded_full()
+                .cursor_pointer()
+                .hover(|s| s.bg(th.selection_fill))
+                .on_click(on_remove)
+                .child(remove_icon(th)),
+        )
+}
+
 /// A pill's (x), red while its `REMOVE_GROUP` button is hovered.
-pub fn remove_icon(th: &Theme) -> impl IntoElement {
+fn remove_icon(th: &Theme) -> impl IntoElement {
     let danger = th.danger;
     svg()
         .path(glyphs::X)

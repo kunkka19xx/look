@@ -340,19 +340,28 @@ struct PickedPillsBar: View {
     let onOpenAll: () -> Void
 
     private enum Layout {
+        static let barSpacing: CGFloat = 8
+        static let barPaddingX: CGFloat = 8
+        static let barPaddingBottom: CGFloat = 4
+        static let pillSpacing: CGFloat = 6
         static let pillIcon: CGFloat = 14
         static let pillTitleMaxWidth: CGFloat = 180
+        static let chordPaddingX: CGFloat = 5
+        static let chordPaddingY: CGFloat = 1
+        static let fontSizeDrop: Double = 2
+        static let minFontSize: Double = 10
     }
 
     private var font: Font {
-        themeStore.uiFont(size: CGFloat(max(10, themeStore.settings.fontSize - 2)), weight: .regular)
+        let size = max(Layout.minFontSize, themeStore.settings.fontSize - Layout.fontSizeDrop)
+        return themeStore.uiFont(size: CGFloat(size), weight: .regular)
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Layout.barSpacing) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: Layout.pillSpacing) {
                         ForEach(pickedKeys, id: \.self) { key in
                             if let result = pickedByKey[key] {
                                 pill(result, key: key).id(key)
@@ -369,11 +378,11 @@ struct PickedPillsBar: View {
                 }
             }
             Button(action: onOpenAll) {
-                HStack(spacing: 6) {
+                HStack(spacing: Layout.pillSpacing) {
                     Text("Open all (\(pickedKeys.count))")
                     Text("⇧↵")
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
+                        .padding(.horizontal, Layout.chordPaddingX)
+                        .padding(.vertical, Layout.chordPaddingY)
                         .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.microRadius, style: .continuous))
                         .foregroundStyle(themeStore.mutedTextColor())
                 }
@@ -389,34 +398,23 @@ struct PickedPillsBar: View {
             .foregroundStyle(themeStore.secondaryTextColor())
             .fixedSize()
         }
-        .padding(.horizontal, 8)
-        .padding(.bottom, 4)
+        .padding(.horizontal, Layout.barPaddingX)
+        .padding(.bottom, Layout.barPaddingBottom)
     }
 
     private func pill(_ result: LauncherResult, key: String) -> some View {
-        HStack(spacing: 6) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: result.path))
+        RemovablePill(themeStore: themeStore) {
+            onRemove(key)
+        } label: {
+            Image(nsImage: RowIconCache.icon(forFile: result.path))
                 .resizable()
                 .frame(width: Layout.pillIcon, height: Layout.pillIcon)
             Text(result.title)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: Layout.pillTitleMaxWidth, alignment: .leading)
-            Button {
-                withAnimation(Motion.Insert.animation) { onRemove(key) }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
-            }
-            .buttonStyle(.plain)
         }
-        .font(font)
-        .foregroundStyle(themeStore.secondaryTextColor())
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .background(themeStore.liftColor(opacity: 0.12), in: Capsule())
         .help(result.path)
-        .transition(Motion.Insert.transition)
     }
 }
 

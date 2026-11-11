@@ -2215,7 +2215,7 @@ struct LauncherView: View {
     @ViewBuilder
     private var resultsListAndPreview: some View {
         twoPaneGrid(hasRight: hasRightPane) {
-            VStack(spacing: 4) {
+            VStack(spacing: Self.pickedPillsBarGap) {
                 if !pickedKeys.isEmpty {
                     PickedPillsBar(
                         pickedKeys: pickedKeys,
@@ -2648,6 +2648,7 @@ struct LauncherView: View {
     }
 
     private static let barCopyrightTrailingInset: CGFloat = 12
+    private static let pickedPillsBarGap: CGFloat = 4
 
     /// Settings ends in a floating Save button; a byline in the same corner is
     /// one more thing in the space that button already owns. `hints_enabled`

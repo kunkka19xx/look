@@ -14,8 +14,6 @@ extension LauncherView {
         static let terminal = "\(prefix)terminal"
         static let reveal = "\(prefix)reveal"
         static let copyPath = "\(prefix)copypath"
-        static let openAllPicked = "\(prefix)openallpicked"
-        static let clearPicked = "\(prefix)clearpicked"
         static let deleteClipboard = "\(prefix)deleteclipboard"
 
         static func isOne(_ actionID: String) -> Bool {
@@ -82,15 +80,10 @@ extension LauncherView {
         }
     }
 
-    /// What the split layout's side panels offer, which compact has no room for:
-    /// the picked items' verbs and a clipboard row's delete.
+    /// A clipboard row's delete, which compact has no side panel to offer.
     var compactPanelDescriptors: [QuickActionDescriptor] {
         guard isCompactLayout else { return [] }
         var entries: [QuickActionDescriptor] = []
-        if !pickedKeys.isEmpty {
-            entries.append(Self.menuEntry(RowAction.openAllPicked, title: "Open picked", chord: "⇧⏎"))
-            entries.append(Self.menuEntry(RowAction.clearPicked, title: "Clear picked", chord: "⇧⌘P"))
-        }
         if selectedClipboardResult != nil {
             entries.append(Self.menuEntry(RowAction.deleteClipboard, title: "Delete from history", chord: "⌘⌫"))
         }
@@ -148,10 +141,6 @@ extension LauncherView {
             revealSelectedResult()
         case RowAction.copyPath:
             _ = copySelectedResultToPasteboard()
-        case RowAction.openAllPicked:
-            openAllPicked()
-        case RowAction.clearPicked:
-            clearAllPicked()
         case RowAction.deleteClipboard:
             if let result = selectedClipboardResult {
                 deleteClipboardResult(resultID: result.id)

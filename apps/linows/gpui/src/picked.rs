@@ -12,12 +12,8 @@ use crate::theme::{self, Theme};
 
 const STRIP_GAP: f32 = 6.0;
 const PILL_GAP: f32 = 6.0;
-const PILL_PADDING_L: f32 = 8.0;
-const PILL_PADDING_R: f32 = 3.0;
-const PILL_PADDING_Y: f32 = 3.0;
 const PILL_ICON: f32 = 16.0;
 const PILL_MAX_W: f32 = 220.0;
-const REMOVE_PADDING: f32 = 4.0;
 const BUTTON_PADDING_X: f32 = 6.0;
 const BUTTON_PADDING_Y: f32 = 2.0;
 const SHORTCUT_PADDING_X: f32 = 5.0;
@@ -66,7 +62,7 @@ impl Picked {
             }
             None => {
                 self.items.push(row.clone());
-                self.scroll.scroll_to_item(self.items.len() - 1);
+                self.scroll_to_newest();
             }
         }
     }
@@ -80,6 +76,14 @@ impl Picked {
     /// The picks a hide kept, back in a fresh launcher.
     pub fn restore(&mut self, items: Vec<Row>) {
         self.items = items;
+        self.scroll_to_newest();
+    }
+
+    /// The strip ends on the latest pick, as `toggle` leaves it.
+    fn scroll_to_newest(&mut self) {
+        if let Some(last) = self.items.len().checked_sub(1) {
+            self.scroll.scroll_to_item(last);
+        }
     }
 
     pub fn clear(&mut self) {
@@ -117,14 +121,8 @@ impl Picked {
                         cx,
                     )
                 });
-                div()
-                    .flex_shrink_0()
-                    .max_w(px(PILL_MAX_W))
-                    .pl(px(PILL_PADDING_L))
-                    .pr(px(PILL_PADDING_R))
-                    .py(px(PILL_PADDING_Y))
-                    .rounded_full()
-                    .bg(th.control_fill)
+                let label = div()
+                    .min_w_0()
                     .flex()
                     .items_center()
                     .gap(px(PILL_GAP))
@@ -136,19 +134,15 @@ impl Picked {
                             .text_size(px(th.font_size - 2.0))
                             .text_color(th.text_secondary)
                             .child(item.title.clone()),
-                    )
-                    .child(
-                        div()
-                            .id(("picked-remove", i))
-                            .flex_shrink_0()
-                            .group(controls::REMOVE_GROUP)
-                            .p(px(REMOVE_PADDING))
-                            .rounded_full()
-                            .cursor_pointer()
-                            .hover(|s| s.bg(th.selection_fill))
-                            .on_click(cx.listener(move |this, _, _, cx| this.remove_picked(i, cx)))
-                            .child(controls::remove_icon(th)),
-                    )
+                    );
+                controls::removable_pill(
+                    ("picked-remove", i),
+                    label,
+                    th,
+                    cx.listener(move |this, _, _, cx| this.remove_picked(i, cx)),
+                )
+                .flex_shrink_0()
+                .max_w(px(PILL_MAX_W))
             })
             .collect();
         let open_all = div()
