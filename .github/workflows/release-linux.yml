@@ -56,13 +56,15 @@ jobs:
             echo "::warning::Tag is $VERSION but apps/linows/Cargo.toml says $WS_VERSION; Nix builds report the latter until it is bumped."
           fi
 
-      # The runners' Azure mirror stops resolving at times; use the others.
+      # kernel.org first: an Ubuntu mirror whose DNS does not depend on Canonical's.
       - name: Install system dependencies
         timeout-minutes: 5
         env:
           APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20
+          PRIMARY_MIRROR: http://mirrors.edge.kernel.org/ubuntu/
+          FALLBACK_MIRROR: http://archive.ubuntu.com/ubuntu/
         run: |
-          sudo sed -i '/azure.archive.ubuntu.com/d' /etc/apt/apt-mirrors.txt
+          printf '%s\tpriority:%s\n' "$PRIMARY_MIRROR" 1 "$FALLBACK_MIRROR" 2 | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
           sudo apt-get update -qq $APT_OPTS
           sudo apt-get install -y --no-install-recommends $APT_OPTS \
             libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libxcb-xkb-dev \
