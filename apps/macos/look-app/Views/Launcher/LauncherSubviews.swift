@@ -403,7 +403,7 @@ struct PickedPillsBar: View {
     }
 
     private func pill(_ result: LauncherResult, key: String) -> some View {
-        RemovablePill(themeStore: themeStore) {
+        RemovablePill(themeStore: themeStore, removeLabel: "Remove \(result.title)") {
             onRemove(key)
         } label: {
             Image(nsImage: RowIconCache.icon(forFile: result.path))

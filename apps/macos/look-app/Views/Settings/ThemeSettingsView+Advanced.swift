@@ -123,7 +123,7 @@ extension ThemeSettingsView {
                                 ScrollView(.horizontal) {
                                     HStack(spacing: 8) {
                                         ForEach(themeStore.extraFileScanRoots, id: \.self) { path in
-                                            RemovablePill(themeStore: themeStore) {
+                                            RemovablePill(themeStore: themeStore, removeLabel: "Remove \(path)") {
                                                 themeStore.removeExtraFileScanRoot(path)
                                                 extraScanDirectoryMessage = nil
                                             } label: {
@@ -159,7 +159,7 @@ extension ThemeSettingsView {
                                 ScrollView(.horizontal) {
                                     HStack(spacing: 8) {
                                         ForEach(themeStore.excludedFolderPaths, id: \.self) { path in
-                                            RemovablePill(themeStore: themeStore) {
+                                            RemovablePill(themeStore: themeStore, removeLabel: "Remove \(path)") {
                                                 themeStore.removeExcludedFolderPath(path)
                                             } label: {
                                                 Text(path).lineLimit(1)

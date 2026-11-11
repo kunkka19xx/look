@@ -4,6 +4,7 @@ import SwiftUI
 /// launcher's picks.
 struct RemovablePill<Label: View>: View {
     let themeStore: ThemeStore
+    let removeLabel: String
     let onRemove: () -> Void
     @ViewBuilder let label: () -> Label
 
@@ -17,6 +18,7 @@ struct RemovablePill<Label: View>: View {
                     .font(.system(size: RemovablePillLayout.removeGlyphSize, weight: .semibold))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(removeLabel)
         }
         .font(themeStore.uiFont(
             size: CGFloat(max(RemovablePillLayout.minFontSize, themeStore.settings.fontSize - RemovablePillLayout.fontSizeDrop)),
