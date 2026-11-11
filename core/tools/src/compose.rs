@@ -19,6 +19,9 @@ const CURRENT_DIR: &str = ".";
 /// is already running and drops the arguments.
 const MACOS_OPEN: &str = "open -na";
 const MACOS_OPEN_ARGS: &str = "--args";
+/// Editor flags that need no terminal (matched as prefixes).
+const NO_TERMINAL_FLAGS: [&str; 4] = ["--remote", "--server", "--headless", "-es"];
+const QUOTES: [char; 2] = ['"', '\''];
 /// How a source's command line runs on Windows, as it does outside a terminal.
 const WINDOWS_COMMAND_SHELL: [&str; 4] = ["cmd", "/D", "/S", "/C"];
 
@@ -236,9 +239,20 @@ pub fn command_in_terminal(
     target: &Target,
     line: &str,
 ) -> Option<Result<Launch, Unavailable>> {
-    let program = line.split_whitespace().next()?;
-    (surface(program) == Surface::Tty)
-        .then(|| in_terminal(tools, target, Hosted::Command { program, line }))
+    let program = program_of(line)?;
+    let needs_terminal = surface(program) == Surface::Tty
+        && !line
+            .split_whitespace()
+            .any(|word| NO_TERMINAL_FLAGS.iter().any(|flag| word.starts_with(flag)));
+    needs_terminal.then(|| in_terminal(tools, target, Hosted::Command { program, line }))
+}
+
+fn program_of(line: &str) -> Option<&str> {
+    let line = line.trim_start();
+    match line.chars().next()? {
+        quote if QUOTES.contains(&quote) => line[quote.len_utf8()..].split(quote).next(),
+        _ => line.split_whitespace().next(),
+    }
 }
 
 /// A declared name, trimmed, or `None` when the key is absent or blank.
@@ -814,6 +828,33 @@ mod tests {
             None
         );
         assert_eq!(command_in_terminal(&declared, &file(), "  "), None);
+    }
+
+    #[test]
+    fn a_remote_or_headless_editor_runs_without_a_terminal() {
+        let none = tools(None, None, None);
+        for line in [
+            "nvim --server /tmp/nvim.sock --remote '/tmp/a.txt'",
+            "vim --remote-silent '/tmp/a.txt'",
+            "nvim --headless -c 'wq' '/tmp/a.txt'",
+        ] {
+            assert_eq!(command_in_terminal(&none, &file(), line), None, "{line}");
+        }
+    }
+
+    #[test]
+    fn a_quoted_editor_path_is_still_recognised() {
+        assert_eq!(
+            command_in_terminal(
+                &tools(None, None, None),
+                &file(),
+                "\"/opt/my tools/nvim\" '/tmp/a.txt'"
+            ),
+            Some(Err(Unavailable::TerminalRequired {
+                tool: "/opt/my tools/nvim".into(),
+                key: key::TERMINAL
+            }))
+        );
     }
 
     /// The exact composition, kept as a golden string: the nesting of a quoted
