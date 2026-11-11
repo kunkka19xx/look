@@ -123,26 +123,12 @@ extension ThemeSettingsView {
                                 ScrollView(.horizontal) {
                                     HStack(spacing: 8) {
                                         ForEach(themeStore.extraFileScanRoots, id: \.self) { path in
-                                            HStack(spacing: 6) {
-                                                Text(path)
-                                                    .lineLimit(1)
-                                                Button {
-                                                    withAnimation(Motion.Insert.animation) {
-                                                        themeStore.removeExtraFileScanRoot(path)
-                                                        extraScanDirectoryMessage = nil
-                                                    }
-                                                } label: {
-                                                    Image(systemName: "xmark")
-                                                        .font(.system(size: 10, weight: .semibold))
-                                                }
-                                                .buttonStyle(.plain)
+                                            RemovablePill(themeStore: themeStore, removeLabel: "Remove \(path)") {
+                                                themeStore.removeExtraFileScanRoot(path)
+                                                extraScanDirectoryMessage = nil
+                                            } label: {
+                                                Text(path).lineLimit(1)
                                             }
-                                            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
-                                            .foregroundStyle(themeStore.secondaryTextColor())
-                                            .padding(.horizontal, 9)
-                                            .padding(.vertical, 5)
-                                            .background(themeStore.liftColor(opacity: 0.12), in: Capsule())
-                                            .transition(Motion.Insert.transition)
                                         }
                                     }
                                 }
@@ -173,25 +159,11 @@ extension ThemeSettingsView {
                                 ScrollView(.horizontal) {
                                     HStack(spacing: 8) {
                                         ForEach(themeStore.excludedFolderPaths, id: \.self) { path in
-                                            HStack(spacing: 6) {
-                                                Text(path)
-                                                    .lineLimit(1)
-                                                Button {
-                                                    withAnimation(Motion.Insert.animation) {
-                                                        themeStore.removeExcludedFolderPath(path)
-                                                    }
-                                                } label: {
-                                                    Image(systemName: "xmark")
-                                                        .font(.system(size: 10, weight: .semibold))
-                                                }
-                                                .buttonStyle(.plain)
+                                            RemovablePill(themeStore: themeStore, removeLabel: "Remove \(path)") {
+                                                themeStore.removeExcludedFolderPath(path)
+                                            } label: {
+                                                Text(path).lineLimit(1)
                                             }
-                                            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
-                                            .foregroundStyle(themeStore.secondaryTextColor())
-                                            .padding(.horizontal, 9)
-                                            .padding(.vertical, 5)
-                                            .background(themeStore.liftColor(opacity: 0.12), in: Capsule())
-                                            .transition(Motion.Insert.transition)
                                         }
                                     }
                                 }

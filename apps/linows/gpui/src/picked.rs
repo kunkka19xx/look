@@ -1,32 +1,28 @@
-//! Multi-select: the rows picked with Ctrl+P, the panel that lists them in
-//! the preview column, and the badge the compact layout shows instead.
+//! Multi-select: the rows picked with Ctrl+P and the pills that list them
+//! over the results, leaving the preview column to the selection.
 
-use gpui::{Context, Div, FontWeight, SharedString, div, img, prelude::*, px, svg};
+use gpui::{Context, Div, ScrollHandle, div, img, prelude::*, px, svg};
 
+use crate::controls;
 use crate::glyphs;
 use crate::icons::{IconRequest, IconStore};
 use crate::launcher::Launcher;
 use crate::rows::Row;
 use crate::theme::{self, Theme};
 
-const HEADER_MARGIN: f32 = 10.0;
-const ITEM_GAP: f32 = 4.0;
-const ITEM_PADDING_X: f32 = 8.0;
-const ITEM_PADDING_Y: f32 = 6.0;
-const ITEM_INNER_GAP: f32 = 8.0;
-const ITEM_ICON: f32 = 24.0;
+const STRIP_GAP: f32 = 6.0;
+const PILL_GAP: f32 = 6.0;
+const PILL_ICON: f32 = 16.0;
+const PILL_MAX_W: f32 = 220.0;
 const BUTTON_PADDING_X: f32 = 6.0;
 const BUTTON_PADDING_Y: f32 = 2.0;
 const SHORTCUT_PADDING_X: f32 = 5.0;
-const BADGE_PADDING_X: f32 = 8.0;
-const BADGE_PADDING_Y: f32 = 3.0;
 const OPEN_ALL: &str = "Open all";
 const OPEN_ALL_CHORD: &str = "Shift+Enter";
-const CLEAR_ALL: &str = "Clear all";
-const REMOVE: &str = "\u{d7}";
+const CLEAR: &str = "Clear";
 
 /// Only files and folders carry a path worth collecting; an app, a setting
-/// or a clip would leave the panel listing nonsense.
+/// or a clip would leave the pills listing nonsense.
 pub fn pickable(row: &Row) -> bool {
     !row.is_hint() && (row.kind == "file" || row.kind == "folder")
 }
@@ -38,6 +34,7 @@ fn same(a: &Row, b: &Row) -> bool {
 #[derive(Default)]
 pub struct Picked {
     items: Vec<Row>,
+    scroll: ScrollHandle,
 }
 
 impl Picked {
@@ -63,13 +60,29 @@ impl Picked {
             Some(at) => {
                 self.items.remove(at);
             }
-            None => self.items.push(row.clone()),
+            None => {
+                self.items.push(row.clone());
+                self.scroll_to_newest();
+            }
         }
     }
 
     pub fn remove(&mut self, at: usize) {
         if at < self.items.len() {
             self.items.remove(at);
+        }
+    }
+
+    /// The picks a hide kept, back in a fresh launcher.
+    pub fn restore(&mut self, items: Vec<Row>) {
+        self.items = items;
+        self.scroll_to_newest();
+    }
+
+    /// The strip ends on the latest pick, as `toggle` leaves it.
+    fn scroll_to_newest(&mut self) {
+        if let Some(last) = self.items.len().checked_sub(1) {
+            self.scroll.scroll_to_item(last);
         }
     }
 
@@ -82,168 +95,116 @@ impl Picked {
         self.items.iter().map(|item| item.path.clone()).collect()
     }
 
-    /// The panel: a header with the two actions, then one row per item.
-    pub fn panel(
+    /// One pill per pick with its (x), then Open all and Clear; scrolls sideways.
+    pub fn strip(
         &self,
         icons: &gpui::Entity<IconStore>,
         th: &Theme,
         cx: &mut Context<Launcher>,
-    ) -> Div {
-        let header = div()
-            .mb(px(HEADER_MARGIN))
-            .flex()
-            .items_center()
-            .justify_between()
-            .child(
-                div()
-                    .text_size(px(th.font_size - 1.0))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(format!("Picked ({})", self.items.len())),
-            )
-            .child(
-                div()
+    ) -> Option<Div> {
+        if self.items.is_empty() {
+            return None;
+        }
+        let pills: Vec<_> = self
+            .items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                let picture = icons.update(cx, |store, cx| {
+                    store.get(
+                        IconRequest {
+                            kind: item.kind.clone(),
+                            path: item.path.clone(),
+                            id: Some(item.id.clone()),
+                            size: PILL_ICON,
+                        },
+                        cx,
+                    )
+                });
+                let label = div()
+                    .min_w_0()
                     .flex()
                     .items_center()
-                    .gap(px(ITEM_GAP))
+                    .gap(px(PILL_GAP))
+                    .children(picture.map(|image| img(image).size(px(PILL_ICON)).flex_shrink_0()))
                     .child(
                         div()
-                            .id("picked-open")
-                            .px(px(BUTTON_PADDING_X))
-                            .py(px(BUTTON_PADDING_Y))
-                            .rounded(px(th.chip_radius()))
-                            .flex()
-                            .items_center()
-                            .gap(px(BUTTON_PADDING_X))
+                            .min_w_0()
+                            .truncate()
                             .text_size(px(th.font_size - 2.0))
-                            .text_color(th.accent)
-                            .cursor_pointer()
-                            .hover(|s| s.bg(th.selection_fill))
-                            .on_click(cx.listener(|this, _, _, cx| this.open_all_picked(cx)))
-                            .child(OPEN_ALL)
-                            .child(
-                                div()
-                                    .px(px(SHORTCUT_PADDING_X))
-                                    .py(px(theme::CHIP_PADDING_Y))
-                                    .rounded(px(th.chip_radius()))
-                                    .bg(th.control_fill)
-                                    .text_size(px(th.font_size - 3.0))
-                                    .text_color(th.text_muted)
-                                    .child(OPEN_ALL_CHORD),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .id("picked-clear")
-                            .px(px(BUTTON_PADDING_X))
-                            .py(px(BUTTON_PADDING_Y))
-                            .rounded(px(th.chip_radius()))
-                            .text_size(px(th.font_size - 2.0))
-                            .text_color(th.danger)
-                            .cursor_pointer()
-                            .hover(|s| s.bg(th.selection_fill))
-                            .on_click(cx.listener(|this, _, _, cx| this.clear_picked(cx)))
-                            .child(CLEAR_ALL),
-                    ),
-            );
-
-        let items = self.items.iter().enumerate().map(|(i, item)| {
-            let picture = icons.update(cx, |store, cx| {
-                store.get(
-                    IconRequest {
-                        kind: item.kind.clone(),
-                        path: item.path.clone(),
-                        id: Some(item.id.clone()),
-                        size: ITEM_ICON,
-                    },
-                    cx,
+                            .text_color(th.text_secondary)
+                            .child(item.title.clone()),
+                    );
+                controls::removable_pill(
+                    ("picked-remove", i),
+                    label,
+                    th,
+                    cx.listener(move |this, _, _, cx| this.remove_picked(i, cx)),
                 )
-            });
-            let icon = div()
-                .size(px(ITEM_ICON))
                 .flex_shrink_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(th.chip_radius() / 1.5))
-                .map(|el| match picture {
-                    Some(image) => el.child(img(image).size(px(ITEM_ICON))),
-                    None => el
-                        .bg(th.accent)
-                        .text_color(th.on_accent)
-                        .text_size(px(th.font_size - 4.0))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(SharedString::from(
-                            item.title
-                                .chars()
-                                .next()
-                                .unwrap_or(' ')
-                                .to_uppercase()
-                                .to_string(),
-                        )),
-                });
+                .max_w(px(PILL_MAX_W))
+            })
+            .collect();
+        let open_all = div()
+            .id("picked-open")
+            .flex_shrink_0()
+            .px(px(BUTTON_PADDING_X))
+            .py(px(BUTTON_PADDING_Y))
+            .rounded(px(th.chip_radius()))
+            .flex()
+            .items_center()
+            .gap(px(BUTTON_PADDING_X))
+            .text_size(px(th.font_size - 2.0))
+            .text_color(th.accent)
+            .cursor_pointer()
+            .hover(|s| s.bg(th.selection_fill))
+            .on_click(cx.listener(|this, _, _, cx| this.open_all_picked(cx)))
+            .child(format!("{OPEN_ALL} ({})", self.items.len()))
+            .child(
+                div()
+                    .px(px(SHORTCUT_PADDING_X))
+                    .py(px(theme::CHIP_PADDING_Y))
+                    .rounded(px(th.chip_radius()))
+                    .bg(th.control_fill)
+                    .text_size(px(th.font_size - 3.0))
+                    .text_color(th.text_muted)
+                    .child(OPEN_ALL_CHORD),
+            );
+        let clear = div()
+            .id("picked-clear")
+            .flex_shrink_0()
+            .px(px(BUTTON_PADDING_X))
+            .py(px(BUTTON_PADDING_Y))
+            .rounded(px(th.chip_radius()))
+            .text_size(px(th.font_size - 2.0))
+            .text_color(th.danger)
+            .cursor_pointer()
+            .hover(|s| s.bg(th.selection_fill))
+            .on_click(cx.listener(|this, _, _, cx| this.clear_picked(cx)))
+            .child(CLEAR);
+        Some(
             div()
+                .flex_shrink_0()
+                .px(px(theme::ROW_PADDING_X))
+                .pb(px(STRIP_GAP))
                 .flex()
                 .items_center()
-                .gap(px(ITEM_INNER_GAP))
-                .px(px(ITEM_PADDING_X))
-                .py(px(ITEM_PADDING_Y))
-                .rounded(px(th.control_radius()))
-                .bg(th.control_fill)
-                .child(icon)
+                .gap(px(STRIP_GAP))
                 .child(
                     div()
+                        .id("picked-pills")
                         .flex_1()
                         .min_w_0()
+                        .overflow_x_scroll()
+                        .track_scroll(&self.scroll)
                         .flex()
-                        .flex_col()
-                        .child(
-                            div()
-                                .text_size(px(th.font_size - 1.0))
-                                .font_weight(FontWeight::MEDIUM)
-                                .truncate()
-                                .child(item.title.clone()),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(th.font_size - 4.0))
-                                .text_color(th.text_muted)
-                                .truncate()
-                                .child(item.path.clone()),
-                        ),
+                        .items_center()
+                        .gap(px(PILL_GAP))
+                        .children(pills),
                 )
-                .child(
-                    div()
-                        .id(("picked-remove", i))
-                        .px(px(BUTTON_PADDING_X))
-                        .text_color(th.text_muted)
-                        .cursor_pointer()
-                        .hover(|s| s.text_color(th.danger))
-                        .on_click(cx.listener(move |this, _, _, cx| this.remove_picked(i, cx)))
-                        .child(REMOVE),
-                )
-        });
-
-        div()
-            .size_full()
-            .p(px(theme::CONTENT_PADDING))
-            .flex()
-            .flex_col()
-            .child(header)
-            .child(div().flex().flex_col().gap(px(ITEM_GAP)).children(items))
-    }
-
-    /// The top bar's count, where the compact layout has no panel.
-    pub fn badge(&self, th: &Theme) -> Option<Div> {
-        (!self.items.is_empty()).then(|| {
-            div()
-                .flex_shrink_0()
-                .px(px(BADGE_PADDING_X))
-                .py(px(BADGE_PADDING_Y))
-                .rounded_full()
-                .bg(th.selection_fill)
-                .text_size(px(theme::CAPTION_SIZE))
-                .child(format!("{} picked", self.items.len()))
-        })
+                .child(open_all)
+                .child(clear),
+        )
     }
 }
 

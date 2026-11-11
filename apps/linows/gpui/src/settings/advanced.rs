@@ -21,12 +21,9 @@ use linows_backend::look_engine::config::{ExtraRootProblem, RuntimeConfig};
 const NUMBER_BOX_W: f32 = 80.0;
 const ABOUT_PADDING_BOTTOM: f32 = 6.0;
 const DIR_GAP_X: f32 = 6.0;
-const DIR_GAP_Y: f32 = 4.0;
 const DIR_PADDING_X: f32 = 8.0;
 const DIR_PADDING_Y: f32 = 3.0;
-const DIR_REMOVE: &str = "\u{2715}";
-const DIR_REMOVE_PADDING_X: f32 = 6.0;
-const DIR_REMOVE_PADDING_Y: f32 = 2.0;
+const DIR_GAP_Y: f32 = 4.0;
 const DIR_LIST_MAX_W: f32 = 520.0;
 const BUTTON_GAP: f32 = 8.0;
 const NO_BG_IMAGE: &str = "No background image";
@@ -558,39 +555,19 @@ impl Settings {
             .enumerate()
             .map(|(i, dir)| {
                 let path = dir.clone();
-                div()
-                    .id((list.id, i))
-                    .max_w(px(DIR_LIST_MAX_W))
-                    .px(px(DIR_PADDING_X))
-                    .py(px(DIR_PADDING_Y))
-                    .rounded(px(th.chip_radius()))
-                    .bg(th.panel_fill)
-                    .flex()
-                    .items_center()
-                    .gap(px(DIR_GAP_X))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .font_family(th.mono_family.clone())
-                            .text_size(px(th.font_size - 2.0))
-                            .text_color(th.text_secondary)
-                            .child(middle_elided(dir.clone())),
-                    )
-                    .child(
-                        div()
-                            .id(("remove", i))
-                            .px(px(DIR_REMOVE_PADDING_X))
-                            .py(px(DIR_REMOVE_PADDING_Y))
-                            .rounded(px(th.chip_radius()))
-                            .text_size(px(th.font_size - 3.0))
-                            .text_color(th.text_muted)
-                            .cursor_pointer()
-                            .hover(|s| s.text_color(th.danger).bg(th.control_fill))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.settings.remove_dir(list, &path, cx)
-                            }))
-                            .child(DIR_REMOVE),
-                    )
+                let label = div()
+                    .min_w_0()
+                    .font_family(th.mono_family.clone())
+                    .text_size(px(th.font_size - 2.0))
+                    .text_color(th.text_secondary)
+                    .child(middle_elided(dir.clone()));
+                controls::removable_pill(
+                    (list.id, i),
+                    label,
+                    th,
+                    cx.listener(move |this, _, _, cx| this.settings.remove_dir(list, &path, cx)),
+                )
+                .max_w(px(DIR_LIST_MAX_W))
             })
             .collect();
         div()

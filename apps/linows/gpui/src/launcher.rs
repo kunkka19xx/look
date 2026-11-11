@@ -6,6 +6,7 @@
 //! the inner gap as every seam.
 
 use std::cell::{Cell, RefCell};
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -73,6 +74,7 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 /// How long a keystroke waits for the next before the query runs; the
 /// webview uses the same.
 const COPY_FAILED: &str = "Copy failed";
+const PICKS_MISSING: &str = "picked item(s) no longer exist, refreshing index";
 const NOT_RUN: &str = "not run, you moved on";
 /// Told to run, not reported on yet.
 const VERB_STARTED: &str = "started";
@@ -187,13 +189,16 @@ pub struct Retained {
     /// The new launcher reads the switch off the UI thread, after the
     /// restored search may have run.
     pub ai_enabled: bool,
+    /// Kept until cleared or opened, as on macOS.
+    pub picks: Vec<Row>,
 }
 
 impl Retained {
-    /// Past the retention window only the screen and the switch stay.
+    /// Past the retention window only the screen, the switch and the picks stay.
     pub fn expire(self) -> Self {
         Self {
             screen: self.screen,
+            picks: self.picks,
             settings: self.settings,
             ai_enabled: self.ai_enabled,
             ..Default::default()
@@ -434,6 +439,7 @@ impl Launcher {
                     self.commands.input().read(cx).text().to_string(),
                 )),
                 ai_enabled: self.ai.enabled,
+                picks: self.picked.items().to_vec(),
                 ..Default::default()
             }
         } else {
@@ -444,6 +450,7 @@ impl Launcher {
                 answer: self.ai.settled(),
                 suggestions: self.suggestions.clone(),
                 ai_enabled: self.ai.enabled,
+                picks: self.picked.items().to_vec(),
             }
         }
     }
@@ -454,6 +461,7 @@ impl Launcher {
         // Before the query lands, so its search finds them already in hand.
         self.ai.enabled = retained.ai_enabled;
         self.suggestions = retained.suggestions;
+        self.picked.restore(retained.picks);
         if let Some(answer) = retained.answer {
             self.ai.resume(answer, cx);
         }
@@ -1727,8 +1735,24 @@ impl Launcher {
     }
 
     /// Shift+Enter: every pick, opened in turn, then the picks cleared.
+    /// Picks gone from disk are skipped and flagged, and the index refreshed.
     pub(crate) fn open_all_picked(&mut self, cx: &mut Context<Self>) {
-        for row in self.picked.items().to_vec() {
+        let (present, missing): (Vec<Row>, Vec<Row>) = self
+            .picked
+            .items()
+            .iter()
+            .cloned()
+            .partition(|row| Path::new(&row.path).exists());
+        if !missing.is_empty() {
+            self.banner.show(
+                format!("{} {PICKS_MISSING}", missing.len()),
+                Tone::Error,
+                banner::READ,
+                cx,
+            );
+            app_state().request_index_refresh();
+        }
+        for row in present {
             let usage = match row.open {
                 Open::Path { usage } => usage,
                 _ => continue,
@@ -1917,10 +1941,7 @@ impl Launcher {
         let panel = if theme::get().split() {
             Vec::new()
         } else {
-            actions::panel_items(
-                !self.picked.is_empty(),
-                row.kind == crate::rows::KIND_CLIPBOARD,
-            )
+            actions::panel_items(row.kind == crate::rows::KIND_CLIPBOARD)
         };
         let ancestors = self.levels.ancestors();
         let query = self.query(cx);
@@ -1995,8 +2016,6 @@ impl Launcher {
             ActionId::CopyPath => {
                 self.copy(cx);
             }
-            ActionId::OpenAllPicked => self.open_all_picked(cx),
-            ActionId::ClearPicked => self.clear_picked(cx),
             ActionId::DeleteClipboard => {
                 self.delete(cx);
             }
@@ -2422,7 +2441,6 @@ impl Launcher {
                 )
             })
             .child(search_field(self.input.clone(), placeholder))
-            .children((!th.split()).then(|| self.picked.badge(th)).flatten())
             .children(strip)
             .when(!th.split() && th.hints, |el| {
                 el.child(copyright(th, cx).flex_shrink_0())
@@ -2856,6 +2874,10 @@ impl Launcher {
             (Some(list), None)
         };
 
+        let picks = (!self.mode.is_menu())
+            .then(|| self.picked.strip(&self.icons, th, cx))
+            .flatten();
+
         // One floating card: rows, then the hint as the card's own footer.
         let radius = th.tile_radius();
         let fade = blur::surfaces_fade(th.frosted());
@@ -2870,6 +2892,7 @@ impl Launcher {
             .flex()
             .flex_col()
             .gap(px(theme::ROW_SPACING))
+            .children(picks)
             .children(ai_card)
             .map(|card| {
                 if two_col {
@@ -2900,8 +2923,7 @@ impl Launcher {
         // for the menus, whose rows have nothing to describe.
         let preview_card = (th.split() && !self.mode.is_menu()).then(|| {
             let panel_theme = th.clone();
-            // The suggestions take the column in a knowledge lookup, the
-            // picks while there are any.
+            // The suggestions take the column in a knowledge lookup.
             let body = if let Some(list) = side_list {
                 div()
                     .size_full()
@@ -2911,12 +2933,10 @@ impl Launcher {
                     .pt(px(theme::ROW_INSET))
                     .child(list)
                     .into_any_element()
-            } else if self.picked.is_empty() {
+            } else {
                 self.preview
                     .update(cx, |preview, cx| preview.render_in(&panel_theme, cx))
                     .into_any_element()
-            } else {
-                self.picked.panel(&self.icons, th, cx).into_any_element()
             };
             div()
                 .map(|el| {

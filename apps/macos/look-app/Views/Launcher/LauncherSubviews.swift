@@ -329,7 +329,9 @@ struct ResultsListView: View {
     }
 }
 
-struct PickedItemsPanel: View {
+/// The picks as pills over the results, each with its (x), then Open all
+/// and Clear; the preview column stays with the selection.
+struct PickedPillsBar: View {
     let pickedKeys: [String]
     let pickedByKey: [String: LauncherResult]
     let themeStore: ThemeStore
@@ -337,73 +339,82 @@ struct PickedItemsPanel: View {
     let onClearAll: () -> Void
     let onOpenAll: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Picked (\(pickedKeys.count))")
-                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
-                    .foregroundStyle(themeStore.fontColor())
-                Spacer()
-                Button(action: onOpenAll) {
-                    HStack(spacing: 6) {
-                        Text("Open all")
-                        Text("⇧↵")
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.microRadius, style: .continuous))
-                            .foregroundStyle(themeStore.mutedTextColor())
-                    }
-                    .font(themeStore.uiFont(size: CGFloat(max(10, themeStore.settings.fontSize - 3)), weight: .regular))
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(themeStore.accentColor())
-                Button(action: onClearAll) {
-                    Text("Clear all")
-                        .font(themeStore.uiFont(size: CGFloat(max(10, themeStore.settings.fontSize - 3)), weight: .regular))
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(themeStore.secondaryTextColor())
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
+    private enum Layout {
+        static let barSpacing: CGFloat = 8
+        static let barPaddingX: CGFloat = 8
+        static let barPaddingBottom: CGFloat = 4
+        static let pillSpacing: CGFloat = 6
+        static let pillIcon: CGFloat = 14
+        static let pillTitleMaxWidth: CGFloat = 180
+        static let chordPaddingX: CGFloat = 5
+        static let chordPaddingY: CGFloat = 1
+        static let fontSizeDrop: Double = 2
+        static let minFontSize: Double = 10
+    }
 
-            ScrollView {
-                LazyVStack(spacing: 4) {
-                    ForEach(pickedKeys, id: \.self) { key in
-                        if let r = pickedByKey[key] {
-                            HStack(spacing: 8) {
-                                Image(nsImage: NSWorkspace.shared.icon(forFile: r.path))
-                                    .resizable()
-                                    .frame(width: 18, height: 18)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(r.title)
-                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
-                                        .foregroundStyle(themeStore.fontColor())
-                                        .lineLimit(1)
-                                    Text(r.path)
-                                        .font(themeStore.uiFont(size: CGFloat(max(10, themeStore.settings.fontSize - 4)), weight: .regular))
-                                        .foregroundStyle(themeStore.mutedTextColor())
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                }
-                                Spacer(minLength: 0)
-                                Button(action: { onRemove(key) }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(themeStore.mutedTextColor())
-                                }
-                                .buttonStyle(.borderless)
+    private var font: Font {
+        let size = max(Layout.minFontSize, themeStore.settings.fontSize - Layout.fontSizeDrop)
+        return themeStore.uiFont(size: CGFloat(size), weight: .regular)
+    }
+
+    var body: some View {
+        HStack(spacing: Layout.barSpacing) {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    HStack(spacing: Layout.pillSpacing) {
+                        ForEach(pickedKeys, id: \.self) { key in
+                            if let result = pickedByKey[key] {
+                                pill(result, key: key).id(key)
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
                         }
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.bottom, 8)
+                .scrollIndicators(.hidden)
+                .onChange(of: pickedKeys.last) { _, last in
+                    guard let last else { return }
+                    withAnimation(Motion.Insert.animation) {
+                        proxy.scrollTo(last, anchor: .trailing)
+                    }
+                }
             }
+            Button(action: onOpenAll) {
+                HStack(spacing: Layout.pillSpacing) {
+                    Text("Open all (\(pickedKeys.count))")
+                    Text("⇧↵")
+                        .padding(.horizontal, Layout.chordPaddingX)
+                        .padding(.vertical, Layout.chordPaddingY)
+                        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.microRadius, style: .continuous))
+                        .foregroundStyle(themeStore.mutedTextColor())
+                }
+                .font(font)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(themeStore.accentColor())
+            .fixedSize()
+            Button(action: onClearAll) {
+                Text("Clear").font(font)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(themeStore.secondaryTextColor())
+            .fixedSize()
         }
-        .frame(minWidth: 220)
+        .padding(.horizontal, Layout.barPaddingX)
+        .padding(.bottom, Layout.barPaddingBottom)
+    }
+
+    private func pill(_ result: LauncherResult, key: String) -> some View {
+        RemovablePill(themeStore: themeStore, removeLabel: "Remove \(result.title)") {
+            onRemove(key)
+        } label: {
+            Image(nsImage: RowIconCache.icon(forFile: result.path))
+                .resizable()
+                .frame(width: Layout.pillIcon, height: Layout.pillIcon)
+            Text(result.title)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: Layout.pillTitleMaxWidth, alignment: .leading)
+        }
+        .help(result.path)
     }
 }
 

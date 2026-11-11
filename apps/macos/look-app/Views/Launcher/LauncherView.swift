@@ -1398,12 +1398,8 @@ struct LauncherView: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
-                        // Compact has no footer row or picked panel; the strip's end
-                        // of the bar is free.
+                        // Compact has no footer row; the strip's end of the bar is free.
                         if isCompactLayout {
-                            if !pickedKeys.isEmpty {
-                                pickedCountPill
-                            }
                             if showsCopyright {
                                 copyrightLink
                                     .padding(.trailing, Self.barCopyrightTrailingInset)
@@ -2219,27 +2215,30 @@ struct LauncherView: View {
     @ViewBuilder
     private var resultsListAndPreview: some View {
         twoPaneGrid(hasRight: hasRightPane) {
-            ResultsListView(
-                results: displayedResults,
-                selectedID: selectedResultID,
-                pickedKeys: Set(pickedKeys),
-                themeStore: themeStore,
-                selectedRowDetail: compactProcessDetail,
-                onSelect: { selectedResultID = $0 },
-                onOpen: { _ in openSelectedApp() }
-            )
-            .overlay(alignment: .trailing) { compactActionMenu }
-        } right: {
-            if !pickedKeys.isEmpty {
-                PickedItemsPanel(
-                    pickedKeys: pickedKeys,
-                    pickedByKey: pickedResultsByKey,
+            VStack(spacing: Self.pickedPillsBarGap) {
+                if !pickedKeys.isEmpty {
+                    PickedPillsBar(
+                        pickedKeys: pickedKeys,
+                        pickedByKey: pickedResultsByKey,
+                        themeStore: themeStore,
+                        onRemove: { removePicked(key: $0) },
+                        onClearAll: { clearAllPicked() },
+                        onOpenAll: { openAllPicked() }
+                    )
+                }
+                ResultsListView(
+                    results: displayedResults,
+                    selectedID: selectedResultID,
+                    pickedKeys: Set(pickedKeys),
                     themeStore: themeStore,
-                    onRemove: { removePicked(key: $0) },
-                    onClearAll: { clearAllPicked() },
-                    onOpenAll: { openAllPicked() }
+                    selectedRowDetail: compactProcessDetail,
+                    onSelect: { selectedResultID = $0 },
+                    onOpen: { _ in openSelectedApp() }
                 )
-            } else if let selectedResult = previewResult {
+                .overlay(alignment: .trailing) { compactActionMenu }
+            }
+        } right: {
+            if let selectedResult = previewResult {
                 // Info + actions panel: the preview plus any Quick Actions.
                 ResultPreviewView(
                     result: selectedResult,
@@ -2634,8 +2633,7 @@ struct LauncherView: View {
     /// The selected result eligible for the right-hand preview pane, or nil when
     /// the list should span full width (suggestions, nothing selected, etc.).
     private var previewResult: LauncherResult? {
-        guard pickedKeys.isEmpty,
-              !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
+        guard !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
               let selectedResult = displayedResults.first(where: { $0.id == previewSelectionID })
                 ?? displayedResults.first(where: { $0.id == selectedResultID }),
               AppConstants.Launcher.WebSuggestion.text(fromResultID: selectedResult.id) == nil,
@@ -2644,21 +2642,13 @@ struct LauncherView: View {
         return selectedResult
     }
 
-    /// Whether a right-hand pane (picked list or preview) is currently shown.
+    /// Whether the right-hand preview pane is currently shown.
     private var hasRightPane: Bool {
-        !isCompactLayout && (!pickedKeys.isEmpty || previewResult != nil)
+        !isCompactLayout && previewResult != nil
     }
 
     private static let barCopyrightTrailingInset: CGFloat = 12
-
-    private var pickedCountPill: some View {
-        Text("\(pickedKeys.count) picked")
-            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
-            .foregroundStyle(themeStore.fontColor())
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(themeStore.selectionFillColor(), in: Capsule())
-    }
+    private static let pickedPillsBarGap: CGFloat = 4
 
     /// Settings ends in a floating Save button; a byline in the same corner is
     /// one more thing in the space that button already owns. `hints_enabled`
