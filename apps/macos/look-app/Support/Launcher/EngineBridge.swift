@@ -1888,6 +1888,9 @@ nonisolated struct InstalledBlock: Decodable, Identifiable {
     let running: Bool
     /// What to change before this block works here. Empty is the normal case.
     let needs: [Needed]
+    /// This connector's recent trouble, oldest first. The only place it is
+    /// visible without a terminal.
+    let log: [String]
 }
 
 /// What a lookbook entry would add, read without installing it.

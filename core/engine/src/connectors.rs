@@ -99,6 +99,51 @@ fn schedule_read(refresh: Arc<dyn Fn() -> bool + Send + Sync>) {
     });
 }
 
+/// Recent trouble per block, for a user who did not launch from a terminal.
+/// A connector's failures are otherwise invisible in the app.
+const LOG_LINES: usize = 20;
+/// A connector may name any block in its own namespace, declared or not.
+const LOG_BLOCKS: usize = 64;
+
+fn logs() -> &'static Mutex<BTreeMap<String, std::collections::VecDeque<String>>> {
+    static LOGS: OnceLock<Mutex<BTreeMap<String, std::collections::VecDeque<String>>>> =
+        OnceLock::new();
+    LOGS.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+/// Says it to stderr and to the Extend screen.
+///
+/// Not `eprintln!`, which panics when the sink fails: the caller owns a
+/// connector's pipe, and unwinding would close it for a log line.
+fn note(block: &str, message: &str) {
+    let _ = writeln!(std::io::stderr(), "look connectors: [{block}] {message}");
+    // An `error` frame may carry nearly a megabyte; stderr above kept it all.
+    let mut end = message.len().min(MAX_LOG_LINE);
+    while end > 0 && !message.is_char_boundary(end) {
+        end -= 1;
+    }
+    let message = &message[..end];
+    let mut logs = logs().lock().unwrap_or_else(|err| err.into_inner());
+    if logs.len() >= LOG_BLOCKS && !logs.contains_key(block) {
+        return;
+    }
+    let lines = logs.entry(block.to_string()).or_default();
+    if lines.len() == LOG_LINES {
+        lines.pop_front();
+    }
+    lines.push_back(message.to_string());
+}
+
+/// What went wrong for this block lately, oldest first.
+pub fn log_of(block: &str) -> Vec<String> {
+    logs()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .get(block)
+        .map(|lines| lines.iter().cloned().collect())
+        .unwrap_or_default()
+}
+
 /// A connector's stdin, shared so a write never holds the registry.
 type Pipe = Arc<Mutex<ChildStdin>>;
 
@@ -112,7 +157,28 @@ struct Running {
     command: String,
     /// The file that declared it: the namespace it may speak for.
     manifest: String,
+    /// A connector that dies on start is otherwise respawned on every open.
+    attempts: u32,
+    launched_at: std::time::Instant,
 }
+
+/// Wait before relaunching, by launches behind it. The first death restarts at
+/// once, as "restarted on next use" promises; a crash loop backs off.
+const BACKOFF: [Duration; 5] = [
+    Duration::ZERO,
+    Duration::from_secs(5),
+    Duration::from_secs(30),
+    Duration::from_secs(120),
+    Duration::from_secs(600),
+];
+
+fn backoff(attempts: u32) -> Duration {
+    BACKOFF[(attempts.max(1) as usize - 1).min(BACKOFF.len() - 1)]
+}
+
+/// Set by `stop`, cleared by `start`: a respawn pass in flight at quit
+/// launches nothing.
+static STOPPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn running() -> &'static Mutex<BTreeMap<String, Running>> {
     static RUNNING: OnceLock<Mutex<BTreeMap<String, Running>>> = OnceLock::new();
@@ -139,6 +205,7 @@ pub fn start(home: &Path, on_rows: OnRows) {
         })
         .collect();
 
+    STOPPING.store(false, std::sync::atomic::Ordering::Release);
     let mut running = locked();
 
     running.retain(|id, alive| {
@@ -153,7 +220,7 @@ pub fn start(home: &Path, on_rows: OnRows) {
 
     for (id, found) in declared {
         if !running.contains_key(&id) {
-            launch(&mut running, id, found, &on_rows);
+            launch(&mut running, id, found, &on_rows, 0);
         }
     }
 }
@@ -165,30 +232,52 @@ struct Declared {
 }
 
 /// Respawns connectors that died, and nothing else. Reads no directories, so
-/// the shell can call it every time the launcher opens; noticing a manifest
-/// installed since launch is what `start` is for.
+/// the shell can call it on every open; a manifest installed since launch is
+/// what `start` is for. Returns at once, since spawning is not the opening
+/// thread's work, and runs one pass at a time.
 pub fn restart_dead(on_rows: OnRows) {
-    let mut running = locked();
-    let dead: Vec<(String, Declared)> = running
-        .iter_mut()
-        .filter_map(|(id, alive)| {
-            matches!(alive.child.try_wait(), Ok(Some(_)) | Err(_)).then(|| {
-                (
-                    id.clone(),
-                    Declared {
-                        command: alive.command.clone(),
-                        manifest: alive.manifest.clone(),
-                    },
-                )
-            })
-        })
-        .collect();
+    use std::sync::atomic::{AtomicBool, Ordering};
 
-    for (id, found) in dead {
+    static PASS: AtomicBool = AtomicBool::new(false);
+
+    if PASS.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    std::thread::spawn(move || {
+        respawn(&on_rows);
+        PASS.store(false, Ordering::Release);
+    });
+}
+
+/// One pass. A connector inside its backoff is left dead, so `running_ids`
+/// keeps reporting it down and the next open asks again.
+fn respawn(on_rows: &OnRows) {
+    let mut running = locked();
+    if STOPPING.load(std::sync::atomic::Ordering::Acquire) {
+        return;
+    }
+
+    let mut dead: Vec<(String, Declared, u32)> = Vec::new();
+    for (id, alive) in running.iter_mut() {
+        let exited = matches!(alive.child.try_wait(), Ok(Some(_)) | Err(_));
+        if !exited || alive.launched_at.elapsed() < backoff(alive.attempts) {
+            continue;
+        }
+        dead.push((
+            id.clone(),
+            Declared {
+                command: alive.command.clone(),
+                manifest: alive.manifest.clone(),
+            },
+            alive.attempts,
+        ));
+    }
+
+    for (id, found, attempts) in dead {
         if let Some(mut gone) = running.remove(&id) {
             end(&mut gone);
         }
-        launch(&mut running, id, found, &on_rows);
+        launch(&mut running, id, found, on_rows, attempts);
     }
 }
 
@@ -198,7 +287,13 @@ fn locked() -> std::sync::MutexGuard<'static, BTreeMap<String, Running>> {
 
 /// Spawns one and records it. A connector that refuses to run is reported and
 /// left out rather than retried in a loop.
-fn launch(running: &mut BTreeMap<String, Running>, id: String, found: Declared, on_rows: &OnRows) {
+fn launch(
+    running: &mut BTreeMap<String, Running>,
+    id: String,
+    found: Declared,
+    on_rows: &OnRows,
+    attempts: u32,
+) {
     match spawn(&id, &found, on_rows.clone()) {
         Ok((child, stdin)) => {
             running.insert(
@@ -208,10 +303,12 @@ fn launch(running: &mut BTreeMap<String, Running>, id: String, found: Declared, 
                     stdin,
                     command: found.command,
                     manifest: found.manifest,
+                    attempts: attempts + 1,
+                    launched_at: std::time::Instant::now(),
                 },
             );
         }
-        Err(message) => eprintln!("look connectors: [{id}] {message}"),
+        Err(message) => note(&id, &message),
     }
 }
 
@@ -236,54 +333,68 @@ pub struct Outcome {
     pub summary: Option<String>,
 }
 
-/// One answer at a time, matched to the ask that wanted it.
+/// Answers waiting to be collected, by the number of the ask that wanted them.
 ///
-/// Not a cache: the panel asks about one thing at a time, so the answer to the
-/// question before it is already stale. Bounded by construction rather than by
-/// an eviction rule nobody would exercise.
+/// A map, not one slot: a press and a control read are in flight at once when
+/// the selection changes mid-press, and whichever answers first must not
+/// decide the other. A press reported as "no answer" is pressed again and
+/// flipped back. The number is unique per process, so no block keying either.
 struct Slot<T> {
-    held: Mutex<Option<(u64, T)>>,
+    held: Mutex<Waiting<T>>,
     arrived: Condvar,
 }
 
-impl<T: Clone> Slot<T> {
+struct Waiting<T> {
+    answers: BTreeMap<u64, T>,
+    /// Asks still inside `take`. Never evicted, however old.
+    claimed: std::collections::BTreeSet<u64>,
+}
+
+/// A caller that timed out never comes back, but its connector may still
+/// answer, so uncollected answers are bounded.
+const MAX_WAITING: usize = 32;
+
+impl<T> Slot<T> {
     const fn new() -> Self {
         Self {
-            held: Mutex::new(None),
+            held: Mutex::new(Waiting {
+                answers: BTreeMap::new(),
+                claimed: std::collections::BTreeSet::new(),
+            }),
             arrived: Condvar::new(),
         }
     }
 
-    /// Emptied before asking, or the answer to the last identical question is
-    /// still sitting there and `take` returns it without waiting.
-    fn clear(&self) {
-        *self.held.lock().unwrap_or_else(|err| err.into_inner()) = None;
-    }
-
     fn put(&self, req: u64, value: T) {
-        *self.held.lock().unwrap_or_else(|err| err.into_inner()) = Some((req, value));
+        let mut held = self.held.lock().unwrap_or_else(|err| err.into_inner());
+        // Split so the scan and the removal borrow separately.
+        let Waiting { answers, claimed } = &mut *held;
+        while answers.len() >= MAX_WAITING {
+            // Lowest unclaimed: numbers only go up, so that caller gave up
+            // longest ago. Skipping the claimed is what protects a press.
+            let Some(stale) = answers.keys().copied().find(|req| !claimed.contains(req)) else {
+                break;
+            };
+            answers.remove(&stale);
+        }
+        answers.insert(req, value);
         self.arrived.notify_all();
     }
 
-    /// Waits up to `wait` for the answer to `req`, and to no other: one that
-    /// came late, or early for somebody else, is not this caller's.
+    /// Waits up to `wait` for the answer to `req` and takes it. Removed on a
+    /// timeout too, so a late answer is not left for anyone else.
     fn take(&self, req: u64, wait: Duration) -> Option<T> {
-        let held = self.held.lock().unwrap_or_else(|err| err.into_inner());
-        // Checks before it waits, so an answer already in the slot costs
-        // nothing, and re-checks on every wake, so a spurious one does not end
-        // the wait.
-        let (held, expired) = self
+        let mut held = self.held.lock().unwrap_or_else(|err| err.into_inner());
+        // Before the wait: an answer arriving while asleep must not be evicted.
+        held.claimed.insert(req);
+        // Checks before waiting, and on every wake so a spurious one does not
+        // end it.
+        let (mut held, _) = self
             .arrived
-            .wait_timeout_while(
-                held,
-                wait,
-                |slot| !matches!(slot.as_ref(), Some((answered, _)) if *answered == req),
-            )
+            .wait_timeout_while(held, wait, |held| !held.answers.contains_key(&req))
             .unwrap_or_else(|err| err.into_inner());
-        if expired.timed_out() {
-            return None;
-        }
-        held.as_ref().map(|(_, value)| value.clone())
+        held.claimed.remove(&req);
+        held.answers.remove(&req)
     }
 }
 
@@ -319,6 +430,7 @@ fn tell(block: &str, ask: Ask, must_arrive: bool) -> bool {
     };
     let line = ask.line();
     std::thread::spawn(move || {
+        WRITERS.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         let pipe = match must_arrive {
             true => Some(handle.lock().unwrap_or_else(|err| err.into_inner())),
             false => handle.try_lock().ok(),
@@ -327,14 +439,23 @@ fn tell(block: &str, ask: Ask, must_arrive: bool) -> bool {
             let _ = stdin.write_all(line.as_bytes());
             let _ = stdin.flush();
         }
+        WRITERS.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
     });
     true
+}
+
+static WRITERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Threads currently writing a frame to a connector. Watched by the
+/// wedged-connector test; nothing in the app reads it. At most one sticks: it
+/// holds the pipe and every frame after it gives up rather than queueing.
+pub fn writers_in_flight() -> usize {
+    WRITERS.load(std::sync::atomic::Ordering::Acquire)
 }
 
 /// Asks for a row's preview, and gives back the number to wait for.
 pub fn ask_preview(block: &str, row: &str) -> Option<u64> {
     let req = next_req();
-    PREVIEWS.clear();
     tell(
         block,
         Ask::Preview {
@@ -354,7 +475,6 @@ pub fn preview_of(req: u64, wait: Duration) -> Option<Preview> {
 /// Asks what `verb` would do to those rows, and gives back the plan number.
 pub fn ask_plan(block: &str, verb: &str, ids: Vec<String>) -> Option<u64> {
     let plan = next_req();
-    PLANS.clear();
     tell(
         block,
         Ask::Plan {
@@ -375,7 +495,6 @@ pub fn planned_of(plan: u64, wait: Duration) -> Option<Planned> {
 /// Runs a plan the connector already described. The same number: it is the
 /// plan the user confirmed, not a new question.
 pub fn run_plan(block: &str, plan: u64) -> bool {
-    RESULTS.clear();
     tell(
         block,
         Ask::Run {
@@ -409,8 +528,9 @@ pub fn ask_control(block: &str, control: &str, press: bool) -> Option<u64> {
             req,
         }
     };
-    STATES.clear();
-    tell(&block, ask, true).then_some(req)
+    // A read like a preview, a press like a verb: waiting for the pipe on a
+    // read leaks a thread per selection against a connector gone deaf.
+    tell(&block, ask, press).then_some(req)
 }
 
 pub fn state_of(req: u64, wait: Duration) -> Option<bool> {
@@ -448,6 +568,7 @@ pub fn running_ids() -> std::collections::BTreeSet<String> {
 /// Ends every connector. The rows they sent stay cached, which is what a user
 /// who quit mid-sync should see on the way back in.
 pub fn stop() {
+    STOPPING.store(true, std::sync::atomic::Ordering::Release);
     let mut running = locked();
     for (_, mut alive) in std::mem::take(&mut *running) {
         end(&mut alive);
@@ -494,12 +615,7 @@ fn spawn(id: &str, found: &Declared, on_rows: OnRows) -> Result<(Child, Option<P
     if let Some(stderr) = stderr {
         let block = id.to_string();
         std::thread::spawn(move || {
-            log_lines(stderr, |line| {
-                // Not `eprintln!`, which panics when the sink fails. This
-                // thread owns the pipe, so unwinding would close it and the
-                // connector would take an EPIPE for the sake of a log line.
-                let _ = writeln!(std::io::stderr(), "look connectors: [{block}] {line}");
-            });
+            log_lines(stderr, |line| note(&block, line));
         });
     }
 
@@ -562,9 +678,9 @@ fn read_frames(owner: &Owner, stdout: std::process::ChildStdout, on_rows: &OnRow
             // No newline and past the cap: the line is longer than allowed.
             // Short of it, this is the last frame before the pipe closed.
             Ok(_) if frame.len() > MAX_FRAME_BYTES && !frame.ends_with(b"\n") => {
-                eprintln!(
-                    "look connectors: [{}] sent a frame over {MAX_FRAME_BYTES} bytes",
-                    owner.block
+                note(
+                    &owner.block,
+                    &format!("sent a frame over {MAX_FRAME_BYTES} bytes"),
                 );
                 return;
             }
@@ -585,10 +701,7 @@ fn handle(owner: &Owner, say: Say, on_rows: &OnRows) {
             // Taking any name it offered would let one app rewrite another's
             // rows, which is the same boundary `then` is held to.
             if !speaks_for(owner, &block) {
-                eprintln!(
-                    "look connectors: [{}] tried to send rows for [{block}]",
-                    owner.block
-                );
+                note(&owner.block, &format!("tried to send rows for [{block}]"));
                 return;
             }
             let rows: Vec<SourceRow> = rows.into_iter().map(SourceRow::from).collect();
@@ -596,7 +709,7 @@ fn handle(owner: &Owner, say: Say, on_rows: &OnRows) {
                 Ok(()) => on_rows(&block),
                 // An empty message is the same rows again, which is not news.
                 Err(message) if message.is_empty() => {}
-                Err(message) => eprintln!("look connectors: [{block}] {message}"),
+                Err(message) => note(&block, &message),
             }
         }
         Say::Preview {
@@ -628,9 +741,7 @@ fn handle(owner: &Owner, say: Say, on_rows: &OnRows) {
             answer(owner, &block, req, "state", |req| STATES.put(req, on))
         }
         Say::Ready { .. } => {}
-        Say::Error { message } => {
-            eprintln!("look connectors: [{}] {message}", owner.block)
-        }
+        Say::Error { message } => note(&owner.block, &message),
     }
 }
 
@@ -639,16 +750,14 @@ fn handle(owner: &Owner, say: Say, on_rows: &OnRows) {
 /// told from a late reply to an older ask.
 fn answer(owner: &Owner, block: &str, req: Option<u64>, what: &str, store: impl FnOnce(u64)) {
     if !speaks_for(owner, block) {
-        eprintln!(
-            "look connectors: [{}] tried to answer for [{block}]",
-            owner.block
-        );
+        note(&owner.block, &format!("tried to answer for [{block}]"));
         return;
     }
     match req {
         Some(req) => store(req),
-        None => eprintln!(
-            "look connectors: [{block}] a {what} with no number cannot be matched to an ask"
+        None => note(
+            block,
+            &format!("a {what} with no number cannot be matched to an ask"),
         ),
     }
 }
@@ -688,8 +797,9 @@ fn store(block: &str, rows: &[SourceRow]) -> Result<(), String> {
         })
         .collect();
     let text = serde_json::to_string(&json).map_err(|err| err.to_string())?;
-    // The same rows again is the normal state of a connector watching
-    // something unchanged, and should cost nothing beyond this comparison.
+    // The normal state of a connector watching something unchanged, and it
+    // costs about 30us for a full block. Hashing instead of reading the file
+    // back was tried and is slower: see `connector_push`.
     if crate::index::run_cache_holds(block, &text) {
         return Err(String::new());
     }
@@ -730,10 +840,33 @@ mod tests {
     /// store from one test answers another test's read.
     fn one_at_a_time() -> std::sync::MutexGuard<'static, ()> {
         static ALONE: OnceLock<Mutex<()>> = OnceLock::new();
-        ALONE
+        let guard = ALONE
             .get_or_init(|| Mutex::new(()))
             .lock()
-            .unwrap_or_else(|err| err.into_inner())
+            .unwrap_or_else(|err| err.into_inner());
+        // These tests use literal numbers where the real asks use a counter.
+        for drain in [
+            &PREVIEWS.held as &Mutex<dyn Drain>,
+            &PLANS.held,
+            &RESULTS.held,
+            &STATES.held,
+        ] {
+            drain.lock().unwrap_or_else(|err| err.into_inner()).empty();
+        }
+        guard
+    }
+
+    /// Four maps of different value types, without `Slot` growing a method
+    /// only the tests want.
+    trait Drain {
+        fn empty(&mut self);
+    }
+
+    impl<T> Drain for Waiting<T> {
+        fn empty(&mut self) {
+            self.answers.clear();
+            self.claimed.clear();
+        }
     }
 
     fn owner(manifest: &str, block: &str) -> Owner {
@@ -777,18 +910,83 @@ mod tests {
     #[test]
     fn waiting_for_an_answer_that_never_comes_gives_up() {
         let _alone = one_at_a_time();
-        PREVIEWS.clear();
         let began = std::time::Instant::now();
         assert!(preview_of(1, Duration::from_millis(30)).is_none());
         assert!(began.elapsed() >= Duration::from_millis(25));
     }
 
     #[test]
-    fn asking_again_does_not_hand_back_the_last_answer() {
+    fn an_answer_is_collected_once() {
+        // Numbers come from a counter, so there is no identical question to
+        // guard against. What matters is that collecting an answer takes it.
         let _alone = one_at_a_time();
-        store_preview(1, Content::Text, "old".into());
-        ask_preview("b", "r");
+        store_preview(1, Content::Text, "mine".into());
+        assert_eq!(
+            preview_of(1, Duration::from_millis(0))
+                .expect("preview")
+                .text,
+            "mine"
+        );
         assert!(preview_of(1, Duration::from_millis(0)).is_none());
+    }
+
+    #[test]
+    fn a_press_and_a_read_in_flight_together_each_get_their_own_answer() {
+        // A selection changing mid-press. One shared slot let the read's
+        // answer evict the press's, and `control` then reported "did not
+        // answer" for a press that happened.
+        let _alone = one_at_a_time();
+        STATES.put(11, true);
+        STATES.put(10, false);
+        assert_eq!(state_of(11, Duration::from_millis(0)), Some(true));
+        assert_eq!(
+            state_of(10, Duration::from_millis(0)),
+            Some(false),
+            "the press lost its answer to a read that answered first"
+        );
+    }
+
+    #[test]
+    fn a_claimed_answer_is_never_evicted() {
+        // The press's answer is the lowest number, so eviction by age alone
+        // drops it for reads a slow connector is still answering.
+        //
+        // The invariant, not the race: forcing 32 puts between one
+        // `notify_all` and the waiter re-taking the lock is not reliable.
+        let _alone = one_at_a_time();
+        let press = 1_u64;
+        // As `take` does before it sleeps.
+        STATES
+            .held
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .claimed
+            .insert(press);
+        STATES.put(press, true);
+        for req in 2..(MAX_WAITING as u64 * 3) {
+            STATES.put(req, false);
+        }
+
+        let held = STATES.held.lock().unwrap_or_else(|err| err.into_inner());
+        assert!(
+            held.answers.contains_key(&press),
+            "the press lost its answer to eviction"
+        );
+        assert!(held.answers.len() <= MAX_WAITING);
+    }
+
+    #[test]
+    fn answers_nobody_came_back_for_do_not_pile_up() {
+        // A timed-out ask may still be answered, and nothing collects those.
+        let _alone = one_at_a_time();
+        for req in 0..(MAX_WAITING as u64 * 3) {
+            STATES.put(req, true);
+        }
+        let held = STATES.held.lock().unwrap_or_else(|err| err.into_inner());
+        let kept = held.answers.len();
+        assert!(kept <= MAX_WAITING, "{kept} answers held");
+        // The newest survive: the oldest caller gave up longest ago.
+        assert!(held.answers.contains_key(&(MAX_WAITING as u64 * 3 - 1)));
     }
 
     #[test]
@@ -838,6 +1036,64 @@ mod tests {
         assert!(ask_preview("nothing.running", "r1").is_none());
         assert!(ask_plan("nothing.running", "archive", vec!["r1".into()]).is_none());
         assert!(!run_plan("nothing.running", 1));
+    }
+
+    #[test]
+    fn a_later_answer_is_not_evicted_by_an_earlier_one() {
+        // A second connector's late reply must not take an answer a waiter
+        // is about to read.
+        let _alone = one_at_a_time();
+        store_preview(5, Content::Text, "mine".into());
+        store_preview(3, Content::Text, "somebody else's, and late".into());
+        assert_eq!(
+            preview_of(5, Duration::from_millis(0))
+                .expect("preview")
+                .text,
+            "mine"
+        );
+    }
+
+    #[test]
+    fn a_crash_loop_waits_longer_every_time() {
+        // The first death restarts at once; past that it backs off.
+        assert_eq!(backoff(1), Duration::ZERO);
+        assert!(backoff(2) > Duration::ZERO);
+        assert!(backoff(3) > backoff(2));
+        // Never panics past the table: a connector can die any number of times.
+        assert_eq!(backoff(99), *BACKOFF.last().expect("a backoff"));
+        // Never 0 for a launched connector, but the floor keeps it in range.
+        assert_eq!(backoff(0), Duration::ZERO);
+    }
+
+    #[test]
+    fn trouble_is_kept_per_block_and_bounded() {
+        note("myapp.notes", "first");
+        note("myapp.notes", "second");
+        let log = log_of("myapp.notes");
+        assert_eq!(log.last().map(String::as_str), Some("second"));
+        assert!(log.contains(&"first".to_string()));
+        // A connector that fails in a loop must not grow this without end.
+        for line in 0..LOG_LINES * 2 {
+            note("myapp.noisy", &format!("line {line}"));
+        }
+        assert_eq!(log_of("myapp.noisy").len(), LOG_LINES);
+        // Oldest first, so the ring dropped the front and not the back.
+        assert_eq!(
+            log_of("myapp.noisy").last().expect("a line"),
+            &format!("line {}", LOG_LINES * 2 - 1)
+        );
+        assert!(log_of("myapp.never-complained").is_empty());
+
+        // The cut must land on a character boundary: with a 3-byte character
+        // the cap itself falls mid-character, which would panic on a slice.
+        note("myapp.loud", &"\u{20ac}".repeat(MAX_LOG_LINE));
+        let loud = log_of("myapp.loud");
+        assert!(
+            loud[0].len() <= MAX_LOG_LINE,
+            "{} bytes kept",
+            loud[0].len()
+        );
+        assert!(!loud[0].is_empty());
     }
 
     #[test]

@@ -21,11 +21,6 @@ const INDEX_URL: &str = "https://raw.githubusercontent.com/kunkka19xx/lookbook/m
 const INDEX_OVERRIDE: &str = "LOOK_LOOKBOOK_INDEX";
 const FETCH_TIMEOUT_SECS: u32 = 15;
 const SCHEME_MARK: &str = "://";
-const RAW_HOST: &str = "https://raw.githubusercontent.com/";
-const PAGES_HOST: &str = "https://github.com/";
-const PAGES_BLOB: &str = "blob";
-/// Owner, repo and ref: the parts a raw URL and a page URL share.
-const REPO_PARTS: usize = 3;
 const UNREACHABLE: &str = "Could not reach lookbook.";
 const UNREADABLE: &str = "Could not read the lookbook catalog.";
 /// What the catalog's `platforms` calls this machine.
@@ -137,7 +132,10 @@ pub fn catalog() -> Result<Catalog, String> {
     let index: Index =
         serde_json::from_str(&body.ok_or(UNREACHABLE)?).map_err(|_| UNREADABLE.to_string())?;
     Ok(Catalog {
-        web: index.web.unwrap_or_else(|| pages_base(&index.base)),
+        // Declared, never derived from `base`: see "What Look reads from
+        // index.json" in lookbook's CONTRIBUTING. Empty only for a catalog
+        // predating the field, and `readme` then offers no link.
+        web: index.web.unwrap_or_default(),
         base: index.base,
         local,
         entries: index.sources,
@@ -146,29 +144,6 @@ pub fn catalog() -> Result<Catalog, String> {
 
 fn fetch(url: &str) -> Option<String> {
     String::from_utf8(http::get_bytes(url, FETCH_TIMEOUT_SECS)?).ok()
-}
-
-/// `raw.githubusercontent.com/<owner>/<repo>/<ref>/` and
-/// `github.com/<owner>/<repo>/blob/<ref>/` address the same files, so the
-/// page base derives from the raw one. Empty for any other host: a guessed
-/// page URL is a link to a 404.
-pub fn pages_base(raw: &str) -> String {
-    let Some(rest) = raw.strip_prefix(RAW_HOST) else {
-        return String::new();
-    };
-    let parts: Vec<&str> = rest.split('/').filter(|part| !part.is_empty()).collect();
-    if parts.len() < REPO_PARTS {
-        return String::new();
-    }
-    let mut base = format!(
-        "{PAGES_HOST}{}/{}/{PAGES_BLOB}/{}/",
-        parts[0], parts[1], parts[2]
-    );
-    for within in &parts[REPO_PARTS..] {
-        base.push_str(within);
-        base.push('/');
-    }
-    base
 }
 
 /// What `toml` declares and what it would need here, or why it is not a file
@@ -213,20 +188,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_raw_base_turns_into_its_pages_base() {
-        assert_eq!(
-            pages_base("https://raw.githubusercontent.com/kunkka19xx/lookbook/main/"),
-            "https://github.com/kunkka19xx/lookbook/blob/main/"
-        );
-        assert_eq!(
-            pages_base("https://raw.githubusercontent.com/o/r/main/sources/"),
-            "https://github.com/o/r/blob/main/sources/"
-        );
-        assert_eq!(pages_base("https://raw.githubusercontent.com/o/r"), "");
-        assert_eq!(pages_base("https://example.com/o/r/main/"), "");
-    }
-
-    #[test]
     fn a_checkout_reads_files_next_to_its_index() {
         let dir = std::env::temp_dir().join(format!("look-lookbook-{}", std::process::id()));
         let entry = dir.join("sources/demo");
@@ -243,7 +204,7 @@ mod tests {
         .unwrap();
         let catalog = Catalog {
             base: String::new(),
-            web: pages_base("https://raw.githubusercontent.com/o/r/main/"),
+            web: "https://github.com/o/r/blob/main/".to_string(),
             local: Some(dir.clone()),
             entries: serde_json::from_str::<Index>(
                 &fs::read_to_string(dir.join("index.json")).unwrap(),

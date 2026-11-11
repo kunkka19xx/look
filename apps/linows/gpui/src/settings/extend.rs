@@ -45,6 +45,8 @@ const KIND_CONNECT: &str = "connect";
 const STATE_OFF: &str = "off";
 const STATE_RUNNING: &str = "running";
 const STATE_STOPPED: &str = "not running";
+/// Complaints shown under a row before the list stops being a list.
+const LOG_LINES: usize = 3;
 const SECTION_GAP: f32 = 14.0;
 const SECTION_PADDING_TOP: f32 = 8.0;
 const ROW_GAP: f32 = 8.0;
@@ -232,15 +234,21 @@ fn file_name(path: &str) -> &str {
 }
 
 /// Only a `connect` block has a process to be up or down.
-fn state_of(block: &InstalledBlock) -> &'static str {
+///
+/// A connector that is down says why: "not running" alone sends somebody to a
+/// log they cannot reach.
+fn state_of(block: &InstalledBlock) -> String {
     if !block.enabled {
-        STATE_OFF
+        STATE_OFF.to_string()
     } else if block.kind != KIND_CONNECT {
-        ""
+        String::new()
     } else if block.running {
-        STATE_RUNNING
+        STATE_RUNNING.to_string()
     } else {
-        STATE_STOPPED
+        match block.log.last() {
+            Some(last) => format!("{STATE_STOPPED}: {last}"),
+            None => STATE_STOPPED.to_string(),
+        }
     }
 }
 
@@ -510,6 +518,24 @@ fn block_lines(block: &InstalledBlock, th: &Theme) -> Div {
                 .text_color(th.warning)
                 .child(SharedString::from(need.message.clone()))
         }))
+        // Newest first, unlike the engine's order: the last complaint is the
+        // one worth reading.
+        .children(
+            block
+                .log
+                .iter()
+                .rev()
+                .take(LOG_LINES)
+                .map(|line| {
+                    div()
+                        .pl(px(NEED_INDENT))
+                        .font_family(th.mono_family.clone())
+                        .text_size(px(th.font_size - 3.0))
+                        .text_color(th.text_muted)
+                        .child(SharedString::from(line.clone()))
+                })
+                .collect::<Vec<_>>(),
+        )
 }
 
 fn problem_line(message: &str, th: &Theme) -> Div {
@@ -559,6 +585,7 @@ mod tests {
             from_app,
             running: false,
             needs: Vec::new(),
+            log: Vec::new(),
         }
     }
 
@@ -597,5 +624,19 @@ mod tests {
         assert_eq!(state_of(&b), "");
         b.enabled = false;
         assert_eq!(state_of(&b), STATE_OFF);
+    }
+
+    #[test]
+    fn a_connector_that_is_down_says_what_it_said() {
+        // The state this screen exists to explain.
+        let mut b = block("/f", true, false);
+        b.log = vec!["first".into(), "spawn failed: no such file".into()];
+        assert_eq!(
+            state_of(&b),
+            format!("{STATE_STOPPED}: spawn failed: no such file")
+        );
+        // Up again, and the old complaint is not news.
+        b.running = true;
+        assert_eq!(state_of(&b), STATE_RUNNING);
     }
 }
