@@ -60,6 +60,7 @@ pub const EXTERNAL_LINK: &str = "icons/external-link.svg";
 pub const HISTORY: &str = "icons/history.svg";
 pub const ZAP: &str = "icons/zap.svg";
 pub const X_CIRCLE: &str = "icons/x-circle.svg";
+pub const X: &str = "icons/x.svg";
 pub const LOADER: &str = "icons/loader.svg";
 pub const TERMINAL: &str = "icons/terminal.svg";
 pub const INFO: &str = "icons/info.svg";
@@ -306,6 +307,7 @@ const GLYPHS: &[(&str, &[u8])] = &[
         X_CIRCLE,
         r#"<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>"#
     ),
+    lucide!(X, r#"<path d="M18 6 6 18"/><path d="m6 6 12 12"/>"#),
     lucide!(
         TERMINAL,
         r#"<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>"#

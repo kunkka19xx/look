@@ -52,8 +52,6 @@ pub enum ActionId {
     OpenConfirmed(String),
     Tool(&'static str),
     CopyPath,
-    OpenAllPicked,
-    ClearPicked,
     DeleteClipboard,
     /// A block's `then` target, by block id, with its name for the banner.
     Target {
@@ -289,33 +287,17 @@ pub fn descriptors(
     items
 }
 
-/// The split layout's side panels, offered in the menu where the compact
-/// layout has no room for them.
-pub fn panel_items(has_picked: bool, on_clip: bool) -> Vec<MenuItem> {
-    let mut items = Vec::new();
-    if has_picked {
-        items.push(MenuItem {
-            id: ActionId::OpenAllPicked,
-            title: "Open picked".into(),
-            chord: "Shift+Enter",
-            confirm: None,
-        });
-        items.push(MenuItem {
-            id: ActionId::ClearPicked,
-            title: "Clear picked".into(),
-            chord: "Ctrl+Shift+P",
-            confirm: None,
-        });
+/// A clip's delete, which the compact layout has no side panel to offer.
+pub fn panel_items(on_clip: bool) -> Vec<MenuItem> {
+    if !on_clip {
+        return Vec::new();
     }
-    if on_clip {
-        items.push(MenuItem {
-            id: ActionId::DeleteClipboard,
-            title: "Delete from history".into(),
-            chord: "Ctrl+D",
-            confirm: None,
-        });
-    }
-    items
+    vec![MenuItem {
+        id: ActionId::DeleteClipboard,
+        title: "Delete from history".into(),
+        chord: "Ctrl+D",
+        confirm: None,
+    }]
 }
 
 /// The menu while it is up: its rows, the one the keys are on, and the

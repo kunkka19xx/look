@@ -824,10 +824,7 @@ struct ResultPreviewView: View {
         let capturedAt = result.clipboardCapturedAt.map { Self.clipboardDateFormatter.string(from: $0) } ?? "Unknown"
         let characterCount = result.clipboardCharacterCount ?? content.count
         let lineCount = result.clipboardLineCount ?? max(1, content.split(whereSeparator: \.isNewline).count)
-        let previewFont = NSFont.monospacedSystemFont(
-            ofSize: CGFloat(themeStore.settings.fontSize - 1),
-            weight: .regular
-        )
+        let previewFont = themeStore.monoNSFont(size: CGFloat(themeStore.settings.fontSize - 2))
 
         return VStack(alignment: .leading, spacing: 10) {
             clipboardPreviewHeader(icon: clipboardIcon, title: "Clipboard item")

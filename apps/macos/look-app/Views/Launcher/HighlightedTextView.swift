@@ -50,8 +50,8 @@ struct HighlightedTextView: NSViewRepresentable {
         guard let text = nsView.documentView as? NSTextView,
               let storage = text.textStorage else { return }
         let coordinator = context.coordinator
-        if let applied = coordinator.applied,
-           applied.isEqual(to: attributed),
+        let sameContent = coordinator.applied?.isEqual(to: attributed) ?? false
+        if sameContent,
            coordinator.appliedFont == font,
            coordinator.appliedColor == defaultColor {
             return
@@ -73,7 +73,10 @@ struct HighlightedTextView: NSViewRepresentable {
                 storage.addAttribute(.foregroundColor, value: defaultColor, range: range)
             }
         }
-        // Reset scroll to top when content changes.
-        text.scroll(NSPoint(x: 0, y: 0))
+        // New content starts at the top; a zoom or theme change keeps the
+        // reader's place.
+        if !sameContent {
+            text.scroll(NSPoint(x: 0, y: 0))
+        }
     }
 }

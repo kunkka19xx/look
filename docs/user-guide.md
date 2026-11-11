@@ -72,7 +72,7 @@ Useful actions:
 - `Cmd+D`: move the selected file/folder - or all picked items - to the Trash (macOS only for now). Like Finder's `Cmd+Delete`, this is immediate and unconfirmed because it's recoverable: the items go to the Trash, not permanent deletion. The rows disappear from results right away.
 - `Cmd+Enter`: web search current query (Google)
 
-When at least one item is picked, the right panel switches to the **Picked** list - each row has an `X` to remove a single item, plus a **Clear all** button. File/folder copies (both `Cmd+C` and `Cmd+P`) are excluded from clipboard history.
+Picked items show as pills above the results - each pill has an `X` to remove it, followed by **Open all** (`Shift+Enter`) and **Clear**. The preview stays on the right, so you can keep previewing while you pick. Picks stay across hiding and reopening Look until you clear or open them. File/folder copies (both `Cmd+C` and `Cmd+P`) are excluded from clipboard history.
 
 **Trash.** Type `trash` to pin the Trash quick folder; `Enter` opens it in Finder. With the Trash folder selected, its preview shows the item count and `Cmd+D` **empties** the Trash. Emptying is permanent, so it asks you to confirm (`Y`/`Enter` to empty, `N`/`Esc` to cancel). Look empties the Trash through Finder, so the first time you do this macOS asks for permission to control Finder (see [Permissions](#permissions)).
 

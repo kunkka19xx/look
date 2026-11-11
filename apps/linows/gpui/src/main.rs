@@ -531,12 +531,13 @@ fn apply(command: Command, cx: &mut App) {
             if shown(cx) {
                 hide(cx);
             }
-            // Only the AI switch survives; the requested mode replaces any
-            // kept query or command screen.
+            // Only the AI switch and the picks survive; the requested mode
+            // replaces any kept query or command screen.
             {
                 let mut retained = shell.retained.lock().unwrap_or_else(|p| p.into_inner());
                 *retained = Retained {
                     ai_enabled: retained.ai_enabled,
+                    picks: std::mem::take(&mut retained.picks),
                     ..Default::default()
                 };
             }

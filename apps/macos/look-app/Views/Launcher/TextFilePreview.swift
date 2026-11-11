@@ -30,10 +30,7 @@ struct TextFilePreview: View {
     @State private var content: NSAttributedString = TextFilePreview.empty
 
     private var displayFont: NSFont {
-        NSFont.monospacedSystemFont(
-            ofSize: CGFloat(themeStore.settings.fontSize - 1),
-            weight: .regular
-        )
+        themeStore.monoNSFont(size: CGFloat(themeStore.settings.fontSize - 2))
     }
 
     var body: some View {
