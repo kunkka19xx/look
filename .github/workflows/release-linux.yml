@@ -13,6 +13,10 @@ on:
         description: "Release version (example: 1.0.0)"
         required: true
         type: string
+      attach:
+        description: "Attach to the existing v<version> release and publish to AUR"
+        type: boolean
+        default: false
   push:
     tags:
       - "v*"
@@ -21,6 +25,8 @@ jobs:
   build-release:
     name: Build Linux release artifacts
     runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     concurrency:
       group: release-linux-${{ github.ref }}
       cancel-in-progress: true
@@ -50,10 +56,15 @@ jobs:
             echo "::warning::Tag is $VERSION but apps/linows/Cargo.toml says $WS_VERSION; Nix builds report the latter until it is bumped."
           fi
 
+      # The runners' Azure mirror stops resolving at times; use the others.
       - name: Install system dependencies
+        timeout-minutes: 5
+        env:
+          APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20
         run: |
-          sudo apt-get update -qq -o Acquire::Retries=3
-          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
+          sudo sed -i '/azure.archive.ubuntu.com/d' /etc/apt/apt-mirrors.txt
+          sudo apt-get update -qq $APT_OPTS
+          sudo apt-get install -y --no-install-recommends $APT_OPTS \
             libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libxcb-xkb-dev \
             libwayland-dev libasound2-dev libdbus-1-dev libssl-dev \
             libfontconfig1-dev libfreetype-dev pkg-config file
@@ -114,6 +125,13 @@ jobs:
         with:
           files: dist/*
 
+      # Upload, not the action above, so a wrong version fails instead of creating a release.
+      - name: Attach to the existing release
+        if: github.event_name == 'workflow_dispatch' && inputs.attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v${{ steps.version.outputs.version }}" dist/* --clobber
+
   nix-build:
     name: Build and push Nix package to Cachix
     runs-on: ubuntu-latest
@@ -138,7 +156,7 @@ jobs:
   publish-aur:
     name: Publish look-bin to AUR
     needs: build-release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || inputs.attach
     runs-on: ubuntu-latest
     container: archlinux:base
     steps:
@@ -149,10 +167,7 @@ jobs:
 
       - name: Resolve version
         id: version
-        run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        run: echo "version=${{ needs.build-release.outputs.version }}" >> "$GITHUB_OUTPUT"
 
       - name: Download .deb and compute checksum
         id: artifact
