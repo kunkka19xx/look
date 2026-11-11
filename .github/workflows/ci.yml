@@ -77,9 +77,11 @@ jobs:
             linows_linux:
               - 'apps/linows/**/!(*.md)'
               - 'core/**'
+              - '.github/workflows/ci.yml'
             linows_windows:
               - 'apps/linows/**/!(*.md)'
               - 'core/**'
+              - '.github/workflows/ci.yml'
 
   lint:
     name: lint
@@ -376,10 +378,17 @@ jobs:
         with:
           persist-credentials: false
 
+      # kernel.org first: an Ubuntu mirror whose DNS does not depend on Canonical's.
       - name: Install system dependencies
+        timeout-minutes: 5
+        env:
+          APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20
+          PRIMARY_MIRROR: http://mirrors.edge.kernel.org/ubuntu/
+          FALLBACK_MIRROR: http://archive.ubuntu.com/ubuntu/
         run: |
-          sudo apt-get update -qq -o Acquire::Retries=3
-          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
+          printf '%s\tpriority:%s\n' "$PRIMARY_MIRROR" 1 "$FALLBACK_MIRROR" 2 | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          sudo apt-get update -qq $APT_OPTS
+          sudo apt-get install -y --no-install-recommends $APT_OPTS \
             libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libxcb-xkb-dev \
             libwayland-dev libasound2-dev libdbus-1-dev libssl-dev \
             libfontconfig1-dev libfreetype-dev pkg-config
