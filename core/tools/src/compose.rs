@@ -20,7 +20,8 @@ const CURRENT_DIR: &str = ".";
 const MACOS_OPEN: &str = "open -na";
 const MACOS_OPEN_ARGS: &str = "--args";
 /// Editor flags that need no terminal (matched as prefixes).
-const NO_TERMINAL_FLAGS: [&str; 4] = ["--remote", "--server", "--headless", "-es"];
+const NO_TERMINAL_FLAGS: [&str; 3] = ["--remote", "--headless", "-es"];
+const REMOTE_UI_FLAG: &str = "--remote-ui";
 const QUOTES: [char; 2] = ['"', '\''];
 /// How a source's command line runs on Windows, as it does outside a terminal.
 const WINDOWS_COMMAND_SHELL: [&str; 4] = ["cmd", "/D", "/S", "/C"];
@@ -243,6 +244,7 @@ pub fn command_in_terminal(
     let needs_terminal = surface(program) == Surface::Tty
         && !line
             .split_whitespace()
+            .filter(|word| *word != REMOTE_UI_FLAG)
             .any(|word| NO_TERMINAL_FLAGS.iter().any(|flag| word.starts_with(flag)));
     needs_terminal.then(|| in_terminal(tools, target, Hosted::Command { program, line }))
 }
@@ -840,6 +842,10 @@ mod tests {
         ] {
             assert_eq!(command_in_terminal(&none, &file(), line), None, "{line}");
         }
+        assert!(
+            command_in_terminal(&none, &file(), "nvim --server /tmp/nvim.sock --remote-ui")
+                .is_some()
+        );
     }
 
     #[test]
