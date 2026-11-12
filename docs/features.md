@@ -6,7 +6,7 @@ This document tracks what `look` supports today and what is planned next.
 
 - keyboard-first launcher UX
 - low-latency local search
-- practical ranking and personalization
+- practical ranking and personalization; an app the query names (every word starts a word of its title: `code` → Visual Studio Code, `photo` → PhotoCraft) ranks above every file and folder
 - focused built-in tools (not plugin-first)
 - predictable behavior with clear controls
 
