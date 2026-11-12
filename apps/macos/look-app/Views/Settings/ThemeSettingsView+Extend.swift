@@ -240,6 +240,17 @@ struct ExtendSettingsTab: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.leading, 12)
                     }
+
+                    // Newest first, unlike the engine's order: the last
+                    // complaint is the one worth reading.
+                    ForEach(Array(block.log.suffix(logLines).reversed().enumerated()), id: \.offset) { line in
+                        Text(line.element)
+                            .font(.system(size: CGFloat(themeStore.settings.fontSize - 3), design: .monospaced))
+                            .foregroundStyle(themeStore.mutedTextColor())
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.leading, 12)
+                    }
                 }
             }
         }
@@ -350,11 +361,19 @@ struct ExtendSettingsTab: View {
     /// Only a `connect` block has a process to be up or down. Everything else
     /// is a declaration, and saying "stopped" about a folder listing would be
     /// inventing a state it does not have.
+    ///
+    /// A connector that is down says why: "not running" alone sends somebody
+    /// to a log they cannot reach.
     private func state(of block: InstalledBlock) -> String {
         if !block.enabled { return "off" }
         guard block.kind == "connect" else { return "" }
-        return block.running ? "running" : "not running"
+        if block.running { return "running" }
+        guard let last = block.log.last else { return "not running" }
+        return "not running: \(last)"
     }
+
+    /// Complaints shown under a row before the list stops being a list.
+    private var logLines: Int { 3 }
 
     private func fileName(_ path: String) -> String {
         (path as NSString).lastPathComponent

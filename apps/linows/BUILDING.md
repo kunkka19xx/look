@@ -318,7 +318,7 @@ Look then builds locally instead of coming from Cachix.
 
 ### macOS (flake)
 
-**Status:** Available now, Apple Silicon only.
+**Status:** Available now, Apple Silicon and Intel.
 
 ```bash
 nix profile install 'github:kunkka19xx/look'
@@ -341,9 +341,10 @@ look.darwinModules.default
 
 nix-darwin links the bundle into `/Applications/Nix Apps`, which is what gets Look into Spotlight and into the Accessibility list in System Settings. The [Home Manager module](#home-manager) works unchanged as well, and its `targets.darwin.linkApps` puts the bundle in `~/Applications/Home Manager Apps`.
 
-Three things this does not cover:
+Apple Silicon and Intel are both packaged, each from its own release zip.
 
-- **Intel Macs.** Releases publish one asset per architecture, and the release workflow now builds an `x86_64` zip beside the arm64 one. The flake still leaves `x86_64-darwin` out until `nix/package-darwin.nix` carries that asset's hash; `scripts/nix-bump-darwin.sh` exits 3 when a release ships an architecture the file does not package yet, which is the cue to add the entry.
+Two things this does not cover:
+
 - **The binary cache.** `programs.lookapp.cachix` defaults to off on macOS: the package is a fixed-output fetch of the release zip, which every substituter already serves by hash.
 - **A dev shell.** `nix develop` stays Linux-only; the macOS app builds through Xcode (see the repo-root `Makefile`).
 

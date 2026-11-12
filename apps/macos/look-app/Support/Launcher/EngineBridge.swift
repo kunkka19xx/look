@@ -36,7 +36,7 @@ nonisolated
 private func look_free_cstring(_ ptr: UnsafeMutablePointer<CChar>?)
 
 @_silgen_name("look_connectors_start")
-private nonisolated func look_connectors_start()
+private nonisolated func look_connectors_start(_ appVersion: UnsafePointer<CChar>?)
 
 @_silgen_name("look_connectors_stop")
 private nonisolated func look_connectors_stop()
@@ -672,7 +672,7 @@ final class EngineBridge: @unchecked Sendable {
     /// call repeatedly: a reload is how a manifest installed since launch is
     /// noticed. Spawns processes, so call it off the main thread.
     nonisolated func startConnectors() {
-        look_connectors_start()
+        (AppVersion.short ?? "").withCString { look_connectors_start($0) }
     }
 
     /// Ends them. Their rows stay cached, so the next launch shows what they
@@ -1888,6 +1888,9 @@ nonisolated struct InstalledBlock: Decodable, Identifiable {
     let running: Bool
     /// What to change before this block works here. Empty is the normal case.
     let needs: [Needed]
+    /// This connector's recent trouble, oldest first. The only place it is
+    /// visible without a terminal.
+    let log: [String]
 }
 
 /// What a lookbook entry would add, read without installing it.

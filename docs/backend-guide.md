@@ -12,6 +12,7 @@ Use this guide when you are changing:
 - matching/ranking quality,
 - SQLite persistence semantics,
 - web answers / translation lookups (`core/answers`),
+- user-declared sources, connectors, and lookbook installs (`core/sources`, `core/engine`),
 - FFI payloads between Swift and Rust.
 
 ## Module map (edit targets)
@@ -27,6 +28,23 @@ Use this guide when you are changing:
 - `core/engine/src/index/files.rs`: file/folder discovery and excludes.
 - `core/engine/src/index/settings.rs`: curated System Settings catalog.
 - `core/engine/src/lib.rs`: bootstrap, cache refresh, integration surface.
+- `core/engine/src/index/sources.rs`: indexing declared source blocks.
+- `core/engine/src/sources.rs`: what a declared row does (its block, Enter, `then` targets, preview, the Extend inventory).
+- `core/engine/src/connectors.rs`: the long-lived processes behind `connect` blocks.
+- `core/engine/src/lookbook.rs`: reading a lookbook entry before installing it, and installing it. No network: the shell fetches.
+- `core/engine/src/refcon.rs`: the reference connector (`refcon` binary), also the connector test fixture.
+
+### `core/sources`
+
+- `core/sources/src/def.rs` / `load.rs`: parsing a declaration and reading the sources and connectors directories.
+- `core/sources/src/connect.rs`: the connector wire protocol (frames only; the engine owns the process).
+- `core/sources/src/check.rs`: whether a declared block can work on this machine.
+- `core/sources/src/install.rs`, `setup.rs`, `toggle.rs`: writing a declaration into place, filling its `[[setup]]` values, turning it off.
+- `core/sources/src/detail.rs`: the JSON blocks a `preview` may print.
+
+### `core/markdown`
+
+- `core/markdown/src/lib.rs`: markdown blocks for the preview pane and connector previews, and segments for AI answers. Not CommonMark; unrecognised syntax stays literal.
 
 ### `core/answers`
 
@@ -60,6 +78,7 @@ Use this guide when you are changing:
 - `bridge/ffi/src/seed_api.rs`: seed externally-discovered candidates (e.g. Windows UWP apps) into storage.
 - `bridge/ffi/src/todo_api.rs`: todo list/save endpoints (JSON over C ABI, backed by `core/todo`).
 - `bridge/ffi/src/runtime_config.rs`: config loading + runtime toggles.
+- `bridge/ffi/src/sources_api.rs`, `connectors_api.rs`, `lookbook_api.rs`, `markdown_api.rs`: transport over the engine's sources, connectors, lookbook and markdown entry points.
 
 ## Common change recipes
 
@@ -93,7 +112,7 @@ Use this guide when you are changing:
 Runtime file: `~/.look/config` (or `LOOK_CONFIG_PATH`).
 
 - `app_scan_roots`, `app_scan_depth`, `app_exclude_paths`, `app_exclude_names`
-- `file_scan_roots`, `file_scan_extra_roots`, `file_scan_depth` (default: 4, range: 1-12), `file_scan_limit` (default: 4000, range: 500-50000), `file_exclude_paths`
+- `file_scan_roots`, `file_scan_extra_roots`, `file_scan_depth` (default: 4, range: 1-12), `file_scan_limit` (default: 8000, range: 500-50000), `file_exclude_paths`
 - `skip_dir_names`
 - `lazy_indexing_enabled` (default: true) - when true, launcher-open refresh runs only when the index is dirty
 - `localized_app_names` (default: false, macOS 15.4+) - when true, resolves localized display names for apps and System Settings entries at index time via Foundation bundle metadata. Apps take the localized name as their title; settings panes render as `<localized> (<English>)` so English queries keep reaching them. Older macOS versions and other platforms keep the non-localized names.
@@ -124,6 +143,10 @@ cd ../bridge/ffi && cargo check
 cargo test --workspace --manifest-path core/Cargo.toml
 cargo test --manifest-path bridge/ffi/Cargo.toml
 ```
+
+### Dependency audit
+
+After a `Cargo.lock` changes, run `make audit` (needs `cargo install cargo-audit`). It runs `cargo audit` in `core`, `bridge/ffi` and `apps/linows`, as CI does.
 
 ### App-level smoke check
 

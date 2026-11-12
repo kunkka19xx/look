@@ -15,7 +15,7 @@ apps/linows/
       main.rs            Entry point, window, control socket, global hotkey
       launcher.rs        The launcher view: bar, results, preview, footer
       theme.rs           The look, resolved from ~/.look/config
-      settings/          Ctrl+Shift+, : the settings screen
+      settings/          Ctrl+Shift+, : the settings screen (Extend tab, lookbook browser)
       commands/          /calc, /kill, /pomo, /shell, /speed, /sys, /todo
       host/              Per-OS window plumbing (layer shell, X11, Windows)
   backend/               Everything that is not drawing
@@ -25,6 +25,10 @@ apps/linows/
                          file roots, noise filter, debounce + cooldown, off-thread reindex,
                          RAII slot guard). See tools/perf/WATCHER_PERF.md for benchmarks.
       search.rs          Query to rows, over core/engine
+      sources.rs         Declared blocks: what a row is, what Enter runs, previews
+      sources_watch.rs   Watches ~/.look/sources and ~/.look/connectors, reloads on change
+      connectors.rs      Starts and stops the processes behind connect blocks
+      lookbook.rs        lookbook catalog fetch, preview and install
       launch.rs          Open, reveal, focus an existing window, run as admin
       config.rs          Config get/set (.look/config persistence)
       files.rs           File meta, version, clipboard copy, music scan, folder pick
@@ -79,7 +83,7 @@ Both migrations are complete, and both of the old shells live on in git history:
 
 | Package           | Used for                                                                                                                                                  | Fallback                                                                                        |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `curl`            | Web answers, translation, `/speed`                                                                                                                        | Answers stay empty; speed test reports "curl is not available on this system"                   |
+| `curl`            | Web answers, translation, `/speed`, the lookbook catalog                                                                                                  | Answers stay empty; speed test reports "curl is not available on this system"                   |
 | `xclip`           | Copy files to clipboard (X11)                                                                                                                             | Shows "Copy failed" banner                                                                      |
 | `wl-clipboard`    | Copy files to clipboard (Wayland)                                                                                                                         | Shows "Copy failed" banner                                                                      |
 

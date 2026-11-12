@@ -731,5 +731,8 @@ enum AppConstants {
         static let maxDepth = 12
         static let minLimit = 500
         static let maxLimit = 50_000
+        /// The engine's own default (`FILE_SCAN_LIMIT`), so saving Settings
+        /// never writes a smaller one into a config that had none.
+        static let defaultLimit = 8000
     }
 }

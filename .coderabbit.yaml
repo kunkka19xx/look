@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  path_filters:
+    - "!docs/bench-notes/**"
+    - "!**/Cargo.lock"
+    - "!**/package-lock.json"
+  auto_review:
+    drafts: false

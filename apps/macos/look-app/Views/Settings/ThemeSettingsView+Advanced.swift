@@ -81,7 +81,7 @@ extension ThemeSettingsView {
                     }
 
                     settingRow("File Scan Limit", hint: "Max files indexed per refresh") {
-                        TextField("4000", text: $fileScanLimitInput)
+                        TextField(String(AppConstants.FileScan.defaultLimit), text: $fileScanLimitInput)
                             .textFieldStyle(.roundedBorder)
                             .onChange(of: fileScanLimitInput) { _, value in
                                 fileScanLimitInput = sanitizedNumericInput(value)

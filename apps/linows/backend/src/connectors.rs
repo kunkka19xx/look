@@ -29,7 +29,11 @@ pub fn start(state: &'static AppState) {
     let Some(home) = look_engine::config_path::home() else {
         return;
     };
-    look_engine::connectors::start(std::path::Path::new(&home), on_rows(state));
+    look_engine::connectors::start(
+        std::path::Path::new(&home),
+        crate::APP_VERSION,
+        on_rows(state),
+    );
 }
 
 /// Respawns connectors that died. Called on every open; reads no directories.

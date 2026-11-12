@@ -12,7 +12,7 @@ A keyboard-first, local-first launcher for macOS, Windows, and Linux. Open apps,
 [![Downloads](https://img.shields.io/github/downloads/kunkka19xx/look/total)](https://github.com/kunkka19xx/look/releases)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 
-📘 [Docs](https://noah-code.com/docs/look) · 📖 [User guide](docs/user-guide.md)
+📘 [Docs](https://noah-code.com/docs/look) · 📖 [User guide](docs/user-guide.md) · 🧩 [lookbook](#extend-it-with-lookbook)
 
 https://github.com/user-attachments/assets/a0907691-d99b-48a7-862c-8bc43cfa3a2e
 
@@ -30,7 +30,7 @@ Results land as fast as you can type. A Rust core under a native SwiftUI app on 
 | Free, no paid tier | ✅                      | ✅           | ❌ Pro $8-10/mo         | ❌ Powerpack £34  | ✅         | ✅         |
 | No account needed  | ✅                      | ✅           | ✅ core, ❌ sync and AI | ✅                | ✅         | ✅         |
 | Clipboard history  | ✅ text and images      | ✅ macOS 26+ | ✅ (free: 3 months)     | ❌ Powerpack only | ❌         | ❌         |
-| Extension store    | ❌                      | ❌           | ✅                      | ✅ Workflows      | ✅         | ❌         |
+| Extension store    | ✅ lookbook             | ❌           | ✅                      | ✅ Workflows      | ✅         | ❌         |
 
 </details>
 
@@ -53,7 +53,7 @@ Release builds are signed and notarized - no Gatekeeper bypass needed. Releases 
 nix profile install 'github:kunkka19xx/look'
 ```
 
-The same signed, notarized bundle Homebrew ships, so the Accessibility and Automation grants survive an update. Apple Silicon only for now. nix-darwin and Home Manager: see [BUILDING.md](apps/linows/BUILDING.md#macos-flake).
+The same signed, notarized bundle Homebrew ships, so the Accessibility and Automation grants survive an update. Apple Silicon and Intel. nix-darwin and Home Manager: see [BUILDING.md](apps/linows/BUILDING.md#macos-flake).
 
 ### Linux
 
@@ -279,6 +279,12 @@ Which super actions are on the strip, where they sit, and any tiles of your own 
 
 Full reference: [docs/user-guide.md](docs/user-guide.md).
 
+## Extend it with lookbook
+
+Look can list your own rows next to apps and files: repos, SSH hosts, containers, tmux sessions, a morning routine. [lookbook](https://github.com/kunkka19xx/lookbook) is a catalog of ready-made ones. Open `Settings > Extend` and choose **Browse lookbook**: each card says whether it works on your machine, and **Install** asks for what it needs (a folder, a terminal) before writing anything.
+
+Made one worth sharing? [Send it to lookbook](https://github.com/kunkka19xx/lookbook#contributing). AI-assisted is fine, as long as it is useful, documented and tested. To write your own, see [Your own sources](docs/user-sources.md); to have an app push its own rows, see [Integrating your app](docs/integrating.md).
+
 ## Themes
 
 Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, plus Custom. Kanagawa is the default on Linux and Windows.
@@ -295,7 +301,7 @@ Switch in `Settings > Appearance`.
 - [Features](docs/features.md) - what's shipped, what's planned
 - [Contributing](CONTRIBUTING.md) - how to contribute
 - [Your own sources](docs/user-sources.md) - declare custom rows from directories, files, and commands
-- [lookbook](https://github.com/kunkka19xx/lookbook) - ready-made sources to copy: git, ssh, docker, projects
+- [lookbook](https://github.com/kunkka19xx/lookbook) - ready-made sources (git, ssh, docker, projects), browsable and installable from `Settings > Extend`
 - [Writing a control](docs/writing-controls.md) - add a Quick Action toggle/button to the panel
 - [Development](DEVELOPMENT.md) - building locally, repo layout, release process
 

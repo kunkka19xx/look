@@ -283,6 +283,9 @@ pub struct Preview {
     cache: HashMap<String, Arc<Content>>,
     /// The row the panel is waiting on; an answer for another is dropped.
     wanted: Option<String>,
+    /// The row on screen whose panel a connector answered. Never reused: it
+    /// is kept out of `cache`, and `current` below is its own reuse path.
+    live: Option<String>,
     /// The body's own scroll, reset per row.
     body_scroll: ScrollHandle,
     /// A long text body's lines, and the body they were last reset for.
@@ -309,6 +312,7 @@ impl Preview {
             current: None,
             cache: HashMap::new(),
             wanted: None,
+            live: None,
             body_scroll: ScrollHandle::new(),
             lines: ListState::new(0, ListAlignment::Top, px(TEXT_OVERDRAW)),
             lines_for: None,
@@ -405,11 +409,13 @@ impl Preview {
             return;
         }
         // Back on the shown row: drop what the row in between started. A
-        // panel still waiting asks again, leaving cancelled its ask.
-        if self
-            .current
-            .as_ref()
-            .is_some_and(|(k, content)| *k == key && !content.waiting())
+        // panel still waiting asks again, leaving cancelled its ask. So does
+        // one a connector answered: its data has moved on.
+        if self.live.as_deref() != Some(key.as_str())
+            && self
+                .current
+                .as_ref()
+                .is_some_and(|(k, content)| *k == key && !content.waiting())
         {
             self.wanted = None;
             self._load = None;
@@ -447,7 +453,7 @@ impl Preview {
             // The preview spawns or asks a connector, so a row arrowed past
             // never reaches it.
             cx.background_executor().timer(PREVIEW_DWELL).await;
-            let detail = cx
+            let (detail, live) = cx
                 .background_executor()
                 .spawn(async move { preview_detail(&row, &ancestors, &query) })
                 .await;
@@ -463,7 +469,11 @@ impl Preview {
                     panel: panel.clone(),
                     preview: detail,
                 });
-                this.remember(&key, content.clone());
+                // One or the other: a live panel is what reuse must skip.
+                this.live = live.then(|| key.clone());
+                if !live {
+                    this.remember(&key, content.clone());
+                }
                 this.current = Some((key, content));
                 this.wanted = None;
                 cx.notify();
@@ -1290,15 +1300,22 @@ fn load(row: &Row, ancestors: &str, query: &str) -> Content {
 
 /// A block's declared `preview` against the row: error, blocks, text, in
 /// that order, as macOS `blockPreviewBody` reads them.
-fn preview_detail(row: &Row, ancestors: &str, query: &str) -> Option<Detail> {
+///
+/// Also whether a connector answered it, which decides if it may be cached:
+/// a live producer's panel is stale as soon as its data moves.
+fn preview_detail(row: &Row, ancestors: &str, query: &str) -> (Option<Detail>, bool) {
     let args = crate::actions::row_args(row, ancestors, query);
-    let preview = linows_backend::sources::source_preview(args)?;
-    match preview.error {
+    let Some(preview) = linows_backend::sources::source_preview(args) else {
+        return (None, false);
+    };
+    let live = preview.live;
+    let detail = match preview.error {
         Some(error) => Some(Detail::Error(error)),
         None if !preview.blocks.is_empty() => Some(Detail::Blocks(pieces_of(preview.blocks))),
         None if !preview.text.is_empty() => Some(Detail::Blocks(vec![text_piece(preview.text)])),
         None => None,
-    }
+    };
+    (detail, live)
 }
 
 /// A layout's blocks as drawable pieces; a markdown block becomes the

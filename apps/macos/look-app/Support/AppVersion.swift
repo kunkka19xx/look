@@ -4,7 +4,7 @@ import Foundation
 /// Info.plist. The CLI `-v` path reads through AppBundle for the case where the
 /// binary is invoked outside the .app; inside the GUI we are always running from
 /// the bundle, so Bundle.main is enough here.
-enum AppVersion {
+nonisolated enum AppVersion {
     /// Marketing version, e.g. "1.0.0". nil if missing from the plist.
     static var short: String? {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?
@@ -38,6 +38,6 @@ enum AppVersion {
     }
 }
 
-private extension String {
+nonisolated private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }

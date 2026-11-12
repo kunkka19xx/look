@@ -9,8 +9,9 @@
 //! ```
 //!
 //! Modes: `serve` (the default, and the only one worth copying), `once` to
-//! exit after its rows, `same` to send the same rows twice, and `oversized`
-//! to breach the frame cap. The last three exist for the tests.
+//! exit after its rows, `same` to send the same rows twice, `atcap` and
+//! `oversized` for the two sides of the frame cap, and `wedged` to stop
+//! reading stdin while staying alive. Everything but `serve` is for the tests.
 
 use std::io::{BufRead, Write};
 
@@ -56,6 +57,14 @@ fn main() {
         // either: the point is exactly which one lands.
         "atcap" => say(&sized(&block, look_engine::connectors::MAX_FRAME_BYTES)),
         "oversized" => say(&sized(&block, look_engine::connectors::MAX_FRAME_BYTES + 1)),
+        // Alive and pushing, but never reads another ask. Look must not
+        // accumulate a thread per ask against this.
+        "wedged" => {
+            rows(&block);
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
+            }
+        }
         _ => rows(&block),
     }
 

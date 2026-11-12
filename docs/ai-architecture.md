@@ -30,7 +30,7 @@ flowchart TB
         PLN["planner.rs · plan.rs · domain.rs<br/>prompt, aliases, sharding, decode"]
         RES["resolve.rs · matcher.rs · explicit.rs<br/>validate, match, dates, preview, undo recipe"]
         GR["window.rs · lexicon.rs · files.rs<br/>· textops.rs · calling.rs · meeting/"]
-        ST["conversations.rs · memory.rs · store.rs<br/>· context.rs · markdown.rs"]
+        ST["conversations.rs · memory.rs · store.rs<br/>· context.rs"]
         TR["chat.rs · ollama.rs<br/>curl child + reader thread, polled"]
     end
 
@@ -45,7 +45,8 @@ So the honest reason the boundary is data-only is not "the second shell needs it
 
 | Layer                                                                                      | Home                    | Why                                                                   |
 | ------------------------------------------------------------------------------------------ | ----------------------- | --------------------------------------------------------------------- |
-| Routing, planning, resolution, matching, window grammar, lexicon, markdown, chat transport | `core/ai` (Rust)        | One source of truth for prompts and parsers; unit-tested without a UI |
+| Routing, planning, resolution, matching, window grammar, lexicon, chat transport           | `core/ai` (Rust)        | One source of truth for prompts and parsers; unit-tested without a UI |
+| Markdown segmentation                                                                      | `core/markdown` (Rust)  | Shared with the preview pane and connector previews                   |
 | C boundary                                                                                 | `bridge/ffi`            | JSON in, JSON out; every export panic-caught                          |
 | Pure Swift helpers (`DatePhrase`, `ScheduleWords`, `LocalHostCheck`, `OllamaCodec`)        | `LauncherLogic` package | Foundation-only, unit-tested                                          |
 | EventKit, providers, controllers, SwiftUI                                                  | app target              | Platform-bound                                                        |
@@ -66,7 +67,7 @@ misc       look_ai_markdown_segments_json, look_ai_textop_json,
 
 Ollama health probing stayed Swift-side (`OllamaProvider.probe` + `OllamaHealthCache`): it is a plain `GET /api/tags` plus a cache, and the shell already needs the availability type for its UI. If a second shell ever existed it would want its own equivalent rather than this FFI - which is the reason not to promote it now.
 
-**Build gotcha, and it fails silently.** The static library reaches the link step through `-Wl,-force_load,.../RustBuild/liblook_ffi.a` in `OTHER_LDFLAGS`, and Xcode does not treat a path inside a linker flag as a tracked build input. Adding an FFI symbol fails loudly (undefined `_look_ai_*` at link time), but changing existing Rust behaviour does not: cargo rebuilds the `.a`, nothing triggers a relink, and the app keeps running the previous brain. Delete `apps/macos/RustBuild/liblook_ffi.a` (or `touch` any Swift file) before rebuilding. Verify with `strings <DerivedData>/.../Look.debug.dylib | grep <a-string-you-added>` - the **dylib**, not the `Look` shim, holds the code in Debug. The real fix, not done: make the `.a` a tracked input, which changes link behaviour for everyone and so deserves its own change.
+**Build gotcha, and it fails silently.** The static library reaches the link step through `-Wl,-force_load,.../RustBuild/liblook_ffi.a` in `OTHER_LDFLAGS`, and Xcode does not treat a path inside a linker flag as a tracked build input. Adding an FFI symbol fails loudly (undefined `_look_ai_*` at link time), but changing existing Rust behaviour does not: cargo rebuilds the `.a`, nothing triggers a relink, and the app keeps running the previous brain. Delete `apps/macos/RustBuild/liblook_ffi.a` (or `touch` any Swift file) before rebuilding. `make app-build` does the delete for you (`make ffi-unstale` drops the `.a` whenever a source under `core/` or `bridge/` changes); a build started from Xcode does not. Verify with `strings <DerivedData>/.../Look.debug.dylib | grep <a-string-you-added>` - the **dylib**, not the `Look` shim, holds the code in Debug. The real fix, not done: make the `.a` a tracked input, which changes link behaviour for everyone and so deserves its own change.
 
 ## 2. The doctrine: three tiers, one typed output
 
@@ -242,7 +243,7 @@ Esc is a three-step ladder, and Shift+Esc skips it from anywhere. Cmd+Space (hid
 
 **Conversations.** One human-readable JSON file, `~/Library/Application Support/Look/ai-conversations.json`, upserted incrementally as items complete. Crash-safe for real: writes go to a temp file and rename, and a file that fails to parse is moved aside as `.corrupt` rather than being silently overwritten with an empty list. Bounds: 20 conversations, last 60 items each. The model context per turn is a TOKEN budget, not a fixed count - the newest turns that fit ~2500 tokens (`core/ai/src/context.rs`), so a long chat stays coherent without a summarizer and an old conversation resumes with bounded weight. Performed actions ride along as `[Done: ...]`, so "what did I just add?" works.
 
-**Markdown** is segmented by `core/ai/src/markdown.rs` (fenced code split from prose; prose gets inline markdown via `AttributedString(markdown:)`). Deliberately not a full engine, no third-party dependency. Parsed ONCE, when the answer settles: the parse is an FFI call plus a full-text scan, so running it per streamed token was quadratic work on the main thread. Mid-stream renders as plain text, which also avoids styling half-written code fences.
+**Markdown** is segmented by `core/markdown` (`segments`, the same crate the preview pane reads markdown with; fenced code split from prose; prose gets inline markdown via `AttributedString(markdown:)`). Deliberately not a full engine, no third-party dependency. Parsed ONCE, when the answer settles: the parse is an FFI call plus a full-text scan, so running it per streamed token was quadratic work on the main thread. Mid-stream renders as plain text, which also avoids styling half-written code fences.
 
 ### The latency contract
 
