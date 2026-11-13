@@ -819,7 +819,7 @@ impl Preview {
 
     /// Populate primary actions for the selected row to be rendered inline.
     fn sync_row_actions(&mut self, row: &Row) {
-        if !actions::actionable(row) || row.path.is_empty() {
+        if !actions::actionable(row) || row.path.is_empty() || row.declared() {
             self.row_actions.clear();
             self.row_action_row = None;
             return;
@@ -865,6 +865,12 @@ impl Preview {
     /// Render the primary action options directly inside the preview details card.
     fn inline_actions_section(&self, th: &Theme, cx: &mut Context<Self>) -> Option<Div> {
         if self.row_actions.is_empty() {
+            return None;
+        }
+        // Only show actions when they match the currently displayed preview.
+        let current_key = self.current.as_ref().map(|(k, _)| k.as_str())?;
+        let action_row = self.row_action_row.as_ref()?;
+        if !current_key.starts_with(&action_row.id) {
             return None;
         }
         let rows = self.row_actions.iter().enumerate().map(|(i, item)| {
