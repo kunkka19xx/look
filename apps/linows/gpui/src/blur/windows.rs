@@ -13,6 +13,7 @@ use windows::UI::Composition::{
     CompositionBackdropBrush, CompositionRoundedRectangleGeometry, Compositor, ContainerVisual,
     SpriteVisual,
 };
+use windows::UI::ViewManagement::UISettings;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Dwm::{DWMWA_USE_HOSTBACKDROPBRUSH, DwmSetWindowAttribute};
 use windows::Win32::System::WinRT::Composition::ICompositorDesktopInterop;
@@ -97,10 +98,22 @@ struct Layer {
     scale: f32,
 }
 
+/// The "Transparency effects" switch in Windows settings. Off, the system
+/// blurs nothing and Look stays clear glass.
+fn transparency_on() -> bool {
+    UISettings::new()
+        .and_then(|settings| settings.AdvancedEffectsEnabled())
+        .unwrap_or(false)
+}
+
 impl Layer {
-    /// `None` when gpui draws through a redirection bitmap
-    /// (`GPUI_DISABLE_DIRECT_COMPOSITION`), which would cover the layer.
+    /// `None` when Windows has transparency off, or when gpui draws through
+    /// a redirection bitmap (`GPUI_DISABLE_DIRECT_COMPOSITION`), which would
+    /// cover the layer.
     fn new(hwnd: HWND) -> Result<Option<Self>> {
+        if !transparency_on() {
+            return Ok(None);
+        }
         let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
         if ex_style & WS_EX_NOREDIRECTIONBITMAP.0 == 0 {
             return Ok(None);
