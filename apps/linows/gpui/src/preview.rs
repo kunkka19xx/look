@@ -810,9 +810,9 @@ impl Preview {
                     ))
                     .children(self.actions_section(th, cx))
                     .child(self.body(body, th, shell))
+                    .children(self.inline_actions_section(th, cx))
                     // Under a body the rows sit at the foot, as macOS files do.
                     .child(info_rows(info, th).when(!matches!(body, Body::None), |r| r.mt_auto()))
-                    .children(self.inline_actions_section(th, cx))
             }
         }
     }
@@ -905,8 +905,6 @@ impl Preview {
                 .mt(px(10.0))
                 .p(px(6.0))
                 .rounded(px(th.control_radius()))
-                .border(px(th.border_thickness))
-                .border_color(th.border)
                 .bg(th.control_fill)
                 .flex()
                 .flex_col()
