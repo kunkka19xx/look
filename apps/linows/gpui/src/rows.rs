@@ -92,6 +92,9 @@ pub struct Row {
     pub open: Open,
     /// When the row was last opened through Look, for the preview.
     pub last_used: Option<i64>,
+    /// What the row itself declared (a favicon per history entry). Beats
+    /// its block's icon when the block dresses it.
+    pub own_icon: Option<String>,
 }
 
 pub use crate::glyphs::{
@@ -220,6 +223,7 @@ impl Row {
             score: r.score,
             icon: Icon::Resolve { glyph },
             last_used: r.last_used_at_unix_s,
+            own_icon: r.icon,
         }
     }
 
@@ -240,6 +244,7 @@ impl Row {
                 expr: expr.to_string(),
             },
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -256,6 +261,7 @@ impl Row {
             icon: Icon::Glyph(crate::glyphs::SEARCH),
             open: Open::Prefix(prefix.to_string()),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -272,6 +278,7 @@ impl Row {
             icon: Icon::Glyph(glyph),
             open: Open::Command(id.to_string()),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -309,6 +316,7 @@ impl Row {
                 lines: entry.line_count,
             }),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -339,6 +347,7 @@ impl Row {
                 timestamp: entry.timestamp,
             }),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -369,6 +378,7 @@ impl Row {
                 icon_path: p.icon_source,
             }),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -385,6 +395,7 @@ impl Row {
             icon: Icon::Glyph(crate::glyphs::SEARCH),
             open: Open::WebSuggestion(text.to_string()),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -415,6 +426,7 @@ impl Row {
             icon: Icon::Glyph(crate::glyphs::ZAP),
             open: Open::Path { usage: "open_file" },
             last_used: None,
+            own_icon: None,
         };
         // The row's own icon wins over its block's.
         out.icon = declared_icon(&out, row.icon.as_deref().or(block_icon), home);
@@ -437,7 +449,14 @@ impl Row {
         } else {
             path_info(&self.path)
         };
-        self.icon = declared_icon(self, block_icon, home);
+        // The row's own icon wins only when it draws as a picture or a glyph;
+        // an empty one or a bare symbol name leaves its block's icon in force.
+        let own = self
+            .own_icon
+            .as_deref()
+            .map(|icon| declared_icon(self, Some(icon), home))
+            .filter(|icon| matches!(icon, Icon::File(_) | Icon::Text(_)));
+        self.icon = own.unwrap_or_else(|| declared_icon(self, block_icon, home));
     }
 
     /// Whether the row's path is something on disk a chord can hand on. A
@@ -487,6 +506,7 @@ impl Row {
             icon: Icon::Glyph(GLYPH_GLOBE),
             open: Open::Url(url.to_string()),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -511,6 +531,7 @@ impl Row {
                 usage: "open_folder",
             },
             last_used: None,
+            own_icon: None,
         }
     }
 }
@@ -664,6 +685,24 @@ mod tests {
             icon: None,
             last_used_at_unix_s: None,
         })
+    }
+
+    #[test]
+    fn a_source_row_wears_its_own_icon_over_its_blocks() {
+        let mut r = row("GitHub", "app", 0);
+        r.own_icon = Some("/tmp/fav/github.com.png".into());
+        r.dress_source(Some("Browser history"), Some("🌐"), None);
+        assert!(matches!(&r.icon, Icon::File(p) if p.ends_with("github.com.png")));
+
+        let mut plain = row("Other", "app", 0);
+        plain.dress_source(Some("Browser history"), Some("🌐"), None);
+        assert!(matches!(&plain.icon, Icon::Text(t) if t == "🌐"));
+
+        // An own icon that draws as nothing does not hide the block's.
+        let mut bare = row("Bare", "app", 0);
+        bare.own_icon = Some("globe".into());
+        bare.dress_source(Some("Browser history"), Some("🌐"), None);
+        assert!(matches!(&bare.icon, Icon::Text(t) if t == "🌐"));
     }
 
     #[test]
