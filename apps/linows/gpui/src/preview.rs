@@ -27,7 +27,7 @@ use crate::elide::middle_elided;
 use crate::glyphs;
 use crate::icons::{IconRequest, IconStore};
 use crate::imagecache::PreviewImages;
-use crate::launchpad::Notice;
+use crate::launchpad::{Notice, Tone};
 use crate::modes::Mode;
 use crate::qactions::{self, QuickActions};
 use crate::rows::{self, Clip, ClipImage, Icon, Open, Process, Row};
@@ -946,11 +946,25 @@ impl Preview {
             }
             ActionId::CopyPath => {
                 let path = row.path.clone();
-                cx.spawn(async move |_, cx| {
-                    let _ = cx
+                cx.spawn(async move |this, cx| {
+                    let result = cx
                         .background_executor()
                         .spawn(async move { clipboard::copy_to_clipboard(&path) })
                         .await;
+                    let _ = this.update(cx, |_, cx| match result {
+                        Ok(()) => cx.emit(Notice {
+                            text: "Copied path".into(),
+                            tone: Tone::Success,
+                            seconds: 1.5,
+                            copy: None,
+                        }),
+                        Err(err) => cx.emit(Notice {
+                            text: err,
+                            tone: Tone::Error,
+                            seconds: 2.4,
+                            copy: None,
+                        }),
+                    });
                 })
                 .detach();
             }
