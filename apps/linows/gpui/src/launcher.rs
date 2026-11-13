@@ -951,6 +951,7 @@ impl Launcher {
             Some(shortcuts::HIDE_APP) => self.hide_selected_app(cx),
             Some(shortcuts::COPY) => self.copy(cx),
             Some(shortcuts::REVEAL) if !menu => self.reveal_selected(cx),
+            Some(shortcuts::RUN_AS_ADMIN) if !menu => self.run_as_admin(cx),
             Some(shortcuts::TRASH) if !menu => self.delete(cx),
             Some(shortcuts::CLIP_PASTE) if !menu => self.paste_selected_clip(cx),
             _ => match ks.key.as_str() {
@@ -1299,6 +1300,39 @@ impl Launcher {
     /// Enter: what the row says. The backend opens paths and hides the
     /// launcher through the shell; a URL goes to the browser and the history;
     /// an answer or a clip goes to the clipboard.
+    /// Ctrl+Shift+Enter (Windows): launch the selected app or script elevated.
+    fn run_as_admin(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(row) = self.selected_row().cloned() else {
+            return true;
+        };
+        let Open::Path { usage } = row.open else {
+            return true;
+        };
+        if !actions::is_elevatable(&row) {
+            self.banner.show(
+                "Only apps or scripts can run as administrator".into(),
+                Tone::Info,
+                banner::SHORT,
+                cx,
+            );
+            return true;
+        }
+        let shell = self.shell.clone();
+        let path = row.path.clone();
+        let id = row.id.clone();
+        bg::fetch(
+            cx,
+            move || launch::open_elevated(&shell, &path),
+            move |this, outcome, cx| match outcome {
+                Ok(()) => {
+                    engine::record_usage(app_state(), &id, usage);
+                }
+                Err(err) => this.banner.show(err, Tone::Error, banner::MEDIUM, cx),
+            },
+        );
+        true
+    }
+
     fn open_selected(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(row) = self.selected_row().cloned() else {
             return true;
@@ -2004,6 +2038,9 @@ impl Launcher {
         match id {
             ActionId::Open => {
                 self.open_selected(cx);
+            }
+            ActionId::RunAsAdmin => {
+                self.run_as_admin(cx);
             }
             ActionId::OpenConfirmed(row_id) => {
                 if let Some(row) = self.selected_row().filter(|r| r.id == row_id).cloned() {

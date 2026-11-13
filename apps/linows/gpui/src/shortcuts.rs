@@ -66,6 +66,7 @@ pub const ACTIONS: &str = "main.actions";
 pub const EDIT: &str = "main.edit";
 pub const TERMINAL: &str = "main.terminal";
 pub const REVEAL: &str = "main.reveal";
+pub const RUN_AS_ADMIN: &str = "main.runAsAdmin";
 pub const WEB_SEARCH: &str = "main.webSearch";
 pub const QUICK_TOGGLE: &str = "main.quickActionToggle";
 pub const COMMAND_MODE: &str = "main.commandMode";
@@ -198,6 +199,12 @@ fn build() -> Vec<Group> {
                     "Open a terminal at the selected file/folder",
                 ),
                 Entry::new(REVEAL, "Ctrl+F", "Reveal selected item in file manager"),
+                #[cfg(target_os = "windows")]
+                Entry::new(
+                    RUN_AS_ADMIN,
+                    "Ctrl+Shift+Enter",
+                    "Run selected app or script as administrator",
+                ),
                 Entry::new(WEB_SEARCH, "Ctrl+Enter", "Search query on Google"),
                 Entry::new(
                     QUICK_TOGGLE,
