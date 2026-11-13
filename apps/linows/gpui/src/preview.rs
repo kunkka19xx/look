@@ -22,6 +22,7 @@ use linows_backend::process::ProcDetail;
 use linows_backend::{clipboard, clipimage, files, launch, process};
 
 use crate::Shell;
+use crate::actions::{self, ActionId};
 use crate::elide::middle_elided;
 use crate::glyphs;
 use crate::icons::{IconRequest, IconStore};
@@ -301,6 +302,9 @@ pub struct Preview {
     _cpu: Option<Task<()>>,
     /// The Quick Actions of the row on screen, see `qactions`.
     pub(crate) actions: Option<QuickActions>,
+    /// Primary actions for the current row, rendered inline in the preview details.
+    row_actions: Vec<actions::MenuItem>,
+    row_action_row: Option<Row>,
 }
 
 impl Preview {
@@ -322,6 +326,8 @@ impl Preview {
             _load: None,
             _cpu: None,
             actions: None,
+            row_actions: Vec::new(),
+            row_action_row: None,
         }
     }
 
@@ -386,6 +392,8 @@ impl Preview {
 
     pub fn clear(&mut self, cx: &mut Context<Self>) {
         self.actions = None;
+        self.row_actions.clear();
+        self.row_action_row = None;
         self.current = None;
         self.wanted = None;
         self._load = None;
@@ -398,6 +406,7 @@ impl Preview {
     /// lands later still, see `PREVIEW_DWELL`.
     pub fn show(&mut self, row: &Row, ancestors: String, query: String, cx: &mut Context<Self>) {
         self.sync_actions(row, cx);
+        self.sync_row_actions(row);
         // A block row is a different panel at a different depth, and its
         // steps follow what was typed.
         let key = if is_block_row(row) {
@@ -802,7 +811,150 @@ impl Preview {
                     .child(self.body(body, th, shell))
                     // Under a body the rows sit at the foot, as macOS files do.
                     .child(info_rows(info, th).when(!matches!(body, Body::None), |r| r.mt_auto()))
+                    .children(self.inline_actions_section(th, cx))
             }
+        }
+    }
+
+    /// Populate primary actions for the selected row to be rendered inline.
+    fn sync_row_actions(&mut self, row: &Row) {
+        if !actions::actionable(row) || row.path.is_empty() {
+            self.row_actions.clear();
+            self.row_action_row = None;
+            return;
+        }
+        let mut items = vec![actions::MenuItem {
+            id: ActionId::Open,
+            title: "Open".into(),
+            chord: "Enter",
+            confirm: None,
+        }];
+        #[cfg(target_os = "windows")]
+        if actions::is_elevatable(row) {
+            items.push(actions::MenuItem {
+                id: ActionId::RunAsAdmin,
+                title: "Run as administrator".into(),
+                chord: "Ctrl+Shift+Enter",
+                confirm: None,
+            });
+        }
+        if actions::applies(actions::REVEAL, &row.kind) {
+            let reveal_label = if cfg!(target_os = "linux") {
+                "Show in Files"
+            } else {
+                "Reveal in Explorer"
+            };
+            items.push(actions::MenuItem {
+                id: ActionId::Tool(actions::REVEAL),
+                title: reveal_label.into(),
+                chord: "Ctrl+F",
+                confirm: None,
+            });
+        }
+        items.push(actions::MenuItem {
+            id: ActionId::CopyPath,
+            title: "Copy path".into(),
+            chord: "Ctrl+C",
+            confirm: None,
+        });
+        self.row_actions = items;
+        self.row_action_row = Some(row.clone());
+    }
+
+    /// Render the primary action options directly inside the preview details card.
+    fn inline_actions_section(&self, th: &Theme, cx: &mut Context<Self>) -> Option<Div> {
+        if self.row_actions.is_empty() {
+            return None;
+        }
+        let rows = self.row_actions.iter().enumerate().map(|(i, item)| {
+            let id = item.id.clone();
+            div()
+                .id(("inline-action", i))
+                .px(px(10.0))
+                .py(px(6.0))
+                .rounded(px(th.chip_radius()))
+                .hover(|s| s.bg(th.selection_fill))
+                .cursor_pointer()
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.run_inline_action(id.clone(), cx);
+                }))
+                .flex()
+                .items_center()
+                .gap(px(12.0))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_size(px(th.font_size - 1.0))
+                        .truncate()
+                        .child(item.title.clone()),
+                )
+                .when(!item.chord.is_empty(), |el| {
+                    el.child(
+                        div()
+                            .text_size(px(th.font_size - 3.0))
+                            .text_color(th.text_muted)
+                            .child(item.chord),
+                    )
+                })
+        });
+
+        Some(
+            div()
+                .mt(px(10.0))
+                .p(px(6.0))
+                .rounded(px(th.control_radius()))
+                .border(px(th.border_thickness))
+                .border_color(th.border)
+                .bg(th.control_fill)
+                .flex()
+                .flex_col()
+                .children(rows),
+        )
+    }
+
+    fn run_inline_action(&mut self, id: ActionId, cx: &mut Context<Self>) {
+        let Some(row) = self.row_action_row.clone() else {
+            return;
+        };
+        let shell = self.shell.clone();
+        match id {
+            ActionId::Open => {
+                if let Err(err) = launch::open_path(&shell, row.path, Some(&row.kind), Some(&row.id)) {
+                    eprintln!("open {}: {err}", row.title);
+                }
+            }
+            ActionId::RunAsAdmin => {
+                let path = row.path.clone();
+                cx.spawn(async move |_, cx| {
+                    let _ = cx
+                        .background_executor()
+                        .spawn(async move { launch::open_elevated(&shell, &path) })
+                        .await;
+                })
+                .detach();
+            }
+            ActionId::Tool(actions::REVEAL) => {
+                let path = row.path.clone();
+                cx.spawn(async move |_, cx| {
+                    let _ = cx
+                        .background_executor()
+                        .spawn(async move { launch::reveal_path(&path) })
+                        .await;
+                })
+                .detach();
+            }
+            ActionId::CopyPath => {
+                let path = row.path.clone();
+                cx.spawn(async move |_, cx| {
+                    let _ = cx
+                        .background_executor()
+                        .spawn(async move { clipboard::copy_text(&path) })
+                        .await;
+                })
+                .detach();
+            }
+            _ => {}
         }
     }
 
