@@ -47,6 +47,8 @@ const ROW_GAP: f32 = 16.0;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ActionId {
     Open,
+    /// Windows only: elevated launch via ShellExecuteW(runas).
+    RunAsAdmin,
     /// Enter on a block row whose question was answered, for that row only:
     /// the selection may have moved by the time Yes lands.
     OpenConfirmed(String),
@@ -100,6 +102,15 @@ const CATALOG: &[Entry] = &[
         tool: None,
         fallback_tool: None,
     },
+    #[cfg(target_os = "windows")]
+    Entry {
+        id: ActionId::RunAsAdmin,
+        plain: "Run as administrator",
+        named: None,
+        chord: "Ctrl+Shift+Enter",
+        tool: None,
+        fallback_tool: None,
+    },
     Entry {
         id: ActionId::Tool(EDIT),
         plain: "Edit",
@@ -145,6 +156,25 @@ pub fn block_id_of(id: &str) -> Option<&str> {
     let rest = id.strip_prefix(SOURCE_PREFIX)?;
     let separator = rest.find(':')?;
     (separator > 0).then(|| &rest[..separator])
+}
+
+/// Whether `row` is an application or executable script that can run elevated on Windows.
+pub fn is_elevatable(row: &Row) -> bool {
+    if row.path.is_empty() || !matches!(row.open, crate::rows::Open::Path { .. }) {
+        return false;
+    }
+    if row.kind == "app" {
+        return true;
+    }
+    if row.kind == "file" {
+        let lower = row.path.to_ascii_lowercase();
+        return lower.ends_with(".exe")
+            || lower.ends_with(".bat")
+            || lower.ends_with(".cmd")
+            || lower.ends_with(".ps1")
+            || lower.ends_with(".msc");
+    }
+    false
 }
 
 /// Whether `action` means anything for a row of this kind. Editing and a
@@ -248,7 +278,12 @@ pub fn descriptors(
 
     let offered: Vec<&Entry> = CATALOG
         .iter()
-        .filter(|entry| entry.tool.is_none_or(|tool| applies(tool, &row.kind)))
+        .filter(|entry| {
+            if entry.id == ActionId::RunAsAdmin && !is_elevatable(row) {
+                return false;
+            }
+            entry.tool.is_none_or(|tool| applies(tool, &row.kind))
+        })
         .collect();
     let asked: Vec<String> = offered
         .iter()
