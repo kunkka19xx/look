@@ -1327,12 +1327,7 @@ impl Launcher {
                 Ok(()) => {
                     engine::record_usage(app_state(), &id, usage);
                 }
-                Err(err) => this.banner.show(
-                    err,
-                    Tone::Error,
-                    banner::MEDIUM,
-                    cx,
-                ),
+                Err(err) => this.banner.show(err, Tone::Error, banner::MEDIUM, cx),
             },
         );
         true

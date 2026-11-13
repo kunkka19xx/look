@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::state as app_state;
 use gpui::{
     AnyElement, Context, Div, ElementId, Entity, EventEmitter, FontStyle, FontWeight,
     HighlightStyle, Hsla, InteractiveText, ListAlignment, ListState, ObjectFit, Rgba, ScrollHandle,
@@ -20,7 +21,6 @@ use linows_backend::look_markdown::{self, Block as MdBlock, Span};
 use linows_backend::look_sources::DetailBlock;
 use linows_backend::process::ProcDetail;
 use linows_backend::{clipboard, clipimage, files, launch, process};
-use crate::state as app_state;
 
 use crate::Shell;
 use crate::actions::{self, ActionId};
