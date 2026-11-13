@@ -870,7 +870,7 @@ impl Preview {
         // Only show actions when they match the currently displayed preview.
         let current_key = self.current.as_ref().map(|(k, _)| k.as_str())?;
         let action_row = self.row_action_row.as_ref()?;
-        if !current_key.starts_with(&action_row.id) {
+        if current_key != action_row.id {
             return None;
         }
         let rows = self.row_actions.iter().enumerate().map(|(i, item)| {
