@@ -1324,7 +1324,9 @@ impl Launcher {
             cx,
             move || launch::open_elevated(&shell, &path),
             move |this, outcome, cx| match outcome {
-                Ok(()) => engine::record_usage(app_state(), &id, usage),
+                Ok(()) => {
+                    engine::record_usage(app_state(), &id, usage);
+                }
                 Err(err) => this.banner.show(
                     err,
                     Tone::Error,

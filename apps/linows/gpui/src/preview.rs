@@ -949,7 +949,7 @@ impl Preview {
                 cx.spawn(async move |_, cx| {
                     let _ = cx
                         .background_executor()
-                        .spawn(async move { clipboard::copy_text(&path) })
+                        .spawn(async move { clipboard::copy_to_clipboard(&path) })
                         .await;
                 })
                 .detach();
