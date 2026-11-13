@@ -945,7 +945,11 @@ impl Preview {
                 .detach();
             }
             ActionId::CopyPath => {
-                let path = row.path.clone();
+                let path = if cfg!(target_os = "windows") {
+                    row.path.replace('/', "\\")
+                } else {
+                    row.path.replace('\\', "/")
+                };
                 cx.spawn(async move |this, cx| {
                     let result = cx
                         .background_executor()
