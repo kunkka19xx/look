@@ -20,6 +20,7 @@ use linows_backend::look_markdown::{self, Block as MdBlock, Span};
 use linows_backend::look_sources::DetailBlock;
 use linows_backend::process::ProcDetail;
 use linows_backend::{clipboard, clipimage, files, launch, process};
+use crate::state as app_state;
 
 use crate::Shell;
 use crate::actions::{self, ActionId};
@@ -920,17 +921,45 @@ impl Preview {
         let shell = self.shell.clone();
         match id {
             ActionId::Open => {
-                if let Err(err) = launch::open_path(&shell, row.path, Some(&row.kind), Some(&row.id)) {
-                    eprintln!("open {}: {err}", row.title);
+                match launch::open_path(&shell, row.path.clone(), Some(&row.kind), Some(&row.id)) {
+                    Ok(()) => {
+                        if let Open::Path { usage } = row.open {
+                            linows_backend::search::record_usage(app_state(), &row.id, usage);
+                        }
+                    }
+                    Err(err) => cx.emit(Notice {
+                        text: err,
+                        tone: Tone::Error,
+                        seconds: 2.4,
+                        copy: None,
+                    }),
                 }
             }
             ActionId::RunAsAdmin => {
                 let path = row.path.clone();
-                cx.spawn(async move |_, cx| {
-                    let _ = cx
+                let row_id = row.id.clone();
+                let usage = match row.open {
+                    Open::Path { usage } => Some(usage),
+                    _ => None,
+                };
+                cx.spawn(async move |this, cx| {
+                    let outcome = cx
                         .background_executor()
                         .spawn(async move { launch::open_elevated(&shell, &path) })
                         .await;
+                    let _ = this.update(cx, |_, cx| match outcome {
+                        Ok(()) => {
+                            if let Some(usage) = usage {
+                                linows_backend::search::record_usage(app_state(), &row_id, usage);
+                            }
+                        }
+                        Err(err) => cx.emit(Notice {
+                            text: err,
+                            tone: Tone::Error,
+                            seconds: 2.4,
+                            copy: None,
+                        }),
+                    });
                 })
                 .detach();
             }
@@ -948,7 +977,7 @@ impl Preview {
                 let path = if cfg!(target_os = "windows") {
                     row.path.replace('/', "\\")
                 } else {
-                    row.path.replace('\\', "/")
+                    row.path.clone()
                 };
                 cx.spawn(async move |this, cx| {
                     let result = cx
