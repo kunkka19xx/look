@@ -196,6 +196,8 @@ pub struct BlockPanel {
     file: Option<String>,
     /// The row's own path, when the block gave it one.
     path: String,
+    /// What the row wears in the list: its own icon, else its block's.
+    icon: Icon,
 }
 
 /// A block's declared `preview`, as the panel draws it.
@@ -671,7 +673,7 @@ impl Preview {
                 }
                 panel
                     .child(header(
-                        picture,
+                        picture.map(resolved_picture),
                         glyphs::CPU,
                         &meta.name,
                         "Process",
@@ -726,7 +728,7 @@ impl Preview {
                 let steps = &block.steps;
                 panel
                     .child(header(
-                        None,
+                        declared_picture(&block.icon, &self.images),
                         glyphs::ZAP,
                         &block.title,
                         &block.name,
@@ -790,7 +792,7 @@ impl Preview {
                 let shell = self.shell.clone();
                 panel
                     .child(header(
-                        picture,
+                        picture.map(resolved_picture),
                         glyph,
                         title,
                         badge,
@@ -1251,6 +1253,12 @@ fn load(row: &Row, ancestors: &str, query: &str) -> Content {
                 steps: detail.as_ref().map(|d| d.steps.clone()).unwrap_or_default(),
                 file: detail.and_then(|d| d.file).map(tilde),
                 path: row.path.clone(),
+                // A favicon the cache has since lost keeps the bolt rather
+                // than an empty tile.
+                icon: match &row.icon {
+                    Icon::File(path) if !path.exists() => Icon::Glyph(glyphs::ZAP),
+                    other => other.clone(),
+                },
             },
             preview,
         };
@@ -1735,6 +1743,34 @@ pub fn help(mode: Mode, th: &Theme) -> Div {
         }))
 }
 
+fn resolved_picture(image: Arc<gpui::RenderImage>) -> AnyElement {
+    img(image)
+        .size(px(HEADER_ICON))
+        .object_fit(ObjectFit::Contain)
+        .into_any_element()
+}
+
+/// The header picture for what a block row declared: an image file or a
+/// text glyph. Anything else keeps the bolt.
+fn declared_picture(icon: &Icon, images: &Entity<PreviewImages>) -> Option<AnyElement> {
+    match icon {
+        Icon::File(path) => Some(
+            img(path.clone())
+                .image_cache(images)
+                .size(px(HEADER_ICON))
+                .object_fit(ObjectFit::Contain)
+                .into_any_element(),
+        ),
+        Icon::Text(text) => Some(
+            div()
+                .text_size(px(HEADER_ICON * 0.6))
+                .child(SharedString::from(text.clone()))
+                .into_any_element(),
+        ),
+        Icon::Resolve { .. } | Icon::Glyph(_) => None,
+    }
+}
+
 fn format_start(epoch: Option<u64>) -> String {
     use chrono::TimeZone;
     match epoch.and_then(|e| chrono::Local.timestamp_opt(e as i64, 0).single()) {
@@ -1843,7 +1879,7 @@ fn standard(row: &Row) -> Content {
 /// `declared` marks a row from the user's own block: the tile wears the
 /// accent fill and ring the list gives the same rows.
 fn header(
-    picture: Option<Arc<gpui::RenderImage>>,
+    picture: Option<AnyElement>,
     glyph: &'static str,
     title: &str,
     badge: &str,
@@ -1866,10 +1902,7 @@ fn header(
         .bg(th.control_fill)
         .when(declared, |tile| th.declared(tile))
         .child(match picture {
-            Some(image) => img(image)
-                .size(px(HEADER_ICON))
-                .object_fit(ObjectFit::Contain)
-                .into_any_element(),
+            Some(picture) => picture,
             None => svg()
                 .path(glyph)
                 .size(px(HEADER_ICON / 2.0))

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use linows_backend::clipboard::{ClipboardEntry, ClipboardImageEntry};
 use linows_backend::look_answers::UrlTier;
 use linows_backend::look_calc::Calculation;
+use linows_backend::look_engine::{join_path, looks_like_absolute_path, strip_home_prefix};
 use linows_backend::process::ProcRow;
 use linows_backend::search::SearchResult;
 
@@ -92,6 +93,9 @@ pub struct Row {
     pub open: Open,
     /// When the row was last opened through Look, for the preview.
     pub last_used: Option<i64>,
+    /// What the row itself declared (a favicon per history entry). Beats
+    /// its block's icon when the block dresses it.
+    pub own_icon: Option<String>,
 }
 
 pub use crate::glyphs::{
@@ -220,6 +224,7 @@ impl Row {
             score: r.score,
             icon: Icon::Resolve { glyph },
             last_used: r.last_used_at_unix_s,
+            own_icon: r.icon,
         }
     }
 
@@ -240,6 +245,7 @@ impl Row {
                 expr: expr.to_string(),
             },
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -256,6 +262,7 @@ impl Row {
             icon: Icon::Glyph(crate::glyphs::SEARCH),
             open: Open::Prefix(prefix.to_string()),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -272,6 +279,7 @@ impl Row {
             icon: Icon::Glyph(glyph),
             open: Open::Command(id.to_string()),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -309,6 +317,7 @@ impl Row {
                 lines: entry.line_count,
             }),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -339,6 +348,7 @@ impl Row {
                 timestamp: entry.timestamp,
             }),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -369,6 +379,7 @@ impl Row {
                 icon_path: p.icon_source,
             }),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -385,6 +396,7 @@ impl Row {
             icon: Icon::Glyph(crate::glyphs::SEARCH),
             open: Open::WebSuggestion(text.to_string()),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -415,6 +427,7 @@ impl Row {
             icon: Icon::Glyph(crate::glyphs::ZAP),
             open: Open::Path { usage: "open_file" },
             last_used: None,
+            own_icon: None,
         };
         // The row's own icon wins over its block's.
         out.icon = declared_icon(&out, row.icon.as_deref().or(block_icon), home);
@@ -437,7 +450,14 @@ impl Row {
         } else {
             path_info(&self.path)
         };
-        self.icon = declared_icon(self, block_icon, home);
+        // The row's own icon wins only when it draws as a picture or a glyph;
+        // an empty one or a bare symbol name leaves its block's icon in force.
+        let own = self
+            .own_icon
+            .as_deref()
+            .map(|icon| declared_icon(self, Some(icon), home))
+            .filter(|icon| matches!(icon, Icon::File(_) | Icon::Text(_)));
+        self.icon = own.unwrap_or_else(|| declared_icon(self, block_icon, home));
     }
 
     /// Whether the row's path is something on disk a chord can hand on. A
@@ -487,6 +507,7 @@ impl Row {
             icon: Icon::Glyph(GLYPH_GLOBE),
             open: Open::Url(url.to_string()),
             last_used: None,
+            own_icon: None,
         }
     }
 
@@ -511,6 +532,7 @@ impl Row {
                 usage: "open_folder",
             },
             last_used: None,
+            own_icon: None,
         }
     }
 }
@@ -522,11 +544,12 @@ fn declared_icon(row: &Row, declared: Option<&str>, home: Option<&str>) -> Icon 
     let declared = declared.map(str::trim).filter(|d| !d.is_empty());
     if let Some(declared) = declared {
         let lowered = declared.to_lowercase();
+        let tail = strip_home_prefix(declared);
         let is_path =
-            declared.starts_with('/') || declared.starts_with("~/") || declared.starts_with('.');
+            looks_like_absolute_path(declared) || tail.is_some() || declared.starts_with('.');
         if is_path && IMAGE_EXTENSIONS.iter().any(|ext| lowered.ends_with(ext)) {
-            let expanded = match (declared.strip_prefix("~/"), home) {
-                (Some(rest), Some(home)) => format!("{home}/{rest}"),
+            let expanded = match (tail, home) {
+                (Some(rest), Some(home)) => join_path(home, rest),
                 _ => declared.to_string(),
             };
             return Icon::File(PathBuf::from(expanded));
@@ -664,6 +687,50 @@ mod tests {
             icon: None,
             last_used_at_unix_s: None,
         })
+    }
+
+    #[test]
+    fn a_source_row_wears_its_own_icon_over_its_blocks() {
+        let mut r = row("GitHub", "app", 0);
+        r.own_icon = Some("/tmp/fav/github.com.png".into());
+        r.dress_source(Some("Browser history"), Some("🌐"), None);
+        assert!(matches!(&r.icon, Icon::File(p) if p.ends_with("github.com.png")));
+
+        let mut plain = row("Other", "app", 0);
+        plain.dress_source(Some("Browser history"), Some("🌐"), None);
+        assert!(matches!(&plain.icon, Icon::Text(t) if t == "🌐"));
+
+        // An own icon that draws as nothing does not hide the block's.
+        let mut bare = row("Bare", "app", 0);
+        bare.own_icon = Some("globe".into());
+        bare.dress_source(Some("Browser history"), Some("🌐"), None);
+        assert!(matches!(&bare.icon, Icon::Text(t) if t == "🌐"));
+    }
+
+    #[test]
+    fn a_windows_image_path_is_a_file_icon_not_text() {
+        let r = row("Win", "app", 0);
+        for path in [
+            r"C:\icons\a.png",
+            "D:/icons/a.png",
+            r"\\srv\share\a.ico",
+            r"~\icons\a.png",
+        ] {
+            assert!(
+                matches!(declared_icon(&r, Some(path), None), Icon::File(_)),
+                "{path}"
+            );
+        }
+        // A home-relative one expands against home, either separator.
+        assert!(matches!(
+            declared_icon(&r, Some(r"~\icons\a.png"), Some("/home/k")),
+            Icon::File(p) if p.starts_with("/home/k")
+        ));
+        // Not an image: still text, as before.
+        assert!(matches!(
+            declared_icon(&r, Some(r"C:\icons\a.txt"), None),
+            Icon::Text(_)
+        ));
     }
 
     #[test]
