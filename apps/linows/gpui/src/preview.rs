@@ -728,7 +728,7 @@ impl Preview {
                 let steps = &block.steps;
                 panel
                     .child(header(
-                        declared_picture(&block.icon),
+                        declared_picture(&block.icon, &self.images),
                         glyphs::ZAP,
                         &block.title,
                         &block.name,
@@ -1752,10 +1752,11 @@ fn resolved_picture(image: Arc<gpui::RenderImage>) -> AnyElement {
 
 /// The header picture for what a block row declared: an image file or a
 /// text glyph. Anything else keeps the bolt.
-fn declared_picture(icon: &Icon) -> Option<AnyElement> {
+fn declared_picture(icon: &Icon, images: &Entity<PreviewImages>) -> Option<AnyElement> {
     match icon {
         Icon::File(path) => Some(
             img(path.clone())
+                .image_cache(images)
                 .size(px(HEADER_ICON))
                 .object_fit(ObjectFit::Contain)
                 .into_any_element(),

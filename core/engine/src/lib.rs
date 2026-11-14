@@ -26,6 +26,9 @@ pub use look_indexing::UsageAction;
 use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
 use look_storage::{SearchSettings, SqliteStore, StorageError};
 use normalize::normalize_for_search;
+/// Re-exported so a shell classifies a path the way the engine does: Unix,
+/// drive-letter and UNC spellings alike, whatever OS it runs on.
+pub use platform::paths::looks_like_absolute_path;
 pub use result::{LaunchResult, LaunchResultAction};
 use std::collections::HashMap;
 use std::collections::HashSet;

@@ -213,7 +213,7 @@ pub(crate) fn is_valid_directory_component(name: &str) -> bool {
     is_valid_filename_component(name)
 }
 
-pub(crate) fn looks_like_absolute_path(path: &str) -> bool {
+pub fn looks_like_absolute_path(path: &str) -> bool {
     path.starts_with('/') || Path::new(path).is_absolute() || looks_like_windows_absolute_path(path)
 }
 

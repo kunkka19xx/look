@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use linows_backend::clipboard::{ClipboardEntry, ClipboardImageEntry};
 use linows_backend::look_answers::UrlTier;
 use linows_backend::look_calc::Calculation;
+use linows_backend::look_engine::looks_like_absolute_path;
 use linows_backend::process::ProcRow;
 use linows_backend::search::SearchResult;
 
@@ -543,8 +544,9 @@ fn declared_icon(row: &Row, declared: Option<&str>, home: Option<&str>) -> Icon 
     let declared = declared.map(str::trim).filter(|d| !d.is_empty());
     if let Some(declared) = declared {
         let lowered = declared.to_lowercase();
-        let is_path =
-            declared.starts_with('/') || declared.starts_with("~/") || declared.starts_with('.');
+        let is_path = looks_like_absolute_path(declared)
+            || declared.starts_with("~/")
+            || declared.starts_with('.');
         if is_path && IMAGE_EXTENSIONS.iter().any(|ext| lowered.ends_with(ext)) {
             let expanded = match (declared.strip_prefix("~/"), home) {
                 (Some(rest), Some(home)) => format!("{home}/{rest}"),
@@ -703,6 +705,22 @@ mod tests {
         bare.own_icon = Some("globe".into());
         bare.dress_source(Some("Browser history"), Some("🌐"), None);
         assert!(matches!(&bare.icon, Icon::Text(t) if t == "🌐"));
+    }
+
+    #[test]
+    fn a_windows_image_path_is_a_file_icon_not_text() {
+        let r = row("Win", "app", 0);
+        for path in [r"C:\icons\a.png", "D:/icons/a.png", r"\\srv\share\a.ico"] {
+            assert!(
+                matches!(declared_icon(&r, Some(path), None), Icon::File(_)),
+                "{path}"
+            );
+        }
+        // Not an image: still text, as before.
+        assert!(matches!(
+            declared_icon(&r, Some(r"C:\icons\a.txt"), None),
+            Icon::Text(_)
+        ));
     }
 
     #[test]
