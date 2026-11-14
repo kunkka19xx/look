@@ -11,8 +11,9 @@ A keyboard-first, local-first launcher for macOS, Windows, and Linux. Open apps,
 [![Latest release](https://img.shields.io/github/v/release/kunkka19xx/look)](https://github.com/kunkka19xx/look/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/kunkka19xx/look/total)](https://github.com/kunkka19xx/look/releases)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/vJSpNpeFBn)
 
-📘 [Docs](https://noah-code.com/docs/look) · 📖 [User guide](docs/user-guide.md) · 🧩 [lookbook](#extend-it-with-lookbook)
+📘 [Docs](https://noah-code.com/docs/look) · 📖 [User guide](docs/user-guide.md) · 🧩 [lookbook](#extend-it-with-lookbook) · 💬 [Discord](https://discord.gg/vJSpNpeFBn)
 
 https://github.com/user-attachments/assets/a0907691-d99b-48a7-862c-8bc43cfa3a2e
 
@@ -283,7 +284,7 @@ Full reference: [docs/user-guide.md](docs/user-guide.md).
 
 Look can list your own rows next to apps and files: repos, SSH hosts, containers, tmux sessions, a morning routine. [lookbook](https://github.com/kunkka19xx/lookbook) is a catalog of ready-made ones. Open `Settings > Extend` and choose **Browse lookbook**: each card says whether it works on your machine, and **Install** asks for what it needs (a folder, a terminal) before writing anything.
 
-Made one worth sharing? [Send it to lookbook](https://github.com/kunkka19xx/lookbook#contributing). AI-assisted is fine, as long as it is useful, documented and tested. To write your own, see [Your own sources](docs/user-sources.md); to have an app push its own rows, see [Integrating your app](docs/integrating.md).
+Made one worth sharing? [Send it to lookbook](https://github.com/kunkka19xx/lookbook#contributing), or show it first in `#lookbook-share` on [Discord](https://discord.gg/vJSpNpeFBn). AI-assisted is fine, as long as it is useful, documented and tested. To write your own, see [Your own sources](docs/user-sources.md); to have an app push its own rows, see [Integrating your app](docs/integrating.md).
 
 ## Themes
 
@@ -295,6 +296,7 @@ Switch in `Settings > Appearance`.
 ## Documentation
 
 - 📘 [Docs site](https://noah-code.com/docs/look) - hosted, searchable user guide and reference
+- 💬 [Discord](https://discord.gg/vJSpNpeFBn) - ask for help, show your setup, share sources and tiles
 - [User guide (in-repo)](docs/user-guide.md) - full feature reference, shortcuts, configuration, permissions, troubleshooting
 - [Architecture](docs/architecture.md) - how the Swift app + Rust core fit together
 - [Integrating your app](docs/integrating.md) - the connector contract, for shipping an app that puts its own rows in Look
