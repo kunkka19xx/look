@@ -199,7 +199,7 @@ pub(crate) fn candidate_id_path_component(path: &str) -> String {
     PathPolicy::current().id_component(path)
 }
 
-pub(crate) fn join_path(base: &str, child: &str) -> String {
+pub fn join_path(base: &str, child: &str) -> String {
     PathPolicy::for_base(base).join(base, child)
 }
 
@@ -217,13 +217,17 @@ pub fn looks_like_absolute_path(path: &str) -> bool {
     path.starts_with('/') || Path::new(path).is_absolute() || looks_like_windows_absolute_path(path)
 }
 
-pub(crate) fn expand_with_home(value: &str, home: Option<&str>) -> String {
-    // Accept both `~/` and the Windows-native `~\` home prefix. `join_path`
-    // then re-emits the tail with the separator that matches `home`.
-    if let Some(rest) = value
+/// The part after a leading `~/` or the Windows-native `~\`, or `None` when
+/// `value` is not home-relative.
+pub fn strip_home_prefix(value: &str) -> Option<&str> {
+    value
         .strip_prefix("~/")
         .or_else(|| value.strip_prefix("~\\"))
-    {
+}
+
+pub(crate) fn expand_with_home(value: &str, home: Option<&str>) -> String {
+    // `join_path` re-emits the tail with the separator that matches `home`.
+    if let Some(rest) = strip_home_prefix(value) {
         return home
             .map(|prefix| join_path(prefix, rest))
             .unwrap_or_else(|| value.to_string());
@@ -255,7 +259,7 @@ mod tests {
     #[cfg(target_os = "windows")]
     use super::path_is_same_or_child;
     use super::{PathPolicy, PathStyle, is_valid_filename_component_for_style};
-    use super::{expand_with_home, join_path, looks_like_absolute_path};
+    use super::{expand_with_home, join_path, looks_like_absolute_path, strip_home_prefix};
 
     #[test]
     fn absolute_path_check_supports_windows_drive_and_unc() {
@@ -366,5 +370,13 @@ mod tests {
     fn directory_component_validation_matches_filename_rules() {
         assert!(super::is_valid_directory_component("Desktop"));
         assert!(!super::is_valid_directory_component("nested/name"));
+    }
+
+    #[test]
+    fn a_home_prefix_is_either_separator() {
+        assert_eq!(strip_home_prefix("~/icons/a.png"), Some("icons/a.png"));
+        assert_eq!(strip_home_prefix("~\\icons\\a.png"), Some("icons\\a.png"));
+        assert_eq!(strip_home_prefix("~user/a.png"), None);
+        assert_eq!(strip_home_prefix("/tmp/a.png"), None);
     }
 }

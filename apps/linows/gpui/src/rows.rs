@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use linows_backend::clipboard::{ClipboardEntry, ClipboardImageEntry};
 use linows_backend::look_answers::UrlTier;
 use linows_backend::look_calc::Calculation;
-use linows_backend::look_engine::looks_like_absolute_path;
+use linows_backend::look_engine::{join_path, looks_like_absolute_path, strip_home_prefix};
 use linows_backend::process::ProcRow;
 use linows_backend::search::SearchResult;
 
@@ -544,12 +544,12 @@ fn declared_icon(row: &Row, declared: Option<&str>, home: Option<&str>) -> Icon 
     let declared = declared.map(str::trim).filter(|d| !d.is_empty());
     if let Some(declared) = declared {
         let lowered = declared.to_lowercase();
-        let is_path = looks_like_absolute_path(declared)
-            || declared.starts_with("~/")
-            || declared.starts_with('.');
+        let tail = strip_home_prefix(declared);
+        let is_path =
+            looks_like_absolute_path(declared) || tail.is_some() || declared.starts_with('.');
         if is_path && IMAGE_EXTENSIONS.iter().any(|ext| lowered.ends_with(ext)) {
-            let expanded = match (declared.strip_prefix("~/"), home) {
-                (Some(rest), Some(home)) => format!("{home}/{rest}"),
+            let expanded = match (tail, home) {
+                (Some(rest), Some(home)) => join_path(home, rest),
                 _ => declared.to_string(),
             };
             return Icon::File(PathBuf::from(expanded));
@@ -710,12 +710,22 @@ mod tests {
     #[test]
     fn a_windows_image_path_is_a_file_icon_not_text() {
         let r = row("Win", "app", 0);
-        for path in [r"C:\icons\a.png", "D:/icons/a.png", r"\\srv\share\a.ico"] {
+        for path in [
+            r"C:\icons\a.png",
+            "D:/icons/a.png",
+            r"\\srv\share\a.ico",
+            r"~\icons\a.png",
+        ] {
             assert!(
                 matches!(declared_icon(&r, Some(path), None), Icon::File(_)),
                 "{path}"
             );
         }
+        // A home-relative one expands against home, either separator.
+        assert!(matches!(
+            declared_icon(&r, Some(r"~\icons\a.png"), Some("/home/k")),
+            Icon::File(p) if p.starts_with("/home/k")
+        ));
         // Not an image: still text, as before.
         assert!(matches!(
             declared_icon(&r, Some(r"C:\icons\a.txt"), None),

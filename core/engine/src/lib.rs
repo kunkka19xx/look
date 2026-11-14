@@ -28,7 +28,7 @@ use look_storage::{SearchSettings, SqliteStore, StorageError};
 use normalize::normalize_for_search;
 /// Re-exported so a shell classifies a path the way the engine does: Unix,
 /// drive-letter and UNC spellings alike, whatever OS it runs on.
-pub use platform::paths::looks_like_absolute_path;
+pub use platform::paths::{join_path, looks_like_absolute_path, strip_home_prefix};
 pub use result::{LaunchResult, LaunchResultAction};
 use std::collections::HashMap;
 use std::collections::HashSet;
