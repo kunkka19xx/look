@@ -449,11 +449,14 @@ impl Settings {
                     )
                     .child(controls::hint(FRESH_CONFIG_HINT, th)),
             )
-            .when(cfg!(target_os = "linux"), |el| {
-                el.child(controls::divider(th))
-                    .child(controls::section("Rendering", th))
-                    .child(self.frost_row(th, cx))
-            })
+            .when(
+                cfg!(target_os = "linux") || crate::blur::is_supported(),
+                |el| {
+                    el.child(controls::divider(th))
+                        .child(controls::section("Rendering", th))
+                        .child(self.frost_row(th, cx))
+                },
+            )
             // About, at the foot of the scroll as on macOS.
             .child(controls::divider(th))
             .child(controls::section("About", th))
@@ -653,7 +656,7 @@ impl Settings {
             )
     }
 
-    /// Linux: the frost switch with what each side costs, since the tint
+    /// The frost switch with what each side costs, since the tint
     /// sliders cannot reach a sharp view through while the frost is on.
     fn frost_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         controls::row("Blur behind window", th)
@@ -671,9 +674,6 @@ impl Settings {
             } else {
                 "Clear glass; card shadows on"
             };
-        }
-        if cfg!(windows) {
-            return "Windows blur cannot follow rounded corners; Look stays clear glass";
         }
         if !crate::blur::is_supported() {
             return "Your compositor does not offer it; Look stays clear glass";

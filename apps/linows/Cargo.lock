@@ -3715,6 +3715,7 @@ dependencies = [
  "resvg",
  "uuid",
  "windows 0.62.2",
+ "windows-numerics 0.3.1",
  "x11rb",
 ]
 

@@ -33,7 +33,7 @@ use crate::bg;
 use crate::bgimage::{self, Backdrop};
 use crate::bindings::{self, Scope};
 use crate::blocks;
-use crate::blur::{self, BlurRect};
+use crate::blur;
 use crate::commands::{self, Commands, KeyOutcome};
 use crate::config_list;
 use crate::confirm::{Confirm, OnYes};
@@ -3430,7 +3430,7 @@ struct Frost {
 thread_local! {
     /// Card bounds gathered during one prepaint pass; the root hands them to
     /// the compositor once every card is placed.
-    static BLUR_FRAME: RefCell<Vec<BlurRect>> = const { RefCell::new(Vec::new()) };
+    static BLUR_FRAME: RefCell<Vec<blur::Patch>> = const { RefCell::new(Vec::new()) };
     static FROST: Cell<Frost> = const { Cell::new(Frost { cards: false, tiles: false }) };
 }
 
@@ -3449,14 +3449,8 @@ fn mark_cards(cards: &[Bounds<Pixels>], radius: f32) {
 
 fn mark_region(cards: &[Bounds<Pixels>], radius: f32) {
     BLUR_FRAME.with_borrow_mut(|frame| {
-        for b in cards {
-            frame.extend(BlurRect::rounded(
-                f32::from(b.origin.x).round() as i32,
-                f32::from(b.origin.y).round() as i32,
-                f32::from(b.size.width).round() as u32,
-                f32::from(b.size.height).round() as u32,
-                radius,
-            ));
+        for card in cards {
+            blur::mark(frame, card, radius);
         }
     });
 }
