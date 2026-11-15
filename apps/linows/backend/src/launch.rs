@@ -541,12 +541,7 @@ pub fn try_focus_window(wm_class: &str) -> bool {
     }
 
     // Linux: x11rb _NET_ACTIVE_WINDOW (covers GNOME, KDE, etc.)
-    #[cfg(target_os = "linux")]
-    if crate::platform::linux::window_focus::try_focus(wm_class) {
-        return true;
-    }
-
-    false
+    crate::platform::linux::window_focus::try_focus(wm_class)
 }
 
 /// Try to focus an existing window for a desktop file.
