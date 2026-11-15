@@ -525,6 +525,7 @@ impl Settings {
         self.recorder.resume(kept.pending);
         self.entries = kept.entries;
         self.edited = kept.edited;
+        self.loaded = kept.loaded;
         self.browse = kept.browse;
         self.browse.resume(cx);
         if kept.loaded {
