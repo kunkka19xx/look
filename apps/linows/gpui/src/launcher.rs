@@ -328,6 +328,10 @@ impl Launcher {
             this.clip_removed(cx);
         })
         .detach();
+        cx.subscribe(&preview, |this, _, action: &ActionId, cx| {
+            this.run_action(action.clone(), cx);
+        })
+        .detach();
         let command_input = input_for(cx);
         cx.subscribe(&command_input, |this, _, _: &Changed, cx| {
             this.commands.input_changed(cx)
@@ -1297,16 +1301,13 @@ impl Launcher {
         (!self.unpicked && self.selected < self.rows.len()).then_some(self.selected)
     }
 
-    /// Enter: what the row says. The backend opens paths and hides the
-    /// launcher through the shell; a URL goes to the browser and the history;
-    /// an answer or a clip goes to the clipboard.
     /// Ctrl+Shift+Enter (Windows): launch the selected app or script elevated.
     fn run_as_admin(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(row) = self.selected_row().cloned() else {
             return true;
         };
         let Open::Path { usage } = row.open else {
-            return true;
+            return self.enter(cx);
         };
         if !actions::is_elevatable(&row) {
             self.banner.show(
@@ -1333,6 +1334,9 @@ impl Launcher {
         true
     }
 
+    /// Enter: what the row says. The backend opens paths and hides the
+    /// launcher through the shell; a URL goes to the browser and the history;
+    /// an answer or a clip goes to the clipboard.
     fn open_selected(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(row) = self.selected_row().cloned() else {
             return true;

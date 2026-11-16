@@ -12,8 +12,8 @@ use linows_backend::look_engine::hotkey::{Hotkey, HotkeyCheck, Key, Modifier};
 use crate::shortcuts::{
     ACTIONS, CLEAR_PICKS, CLIP_PASTE, CLIP_REMOVE, COMMAND_MODE, COPY, EDIT, HELP, HIDE_APP,
     OPEN_PICKED, PASTE, PICK, PROCESS_COPY_PID, PROCESS_KILL, QUICK_TOGGLE, RELOAD_CONFIG, REVEAL,
-    RUN_AS_ADMIN, SETTINGS, SWITCH_LAYOUT, TERMINAL, TODO_REDO, TODO_SAVE, TODO_TOGGLE_PAGE,
-    TODO_UNDO, TRASH, WEB_SEARCH,
+    SETTINGS, SWITCH_LAYOUT, TERMINAL, TODO_REDO, TODO_SAVE, TODO_TOGGLE_PAGE, TODO_UNDO, TRASH,
+    WEB_SEARCH,
 };
 
 pub const CONFIG_KEY_PREFIX: &str = "shortcut_";
@@ -79,7 +79,11 @@ pub const DEFINITIONS: &[Definition] = &[
     def(ACTIONS, &["ctrl+k", "ctrl+j"], Scope::Launcher),
     def(REVEAL, &["ctrl+f"], Scope::Launcher),
     #[cfg(target_os = "windows")]
-    def(RUN_AS_ADMIN, &["ctrl+shift+enter"], Scope::Launcher),
+    def(
+        crate::shortcuts::RUN_AS_ADMIN,
+        &["ctrl+shift+enter"],
+        Scope::Launcher,
+    ),
     def(EDIT, &["ctrl+e"], Scope::Launcher),
     def(TERMINAL, &["ctrl+t"], Scope::Launcher),
     def(WEB_SEARCH, &["ctrl+enter"], Scope::Launcher),

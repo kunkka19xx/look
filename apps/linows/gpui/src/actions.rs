@@ -145,6 +145,36 @@ const CATALOG: &[Entry] = &[
     },
 ];
 
+/// Primary inline actions for the preview details panel, using the same
+/// labels and live shortcut chords as the catalog.
+pub fn inline_items(row: &Row) -> Vec<(ActionId, String, String)> {
+    if !actionable(row) || row.path.is_empty() || row.declared() {
+        return Vec::new();
+    }
+    let mut items = vec![(ActionId::Open, "Open".to_string(), "\u{23ce}".to_string())];
+    #[cfg(target_os = "windows")]
+    if is_elevatable(row) {
+        items.push((
+            ActionId::RunAsAdmin,
+            "Run as administrator".to_string(),
+            crate::shortcuts::keys(crate::shortcuts::RUN_AS_ADMIN),
+        ));
+    }
+    if applies(REVEAL, &row.kind) {
+        items.push((
+            ActionId::Tool(REVEAL),
+            format!("Reveal in {SYSTEM_FILE_MANAGER}"),
+            crate::shortcuts::keys(crate::shortcuts::REVEAL),
+        ));
+    }
+    items.push((
+        ActionId::CopyPath,
+        "Copy path".to_string(),
+        crate::shortcuts::keys(crate::shortcuts::COPY),
+    ));
+    items
+}
+
 pub fn is_source_row(id: &str) -> bool {
     id.starts_with(SOURCE_PREFIX)
 }
@@ -158,9 +188,15 @@ pub fn block_id_of(id: &str) -> Option<&str> {
     (separator > 0).then(|| &rest[..separator])
 }
 
-/// Whether `row` is an application or executable script that can run elevated on Windows.
+const ELEVATABLE_EXTENSIONS: &[&str] = &[".exe", ".bat", ".cmd", ".msc"];
+
+/// Whether `row` is an application or executable that can run elevated on Windows.
 pub fn is_elevatable(row: &Row) -> bool {
-    if row.path.is_empty() || !matches!(row.open, crate::rows::Open::Path { .. }) {
+    if row.path.is_empty()
+        || !matches!(row.open, crate::rows::Open::Path { .. })
+        || row.path.starts_with("ms-settings:")
+        || row.path.starts_with("shell:")
+    {
         return false;
     }
     if row.kind == "app" {
@@ -168,11 +204,7 @@ pub fn is_elevatable(row: &Row) -> bool {
     }
     if row.kind == "file" {
         let lower = row.path.to_ascii_lowercase();
-        return lower.ends_with(".exe")
-            || lower.ends_with(".bat")
-            || lower.ends_with(".cmd")
-            || lower.ends_with(".ps1")
-            || lower.ends_with(".msc");
+        return ELEVATABLE_EXTENSIONS.iter().any(|ext| lower.ends_with(ext));
     }
     false
 }
