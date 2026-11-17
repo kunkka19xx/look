@@ -51,7 +51,7 @@ struct LookbookBrowseSection: View {
                 HStack(spacing: 8) {
                     Text(message)
                         .foregroundStyle(themeStore.warningColor())
-                    Button("Try again") { catalog.load(force: true) }
+                    Button("Try again") { catalog.load() }
                         .buttonStyle(.plain)
                         .foregroundStyle(themeStore.accentColor())
                 }
