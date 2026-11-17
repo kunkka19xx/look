@@ -8,13 +8,14 @@
 //! targets join this list. Any row at all can carry an action a `do` block
 //! declared with `applies`, whatever produced the row.
 
-use gpui::{Context, Div, FontWeight, div, prelude::*, px};
+use gpui::{Context, Div, ElementId, FontWeight, SharedString, Stateful, div, prelude::*, px};
 use linows_backend::sources::{self, RowArgs};
 use linows_backend::tools;
 
 use crate::confirm::CONFIRM_FALLBACK;
 use crate::launcher::Launcher;
-use crate::rows::Row;
+use crate::rows::{Open, Row};
+use crate::shortcuts;
 use crate::theme::{self, Theme};
 
 /// Core's action ids (`look_tools::Action::id`).
@@ -36,7 +37,7 @@ const SYSTEM_FILE_MANAGER: &str = "Files";
 const SYSTEM_FILE_MANAGER: &str = "Explorer";
 
 const MENU_TOP: f32 = 84.0;
-const MENU_PADDING: f32 = 6.0;
+pub const MENU_PADDING: f32 = 6.0;
 /// macOS `ActionMenu.compactWidth` and `compactInset`.
 const COMPACT_W: f32 = 320.0;
 const COMPACT_INSET: f32 = 10.0;
@@ -76,9 +77,29 @@ pub enum ActionId {
 pub struct MenuItem {
     pub id: ActionId,
     pub title: String,
-    pub chord: &'static str,
+    pub chord: SharedString,
     /// Asked in the menu before the action runs.
     pub confirm: Option<String>,
+}
+
+/// Enter, which no binding carries.
+const ENTER_CHORD: &str = "⏎";
+
+/// The key an entry shows: a binding, read when the list is built so a
+/// rebind shows, or a fixed glyph.
+#[derive(Clone, Copy)]
+enum Chord {
+    Bound(&'static str),
+    Fixed(&'static str),
+}
+
+impl Chord {
+    fn label(self) -> SharedString {
+        match self {
+            Chord::Bound(id) => shortcuts::keys(id).into(),
+            Chord::Fixed(glyph) => glyph.into(),
+        }
+    }
 }
 
 /// One catalog entry: the id, the plain wording, the wording once a tool
@@ -87,7 +108,7 @@ struct Entry {
     id: ActionId,
     plain: &'static str,
     named: Option<&'static str>,
-    chord: &'static str,
+    chord: Chord,
     tool: Option<&'static str>,
     /// Stands in for a declared tool where the platform always has an answer.
     fallback_tool: Option<&'static str>,
@@ -98,7 +119,7 @@ const CATALOG: &[Entry] = &[
         id: ActionId::Open,
         plain: "Open",
         named: None,
-        chord: "\u{23ce}",
+        chord: Chord::Fixed(ENTER_CHORD),
         tool: None,
         fallback_tool: None,
     },
@@ -107,7 +128,7 @@ const CATALOG: &[Entry] = &[
         id: ActionId::RunAsAdmin,
         plain: "Run as administrator",
         named: None,
-        chord: "Ctrl+Shift+Enter",
+        chord: Chord::Bound(shortcuts::RUN_AS_ADMIN),
         tool: None,
         fallback_tool: None,
     },
@@ -115,7 +136,7 @@ const CATALOG: &[Entry] = &[
         id: ActionId::Tool(EDIT),
         plain: "Edit",
         named: Some("Edit in"),
-        chord: "Ctrl+E",
+        chord: Chord::Bound(shortcuts::EDIT),
         tool: Some(EDIT),
         fallback_tool: None,
     },
@@ -123,7 +144,7 @@ const CATALOG: &[Entry] = &[
         id: ActionId::Tool(TERMINAL),
         plain: "Open terminal here",
         named: Some("Open in"),
-        chord: "Ctrl+T",
+        chord: Chord::Bound(shortcuts::TERMINAL),
         tool: Some(TERMINAL),
         fallback_tool: None,
     },
@@ -131,7 +152,7 @@ const CATALOG: &[Entry] = &[
         id: ActionId::Tool(REVEAL),
         plain: "Reveal",
         named: Some("Reveal in"),
-        chord: "Ctrl+F",
+        chord: Chord::Bound(shortcuts::REVEAL),
         tool: Some(REVEAL),
         fallback_tool: Some(SYSTEM_FILE_MANAGER),
     },
@@ -139,40 +160,27 @@ const CATALOG: &[Entry] = &[
         id: ActionId::CopyPath,
         plain: "Copy path",
         named: None,
-        chord: "Ctrl+C",
+        chord: Chord::Bound(shortcuts::COPY),
         tool: None,
         fallback_tool: None,
     },
 ];
 
-/// Primary inline actions for the preview details panel, using the same
-/// labels and live shortcut chords as the catalog.
-pub fn inline_items(row: &Row) -> Vec<(ActionId, String, String)> {
-    if !actionable(row) || row.path.is_empty() || row.declared() {
+/// The menu's main verbs, which the preview also offers as buttons, worded
+/// and keyed as the menu has them. Blocking, like `descriptors`.
+pub fn inline_items(row: &Row, ancestors: &str, query: &str) -> Vec<MenuItem> {
+    if !actionable(row) || row.declared() {
         return Vec::new();
     }
-    let mut items = vec![(ActionId::Open, "Open".to_string(), "\u{23ce}".to_string())];
-    #[cfg(target_os = "windows")]
-    if is_elevatable(row) {
-        items.push((
-            ActionId::RunAsAdmin,
-            "Run as administrator".to_string(),
-            crate::shortcuts::keys(crate::shortcuts::RUN_AS_ADMIN),
-        ));
-    }
-    if applies(REVEAL, &row.kind) {
-        items.push((
-            ActionId::Tool(REVEAL),
-            format!("Reveal in {SYSTEM_FILE_MANAGER}"),
-            crate::shortcuts::keys(crate::shortcuts::REVEAL),
-        ));
-    }
-    items.push((
-        ActionId::CopyPath,
-        "Copy path".to_string(),
-        crate::shortcuts::keys(crate::shortcuts::COPY),
-    ));
-    items
+    descriptors(row, ancestors.to_string(), query.to_string(), Vec::new())
+        .into_iter()
+        .filter(|item| {
+            matches!(
+                item.id,
+                ActionId::Open | ActionId::RunAsAdmin | ActionId::Tool(REVEAL) | ActionId::CopyPath
+            )
+        })
+        .collect()
 }
 
 pub fn is_source_row(id: &str) -> bool {
@@ -188,25 +196,27 @@ pub fn block_id_of(id: &str) -> Option<&str> {
     (separator > 0).then(|| &rest[..separator])
 }
 
+/// What `runas` starts directly: programs, scripts, MMC consoles.
 const ELEVATABLE_EXTENSIONS: &[&str] = &[".exe", ".bat", ".cmd", ".msc"];
+/// A Start Menu shortcut, which `runas` follows to its target.
+const SHORTCUT_EXTENSION: &str = ".lnk";
+/// `look-cmd://program[?args]`: a classic applet the backend splits for `runas`.
+const APPLET_SCHEME: &str = "look-cmd://";
 
-/// Whether `row` is an application or executable that can run elevated on Windows.
+/// Whether `row` can run elevated on Windows. Listed rather than excluded:
+/// a Settings page, a UWP app and an internet shortcut are apps too, and
+/// `runas` refuses each of them.
 pub fn is_elevatable(row: &Row) -> bool {
-    if row.path.is_empty()
-        || !matches!(row.open, crate::rows::Open::Path { .. })
-        || row.path.starts_with("ms-settings:")
-        || row.path.starts_with("shell:")
-    {
+    if !matches!(row.open, Open::Path { .. }) {
         return false;
     }
-    if row.kind == "app" {
-        return true;
+    let path = row.path.to_ascii_lowercase();
+    let runnable = ELEVATABLE_EXTENSIONS.iter().any(|ext| path.ends_with(ext));
+    match row.kind.as_str() {
+        "app" => runnable || path.ends_with(SHORTCUT_EXTENSION) || path.starts_with(APPLET_SCHEME),
+        "file" => runnable,
+        _ => false,
     }
-    if row.kind == "file" {
-        let lower = row.path.to_ascii_lowercase();
-        return ELEVATABLE_EXTENSIONS.iter().any(|ext| lower.ends_with(ext));
-    }
-    false
 }
 
 /// Whether `action` means anything for a row of this kind. Editing and a
@@ -284,7 +294,7 @@ pub fn descriptors(
                 } else {
                     format!("{}\u{2026}", target.name)
                 },
-                chord: "",
+                chord: SharedString::default(),
                 confirm: target.confirm.clone(),
             })
             .collect::<Vec<_>>()
@@ -346,7 +356,7 @@ pub fn descriptors(
         MenuItem {
             id: entry.id.clone(),
             title,
-            chord: entry.chord,
+            chord: entry.chord.label(),
             confirm: None,
         }
     }));
@@ -362,7 +372,7 @@ pub fn panel_items(on_clip: bool) -> Vec<MenuItem> {
     vec![MenuItem {
         id: ActionId::DeleteClipboard,
         title: "Delete from history".into(),
-        chord: "Ctrl+D",
+        chord: "Ctrl+D".into(),
         confirm: None,
     }]
 }
@@ -392,13 +402,13 @@ impl Menu {
             MenuItem {
                 id: ActionId::Yes,
                 title: question.unwrap_or_else(|| CONFIRM_FALLBACK.to_string()),
-                chord: "",
+                chord: SharedString::default(),
                 confirm: None,
             },
             MenuItem {
                 id: ActionId::No,
                 title: CANCEL.into(),
-                chord: "",
+                chord: SharedString::default(),
                 confirm: None,
             },
         ];
@@ -426,36 +436,8 @@ impl Menu {
     /// the rows under it do not read through.
     pub fn render(&self, split: bool, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let rows = self.items.iter().enumerate().map(|(i, item)| {
-            let focused = i == self.focused;
-            div()
-                .id(("action", i))
-                .px(px(ROW_PADDING_X))
-                .py(px(ROW_PADDING_Y))
-                .rounded(px(th.chip_radius()))
-                .when(focused, |el| el.bg(th.selection_fill))
-                .hover(|s| s.bg(th.selection_fill))
-                .cursor_pointer()
+            action_row(("action", i), item, i == self.focused, th)
                 .on_click(cx.listener(move |this, _, _, cx| this.activate_menu_item(i, cx)))
-                .flex()
-                .items_center()
-                .gap(px(ROW_GAP))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .text_size(px(th.font_size - 1.0))
-                        .when(focused, |el| el.font_weight(FontWeight::SEMIBOLD))
-                        .truncate()
-                        .child(item.title.clone()),
-                )
-                .when(!item.chord.is_empty(), |el| {
-                    el.child(
-                        div()
-                            .text_size(px(th.font_size - 3.0))
-                            .text_color(th.text_muted)
-                            .child(item.chord),
-                    )
-                })
         });
         let menu = div()
             .p(px(MENU_PADDING))
@@ -485,6 +467,43 @@ impl Menu {
     }
 }
 
+/// One action as the menu draws it, and the preview's buttons with it.
+pub fn action_row(
+    id: impl Into<ElementId>,
+    item: &MenuItem,
+    focused: bool,
+    th: &Theme,
+) -> Stateful<Div> {
+    div()
+        .id(id)
+        .px(px(ROW_PADDING_X))
+        .py(px(ROW_PADDING_Y))
+        .rounded(px(th.chip_radius()))
+        .when(focused, |el| el.bg(th.selection_fill))
+        .hover(|s| s.bg(th.selection_fill))
+        .cursor_pointer()
+        .flex()
+        .items_center()
+        .gap(px(ROW_GAP))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_size(px(th.font_size - 1.0))
+                .when(focused, |el| el.font_weight(FontWeight::SEMIBOLD))
+                .truncate()
+                .child(item.title.clone()),
+        )
+        .when(!item.chord.is_empty(), |el| {
+            el.child(
+                div()
+                    .text_size(px(th.font_size - 3.0))
+                    .text_color(th.text_muted)
+                    .child(item.chord.clone()),
+            )
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -495,6 +514,40 @@ mod tests {
         assert_eq!(block_id_of("src:branches:|a|main"), Some("branches"));
         assert_eq!(block_id_of("app:/x.desktop"), None);
         assert_eq!(block_id_of("src::x"), None);
+    }
+
+    fn row(kind: &str, path: &str) -> Row {
+        Row::from_engine(linows_backend::search::SearchResult {
+            id: format!("{kind}:{path}"),
+            kind: kind.into(),
+            title: path.into(),
+            subtitle: None,
+            path: path.into(),
+            score: 0,
+            icon: None,
+            last_used_at_unix_s: None,
+        })
+    }
+
+    #[test]
+    fn only_programs_scripts_and_applets_run_elevated() {
+        assert!(is_elevatable(&row("app", "C:/Programs/Code.lnk")));
+        assert!(is_elevatable(&row("app", "C:/Windows/regedit.exe")));
+        assert!(is_elevatable(&row("app", "look-cmd://devmgmt.msc")));
+        assert!(is_elevatable(&row(
+            "app",
+            "look-cmd://rundll32.exe?sysdm.cpl,EditEnvironmentVariables"
+        )));
+        assert!(is_elevatable(&row("file", "C:/tools/Build.CMD")));
+        assert!(!is_elevatable(&row("app", "ms-settings:display")));
+        assert!(!is_elevatable(&row(
+            "app",
+            "shell:AppsFolder\\Microsoft.WindowsTerminal_8wekyb3d8bbwe!App"
+        )));
+        assert!(!is_elevatable(&row("app", "C:/Programs/Game.url")));
+        assert!(!is_elevatable(&row("file", "C:/tools/deploy.ps1")));
+        assert!(!is_elevatable(&row("file", "C:/notes/readme.txt")));
+        assert!(!is_elevatable(&row("folder", "C:/tools")));
     }
 
     #[test]

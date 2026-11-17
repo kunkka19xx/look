@@ -46,7 +46,7 @@ use crate::levels::{self, Levels};
 use crate::modes::Mode;
 use crate::motion;
 use crate::picked::{self, Picked};
-use crate::preview::{self, ClipDeleted, Preview};
+use crate::preview::{self, ClipDeleted, InlineAction, Preview};
 use crate::qactions::Press;
 use crate::query;
 use crate::rows::{Icon, Open, Row};
@@ -76,6 +76,7 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 const COPY_FAILED: &str = "Copy failed";
 const PICKS_MISSING: &str = "picked item(s) no longer exist, refreshing index";
 const NOT_RUN: &str = "not run, you moved on";
+const NOT_ELEVATABLE: &str = "Only apps or scripts can run as administrator";
 /// Told to run, not reported on yet.
 const VERB_STARTED: &str = "started";
 const VERB_FAILED: &str = "failed";
@@ -328,8 +329,13 @@ impl Launcher {
             this.clip_removed(cx);
         })
         .detach();
-        cx.subscribe(&preview, |this, _, action: &ActionId, cx| {
-            this.run_action(action.clone(), cx);
+        cx.subscribe(&preview, |this, _, click: &InlineAction, cx| {
+            if this
+                .selected_row()
+                .is_some_and(|row| row.id == click.row_id)
+            {
+                this.run_action(click.action.clone(), cx);
+            }
         })
         .detach();
         let command_input = input_for(cx);
@@ -1310,12 +1316,8 @@ impl Launcher {
             return self.enter(cx);
         };
         if !actions::is_elevatable(&row) {
-            self.banner.show(
-                "Only apps or scripts can run as administrator".into(),
-                Tone::Info,
-                banner::SHORT,
-                cx,
-            );
+            self.banner
+                .show(NOT_ELEVATABLE.into(), Tone::Info, banner::SHORT, cx);
             return true;
         }
         let shell = self.shell.clone();
@@ -1453,19 +1455,25 @@ impl Launcher {
         if self.command_mode {
             return false;
         }
+        self.copy_selected_row(cx);
+        true
+    }
+
+    /// The selected process's PID or row's path, whatever the field has
+    /// selected: what "Copy path" names.
+    fn copy_selected_row(&mut self, cx: &mut Context<Self>) {
         let Some(row) = self.selected_row() else {
-            return true;
+            return;
         };
         if row.is_hint() {
-            return true;
+            return;
         }
         let (text, done) = match &row.open {
             Open::Process(p) => (p.pid.to_string(), format!("Copied PID {}", p.pid)),
-            _ if row.path.is_empty() => return true,
+            _ if row.path.is_empty() => return,
             _ => (row.path.clone(), "Copied to clipboard".to_string()),
         };
         self.copy_text(text, done, cx);
-        true
     }
 
     /// `text` to the clipboard off the UI thread, then `done` or the failure
@@ -2054,9 +2062,7 @@ impl Launcher {
             ActionId::Tool(action) => {
                 self.run_tool(action, cx);
             }
-            ActionId::CopyPath => {
-                self.copy(cx);
-            }
+            ActionId::CopyPath => self.copy_selected_row(cx),
             ActionId::DeleteClipboard => {
                 self.delete(cx);
             }
