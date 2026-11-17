@@ -104,6 +104,7 @@ enum ShortcutCatalog {
     static let groups: [ShortcutGroup] = [
         ShortcutGroup(title: "Global", topic: .main, entries: [
             ShortcutEntry("global.toggleLauncher", "Cmd+Space", "Show or hide Look from any app"),
+            ShortcutEntry("global.quit", "Cmd+Option+Q", "Quit Look for good - Cmd+Q only hides it", remappable: false),
         ]),
 
         ShortcutGroup(title: "Main", topic: .main, entries: [
@@ -147,7 +148,7 @@ enum ShortcutCatalog {
         ]),
 
         ShortcutGroup(title: "View & panels", topic: .main, entries: [
-            ShortcutEntry("view.settings", "Cmd+Shift+,", "Open/close settings panel"),
+            ShortcutEntry("view.settings", "Cmd+, / Cmd+Shift+,", "Open/close settings panel"),
             ShortcutEntry("view.reloadConfig", "Cmd+Shift+;", "Reload .look/config"),
             ShortcutEntry("view.toggleLayout", "Cmd+Shift+C", "Switch between split and compact until Look quits (config unchanged)"),
             ShortcutEntry("view.zoomOut", "Cmd+-", "Zoom UI scale out"),

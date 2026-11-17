@@ -3,7 +3,7 @@ import Foundation
 enum HintText {
     enum Launcher {
         static let normal = "Enter open  •  Cmd+F reveal  •  Cmd+H help  •  Cmd+/ command mode"
-        static let command = "Tab select command  •  Cmd+1/2/3/4 switch  •  Enter run  •  Esc back  •  Cmd+Shift+, settings"
+        static let command = "Tab select command  •  Cmd+1/2/3/4 switch  •  Enter run  •  Esc back  •  Cmd+, settings"
         static let kill = "Up/Down results  •  Name, PID, or port  •  Cmd+1/2/3/4 switch  •  Y/N confirm"
         static let sys = "Sys info view  •  Cmd+1/2/3/4 switch  •  Esc back"
     }
