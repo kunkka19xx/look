@@ -91,7 +91,9 @@ final class KeyboardSelectionMonitor {
         onLaunchpadMnemonic: (@MainActor (Character) -> Bool)? = nil,
         onLaunchpadEscape: (@MainActor () -> Bool)? = nil,
         onHideSelectedApp: (@MainActor () -> Bool)? = nil,
-        onToggleSessionLayout: (@MainActor () -> Void)? = nil
+        onToggleSessionLayout: (@MainActor () -> Void)? = nil,
+        /// The settings chords the Theme Settings menu item cannot draw itself.
+        onToggleSettings: (@MainActor () -> Void)? = nil
     ) {
         guard monitor == nil else { return }
         self.isKillConfirmationActive = killConfirmationActive
@@ -221,6 +223,12 @@ final class KeyboardSelectionMonitor {
 
             if shortcuts.matches(.viewToggleLayout, event), let onToggleSessionLayout {
                 onToggleSessionLayout()
+                return nil
+            }
+
+            // ⌘, reaches the menu item; its aliases only reach here.
+            if shortcuts.matchesAlias(.viewSettings, event), let onToggleSettings {
+                onToggleSettings()
                 return nil
             }
 

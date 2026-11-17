@@ -15,7 +15,7 @@ apps/linows/
       main.rs            Entry point, window, control socket, global hotkey
       launcher.rs        The launcher view: bar, results, preview, footer
       theme.rs           The look, resolved from ~/.look/config
-      settings/          Ctrl+Shift+, : the settings screen (Extend tab, lookbook browser)
+      settings/          Ctrl+, : the settings screen (Extend tab, lookbook browser)
       commands/          /calc, /kill, /pomo, /shell, /speed, /sys, /todo
       host/              Per-OS window plumbing (layer shell, X11, Windows)
   backend/               Everything that is not drawing
@@ -183,7 +183,7 @@ lookapp                                    # launch from terminal to see logs
 | Ctrl+P           | Pick (multi-select)                            |
 | Ctrl+Shift+P     | Clear all picks                                |
 | Ctrl+/           | Toggle command mode                            |
-| Ctrl+Shift+,     | Open settings                                  |
+| Ctrl+,           | Open settings                                  |
 | Ctrl+Shift+;     | Reload config from file                        |
 | Ctrl+H           | Help screen                                    |
 | Ctrl+Shift+H     | Hide selected app from Look                    |

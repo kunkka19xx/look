@@ -17,7 +17,7 @@
 > | `Cmd+<letter>` (super-action tiles)     | `Alt+<letter>`    |
 > | `Cmd+P`                                 | `Ctrl+P`          |
 > | `Cmd+Shift+P`                           | `Ctrl+Shift+P`    |
-> | `Cmd+Shift+,`                           | `Ctrl+Shift+,`    |
+> | `Cmd+,`                                 | `Ctrl+,`          |
 > | `Cmd+Shift+;`                           | `Ctrl+Shift+;`    |
 >
 > "Reveal in Finder" reads as "Reveal in Explorer" on Windows and "Show in Files" on Linux.
@@ -32,7 +32,7 @@ brew install --cask look
 
 On first launch, Look will index your apps, files, and folders in the background. You can start using it immediately - results appear as indexing completes.
 
-To bind `Cmd+Space` to Look, disable Spotlight's default shortcut: `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`. To keep Spotlight, set `launcher_hotkey` in `~/.look/config` to another shortcut (for example `launcher_hotkey=ctrl+space`) and reload with `Cmd+Shift+;`.
+Look listens on `Cmd+Space` from the first launch, so Spotlight's default shortcut has to go: `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`. To keep Spotlight, set `launcher_hotkey` in `~/.look/config` to another shortcut (for example `launcher_hotkey=ctrl+space`) and reload with `Cmd+Shift+;`. Everything else is in the settings panel, on `Cmd+,`.
 
 ## Permissions
 
@@ -253,7 +253,7 @@ The name is `<block>#<control>`, exactly as the app's manifest wrote it. The til
 
 **Keep the command light.** `value` runs unattended - the point of a live tile - so it is capped: **two seconds**, then it is killed along with anything it started, and 16 KB of output. Within a tile's `refresh` window nothing runs at all, so most opens cost nothing. Read something and print it; a slow command will be cut off and the tile keeps its last good reading. Anything that needs to fetch, build, or wait belongs behind `press`, or in a script that caches to a file the tile just reads.
 
-A tile that fails says so and keeps what it last showed - one broken tile never blanks the strip. Its key follows the same rules as the built-ins: it fires with `Cmd` on macOS and `Alt` on Linux/Windows, a letter already used by a tile on the screen is not given away, `Cmd+Q` belongs to quitting Look, and either way the tile still works, it just has no key.
+A tile that fails says so and keeps what it last showed - one broken tile never blanks the strip. Its key follows the same rules as the built-ins: it fires with `Cmd` on macOS and `Alt` on Linux/Windows, a letter already used by a tile on the screen is not given away, `Cmd+Q` belongs to Look itself (it hides the launcher; `Cmd+Option+Q` quits it), and either way the tile still works, it just has no key.
 
 ## AI answers and web suggestions (macOS, Linux, Windows)
 
@@ -261,9 +261,9 @@ Look can answer questions and look things up without leaving the launcher. These
 
 - **Answer card.** A question, an entity that has no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather, currency, crypto) shows a Spotlight-style card above the results. Sources resolve independently and each appears as it lands - **DuckDuckGo** and **Wikipedia**. Arithmetic doesn't answer here anymore - see the **Calculator row** under Query prefixes below. On macOS, when no web source has an answer it falls back to a streaming on-device **Apple Intelligence** answer. Click a source label to open it; the copy button copies that block.
 - **Search suggestions.** For plain text queries (2+ characters), Google autocomplete rows appear under the results. `Enter` on a suggestion (or `Cmd+Enter` on your query) runs a web search in your default browser.
-- **Query rewrite** _(macOS only)_. When a natural-language query finds nothing locally, the on-device model rewrites it into Look's prefix grammar and searches again. It never overrides results you can already see - it only runs when the raw query came up empty.
+- **Model interpretation** _(macOS only)_. When a natural-language query finds nothing locally, the on-device model turns the phrasing into a structured file query - type, time, place - and searches again; it never rewrites your query string. Results say when they were interpreted, or when the search had to be relaxed to find near-misses. It never overrides results you can already see - it only runs when the raw query came up empty.
 
-**Platform note.** The web answer card and Google suggestions are available on macOS, Linux, and Windows. The on-device LLM - query rewrite and the Apple Intelligence answer fallback - is **macOS-only**; there is no on-device model on Linux/Windows, so there the card uses web sources (DuckDuckGo, Wikipedia, currency/weather/crypto) only. The `ai_enabled` toggle is shared across platforms.
+**Platform note.** The web answer card and Google suggestions are available on macOS, Linux, and Windows. The on-device LLM - model interpretation and the Apple Intelligence answer fallback - is **macOS-only**; there is no on-device model on Linux/Windows, so there the card uses web sources (DuckDuckGo, Wikipedia, currency/weather/crypto) only. The `ai_enabled` toggle is shared across platforms.
 
 **Network note.** While AI features are on, the answer card's web sources and the Google suggestions send your typed query to those services (DuckDuckGo, Wikipedia, Google). The on-device model makes no network calls of its own. Set `ai_enabled = false` to disable all of it and run fully offline.
 
@@ -274,7 +274,7 @@ Don't remember the prefixes? Type a single `"` to open a menu listing every pref
 - `a"term` -> apps only
 - `f"term` -> files only
 - `d"term` -> folders only
-- `rc"term` -> recent files/folders, newest activity first (optional filter; `rc"` alone lists all). Blends what you've opened through Look with what recently appeared/changed on disk (downloads, screenshots). macOS for now.
+- `rc"term` -> recent files/folders, newest activity first (optional filter; `rc"` alone lists all). Blends what you've opened through Look with what recently appeared/changed on disk (downloads, screenshots).
 - `r"pattern` -> regex search (case-insensitive)
 - `ps"term` -> running processes; `Enter` measures that process's CPU, `Cmd+D` (`Ctrl+D`) kills it, `Cmd+C` (`Ctrl+C`) copies its PID
 - `c"term` -> clipboard history search
@@ -293,7 +293,7 @@ Arithmetic is detected automatically too (no prefix). Type an expression like `2
 
 Clipboard mode (`c"`):
 
-- stores recent text clips for the running app session (history size is configurable via `clipboard_history_limit`, see File-only settings below),
+- stores recent text clips in the shared `look.db`, so they survive a quit (history size is configurable via `clipboard_history_limit`, see File-only settings below),
 - `Enter` on a clipboard row copies that content back to clipboard,
 - `Cmd+I` (`Ctrl+I` on Linux and Windows) pastes the selected row straight into the app you came from, text clips and image clips (`ci"`) alike. The clip stays on the clipboard afterwards, exactly as `Enter` leaves it. On macOS it needs Look enabled under System Settings > Privacy & Security > Accessibility, and it cannot reach a secure input field (a password prompt, `sudo` in a terminal) - Look says so instead of pasting nothing. On Linux it types `Ctrl+Shift+V` when the app you came from is a terminal, since `Ctrl+V` there is the literal-next key; on a Wayland session that offers no way to type into another window, Look says so and leaves the clip copied for you to paste by hand (GNOME needs Look's shell extension, which it installs itself),
 - `Cmd+D` (`Ctrl+D` on Linux/Windows) removes the selected row from Look's clipboard history.
@@ -468,7 +468,7 @@ Commands are shell text, run by your login shell, so your own scripts are first-
 
 ## Settings and config
 
-Open settings with `Cmd+Shift+,`.
+Open settings with `Cmd+,`. The `Cmd+Shift+,` Look shipped with still works, and both are rebindable in `Settings > Shortcuts`.
 
 ### Appearance / Themes
 
@@ -630,6 +630,7 @@ File-only settings (no Settings UI):
 These keys have no control in the Settings screens. Edit `~/.look/config` directly, then reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux/Windows), or restart Look. Out-of-range or unparseable values fall back to the listed default. More keys will be added here over time.
 
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
+- `clipboard_image_limit` (how many copied images `ci"` keeps, range 5 to 50, default 20)
 - `launcher_hotkey` (global shortcut that shows and hides Look; modifiers `cmd`/`win`, `ctrl`, `alt`/`option`, `shift` plus one key: a letter, digit, `space`, `enter`, `tab`, `esc`, `f1`-`f20`, or a symbol like `` ` ``. Examples: `ctrl+space`, `alt+shift+space`, `f13`. Default `cmd+space` on macOS, `alt+space` on Windows and Linux. `none` stops Look registering any key, so you can bind `lookapp --toggle` in your desktop or a tool like skhd/AutoHotkey instead; Linux accepts only `none` and applies it on restart. An invalid value falls back to the default and the reload banner says why)
 - `shortcut_<group>_<action>` (macOS, and the gpui build on Linux and Windows; an in-app shortcut, same grammar as `launcher_hotkey` plus Shift-only chords on keys that type nothing, like `shift+enter`. The name follows the row in `Settings > Shortcuts`: `shortcut_main_copy`, `shortcut_view_reload_config`. Several chords for one action are separated by `|`. Only rebound shortcuts appear in the file; a chord Look cannot parse is ignored and the shortcut keeps its default)
 - `query_retention_seconds` (how long the main query survives while Look is hidden, in seconds; the first open past it returns to the empty home screen; default 5, `0` clears on every hide, and any negative value keeps the query indefinitely)
@@ -702,7 +703,7 @@ Every modifier chord below is the default. On macOS, and in the gpui build on Li
 - `Shift+Enter` in AI mode (`>`): new line in the message instead of sending. The box grows to 6 lines and stops there. Elsewhere `Shift+Enter` still opens all picked files
 - `join` (or `join meeting`, `join my next meeting`, or `join <meeting name>`): pins a "Join <meeting>" row for the next Teams / Zoom / Meet / Webex / Jitsi / GoToMeeting / Whereby meeting in your calendar; Enter opens the link. Works in the main bar and in `>` AI mode. Looks two days ahead. Needs the account in macOS Calendar (System Settings → Internet Accounts), since Look reads the OS's calendar and makes no network call of its own
 - `call <name>` / `facetime <name>` / `message <name>` in AI mode (`>`): finds the person in Contacts and opens FaceTime or Messages. `call mom on iphone` dials through your iPhone. A bare `call` means FaceTime audio, the one that works with no iPhone nearby. Look always lists what it found first; `Enter` on the highlighted row places the call
-- `Cmd+D` in AI mode (`>`): delete the highlighted conversation (same as `Cmd+Delete`; undo from the banner with `Cmd+Z`)
+- `Cmd+D` in AI mode (`>`): delete the highlighted conversation (the same chord that trashes a file; undo from the banner with `Cmd+Z`)
 - `Cmd+H` in AI mode (`>`): open the help screen on its **AI** topic without leaving the conversation. `Cmd+H`, `Esc`, or typing returns to it. The help screen's topic capsules (All / Main / AI / Prefixes / Command) also switch by click
 - `Cmd+1`..`Cmd+9` and `Cmd+0` in AI mode (`>`): open the listed conversation carrying that chip (`Cmd+0` is the tenth). The running-apps row is hidden on the AI screen, so the digits mean sessions there, and `Cmd+0` opens the tenth session rather than resetting the UI scale while the list is up. The list stops at ten because a `Cmd` chord is a single keypress; older conversations are found by typing, then Tab/arrows and Enter
 - `Cmd+<letter>` (macOS) / `Alt+<letter>` (Linux, Windows): on the empty home screen, fire the super action with that highlighted letter (`B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `P` play/pause, `R` Restart, `D` Shut Down), when `Super Actions` is on. A letter belongs to its tile, so one you have taken off the strip does nothing
@@ -721,10 +722,11 @@ Every modifier chord below is the default. On macOS, and in the gpui build on Li
 - `Cmd+I` (`Ctrl+I` on Linux, Windows): paste the selected clipboard history item, or the selected file/folder (or all picked items), into the app you came from
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
 - `Cmd+O`: flip the selected row's toggle (Bluetooth, Wi-Fi, Do Not Disturb)
-- `Cmd+Shift+,`: toggle settings panel
+- `Cmd+,` (also `Cmd+Shift+,`): toggle settings panel
 - `Cmd+Shift+;` (macOS) / `Ctrl+Shift+;` (Linux, Windows): reload config, re-read your declared sources, and re-read `~/.look/super-actions.toml` so the strip can be arranged while you look at it
 - `Cmd+Shift+H`: hide the selected app from Look
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
+- `Cmd+Option+Q` (macOS) / `Alt+Shift+Q` (Linux, Windows): quit Look for good; `Cmd+Q` only hides it
 
 ## Troubleshooting
 

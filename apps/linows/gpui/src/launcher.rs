@@ -242,7 +242,7 @@ pub struct Launcher {
     /// The command screen is up: it owns the window and the keys.
     command_mode: bool,
     pub(crate) settings: Settings,
-    /// Ctrl+Shift+, : the settings screen is up, in the command screen's frame.
+    /// Ctrl+, : the settings screen is up, in the command screen's frame.
     settings_open: bool,
     /// A sources reload in flight, and whether another was asked for
     /// meanwhile: run one at a time, so an older pass cannot publish last.

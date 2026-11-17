@@ -45,8 +45,12 @@ Results land as fast as you can type. A Rust core under a native SwiftUI app on 
 brew install --cask look
 ```
 
-Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`), or pick another shortcut with `launcher_hotkey` in `~/.look/config`.
+Look listens on `Cmd+Space` from the first launch, a key Spotlight also holds.
+
+Free it from Spotlight in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`, or leave Spotlight alone and give Look a different chord with `launcher_hotkey` in `~/.look/config`. Settings are a panel inside the launcher, on `Cmd+,`.
+
 Release builds are signed and notarized - no Gatekeeper bypass needed. Releases ship one build per architecture, Apple Silicon and Intel, and Homebrew installs the one that matches your Mac.
+
 
 **Nix (flake):**
 
@@ -263,8 +267,9 @@ open "/Applications/Look.app"
 | Action menu for the selected row                                       | `Cmd+K`          | `Ctrl+K`            | `Ctrl+K`         |
 | Move to Trash (or empty the Trash folder)                              | `Cmd+D`          | n/a                 | n/a              |
 | Command mode (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
-| Settings                                                               | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
+| Settings                                                               | `Cmd+,`          | `Ctrl+,`            | `Ctrl+,`         |
 | Back / hide                                                            | `Escape`         | `Escape`            | `Escape`         |
+| Quit Look (`Cmd+Q` only hides it)                                      | `Cmd+Option+Q`   | `Alt+Shift+Q`       | `Alt+Shift+Q`    |
 | Switch to running app N (home screen)                                  | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
 | Hide selected app from Look                                            | `Cmd+Shift+H`    | `Ctrl+Shift+H`      | `Ctrl+Shift+H`   |
 | Run selected app as admin                                              | n/a              | `Ctrl+Shift+Enter`  | n/a              |

@@ -237,9 +237,8 @@ struct ThemeSettingsView: View {
                 return nil
             }
 
-            if flags == [.command, .shift]
-                && (event.charactersIgnoringModifiers == "," || event.keyCode == 43)
-            {
+            // Either settings chord closes the panel, whichever one is bound.
+            if ShortcutBindings.shared.matches(.viewSettings, event) {
                 closeSettingsPanel()
                 return nil
             }

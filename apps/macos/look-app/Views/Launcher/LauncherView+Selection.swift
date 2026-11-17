@@ -433,6 +433,9 @@ extension LauncherView {
             },
             onToggleSessionLayout: { [self] in
                 themeStore.toggleSessionLayout()
+            },
+            onToggleSettings: { [self] in
+                toggleThemeSettings()
             }
         )
     }
