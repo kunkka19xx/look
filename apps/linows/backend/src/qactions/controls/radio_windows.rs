@@ -18,7 +18,7 @@ pub enum RadioError {
 /// The first radio of `kind`, or `None` when the machine has none.
 pub fn of_kind(kind: RadioKind) -> Option<Radio> {
     ensure_mta();
-    let radios = Radio::GetRadiosAsync().and_then(|op| op.get()).ok()?;
+    let radios = Radio::GetRadiosAsync().and_then(|op| op.join()).ok()?;
     radios.into_iter().find(|r| r.Kind() == Ok(kind))
 }
 
@@ -29,13 +29,13 @@ pub fn is_on(radio: &Radio) -> bool {
 /// Request access, then drive the radio to `on`.
 pub fn set_powered(radio: &Radio, on: bool) -> Result<(), RadioError> {
     let access = Radio::RequestAccessAsync()
-        .and_then(|op| op.get())
+        .and_then(|op| op.join())
         .map_err(|_| RadioError::Denied)?;
     if access != RadioAccessStatus::Allowed {
         return Err(RadioError::Denied);
     }
     let target = if on { RadioState::On } else { RadioState::Off };
-    match radio.SetStateAsync(target).and_then(|op| op.get()) {
+    match radio.SetStateAsync(target).and_then(|op| op.join()) {
         Ok(RadioAccessStatus::Allowed) => Ok(()),
         Ok(_) => Err(RadioError::Denied),
         Err(_) => Err(RadioError::Failed),
