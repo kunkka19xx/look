@@ -92,7 +92,8 @@ pub const DEFINITIONS: &[Definition] = &[
     def(QUICK_TOGGLE, &["ctrl+o"], Scope::Launcher),
     def(CLIP_PASTE, &["ctrl+i"], Scope::Launcher).mirrors(&[PASTE]),
     def(HELP, &["ctrl+h"], Scope::AppWide),
-    def(SETTINGS, &["ctrl+shift+,"], Scope::AppWide),
+    // Ctrl+, mirrors the macOS Cmd+,; the chord Look shipped with still answers.
+    def(SETTINGS, &["ctrl+,", "ctrl+shift+,"], Scope::AppWide),
     def(RELOAD_CONFIG, &["ctrl+shift+;"], Scope::AppWide),
     def(SWITCH_LAYOUT, &["ctrl+shift+c"], Scope::AppWide),
     def(TODO_TOGGLE_PAGE, &["ctrl+n"], Scope::Todo),
@@ -476,7 +477,7 @@ mod tests {
         assert!(b.matches(COMMAND_MODE, &ks("ctrl-?")));
         // The socket's spelling, Shift kept on the base key.
         assert!(b.matches(SETTINGS, &ks("ctrl-shift-,")));
-        assert!(!b.matches(SETTINGS, &ks("ctrl-,")));
+        assert!(b.matches(SETTINGS, &ks("ctrl-,")));
         assert_eq!(spec(&ks("ctrl-<")), "ctrl+shift+,");
         assert_eq!(spec(&ks("ctrl-shift-k")), "ctrl+shift+k");
         assert_eq!(spec(&ks("alt-up")), "alt+up");

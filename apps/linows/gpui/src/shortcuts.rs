@@ -138,11 +138,18 @@ fn build() -> Vec<Group> {
         Group {
             title: "Global",
             topic: Topic::Main,
-            entries: vec![Entry::new(
-                TOGGLE_LAUNCHER,
-                TOGGLE_LAUNCHER_KEYS,
-                "Show or hide Look from any app",
-            )],
+            entries: vec![
+                Entry::new(
+                    TOGGLE_LAUNCHER,
+                    TOGGLE_LAUNCHER_KEYS,
+                    "Show or hide Look from any app",
+                ),
+                Entry::new(
+                    "global.quit",
+                    "Alt+Shift+Q",
+                    "Quit Look for good - Esc and the toggle only hide it",
+                ),
+            ],
         },
         Group {
             title: "Main",
@@ -217,7 +224,11 @@ fn build() -> Vec<Group> {
                     ":cmd",
                     "Jump to a command from home (e.g. :calc 2+2, :kill chrome, :sys, :pomo)",
                 ),
-                Entry::new(SETTINGS, "Ctrl+Shift+,", "Open/close settings panel"),
+                Entry::new(
+                    SETTINGS,
+                    "Ctrl+, / Ctrl+Shift+,",
+                    "Open/close settings panel",
+                ),
                 Entry::new(RELOAD_CONFIG, "Ctrl+Shift+;", "Reload .look/config"),
                 Entry::new(
                     SWITCH_LAYOUT,

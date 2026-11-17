@@ -15,7 +15,7 @@ This document tracks what `look` supports today and what is planned next.
 ### Core search and launch
 
 - app/file/folder search from one input
-- scoped query prefixes: `a"`, `f"`, `d"`, `r"`, and `rc"` (recent files/folders, newest first - blends opened-through-Look with recently added/changed on disk; macOS for now)
+- scoped query prefixes: `a"`, `f"`, `d"`, `r"`, and `rc"` (recent files/folders, newest first - blends opened-through-Look with recently added/changed on disk)
 - path-fragment friendly matching (slash-biased queries)
 - URL-like queries (no prefix): typing a URL offers an **Open in browser** row (structural URLs rank first, a bare `host.tld` after local results); opened URLs return as frecency-ranked **Recently opened** rows
 - arithmetic queries (no prefix): typing an expression (`2+2`, `sqrt(16)`, `200*15%`) pins a **Calculator** row above every other result; shape decides whether something counts as math, not spacing, so a date, a resolution, or a ratio (`20-05-2026`, `1920x1080`, `16:9`) is left alone. `Enter` or a click copies the value and hides the launcher; clipboard history shows the worked expression (`2+2 = 4`) but still pastes just the value. Shared `core/calc` engine on macOS, Linux, and Windows
@@ -33,8 +33,8 @@ This document tracks what `look` supports today and what is planned next.
 ### Clipboard and translation
 
 - clipboard history mode with `c"` prefix
-- clipboard history (recent text clips, size set by `clipboard_history_limit`, default 10, range 10 to 100); file/folder copies are excluded. Kept in memory on macOS, on disk on Linux and Windows
-- copied-image history with `ci"` prefix: thumbnail rows named after the app the copy came from, or `Image from screen` on a session that will not say which window was in front (GNOME and KDE Wayland); each image is stored as a PNG beside the database, size set by `clipboard_image_limit` (default 20, range 5 to 50)
+- clipboard history (recent text clips, size set by `clipboard_history_limit`, default 10, range 10 to 100); file/folder copies are excluded. History survives a quit: macOS keeps it in the shared `look.db`, Linux and Windows in `look/clipboard.json` under the user data directory
+- copied-image history with `ci"` prefix: thumbnail rows named after the app the copy came from, or `Image from screen` on a session that will not say which window was in front (GNOME and KDE Wayland); each image is stored as a PNG in a `clipboard-images` folder in Look's data directory, size set by `clipboard_image_limit` (default 20, range 5 to 50)
 - paste the selected clip straight into the app you came from with `Cmd+I` / `Ctrl+I`, text and images alike; the clip stays on the clipboard
 - remove the selected clipboard history item with `Cmd+D` / `Ctrl+D`
 - quick translation with `t"...`
@@ -47,7 +47,7 @@ This document tracks what `look` supports today and what is planned next.
 - **search suggestions**: Google autocomplete rows appear under the results for plain text queries (2+ chars); `Enter` on one runs a web search, as does `Cmd+Enter` on the query
 - **model interpretation** *(macOS)*: when a natural-language query finds nothing locally, the model turns the phrasing into a *structured* file query (type, time, place) and re-searches - never a rewritten query string, never overriding results already on screen. Results say when they were interpreted, or when the search had to be relaxed to find near-misses
 - **personal answers**: schedule questions ("what's on my calendar this week?") answer from your calendar itself - deterministic, instant, and never sent to a web source
-- **platform note**: the web answer card and Google suggestions run on macOS, Linux, and Windows (the latter two via the gpui `apps/linows/` app), sharing the `look-answers` core engine. The on-device LLM (query rewrite + the Apple Intelligence answer fallback) is **macOS-only** - there is no on-device model on Linux/Windows. The `ai_enabled` key is shared so the same toggle gates web answers on Linux/Windows and both web + on-device features on macOS
+- **platform note**: the web answer card and Google suggestions run on macOS, Linux, and Windows (the latter two via the gpui `apps/linows/` app), sharing the `look-answers` core engine. The on-device LLM (model interpretation + the Apple Intelligence answer fallback) is **macOS-only** - there is no on-device model on Linux/Windows. The `ai_enabled` key is shared so the same toggle gates web answers on Linux/Windows and both web + on-device features on macOS
 - network note: while AI is on, the answer card's web sources and the Google suggestions send the typed query to those services; the on-device model itself makes no network calls. All of it is off when `ai_enabled = false`
 
 ### AI actions and chat (macOS)
@@ -145,7 +145,7 @@ This document tracks what `look` supports today and what is planned next.
 ### Settings and runtime config
 
 - launch modes: `lookapp <mode> [term]` opens straight into a mode from a keybinding (18 modes with aliases, `lookapp clipboard`, `lookapp calc 2+2`), plus `--toggle`, `--mode`/`--query`, `--list-modes`, and `reload-config`. Parsed in `core/engine/src/modes.rs` so a name means the same thing on every platform
-- in-app settings panel (`Cmd+Shift+,`)
+- in-app settings panel (`Cmd+,`, or the `Cmd+Shift+,` it shipped with)
 - local config file `~/.look/config`
 - runtime reload (`Cmd+Shift+;`)
 - rebindable launcher hotkey: record one in `Settings > Shortcuts` (macOS, Windows) or set `launcher_hotkey` in `~/.look/config`; `none` frees the key for your own binding of `lookapp --toggle`

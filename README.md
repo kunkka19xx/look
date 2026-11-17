@@ -45,8 +45,12 @@ Results land as fast as you can type. A Rust core under a native SwiftUI app on 
 brew install --cask look
 ```
 
-Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`), or pick another shortcut with `launcher_hotkey` in `~/.look/config`.
+Look listens on `Cmd+Space` from the first launch, a key Spotlight also holds.
+
+Free it from Spotlight in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`, or leave Spotlight alone and give Look a different chord with `launcher_hotkey` in `~/.look/config`. Settings are a panel inside the launcher, on `Cmd+,`.
+
 Release builds are signed and notarized - no Gatekeeper bypass needed. Releases ship one build per architecture, Apple Silicon and Intel, and Homebrew installs the one that matches your Mac.
+
 
 **Nix (flake):**
 
@@ -263,8 +267,9 @@ open "/Applications/Look.app"
 | Action menu for the selected row                                       | `Cmd+K`          | `Ctrl+K`            | `Ctrl+K`         |
 | Move to Trash (or empty the Trash folder)                              | `Cmd+D`          | n/a                 | n/a              |
 | Command mode (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
-| Settings                                                               | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
+| Settings                                                               | `Cmd+,`          | `Ctrl+,`            | `Ctrl+,`         |
 | Back / hide                                                            | `Escape`         | `Escape`            | `Escape`         |
+| Quit Look (`Cmd+Q` only hides it)                                      | `Cmd+Option+Q`   | `Alt+Shift+Q`       | `Alt+Shift+Q`    |
 | Switch to running app N (home screen)                                  | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
 | Hide selected app from Look                                            | `Cmd+Shift+H`    | `Ctrl+Shift+H`      | `Ctrl+Shift+H`   |
 | Run selected app as admin                                              | n/a              | `Ctrl+Shift+Enter`  | n/a              |
@@ -272,7 +277,7 @@ open "/Applications/Look.app"
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
 
-Every chord in the table is a default. Rebind the in-app ones in `Settings > Shortcuts` on all three platforms, or set `shortcut_<group>_<action>` in `~/.look/config`; the launcher toggle records there too on macOS and Windows, while Linux takes `launcher_hotkey=none` and your own binding of `lookapp --toggle`. Details in [Keyboard shortcuts](docs/user-guide.md#keyboard-shortcuts-quick-reference).
+Every chord in the table is a default. Rebind the in-app ones (all but `Enter`, `Escape`, Quit and the running-app digits, which stay fixed) in `Settings > Shortcuts` on all three platforms, or set `shortcut_<group>_<action>` in `~/.look/config`; the launcher toggle records there too on macOS and Windows, while Linux takes `launcher_hotkey=none` and your own binding of `lookapp --toggle`. A super action's letter is its `mnemonic` in `~/.look/super-actions.toml`. Details in [Keyboard shortcuts](docs/user-guide.md#keyboard-shortcuts-quick-reference).
 
 `Cmd+E` and `Cmd+T` need a tool named in `~/.look/config` (`text_editor`, `code_editor`, `terminal`), and `file_manager` retargets `Cmd+F`. Declare nothing and each falls back to the system default: see [Preferred tools](docs/user-guide.md#preferred-tools).
 
