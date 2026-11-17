@@ -8,7 +8,7 @@
 //! targets join this list. Any row at all can carry an action a `do` block
 //! declared with `applies`, whatever produced the row.
 
-use gpui::{Context, Div, ElementId, FontWeight, SharedString, Stateful, div, prelude::*, px};
+use gpui::{Context, Div, FontWeight, SharedString, div, prelude::*, px};
 use linows_backend::sources::{self, RowArgs};
 use linows_backend::tools;
 
@@ -37,7 +37,7 @@ const SYSTEM_FILE_MANAGER: &str = "Files";
 const SYSTEM_FILE_MANAGER: &str = "Explorer";
 
 const MENU_TOP: f32 = 84.0;
-pub const MENU_PADDING: f32 = 6.0;
+const MENU_PADDING: f32 = 6.0;
 /// macOS `ActionMenu.compactWidth` and `compactInset`.
 const COMPACT_W: f32 = 320.0;
 const COMPACT_INSET: f32 = 10.0;
@@ -165,23 +165,6 @@ const CATALOG: &[Entry] = &[
         fallback_tool: None,
     },
 ];
-
-/// The menu's main verbs, which the preview also offers as buttons, worded
-/// and keyed as the menu has them. Blocking, like `descriptors`.
-pub fn inline_items(row: &Row, ancestors: &str, query: &str) -> Vec<MenuItem> {
-    if !actionable(row) || row.declared() {
-        return Vec::new();
-    }
-    descriptors(row, ancestors.to_string(), query.to_string(), Vec::new())
-        .into_iter()
-        .filter(|item| {
-            matches!(
-                item.id,
-                ActionId::Open | ActionId::RunAsAdmin | ActionId::Tool(REVEAL) | ActionId::CopyPath
-            )
-        })
-        .collect()
-}
 
 pub fn is_source_row(id: &str) -> bool {
     id.starts_with(SOURCE_PREFIX)
@@ -436,8 +419,36 @@ impl Menu {
     /// the rows under it do not read through.
     pub fn render(&self, split: bool, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let rows = self.items.iter().enumerate().map(|(i, item)| {
-            action_row(("action", i), item, i == self.focused, th)
+            let focused = i == self.focused;
+            div()
+                .id(("action", i))
+                .px(px(ROW_PADDING_X))
+                .py(px(ROW_PADDING_Y))
+                .rounded(px(th.chip_radius()))
+                .when(focused, |el| el.bg(th.selection_fill))
+                .hover(|s| s.bg(th.selection_fill))
+                .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| this.activate_menu_item(i, cx)))
+                .flex()
+                .items_center()
+                .gap(px(ROW_GAP))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_size(px(th.font_size - 1.0))
+                        .when(focused, |el| el.font_weight(FontWeight::SEMIBOLD))
+                        .truncate()
+                        .child(item.title.clone()),
+                )
+                .when(!item.chord.is_empty(), |el| {
+                    el.child(
+                        div()
+                            .text_size(px(th.font_size - 3.0))
+                            .text_color(th.text_muted)
+                            .child(item.chord.clone()),
+                    )
+                })
         });
         let menu = div()
             .p(px(MENU_PADDING))
@@ -465,43 +476,6 @@ impl Menu {
             .w(px(column_w - 2.0 * theme::CONTENT_PADDING))
             .bg(th.card_face())
     }
-}
-
-/// One action as the menu draws it, and the preview's buttons with it.
-pub fn action_row(
-    id: impl Into<ElementId>,
-    item: &MenuItem,
-    focused: bool,
-    th: &Theme,
-) -> Stateful<Div> {
-    div()
-        .id(id)
-        .px(px(ROW_PADDING_X))
-        .py(px(ROW_PADDING_Y))
-        .rounded(px(th.chip_radius()))
-        .when(focused, |el| el.bg(th.selection_fill))
-        .hover(|s| s.bg(th.selection_fill))
-        .cursor_pointer()
-        .flex()
-        .items_center()
-        .gap(px(ROW_GAP))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .text_size(px(th.font_size - 1.0))
-                .when(focused, |el| el.font_weight(FontWeight::SEMIBOLD))
-                .truncate()
-                .child(item.title.clone()),
-        )
-        .when(!item.chord.is_empty(), |el| {
-            el.child(
-                div()
-                    .text_size(px(th.font_size - 3.0))
-                    .text_color(th.text_muted)
-                    .child(item.chord.clone()),
-            )
-        })
 }
 
 #[cfg(test)]

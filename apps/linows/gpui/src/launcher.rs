@@ -46,7 +46,7 @@ use crate::levels::{self, Levels};
 use crate::modes::Mode;
 use crate::motion;
 use crate::picked::{self, Picked};
-use crate::preview::{self, ClipDeleted, InlineAction, Preview};
+use crate::preview::{self, ClipDeleted, Preview};
 use crate::qactions::Press;
 use crate::query;
 use crate::rows::{Icon, Open, Row};
@@ -327,15 +327,6 @@ impl Launcher {
         .detach();
         cx.subscribe(&preview, |this, _, _: &ClipDeleted, cx| {
             this.clip_removed(cx);
-        })
-        .detach();
-        cx.subscribe(&preview, |this, _, click: &InlineAction, cx| {
-            if this
-                .selected_row()
-                .is_some_and(|row| row.id == click.row_id)
-            {
-                this.run_action(click.action.clone(), cx);
-            }
         })
         .detach();
         let command_input = input_for(cx);

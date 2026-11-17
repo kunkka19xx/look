@@ -22,8 +22,6 @@ use linows_backend::process::ProcDetail;
 use linows_backend::{clipboard, clipimage, files, launch, process};
 
 use crate::Shell;
-use crate::actions::{self, ActionId, MenuItem};
-use crate::bindings;
 use crate::elide::middle_elided;
 use crate::glyphs;
 use crate::icons::{IconRequest, IconStore};
@@ -81,7 +79,6 @@ const INFO_GAP: f32 = 12.0;
 const INFO_ROW_GAP: f32 = 12.0;
 const INFO_PADDING_Y: f32 = 5.0;
 const BODY_MARGIN: f32 = 12.0;
-const INLINE_ACTIONS_MARGIN: f32 = 10.0;
 const CODE_PADDING: f32 = 10.0;
 const CODE_LINE_HEIGHT: f32 = 1.35;
 const FOLDER_PADDING: f32 = 4.0;
@@ -123,16 +120,6 @@ pub struct ClipDeleted;
 
 impl EventEmitter<ClipDeleted> for Preview {}
 impl EventEmitter<Notice> for Preview {}
-
-/// A click on one of the panel's action buttons, for the row the panel
-/// shows: the selection may have moved on while the next row loads.
-#[derive(Clone)]
-pub struct InlineAction {
-    pub row_id: String,
-    pub action: ActionId,
-}
-
-impl EventEmitter<InlineAction> for Preview {}
 
 /// What the panel knows about one row once the backend has answered.
 pub enum Content {
@@ -177,8 +164,6 @@ pub enum Content {
         aside: Option<String>,
         info: Vec<(&'static str, String)>,
         body: Body,
-        /// The menu's main verbs, as buttons under the body.
-        buttons: Vec<MenuItem>,
     },
 }
 
@@ -296,9 +281,6 @@ pub struct Preview {
     images: Entity<PreviewImages>,
     current: Option<(String, Arc<Content>)>,
     cache: HashMap<String, Arc<Content>>,
-    /// The config the cache was filled under: a reload can rebind the
-    /// buttons' chords and rename their tools.
-    cache_revision: u64,
     /// The row the panel is waiting on; an answer for another is dropped.
     wanted: Option<String>,
     /// The row on screen whose panel a connector answered. Never reused: it
@@ -329,7 +311,6 @@ impl Preview {
             images: cx.new(PreviewImages::new),
             current: None,
             cache: HashMap::new(),
-            cache_revision: bindings::revision(),
             wanted: None,
             live: None,
             body_scroll: ScrollHandle::new(),
@@ -417,7 +398,6 @@ impl Preview {
     /// lands later still, see `PREVIEW_DWELL`.
     pub fn show(&mut self, row: &Row, ancestors: String, query: String, cx: &mut Context<Self>) {
         self.sync_actions(row, cx);
-        let reloaded = self.forget_if_reloaded();
         // A block row is a different panel at a different depth, and its
         // steps follow what was typed.
         let key = if is_block_row(row) {
@@ -425,14 +405,13 @@ impl Preview {
         } else {
             row.id.clone()
         };
-        if !reloaded && self.wanted.as_deref() == Some(key.as_str()) {
+        if self.wanted.as_deref() == Some(key.as_str()) {
             return;
         }
         // Back on the shown row: drop what the row in between started. A
         // panel still waiting asks again, leaving cancelled its ask. So does
         // one a connector answered: its data has moved on.
-        if !reloaded
-            && self.live.as_deref() != Some(key.as_str())
+        if self.live.as_deref() != Some(key.as_str())
             && self
                 .current
                 .as_ref()
@@ -518,17 +497,6 @@ impl Preview {
         self.lines_for = None;
         self.pieces_for = None;
         cx.notify();
-        true
-    }
-
-    /// Drops the cache once the config has reloaded since it was filled.
-    fn forget_if_reloaded(&mut self) -> bool {
-        let revision = bindings::revision();
-        if revision == self.cache_revision {
-            return false;
-        }
-        self.cache_revision = revision;
-        self.cache.clear();
         true
     }
 
@@ -807,7 +775,6 @@ impl Preview {
                 aside,
                 info,
                 body,
-                buttons,
             } => {
                 let picture = self.icons.update(cx, |store, cx| {
                     store.get(
@@ -833,43 +800,10 @@ impl Preview {
                     ))
                     .children(self.actions_section(th, cx))
                     .child(self.body(body, th, shell))
-                    .children(self.inline_actions(buttons, th, cx))
                     // Under a body the rows sit at the foot, as macOS files do.
                     .child(info_rows(info, th).when(!matches!(body, Body::None), |r| r.mt_auto()))
             }
         }
-    }
-
-    /// The menu's main verbs as buttons. Standard content is keyed by its
-    /// row's id, which each click carries.
-    fn inline_actions(
-        &self,
-        items: &[MenuItem],
-        th: &Theme,
-        cx: &mut Context<Self>,
-    ) -> Option<Div> {
-        let (row_id, _) = self.current.as_ref()?;
-        if items.is_empty() {
-            return None;
-        }
-        let rows = items.iter().enumerate().map(|(i, item)| {
-            let click = InlineAction {
-                row_id: row_id.clone(),
-                action: item.id.clone(),
-            };
-            actions::action_row(("inline-action", i), item, false, th)
-                .on_click(cx.listener(move |_, _, _, cx| cx.emit(click.clone())))
-        });
-        Some(
-            div()
-                .mt(px(INLINE_ACTIONS_MARGIN))
-                .p(px(actions::MENU_PADDING))
-                .rounded(px(th.control_radius()))
-                .bg(th.control_fill)
-                .flex()
-                .flex_col()
-                .children(rows),
-        )
     }
 
     /// The clipboard header: glyph, title and the Delete button that takes
@@ -1334,7 +1268,7 @@ fn load(row: &Row, ancestors: &str, query: &str) -> Content {
             subtitle: row.context.clone(),
             hint: "Press Enter to open in browser",
         },
-        Open::Path { .. } => standard(row, actions::inline_items(row, ancestors, query)),
+        Open::Path { .. } => standard(row),
         Open::Clip(clip) => Content::Clip {
             clip: clip.clone(),
             text: TextBody::new(highlight::expand_tabs(&clip.text).into_owned(), Vec::new()),
@@ -1809,7 +1743,7 @@ fn format_start(epoch: Option<u64>) -> String {
     }
 }
 
-fn standard(row: &Row, buttons: Vec<MenuItem>) -> Content {
+fn standard(row: &Row) -> Content {
     let glyph = match &row.icon {
         Icon::Resolve { glyph } | Icon::Glyph(glyph) => *glyph,
         Icon::File(_) => glyphs::IMAGE,
@@ -1903,7 +1837,6 @@ fn standard(row: &Row, buttons: Vec<MenuItem>) -> Content {
         aside,
         info,
         body,
-        buttons,
     }
 }
 
