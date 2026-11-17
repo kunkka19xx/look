@@ -277,7 +277,7 @@ open "/Applications/Look.app"
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
 
-Every chord in the table is a default. Rebind the in-app ones in `Settings > Shortcuts` on all three platforms, or set `shortcut_<group>_<action>` in `~/.look/config`; the launcher toggle records there too on macOS and Windows, while Linux takes `launcher_hotkey=none` and your own binding of `lookapp --toggle`. Details in [Keyboard shortcuts](docs/user-guide.md#keyboard-shortcuts-quick-reference).
+Every chord in the table is a default. Rebind the in-app ones (all but `Enter`, `Escape` and Quit, which stay fixed) in `Settings > Shortcuts` on all three platforms, or set `shortcut_<group>_<action>` in `~/.look/config`; the launcher toggle records there too on macOS and Windows, while Linux takes `launcher_hotkey=none` and your own binding of `lookapp --toggle`. Details in [Keyboard shortcuts](docs/user-guide.md#keyboard-shortcuts-quick-reference).
 
 `Cmd+E` and `Cmd+T` need a tool named in `~/.look/config` (`text_editor`, `code_editor`, `terminal`), and `file_manager` retargets `Cmd+F`. Declare nothing and each falls back to the system default: see [Preferred tools](docs/user-guide.md#preferred-tools).
 

@@ -690,7 +690,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 
 ## Keyboard shortcuts (quick reference)
 
-Every modifier chord below is the default. On macOS, and in the gpui build on Linux and Windows, you can rebind them in `Settings > Shortcuts`: click a key capsule, press the chord you want, then Save Config (or set `shortcut_<group>_<action>` in `~/.look/config`). The keys that structure navigation - `Enter`, `Tab`, `Escape`, the arrows, the `Y`/`N` confirmations - stay fixed, since each means something different in the main bar, AI mode, command mode and a confirmation.
+Every modifier chord below is the default. On macOS, and in the gpui build on Linux and Windows, you can rebind them in `Settings > Shortcuts`: click a key capsule, press the chord you want, then Save Config (or set `shortcut_<group>_<action>` in `~/.look/config`). The keys that structure navigation - `Enter`, `Tab`, `Escape`, the arrows, the `Y`/`N` confirmations - stay fixed, since each means something different in the main bar, AI mode, command mode and a confirmation. Quit (`Cmd+Option+Q` / `Alt+Shift+Q`) is fixed too.
 
 - `Enter`: open selected result / run command
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)

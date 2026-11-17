@@ -33,8 +33,8 @@ This document tracks what `look` supports today and what is planned next.
 ### Clipboard and translation
 
 - clipboard history mode with `c"` prefix
-- clipboard history (recent text clips, size set by `clipboard_history_limit`, default 10, range 10 to 100); file/folder copies are excluded. Stored in the shared `look.db` on all three platforms, so history survives a quit
-- copied-image history with `ci"` prefix: thumbnail rows named after the app the copy came from, or `Image from screen` on a session that will not say which window was in front (GNOME and KDE Wayland); each image is stored as a PNG beside the database, size set by `clipboard_image_limit` (default 20, range 5 to 50)
+- clipboard history (recent text clips, size set by `clipboard_history_limit`, default 10, range 10 to 100); file/folder copies are excluded. History survives a quit: macOS keeps it in the shared `look.db`, Linux and Windows in `look/clipboard.json` under the user data directory
+- copied-image history with `ci"` prefix: thumbnail rows named after the app the copy came from, or `Image from screen` on a session that will not say which window was in front (GNOME and KDE Wayland); each image is stored as a PNG in a `clipboard-images` folder in Look's data directory, size set by `clipboard_image_limit` (default 20, range 5 to 50)
 - paste the selected clip straight into the app you came from with `Cmd+I` / `Ctrl+I`, text and images alike; the clip stays on the clipboard
 - remove the selected clipboard history item with `Cmd+D` / `Ctrl+D`
 - quick translation with `t"...`
