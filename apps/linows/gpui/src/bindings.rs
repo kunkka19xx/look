@@ -78,6 +78,12 @@ pub const DEFINITIONS: &[Definition] = &[
     def(TRASH, &["ctrl+d"], Scope::Launcher).mirrors(&[CLIP_REMOVE, PROCESS_KILL]),
     def(ACTIONS, &["ctrl+k", "ctrl+j"], Scope::Launcher),
     def(REVEAL, &["ctrl+f"], Scope::Launcher),
+    #[cfg(target_os = "windows")]
+    def(
+        crate::shortcuts::RUN_AS_ADMIN,
+        &["ctrl+shift+enter"],
+        Scope::Launcher,
+    ),
     def(EDIT, &["ctrl+e"], Scope::Launcher),
     def(TERMINAL, &["ctrl+t"], Scope::Launcher),
     def(WEB_SEARCH, &["ctrl+enter"], Scope::Launcher),

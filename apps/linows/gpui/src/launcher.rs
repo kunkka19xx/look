@@ -76,6 +76,7 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 const COPY_FAILED: &str = "Copy failed";
 const PICKS_MISSING: &str = "picked item(s) no longer exist, refreshing index";
 const NOT_RUN: &str = "not run, you moved on";
+const NOT_ELEVATABLE: &str = "Only apps or scripts can run as administrator";
 /// Told to run, not reported on yet.
 const VERB_STARTED: &str = "started";
 const VERB_FAILED: &str = "failed";
@@ -951,6 +952,7 @@ impl Launcher {
             Some(shortcuts::HIDE_APP) => self.hide_selected_app(cx),
             Some(shortcuts::COPY) => self.copy(cx),
             Some(shortcuts::REVEAL) if !menu => self.reveal_selected(cx),
+            Some(shortcuts::RUN_AS_ADMIN) if !menu => self.run_as_admin(cx),
             Some(shortcuts::TRASH) if !menu => self.delete(cx),
             Some(shortcuts::CLIP_PASTE) if !menu => self.paste_selected_clip(cx),
             _ => match ks.key.as_str() {
@@ -1296,6 +1298,35 @@ impl Launcher {
         (!self.unpicked && self.selected < self.rows.len()).then_some(self.selected)
     }
 
+    /// Ctrl+Shift+Enter (Windows): launch the selected app or script elevated.
+    fn run_as_admin(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(row) = self.selected_row().cloned() else {
+            return true;
+        };
+        let Open::Path { usage } = row.open else {
+            return self.enter(cx);
+        };
+        if !actions::is_elevatable(&row) {
+            self.banner
+                .show(NOT_ELEVATABLE.into(), Tone::Info, banner::SHORT, cx);
+            return true;
+        }
+        let shell = self.shell.clone();
+        let path = row.path.clone();
+        let id = row.id.clone();
+        bg::fetch(
+            cx,
+            move || launch::open_elevated(&shell, &path),
+            move |this, outcome, cx| match outcome {
+                Ok(()) => {
+                    engine::record_usage(app_state(), &id, usage);
+                }
+                Err(err) => this.banner.show(err, Tone::Error, banner::MEDIUM, cx),
+            },
+        );
+        true
+    }
+
     /// Enter: what the row says. The backend opens paths and hides the
     /// launcher through the shell; a URL goes to the browser and the history;
     /// an answer or a clip goes to the clipboard.
@@ -1415,19 +1446,25 @@ impl Launcher {
         if self.command_mode {
             return false;
         }
+        self.copy_selected_row(cx);
+        true
+    }
+
+    /// The selected process's PID or row's path, whatever the field has
+    /// selected: what "Copy path" names.
+    fn copy_selected_row(&mut self, cx: &mut Context<Self>) {
         let Some(row) = self.selected_row() else {
-            return true;
+            return;
         };
         if row.is_hint() {
-            return true;
+            return;
         }
         let (text, done) = match &row.open {
             Open::Process(p) => (p.pid.to_string(), format!("Copied PID {}", p.pid)),
-            _ if row.path.is_empty() => return true,
+            _ if row.path.is_empty() => return,
             _ => (row.path.clone(), "Copied to clipboard".to_string()),
         };
         self.copy_text(text, done, cx);
-        true
     }
 
     /// `text` to the clipboard off the UI thread, then `done` or the failure
@@ -2005,6 +2042,9 @@ impl Launcher {
             ActionId::Open => {
                 self.open_selected(cx);
             }
+            ActionId::RunAsAdmin => {
+                self.run_as_admin(cx);
+            }
             ActionId::OpenConfirmed(row_id) => {
                 if let Some(row) = self.selected_row().filter(|r| r.id == row_id).cloned() {
                     self.perform_source_row(row, true, cx);
@@ -2013,9 +2053,7 @@ impl Launcher {
             ActionId::Tool(action) => {
                 self.run_tool(action, cx);
             }
-            ActionId::CopyPath => {
-                self.copy(cx);
-            }
+            ActionId::CopyPath => self.copy_selected_row(cx),
             ActionId::DeleteClipboard => {
                 self.delete(cx);
             }
