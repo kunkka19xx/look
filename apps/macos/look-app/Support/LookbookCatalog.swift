@@ -76,26 +76,22 @@ final class LookbookCatalog: ObservableObject {
     /// is worked on before a change to lookbook is merged. A path or a URL.
     private static let overrideKey = "LOOK_LOOKBOOK_INDEX"
 
+    private static let requestTimeout: TimeInterval = 15
+    /// GitHub sends `max-age=300`, so the shared URL cache would answer a
+    /// visit right after a merge with the list from before it.
+    private static let cachePolicy: URLRequest.CachePolicy = .reloadIgnoringLocalCacheData
+
     init(session: URLSession = .shared) {
         self.session = session
     }
 
     static var thisPlatform: String { "macos" }
 
-    /// Fetches once and keeps the result for the life of the process. The
-    /// catalog changes when somebody merges a PR to lookbook, which is not
-    /// often enough to re-fetch every time this screen opens.
-    func load(force: Bool = false) {
+    /// Reads the catalog again on every visit, as Linux does. A copy kept for
+    /// the process hides whatever was merged to lookbook since, and the list
+    /// would read as "that source was never published". It is a few KB.
+    func load() {
         if case .loading = reading { return }
-        if case .ready(let entries) = reading, !force {
-            // The catalog is worth fetching once. What is installed on this
-            // machine is not: somebody can go and install docker between two
-            // visits to this screen, and the Extend screen below re-checks
-            // every time it opens. A card still saying "you do not have it"
-            // would be the two disagreeing, which is the thing this is for.
-            Task { await probeRequirements(of: entries) }
-            return
-        }
         reading = .loading
         Task { await fetch() }
     }
@@ -107,9 +103,7 @@ final class LookbookCatalog: ObservableObject {
             if url.isFileURL {
                 data = try Data(contentsOf: url)
             } else {
-                var request = URLRequest(url: url)
-                request.timeoutInterval = 15
-                let (body, response) = try await session.data(for: request)
+                let (body, response) = try await session.data(for: Self.request(url))
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                     reading = .failed("Could not reach lookbook.")
                     return
@@ -177,9 +171,7 @@ final class LookbookCatalog: ObservableObject {
         if url.isFileURL {
             data = try Data(contentsOf: url)
         } else {
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 15
-            let (body, response) = try await session.data(for: request)
+            let (body, response) = try await session.data(for: Self.request(url))
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 throw URLError(.badServerResponse)
             }
@@ -189,6 +181,12 @@ final class LookbookCatalog: ObservableObject {
             throw URLError(.cannotDecodeContentData)
         }
         return text
+    }
+
+    /// Files are read past the cache too, so an install fetches the same
+    /// revision the freshly read list describes.
+    private static func request(_ url: URL) -> URLRequest {
+        URLRequest(url: url, cachePolicy: cachePolicy, timeoutInterval: requestTimeout)
     }
 
     /// Where an entry's README can be read: the rendered page on GitHub, in a
