@@ -29,6 +29,7 @@ use crate::imagecache::PreviewImages;
 use crate::launchpad::Notice;
 use crate::modes::Mode;
 use crate::qactions::{self, QuickActions};
+use crate::rowicon::{self, IconStyle};
 use crate::rows::{self, Clip, ClipImage, Icon, Open, Process, Row};
 use crate::theme::{self, Theme};
 
@@ -198,6 +199,7 @@ pub struct BlockPanel {
     path: String,
     /// What the row wears in the list: its own icon, else its block's.
     icon: Icon,
+    icon_request: IconRequest,
 }
 
 /// A block's declared `preview`, as the panel draws it.
@@ -281,6 +283,8 @@ pub struct Preview {
     icons: Entity<IconStore>,
     /// The pictures on screen lately, see `imagecache`.
     images: Entity<PreviewImages>,
+    /// Shared with the list; header icons do not evict body images.
+    row_images: Entity<PreviewImages>,
     current: Option<(String, Arc<Content>)>,
     cache: HashMap<String, Arc<Content>>,
     /// The row the panel is waiting on; an answer for another is dropped.
@@ -306,11 +310,17 @@ pub struct Preview {
 }
 
 impl Preview {
-    pub fn new(shell: Shell, icons: Entity<IconStore>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        shell: Shell,
+        icons: Entity<IconStore>,
+        row_images: Entity<PreviewImages>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self {
             shell,
             icons,
             images: cx.new(PreviewImages::new),
+            row_images,
             current: None,
             cache: HashMap::new(),
             wanted: None,
@@ -728,7 +738,19 @@ impl Preview {
                 let steps = &block.steps;
                 panel
                     .child(header(
-                        declared_picture(&block.icon, &self.images),
+                        Some(rowicon::picture(
+                            &block.icon,
+                            || block.icon_request.clone(),
+                            IconStyle {
+                                size: HEADER_ICON,
+                                radius: HEADER_ICON_RADIUS,
+                                glyph_size: HEADER_ICON / 2.0,
+                                color: th.accent,
+                            },
+                            &self.row_images,
+                            &self.icons,
+                            cx,
+                        )),
                         glyphs::ZAP,
                         &block.title,
                         &block.name,
@@ -1253,12 +1275,8 @@ fn load(row: &Row, ancestors: &str, query: &str) -> Content {
                 steps: detail.as_ref().map(|d| d.steps.clone()).unwrap_or_default(),
                 file: detail.and_then(|d| d.file).map(tilde),
                 path: row.path.clone(),
-                // A favicon the cache has since lost keeps the bolt rather
-                // than an empty tile.
-                icon: match &row.icon {
-                    Icon::File(path) if !path.exists() => Icon::Glyph(glyphs::ZAP),
-                    other => other.clone(),
-                },
+                icon: row.icon.clone(),
+                icon_request: rowicon::request(row, HEADER_ICON),
             },
             preview,
         };
@@ -1750,27 +1768,6 @@ fn resolved_picture(image: Arc<gpui::RenderImage>) -> AnyElement {
         .into_any_element()
 }
 
-/// The header picture for what a block row declared: an image file or a
-/// text glyph. Anything else keeps the bolt.
-fn declared_picture(icon: &Icon, images: &Entity<PreviewImages>) -> Option<AnyElement> {
-    match icon {
-        Icon::File(path) => Some(
-            img(path.clone())
-                .image_cache(images)
-                .size(px(HEADER_ICON))
-                .object_fit(ObjectFit::Contain)
-                .into_any_element(),
-        ),
-        Icon::Text(text) => Some(
-            div()
-                .text_size(px(HEADER_ICON * 0.6))
-                .child(SharedString::from(text.clone()))
-                .into_any_element(),
-        ),
-        Icon::Resolve { .. } | Icon::Glyph(_) => None,
-    }
-}
-
 fn format_start(epoch: Option<u64>) -> String {
     use chrono::TimeZone;
     match epoch.and_then(|e| chrono::Local.timestamp_opt(e as i64, 0).single()) {
@@ -1782,7 +1779,7 @@ fn format_start(epoch: Option<u64>) -> String {
 fn standard(row: &Row) -> Content {
     let glyph = match &row.icon {
         Icon::Resolve { glyph } | Icon::Glyph(glyph) => *glyph,
-        Icon::File(_) => glyphs::IMAGE,
+        Icon::File { .. } => glyphs::IMAGE,
         Icon::Text(_) => glyphs::ZAP,
     };
     let icon = IconRequest {

@@ -30,6 +30,7 @@ pub struct IconStore {
     scale: f32,
 }
 
+#[derive(Clone)]
 pub struct IconRequest {
     pub kind: String,
     pub path: String,

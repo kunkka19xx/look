@@ -72,7 +72,11 @@ pub enum Icon {
     /// A fixed glyph, for rows that are not a file (URLs, the calculator).
     Glyph(&'static str),
     /// A picture on disk: a copied image's thumbnail, a declared icon file.
-    File(PathBuf),
+    File {
+        path: PathBuf,
+        /// Used when the image cannot be loaded or decoded.
+        fallback: Box<Icon>,
+    },
     /// A declared glyph that draws as text, an emoji.
     Text(String),
 }
@@ -93,9 +97,6 @@ pub struct Row {
     pub open: Open,
     /// When the row was last opened through Look, for the preview.
     pub last_used: Option<i64>,
-    /// What the row itself declared (a favicon per history entry). Beats
-    /// its block's icon when the block dresses it.
-    pub own_icon: Option<String>,
 }
 
 pub use crate::glyphs::{
@@ -224,7 +225,6 @@ impl Row {
             score: r.score,
             icon: Icon::Resolve { glyph },
             last_used: r.last_used_at_unix_s,
-            own_icon: r.icon,
         }
     }
 
@@ -245,7 +245,6 @@ impl Row {
                 expr: expr.to_string(),
             },
             last_used: None,
-            own_icon: None,
         }
     }
 
@@ -262,7 +261,6 @@ impl Row {
             icon: Icon::Glyph(crate::glyphs::SEARCH),
             open: Open::Prefix(prefix.to_string()),
             last_used: None,
-            own_icon: None,
         }
     }
 
@@ -279,7 +277,6 @@ impl Row {
             icon: Icon::Glyph(glyph),
             open: Open::Command(id.to_string()),
             last_used: None,
-            own_icon: None,
         }
     }
 
@@ -317,7 +314,6 @@ impl Row {
                 lines: entry.line_count,
             }),
             last_used: None,
-            own_icon: None,
         }
     }
 
@@ -339,7 +335,10 @@ impl Row {
             kind_label: kind_label("image").to_string(),
             path: CLIPBOARD_IMAGES_PATH.into(),
             score: 0,
-            icon: Icon::File(PathBuf::from(thumb)),
+            icon: Icon::File {
+                path: PathBuf::from(thumb),
+                fallback: Box::new(Icon::Glyph(crate::glyphs::IMAGE)),
+            },
             open: Open::ClipImage(ClipImage {
                 hash: entry.hash,
                 width: entry.width,
@@ -348,7 +347,6 @@ impl Row {
                 timestamp: entry.timestamp,
             }),
             last_used: None,
-            own_icon: None,
         }
     }
 
@@ -379,7 +377,6 @@ impl Row {
                 icon_path: p.icon_source,
             }),
             last_used: None,
-            own_icon: None,
         }
     }
 
@@ -396,7 +393,6 @@ impl Row {
             icon: Icon::Glyph(crate::glyphs::SEARCH),
             open: Open::WebSuggestion(text.to_string()),
             last_used: None,
-            own_icon: None,
         }
     }
 
@@ -427,10 +423,9 @@ impl Row {
             icon: Icon::Glyph(crate::glyphs::ZAP),
             open: Open::Path { usage: "open_file" },
             last_used: None,
-            own_icon: None,
         };
         // The row's own icon wins over its block's.
-        out.icon = declared_icon(&out, row.icon.as_deref().or(block_icon), home);
+        out.icon = source_icon(&out, row.icon.as_deref(), block_icon, home);
         out
     }
 
@@ -439,6 +434,7 @@ impl Row {
     pub fn dress_source(
         &mut self,
         block_name: Option<&str>,
+        own_icon: Option<&str>,
         block_icon: Option<&str>,
         home: Option<&str>,
     ) {
@@ -450,14 +446,7 @@ impl Row {
         } else {
             path_info(&self.path)
         };
-        // The row's own icon wins only when it draws as a picture or a glyph;
-        // an empty one or a bare symbol name leaves its block's icon in force.
-        let own = self
-            .own_icon
-            .as_deref()
-            .map(|icon| declared_icon(self, Some(icon), home))
-            .filter(|icon| matches!(icon, Icon::File(_) | Icon::Text(_)));
-        self.icon = own.unwrap_or_else(|| declared_icon(self, block_icon, home));
+        self.icon = source_icon(self, own_icon, block_icon, home);
     }
 
     /// Whether the row's path is something on disk a chord can hand on. A
@@ -507,7 +496,6 @@ impl Row {
             icon: Icon::Glyph(GLYPH_GLOBE),
             open: Open::Url(url.to_string()),
             last_used: None,
-            own_icon: None,
         }
     }
 
@@ -532,8 +520,21 @@ impl Row {
                 usage: "open_folder",
             },
             last_used: None,
-            own_icon: None,
         }
+    }
+}
+
+/// Both indexed and level rows prefer a supported own icon. Keep the block's
+/// icon behind file icons until the renderer knows whether decoding succeeded.
+fn source_icon(row: &Row, own: Option<&str>, block: Option<&str>, home: Option<&str>) -> Icon {
+    let fallback = declared_icon(row, block, home);
+    match own.map(|icon| declared_icon(row, Some(icon), home)) {
+        Some(Icon::File { path, .. }) => Icon::File {
+            path,
+            fallback: Box::new(fallback),
+        },
+        Some(icon @ Icon::Text(_)) => icon,
+        _ => fallback,
     }
 }
 
@@ -552,7 +553,10 @@ fn declared_icon(row: &Row, declared: Option<&str>, home: Option<&str>) -> Icon 
                 (Some(rest), Some(home)) => join_path(home, rest),
                 _ => declared.to_string(),
             };
-            return Icon::File(PathBuf::from(expanded));
+            return Icon::File {
+                path: PathBuf::from(expanded),
+                fallback: Box::new(default_icon(row)),
+            };
         }
         let symbol_name = declared
             .chars()
@@ -561,6 +565,10 @@ fn declared_icon(row: &Row, declared: Option<&str>, home: Option<&str>) -> Icon 
             return Icon::Text(declared.to_string());
         }
     }
+    default_icon(row)
+}
+
+fn default_icon(row: &Row) -> Icon {
     if row.is_its_path() {
         Icon::Resolve { glyph: GLYPH_FILE }
     } else {
@@ -692,19 +700,87 @@ mod tests {
     #[test]
     fn a_source_row_wears_its_own_icon_over_its_blocks() {
         let mut r = row("GitHub", "app", 0);
-        r.own_icon = Some("/tmp/fav/github.com.png".into());
-        r.dress_source(Some("Browser history"), Some("🌐"), None);
-        assert!(matches!(&r.icon, Icon::File(p) if p.ends_with("github.com.png")));
+        r.dress_source(
+            Some("Browser history"),
+            Some("/tmp/fav/github.com.png"),
+            Some("🌐"),
+            None,
+        );
+        assert!(
+            matches!(&r.icon, Icon::File { path, fallback } if path.ends_with("github.com.png") && matches!(fallback.as_ref(), Icon::Text(t) if t == "🌐"))
+        );
 
         let mut plain = row("Other", "app", 0);
-        plain.dress_source(Some("Browser history"), Some("🌐"), None);
+        plain.dress_source(Some("Browser history"), None, Some("🌐"), None);
         assert!(matches!(&plain.icon, Icon::Text(t) if t == "🌐"));
 
         // An own icon that draws as nothing does not hide the block's.
         let mut bare = row("Bare", "app", 0);
-        bare.own_icon = Some("globe".into());
-        bare.dress_source(Some("Browser history"), Some("🌐"), None);
+        bare.dress_source(Some("Browser history"), Some("globe"), Some("🌐"), None);
         assert!(matches!(&bare.icon, Icon::Text(t) if t == "🌐"));
+    }
+
+    #[test]
+    fn indexed_and_level_rows_share_icon_precedence() {
+        for own in [
+            None,
+            Some(""),
+            Some("  "),
+            Some("globe"),
+            Some("hammer.fill"),
+            Some("🚀"),
+            Some("~/fav/site.png"),
+        ] {
+            let mut indexed = row("Site", "action", 0);
+            indexed.dress_source(Some("Sites"), own, Some("🌐"), Some("/home/test"));
+            let level = Row::level_row(
+                linows_backend::look_engine::sources::LevelRow {
+                    candidate_id: "source:test:site".into(),
+                    id: "site".into(),
+                    title: "Site".into(),
+                    subtitle: String::new(),
+                    path: None,
+                    icon: own.map(str::to_string),
+                },
+                0,
+                1,
+                Some("Sites"),
+                Some("🌐"),
+                Some("/home/test"),
+            );
+            for icon in [&indexed.icon, &level.icon] {
+                match own {
+                    Some("🚀") => assert!(matches!(icon, Icon::Text(t) if t == "🚀")),
+                    Some("~/fav/site.png") => assert!(matches!(icon,
+                        Icon::File { path, fallback }
+                            if path == &PathBuf::from("/home/test/fav/site.png")
+                            && matches!(fallback.as_ref(), Icon::Text(t) if t == "🌐")
+                    )),
+                    _ => assert!(matches!(icon, Icon::Text(t) if t == "🌐")),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn file_icons_keep_the_block_image_and_default_as_fallbacks() {
+        let mut r = row("Site", "action", 0);
+        r.path.clear();
+        r.dress_source(
+            None,
+            Some("/missing/site.png"),
+            Some("/missing/block.png"),
+            None,
+        );
+        let Icon::File { path, fallback } = &r.icon else {
+            panic!("own image lost")
+        };
+        assert_eq!(path, &PathBuf::from("/missing/site.png"));
+        let Icon::File { path, fallback } = fallback.as_ref() else {
+            panic!("block image lost")
+        };
+        assert_eq!(path, &PathBuf::from("/missing/block.png"));
+        assert!(matches!(fallback.as_ref(), Icon::Glyph(g) if *g == crate::glyphs::ZAP));
     }
 
     #[test]
@@ -717,14 +793,14 @@ mod tests {
             r"~\icons\a.png",
         ] {
             assert!(
-                matches!(declared_icon(&r, Some(path), None), Icon::File(_)),
+                matches!(declared_icon(&r, Some(path), None), Icon::File { .. }),
                 "{path}"
             );
         }
         // A home-relative one expands against home, either separator.
         assert!(matches!(
             declared_icon(&r, Some(r"~\icons\a.png"), Some("/home/k")),
-            Icon::File(p) if p.starts_with("/home/k")
+            Icon::File { path, .. } if path.starts_with("/home/k")
         ));
         // Not an image: still text, as before.
         assert!(matches!(
