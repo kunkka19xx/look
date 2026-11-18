@@ -78,6 +78,12 @@ pub const DEFINITIONS: &[Definition] = &[
     def(TRASH, &["ctrl+d"], Scope::Launcher).mirrors(&[CLIP_REMOVE, PROCESS_KILL]),
     def(ACTIONS, &["ctrl+k", "ctrl+j"], Scope::Launcher),
     def(REVEAL, &["ctrl+f"], Scope::Launcher),
+    #[cfg(target_os = "windows")]
+    def(
+        crate::shortcuts::RUN_AS_ADMIN,
+        &["ctrl+shift+enter"],
+        Scope::Launcher,
+    ),
     def(EDIT, &["ctrl+e"], Scope::Launcher),
     def(TERMINAL, &["ctrl+t"], Scope::Launcher),
     def(WEB_SEARCH, &["ctrl+enter"], Scope::Launcher),
@@ -86,7 +92,8 @@ pub const DEFINITIONS: &[Definition] = &[
     def(QUICK_TOGGLE, &["ctrl+o"], Scope::Launcher),
     def(CLIP_PASTE, &["ctrl+i"], Scope::Launcher).mirrors(&[PASTE]),
     def(HELP, &["ctrl+h"], Scope::AppWide),
-    def(SETTINGS, &["ctrl+shift+,"], Scope::AppWide),
+    // Ctrl+, mirrors the macOS Cmd+,; the chord Look shipped with still answers.
+    def(SETTINGS, &["ctrl+,", "ctrl+shift+,"], Scope::AppWide),
     def(RELOAD_CONFIG, &["ctrl+shift+;"], Scope::AppWide),
     def(SWITCH_LAYOUT, &["ctrl+shift+c"], Scope::AppWide),
     def(TODO_TOGGLE_PAGE, &["ctrl+n"], Scope::Todo),
@@ -470,7 +477,7 @@ mod tests {
         assert!(b.matches(COMMAND_MODE, &ks("ctrl-?")));
         // The socket's spelling, Shift kept on the base key.
         assert!(b.matches(SETTINGS, &ks("ctrl-shift-,")));
-        assert!(!b.matches(SETTINGS, &ks("ctrl-,")));
+        assert!(b.matches(SETTINGS, &ks("ctrl-,")));
         assert_eq!(spec(&ks("ctrl-<")), "ctrl+shift+,");
         assert_eq!(spec(&ks("ctrl-shift-k")), "ctrl+shift+k");
         assert_eq!(spec(&ks("alt-up")), "alt+up");

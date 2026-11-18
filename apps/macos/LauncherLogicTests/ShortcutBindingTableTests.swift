@@ -90,6 +90,14 @@ final class ShortcutBindingTableTests: XCTestCase {
         XCTAssertEqual(ShortcutBindingTable.conflicts(specs: specs).count, 1)
     }
 
+    /// ⌘, opens settings as it does elsewhere on macOS, and the chord Look
+    /// shipped with stays alive behind it. Order matters: the menu item draws
+    /// the first chord, the launcher monitor answers the rest.
+    func testSettingsShipsCommandCommaAheadOfItsAlias() {
+        XCTAssertEqual(
+            ShortcutBindingTable.definition(.viewSettings).defaults, ["cmd+,", "cmd+shift+,"])
+    }
+
     /// The recorder refuses a chord SwiftUI cannot draw as a key equivalent.
     func testMenuDrivenShortcutsAreMarked() {
         XCTAssertTrue(ShortcutBindingTable.definition(.viewZoomIn).menuDriven)

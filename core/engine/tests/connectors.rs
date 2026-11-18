@@ -298,7 +298,15 @@ fn a_frame_at_the_cap_is_read() {
     until(&count, 1, Duration::from_secs(10));
     look_engine::connectors::stop();
 
-    assert_eq!(count.load(Ordering::Acquire), 1);
+    // `until` gives up quietly, so a bare count says nothing about which half
+    // failed: a connector that never spawned, or a frame Look refused. The log
+    // is process-wide and never cleared, so earlier blocks may appear in it.
+    assert_eq!(
+        count.load(Ordering::Acquire),
+        1,
+        "the frame never landed; connector log: {:?}",
+        look_engine::connectors::log_of("myapp.notes")
+    );
 }
 
 /// And one byte past it is not. `lines()` would read a frame of any length

@@ -676,7 +676,7 @@ struct LauncherView: View {
     /// Settings > Shortcuts.
     var hintItems: [String] {
         if appUIState.showsThemeSettings {
-            return ["Cmd+Shift+; apply config", "Cmd+Shift+, close settings", "Cmd+H help"]
+            return ["Cmd+Shift+; apply config", "Cmd+, close settings", "Cmd+H help"]
         }
 
         if isHideAppConfirmationVisible {

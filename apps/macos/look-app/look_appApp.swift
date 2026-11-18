@@ -72,8 +72,9 @@ struct look_appApp: App {
             CommandGroup(replacing: .newItem) {}
 
             // The Settings scene above only keeps SwiftUI's command
-            // infrastructure alive. Remove macOS's default Cmd+, action so the
-            // documented Cmd+Shift+, shortcut is the only way to open settings.
+            // infrastructure alive. Remove macOS's default Cmd+, action, which
+            // would open that empty scene in a window of its own, so Cmd+,
+            // belongs to the Theme Settings item below instead.
             CommandGroup(replacing: .appSettings) {}
 
             CommandGroup(replacing: .appTermination) {
