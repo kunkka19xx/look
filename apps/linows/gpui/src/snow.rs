@@ -197,10 +197,17 @@ pub fn layer(colour: Rgba, family: SharedString, amount: f32) -> impl IntoElemen
     })
 }
 
-/// Whether `family` or a fallback of it draws every crystal, shaped once.
-fn crystals_drawable(family: &str, window: &Window) -> bool {
-    static DRAWABLE: OnceLock<bool> = OnceLock::new();
-    *DRAWABLE.get_or_init(|| {
+thread_local! {
+    static CRYSTAL_FONT: RefCell<Option<(SharedString, bool)>> = const { RefCell::new(None) };
+}
+
+/// Whether `family` or a fallback of it draws every crystal, shaped once
+/// per family.
+fn crystals_drawable(family: &SharedString, window: &Window) -> bool {
+    CRYSTAL_FONT.with_borrow_mut(|cached| {
+        if let Some((_, drawable)) = cached.as_ref().filter(|(of, _)| of == family) {
+            return *drawable;
+        }
         let style = Type {
             size: PROBE_SIZE,
             family,
@@ -213,7 +220,10 @@ fn crystals_drawable(family: &str, window: &Window) -> bool {
             .paint_fragments
             .iter()
             .flat_map(|run| run.glyphs.iter());
-        glyphs.clone().next().is_some() && glyphs.all(|glyph| glyph.id != MISSING_GLYPH)
+        let drawable =
+            glyphs.clone().next().is_some() && glyphs.all(|glyph| glyph.id != MISSING_GLYPH);
+        *cached = Some((family.clone(), drawable));
+        drawable
     })
 }
 
