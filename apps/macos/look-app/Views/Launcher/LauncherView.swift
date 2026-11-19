@@ -1326,6 +1326,17 @@ struct LauncherView: View {
             )
             .contentShape(Rectangle())
             .onTapGesture { focusActiveInput() }
+
+            if themeStore.showsChristmasDecorations() {
+                // A figure stands behind the results once there are some: the
+                // tree in the split layout's gap, Santa in the compact corner.
+                WinterSceneView(
+                    snowColor: themeStore.snowColor(),
+                    snowAmount: themeStore.settings.christmasSnowAmount,
+                    figure: isLauncherIdle && !hidesResultsForEmptyQuery
+                        ? (isCompactLayout ? .santa : .tree)
+                        : nil)
+            }
         }
         .coordinateSpace(name: Self.panelCoordinateSpace)
         .environment(\.panelGeometry, barFloatsFree ? panelGeometry : nil)

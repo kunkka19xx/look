@@ -5,51 +5,71 @@ extension ThemeSettingsView {
     var appearanceTab: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 14) {
-                    inlinePickerLabel("Theme")
-                    Picker("Theme", selection: $settings.uiTheme) {
-                        ForEach(BuiltinThemePreset.options(including: settings.uiTheme)) { preset in
-                            Text(preset.pickerTitle).tag(preset)
+                // One grid, so each switch lines up with the one above it
+                // whatever the labels' widths.
+                Grid(alignment: .leading, horizontalSpacing: Self.switchColumnGap, verticalSpacing: Self.switchRowGap) {
+                    GridRow {
+                        HStack(spacing: 14) {
+                            inlinePickerLabel("Theme")
+                                .fixedSize()
+                            Picker("Theme", selection: $settings.uiTheme) {
+                                ForEach(BuiltinThemePreset.options(including: settings.uiTheme)) { preset in
+                                    Text(preset.pickerTitle).tag(preset)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .frame(width: AppConstants.ThemeUI.pickerWidth)
+                            .onChange(of: settings.uiTheme) { _, newValue in
+                                themeStore.applyBuiltinTheme(newValue)
+                            }
+                        }
+
+                        // The amount rides in the switch's cell: a column of its
+                        // own does not fit the compact window.
+                        HStack(spacing: 10) {
+                            appearanceSwitch(
+                                "Christmas",
+                                isOn: $settings.christmasDecorations,
+                                help: "Falling snow, glowing lights behind the panels, a tree behind the results and a snowman search icon, over any theme.")
+
+                            if settings.christmasDecorations {
+                                Picker("Snow", selection: $settings.christmasSnowAmount) {
+                                    ForEach(AppConstants.ThemeUI.snowAmounts, id: \.self) { amount in
+                                        Text("Snow \(amount.formatted())x").tag(amount)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
+                                .fixedSize()
+                                .help("How much snow falls")
+                            }
                         }
                     }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(width: AppConstants.ThemeUI.pickerWidth)
-                    .onChange(of: settings.uiTheme) { _, newValue in
-                        themeStore.applyBuiltinTheme(newValue)
-                    }
 
-                    Spacer(minLength: 0)
-                }
+                    GridRow {
+                        // Compact shows neither the strip nor the launchpad, so
+                        // the session override (⌘⇧C) hides these too.
+                        if themeStore.effectiveLayout == .split {
+                            appearanceSwitch(
+                                "Running Apps",
+                                isOn: Binding(
+                                    get: { settings.runningAppsPlacement != .none },
+                                    set: { settings.runningAppsPlacement = $0 ? .right : .none }
+                                ),
+                                help: "Show running apps in the right half of the search bar (⌘1-9 to switch)")
 
-                HStack(spacing: 14) {
-                    // Compact shows neither the strip nor the launchpad, so
-                    // the session override (⌘⇧C) hides these too.
-                    if themeStore.effectiveLayout == .split {
-                        appearanceSwitch(
-                            "Running Apps",
-                            isOn: Binding(
-                                get: { settings.runningAppsPlacement != .none },
-                                set: { settings.runningAppsPlacement = $0 ? .right : .none }
-                            ),
-                            help: "Show running apps in the right half of the search bar (⌘1-9 to switch)")
-
-                        Spacer().frame(width: 40)
+                            appearanceSwitch(
+                                "Super Actions",
+                                isOn: $settings.superActionsEnabled,
+                                help: "Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
+                        }
 
                         appearanceSwitch(
-                            "Super Actions",
-                            isOn: $settings.superActionsEnabled,
-                            help: "Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
-
-                        Spacer().frame(width: 40)
+                            "Animations",
+                            isOn: $settings.animationsEnabled,
+                            help: "Animate the launcher when it opens and as the selection moves. Off shows every change instantly.")
                     }
-
-                    appearanceSwitch(
-                        "Animations",
-                        isOn: $settings.animationsEnabled,
-                        help: "Animate the launcher when it opens and as the selection moves. Off shows every change instantly.")
-
-                    Spacer(minLength: 0)
                 }
 
                 Divider()
@@ -292,6 +312,10 @@ extension ThemeSettingsView {
         )
         .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
     }
+
+    /// Between the switch columns, tight enough for the compact window.
+    static let switchColumnGap: CGFloat = 32
+    static let switchRowGap: CGFloat = 10
 
     @ViewBuilder
     func inlinePickerLabel(_ title: String) -> some View {

@@ -18,6 +18,7 @@ mod qactions_api;
 mod runtime_config;
 mod search_api;
 mod seed_api;
+mod snow_api;
 mod sources_api;
 mod state;
 mod todo_api;
@@ -203,6 +204,52 @@ pub extern "C" fn look_lunar_date_json(year: i64, month: i64, day: i64, tz: f64)
         lunar_api::look_lunar_date_json_impl(year, month, day, tz)
     }))
     .unwrap_or(std::ptr::null_mut())
+}
+
+/// The most flakes `look_snow_frame` writes, for sizing its buffer.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_snow_max_flakes() -> usize {
+    look_snow::MAX_FLAKES
+}
+
+/// The snowfall at `seconds`, `amount` times the default, into `out` as five
+/// floats per flake (x, y, radius, alpha, crystal glyph or -1). Returns how
+/// many were written.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_snow_frame(
+    width: f64,
+    height: f64,
+    seconds: f64,
+    amount: f64,
+    out: *mut f32,
+    capacity: usize,
+) -> usize {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        snow_api::look_snow_frame_impl(width, height, seconds, amount, out, capacity)
+    }))
+    .unwrap_or(0)
+}
+
+/// The most glows `look_bokeh_frame` writes, for sizing its buffer.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_bokeh_max_glows() -> usize {
+    look_snow::bokeh::MAX_GLOWS
+}
+
+/// The bokeh at `seconds` into `out` as seven floats per glow (x, y, radius,
+/// r, g, b, centre alpha). Returns how many were written.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_bokeh_frame(
+    width: f64,
+    height: f64,
+    seconds: f64,
+    out: *mut f32,
+    capacity: usize,
+) -> usize {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        snow_api::look_bokeh_frame_impl(width, height, seconds, out, capacity)
+    }))
+    .unwrap_or(0)
 }
 
 /// The resolved `launcher_hotkey`. Free with `look_free_cstring`.

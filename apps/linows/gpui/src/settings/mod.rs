@@ -86,6 +86,13 @@ const THEMES: &[Option_] = &[
 ];
 const SESSION_LAYOUT_HINT: &str = "Ringed: this session only (Ctrl+Shift+C)";
 const LAYOUTS: &[Option_] = &[("split", "Split"), ("compact", "Compact")];
+/// The core's `SNOW_AMOUNTS`, as the config spells them.
+const SNOW_AMOUNTS: &[Option_] = &[
+    ("1", "Snow 1x"),
+    ("1.25", "Snow 1.25x"),
+    ("1.5", "Snow 1.5x"),
+    ("2", "Snow 2x"),
+];
 
 #[cfg(target_os = "linux")]
 const BLUR_STYLES: &[Option_] = &[
@@ -149,6 +156,14 @@ const ANIMATIONS: Switch = Switch {
     on: "true",
     off: "false",
     default_on: true,
+};
+const CHRISTMAS: Switch = Switch {
+    id: "settings-christmas",
+    key: "christmas_decorations",
+    label: "Christmas",
+    on: "true",
+    off: "false",
+    default_on: false,
 };
 
 /// Where a slider's value comes from when the config has none: a preset
@@ -319,7 +334,7 @@ static SLIDERS: [&Slider; 18] = [
 ];
 
 /// The keys this screen owns besides the sliders'.
-const KEYS: [&str; 8] = [
+const KEYS: [&str; 10] = [
     THEME_KEY,
     SURFACE_KEY,
     LAYOUT_KEY,
@@ -328,6 +343,8 @@ const KEYS: [&str; 8] = [
     RUNNING_APPS.key,
     SUPER_ACTIONS.key,
     ANIMATIONS.key,
+    CHRISTMAS.key,
+    theme::SNOW_AMOUNT_KEY,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -842,6 +859,12 @@ impl Settings {
         self.apply(cx);
     }
 
+    fn pick_snow_amount(&mut self, amount: &str, cx: &mut Context<Launcher>) {
+        self.select = None;
+        self.set(theme::SNOW_AMOUNT_KEY, amount);
+        self.apply(cx);
+    }
+
     fn pick_layout(&mut self, layout: &str, cx: &mut Context<Launcher>) {
         theme::clear_session_layout();
         self.set(LAYOUT_KEY, layout);
@@ -1224,8 +1247,9 @@ impl Settings {
             .children(live.map(|_| controls::hint(SESSION_LAYOUT_HINT, th)))
     }
 
-    /// Theme, then the switches; the strip ones only in the split layout,
-    /// which is the only one with a strip.
+    /// Theme and the Christmas pair on one line, the other switches on the
+    /// next; the strip ones only in the split layout, the only one with a
+    /// strip.
     fn header_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let split = th.split();
         let switch = |sw: &'static Switch| {
@@ -1244,35 +1268,57 @@ impl Settings {
                         .on_click(cx.listener(move |this, _, _, cx| this.settings.flip(sw, cx))),
                 )
         };
+        let line = || div().flex().items_center().gap(px(HEADER_ROW_GAP));
         div()
             .py(px(HEADER_PADDING_Y))
             .flex()
-            .items_center()
-            .gap(px(HEADER_ROW_GAP))
+            .flex_col()
+            .gap(px(HEADER_GAP))
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(HEADER_ITEM_GAP))
+                line()
                     .child(
                         div()
-                            .text_size(px(th.font_size - 1.0))
-                            .text_color(th.text_secondary)
-                            .child("Theme"),
+                            .flex()
+                            .items_center()
+                            .gap(px(HEADER_ITEM_GAP))
+                            .child(
+                                div()
+                                    .text_size(px(th.font_size - 1.0))
+                                    .text_color(th.text_secondary)
+                                    .child("Theme"),
+                            )
+                            .child(self.select_control(
+                                "settings-theme",
+                                THEMES,
+                                self.theme_id(),
+                                THEME_KEY,
+                                Settings::pick_theme,
+                                th,
+                                cx,
+                            )),
                     )
-                    .child(self.select_control(
-                        "settings-theme",
-                        THEMES,
-                        self.theme_id(),
-                        THEME_KEY,
-                        Settings::pick_theme,
-                        th,
-                        cx,
-                    )),
+                    .child(switch(&CHRISTMAS))
+                    .when(self.is_on(&CHRISTMAS), |el| {
+                        el.child(
+                            self.select_control(
+                                "settings-snow",
+                                SNOW_AMOUNTS,
+                                self.get(theme::SNOW_AMOUNT_KEY)
+                                    .unwrap_or(SNOW_AMOUNTS[0].0),
+                                theme::SNOW_AMOUNT_KEY,
+                                Settings::pick_snow_amount,
+                                th,
+                                cx,
+                            ),
+                        )
+                    }),
             )
-            .when(split, |el| el.child(switch(&RUNNING_APPS)))
-            .when(split, |el| el.child(switch(&SUPER_ACTIONS)))
-            .child(switch(&ANIMATIONS))
+            .child(
+                line()
+                    .when(split, |el| el.child(switch(&RUNNING_APPS)))
+                    .when(split, |el| el.child(switch(&SUPER_ACTIONS)))
+                    .child(switch(&ANIMATIONS)),
+            )
     }
 
     /// A dropdown whose open state is `self.select == Some(key)`; `pick`

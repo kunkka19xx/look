@@ -166,6 +166,13 @@ fn default_config_contents() -> String {
          # glide. false shows every change instantly. Same key as macOS.\n\
          animations_enabled=true\n\
          \n\
+         # Christmas decorations over any theme - falling snow, glowing lights\n\
+         # behind the panels (dark themes), a tree behind the results and a\n\
+         # snowman search icon. Same key as macOS.\n\
+         christmas_decorations=false\n\
+         # How much snow falls with them: 1, 1.25, 1.5 or 2 times the default.\n\
+         christmas_snow=1\n\
+         \n\
          # The hint line along the bottom and the author link. false hides both.\n\
          hints_enabled=true\n\
          \n\

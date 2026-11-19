@@ -1078,7 +1078,7 @@ impl Launchpad {
             .border_color(border)
             .shadow(th.card_shadow())
             .rounded(px(radius))
-            .children(crate::launcher::backdrop_layer(radius, th))
+            .children(crate::launcher::backdrop_layers(radius, th))
             .children(wash.map(|wash| {
                 div()
                     .absolute()

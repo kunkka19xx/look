@@ -78,8 +78,29 @@ pub const ICON_SHIFT: f32 = 2.0;
 
 /// Glyph bounce, the stand-in for symbolEffect(.bounce).
 pub const BOUNCE_MS: u64 = 460;
+
 pub const BOUNCE_SCALE: f32 = 1.18;
 pub const BOUNCE_PEAK: f32 = 0.38;
+
+/// The search field's snowman as the bar spawns: it zooms up and settles
+/// back while it shakes side to side. macOS turns it; text cannot turn here,
+/// so it shakes by whole pixels instead.
+pub const SNOWMAN_MS: u64 = 500;
+pub const SNOWMAN_ZOOM: f32 = 1.35;
+/// Where the zoom peaks, as the macOS spring does.
+pub const SNOWMAN_PEAK: f32 = 0.32;
+pub const SNOWMAN_SHAKE: f32 = 3.0;
+pub const SNOWMAN_SWINGS: f32 = 2.5;
+
+/// The snowman's size share at `t`.
+pub fn snowman_zoom(t: f32) -> f32 {
+    1.0 + (SNOWMAN_ZOOM - 1.0) * hump(t, SNOWMAN_PEAK)
+}
+
+/// The snowman's sideways shake at `t`, dying out by the end.
+pub fn snowman_shake(t: f32) -> f32 {
+    (SNOWMAN_SHAKE * (std::f32::consts::TAU * SNOWMAN_SWINGS * t).sin() * (1.0 - t)).round()
+}
 
 /// A pressed tile dips, 45% of the way through.
 pub const PRESS_MS: u64 = 180;

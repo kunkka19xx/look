@@ -710,6 +710,9 @@ struct FrostedTile: View {
                     themeStore: themeStore, blendingMode: blendingMode, cornerRadius: radius)
             }
             themeStore.controlFillColor()
+            if themeStore.showsBokeh() {
+                BokehView()
+            }
             if let tint {
                 tint.opacity(tintOpacity)
             }

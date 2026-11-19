@@ -41,6 +41,10 @@ extension LauncherView {
                     .blur(radius: themeStore.settings.backgroundImageBlur)
                     .opacity(themeStore.settings.backgroundImageOpacity)
             }
+
+            if themeStore.showsBokeh() {
+                BokehView()
+            }
         }
     }
 

@@ -195,6 +195,21 @@ extension ThemeStore {
         activeAppearanceStyle()?.appearance ?? .dark
     }
 
+    func showsChristmasDecorations() -> Bool {
+        settings.christmasDecorations
+    }
+
+    /// White on a dark theme; the muted text colour on a light one, where
+    /// white snow would vanish into the panel.
+    func snowColor() -> Color {
+        themeAppearance() == .dark ? .white : mutedTextColor()
+    }
+
+    /// The bokeh glows only against a dark panel; on a light one it stains.
+    func showsBokeh() -> Bool {
+        settings.christmasDecorations && themeAppearance() == .dark
+    }
+
     /// Scales a surface's resting corner radius. One user setting for every
     /// surface, so they cannot disagree with each other.
     func surfaceCornerRadius(_ base: CGFloat) -> CGFloat {

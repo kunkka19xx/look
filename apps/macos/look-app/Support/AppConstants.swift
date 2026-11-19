@@ -718,6 +718,9 @@ enum AppConstants {
         /// so a value the slider cannot reach is reported rather than clamped.
         static let innerGapRange: ClosedRange<Double> = 0...24
         static let surfaceRadiusRange: ClosedRange<Double> = 0...2.5
+        /// How much snow the Christmas decorations let fall, against the
+        /// default; the core's `SNOW_AMOUNTS`.
+        static let snowAmounts: [Double] = [1, 1.25, 1.5, 2]
         /// Dimming for a control the active theme has taken over, so the value
         /// stays readable while reading as not-yours-to-set.
         static let disabledControlOpacity: Double = 0.4

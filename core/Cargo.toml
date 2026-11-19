@@ -11,6 +11,7 @@ members = [
   "matching",
   "netspeed",
   "ranking",
+  "snow",
   "sources",
   "storage",
   "todo",
