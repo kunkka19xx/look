@@ -39,6 +39,7 @@ mod pomo;
 mod preview;
 mod qactions;
 mod query;
+mod rowicon;
 mod rows;
 mod running;
 mod search;
