@@ -29,6 +29,7 @@ use crate::imagecache::PreviewImages;
 use crate::launchpad::Notice;
 use crate::modes::Mode;
 use crate::qactions::{self, QuickActions};
+use crate::rowicon::{self, IconStyle};
 use crate::rows::{self, Clip, ClipImage, Icon, Open, Process, Row};
 use crate::theme::{self, Theme};
 
@@ -71,6 +72,8 @@ const LINE_PIECE_BYTES: usize = 512;
 const TEXT_OVERDRAW: f32 = 200.0;
 const HEADER_ICON: f32 = 48.0;
 const HEADER_ICON_RADIUS: f32 = 8.0;
+/// An emoji in the header tile sits near the size of the glyphs beside it.
+const HEADER_EMOJI_SCALE: f32 = 0.6;
 const HEADER_GAP: f32 = 10.0;
 const HEADER_MARGIN: f32 = 14.0;
 const BADGE_PADDING_X: f32 = 8.0;
@@ -196,6 +199,9 @@ pub struct BlockPanel {
     file: Option<String>,
     /// The row's own path, when the block gave it one.
     path: String,
+    /// What the row wears in the list: its own icon, else its block's.
+    icon: Icon,
+    icon_request: IconRequest,
 }
 
 /// A block's declared `preview`, as the panel draws it.
@@ -279,6 +285,8 @@ pub struct Preview {
     icons: Entity<IconStore>,
     /// The pictures on screen lately, see `imagecache`.
     images: Entity<PreviewImages>,
+    /// Shared with the list; header icons do not evict body images.
+    row_images: Entity<PreviewImages>,
     current: Option<(String, Arc<Content>)>,
     cache: HashMap<String, Arc<Content>>,
     /// The row the panel is waiting on; an answer for another is dropped.
@@ -304,11 +312,17 @@ pub struct Preview {
 }
 
 impl Preview {
-    pub fn new(shell: Shell, icons: Entity<IconStore>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        shell: Shell,
+        icons: Entity<IconStore>,
+        row_images: Entity<PreviewImages>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self {
             shell,
             icons,
             images: cx.new(PreviewImages::new),
+            row_images,
             current: None,
             cache: HashMap::new(),
             wanted: None,
@@ -671,7 +685,7 @@ impl Preview {
                 }
                 panel
                     .child(header(
-                        picture,
+                        picture.map(resolved_picture),
                         glyphs::CPU,
                         &meta.name,
                         "Process",
@@ -726,7 +740,21 @@ impl Preview {
                 let steps = &block.steps;
                 panel
                     .child(header(
-                        None,
+                        Some(rowicon::picture(
+                            &block.icon,
+                            || block.icon_request.clone(),
+                            IconStyle {
+                                size: HEADER_ICON,
+                                radius: HEADER_ICON_RADIUS,
+                                crop: false,
+                                glyph_size: HEADER_ICON / 2.0,
+                                text_size: HEADER_ICON * HEADER_EMOJI_SCALE,
+                                color: th.accent,
+                            },
+                            &self.row_images,
+                            &self.icons,
+                            cx,
+                        )),
                         glyphs::ZAP,
                         &block.title,
                         &block.name,
@@ -790,7 +818,7 @@ impl Preview {
                 let shell = self.shell.clone();
                 panel
                     .child(header(
-                        picture,
+                        picture.map(resolved_picture),
                         glyph,
                         title,
                         badge,
@@ -1251,6 +1279,8 @@ fn load(row: &Row, ancestors: &str, query: &str) -> Content {
                 steps: detail.as_ref().map(|d| d.steps.clone()).unwrap_or_default(),
                 file: detail.and_then(|d| d.file).map(tilde),
                 path: row.path.clone(),
+                icon: row.icon.clone(),
+                icon_request: rowicon::request(row, HEADER_ICON),
             },
             preview,
         };
@@ -1735,6 +1765,13 @@ pub fn help(mode: Mode, th: &Theme) -> Div {
         }))
 }
 
+fn resolved_picture(image: Arc<gpui::RenderImage>) -> AnyElement {
+    img(image)
+        .size(px(HEADER_ICON))
+        .object_fit(ObjectFit::Contain)
+        .into_any_element()
+}
+
 fn format_start(epoch: Option<u64>) -> String {
     use chrono::TimeZone;
     match epoch.and_then(|e| chrono::Local.timestamp_opt(e as i64, 0).single()) {
@@ -1746,7 +1783,7 @@ fn format_start(epoch: Option<u64>) -> String {
 fn standard(row: &Row) -> Content {
     let glyph = match &row.icon {
         Icon::Resolve { glyph } | Icon::Glyph(glyph) => *glyph,
-        Icon::File(_) => glyphs::IMAGE,
+        Icon::File { .. } => glyphs::IMAGE,
         Icon::Text(_) => glyphs::ZAP,
     };
     let icon = IconRequest {
@@ -1843,7 +1880,7 @@ fn standard(row: &Row) -> Content {
 /// `declared` marks a row from the user's own block: the tile wears the
 /// accent fill and ring the list gives the same rows.
 fn header(
-    picture: Option<Arc<gpui::RenderImage>>,
+    picture: Option<AnyElement>,
     glyph: &'static str,
     title: &str,
     badge: &str,
@@ -1866,10 +1903,7 @@ fn header(
         .bg(th.control_fill)
         .when(declared, |tile| th.declared(tile))
         .child(match picture {
-            Some(image) => img(image)
-                .size(px(HEADER_ICON))
-                .object_fit(ObjectFit::Contain)
-                .into_any_element(),
+            Some(picture) => picture,
             None => svg()
                 .path(glyph)
                 .size(px(HEADER_ICON / 2.0))

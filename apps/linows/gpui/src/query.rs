@@ -37,7 +37,6 @@ pub fn run(query: &str, refresh_processes: bool) -> Vec<Row> {
         return search::search(state(), "", SEARCH_LIMIT)
             .results
             .into_iter()
-            .map(Row::from_engine)
             .map(dress)
             .collect();
     }
@@ -79,11 +78,14 @@ pub fn run(query: &str, refresh_processes: bool) -> Vec<Row> {
 }
 
 /// A block's row says which block, and wears what it declared.
-fn dress(mut row: Row) -> Row {
+fn dress(mut result: linows_backend::search::SearchResult) -> Row {
+    let own_icon = result.icon.take();
+    let mut row = Row::from_engine(result);
     if let Some(block) = actions::block_id_of(&row.id).map(str::to_string) {
         let catalog = blocks::get();
         row.dress_source(
             catalog.name(&block),
+            own_icon.as_deref(),
             catalog.icon(&block),
             catalog.home.as_deref(),
         );
@@ -95,7 +97,6 @@ fn plain(query: &str) -> Vec<Row> {
     let local: Vec<Row> = search::search(state(), query, SEARCH_LIMIT)
         .results
         .into_iter()
-        .map(Row::from_engine)
         .map(dress)
         .collect();
     let mut rows = rows::prepend_quick_folders(local, query, quick_folders());

@@ -15,7 +15,7 @@ use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Deferred, Div,
     Entity, FontWeight, KeyDownEvent, PaintQuad, Pixels, Render, ScrollStrategy, SharedString,
     Stateful, Task, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred,
-    div, img, point, prelude::*, px, relative, size, svg, uniform_list,
+    div, point, prelude::*, px, relative, size, svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
@@ -39,7 +39,7 @@ use crate::config_list;
 use crate::confirm::{Confirm, OnYes};
 use crate::glyphs;
 use crate::help::Help;
-use crate::icons::{IconRequest, IconStore};
+use crate::icons::IconStore;
 use crate::imagecache::PreviewImages;
 use crate::launchpad::{self, Launchpad, Notice, Tone};
 use crate::levels::{self, Levels};
@@ -49,7 +49,8 @@ use crate::picked::{self, Picked};
 use crate::preview::{self, ClipDeleted, Preview};
 use crate::qactions::Press;
 use crate::query;
-use crate::rows::{Icon, Open, Row};
+use crate::rowicon::{self, IconStyle};
+use crate::rows::{Open, Row};
 use crate::running::RunningApps;
 use crate::search::{Changed, SearchInput, input_for, search_field};
 use crate::settings::{self, Settings};
@@ -161,6 +162,8 @@ const FRESH_CONFIG_ASK: &str = "Create a fresh config?";
 /// Low bits of a text shift key hold the row index; the change count sits above.
 const SHIFT_ROW_BITS: usize = 20;
 const ROW_ICON: f32 = 22.0;
+/// An emoji fills most of its tile, less its font's bearings.
+const ROW_EMOJI_SCALE: f32 = 0.8;
 const ROW_IMAGES: usize = 64;
 /// The declared tile's inset around the icon, the ring included.
 const DECLARED_PAD: f32 = 1.0;
@@ -318,7 +321,9 @@ impl Launcher {
         let scale = window.scale_factor();
         let icons = cx.new(|_| IconStore::new(scale));
         cx.observe(&icons, |_, _, cx| cx.notify()).detach();
-        let preview = cx.new(|cx| Preview::new(shell.clone(), icons.clone(), cx));
+        let row_images = cx.new(|cx| PreviewImages::with_capacity(ROW_IMAGES, cx));
+        let preview =
+            cx.new(|cx| Preview::new(shell.clone(), icons.clone(), row_images.clone(), cx));
         cx.observe(&preview, |_, _, cx| cx.notify()).detach();
         cx.subscribe(&preview, |this, _, notice: &Notice, cx| {
             this.banner
@@ -356,7 +361,7 @@ impl Launcher {
             shell,
             input,
             icons,
-            row_images: cx.new(|cx| PreviewImages::with_capacity(ROW_IMAGES, cx)),
+            row_images,
             preview,
             launchpad,
             banner: Banner::default(),
@@ -2658,36 +2663,21 @@ impl Launcher {
             .when(!context.is_empty(), |col| {
                 col.child(muted_text(context, th).truncate())
             });
-        let picture = match &row.icon {
-            Icon::Resolve { glyph } => {
-                let image = self.icons.update(cx, |store, cx| {
-                    store.get(
-                        IconRequest {
-                            kind: row.icon_kind().to_string(),
-                            path: row.path.clone(),
-                            id: Some(row.id.clone()),
-                            size: ROW_ICON,
-                        },
-                        cx,
-                    )
-                });
-                match image {
-                    Some(image) => img(image).size(px(ROW_ICON)).into_any_element(),
-                    None => glyph_icon(glyph, th),
-                }
-            }
-            Icon::Glyph(glyph) => glyph_icon(glyph, th),
-            Icon::File(path) => img(path.clone())
-                .image_cache(&self.row_images)
-                .size(px(ROW_ICON))
-                .rounded(px(th.chip_radius() / 1.5))
-                .object_fit(gpui::ObjectFit::Cover)
-                .into_any_element(),
-            Icon::Text(text) => div()
-                .text_size(px(ROW_ICON * 0.8))
-                .child(SharedString::from(text.clone()))
-                .into_any_element(),
-        };
+        let picture = rowicon::picture(
+            &row.icon,
+            || rowicon::request(row, ROW_ICON),
+            IconStyle {
+                size: ROW_ICON,
+                radius: th.chip_radius() / 1.5,
+                crop: true,
+                glyph_size: theme::SEARCH_ICON + 2.0,
+                text_size: ROW_ICON * ROW_EMOJI_SCALE,
+                color: th.accent,
+            },
+            &self.row_images,
+            &self.icons,
+            cx,
+        );
         let picture = self.glide(
             "icon",
             i,
@@ -3803,14 +3793,6 @@ fn icon_chip(picture: AnyElement, declared: bool, th: &Theme) -> Div {
         .items_center()
         .justify_center()
         .child(picture)
-}
-
-fn glyph_icon(path: &'static str, th: &Theme) -> AnyElement {
-    svg()
-        .path(path)
-        .size(px(theme::SEARCH_ICON + 2.0))
-        .text_color(th.accent)
-        .into_any_element()
 }
 
 /// What putting a clip back on the clipboard runs, and what the banner says

@@ -598,7 +598,7 @@ Set `format = "json"` for the two fields tabs cannot carry: `path`, which makes 
 
 Three shapes are accepted, whichever your tool already prints: one top-level array, one object per line, or pretty-printed objects run together. A bare string in the array is a row, like a bare line. Keys Look does not know are ignored, so you can pipe richer output through untouched.
 
-Use a row `icon` when the rows are not alike (a favicon per history entry, a status glyph per deploy) and the block's `icon` when they are. An image path that does not exist is drawn as its own text, so write the file before naming it.
+Use a row `icon` when the rows are not alike (a favicon per history entry, a status glyph per deploy) and the block's `icon` when they are. On Linux and Windows, a row image that is missing or cannot be decoded falls back to the block's icon in both the result list and preview header. Empty row icons and unsupported symbol names also keep the block's icon.
 
 ## A script with no TOML at all
 
