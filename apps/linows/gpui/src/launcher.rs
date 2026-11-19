@@ -2470,12 +2470,18 @@ impl Launcher {
             .items_center()
             .gap(px(theme::SEARCH_GAP))
             .text_size(px(th.font_size + 1.0))
-            .child(
-                svg()
-                    .path(glyphs::SEARCH)
-                    .size(px(theme::SEARCH_ICON))
-                    .text_color(th.accent),
-            )
+            .map(|el| {
+                if th.decorations && crate::snow::emoji_available(cx) {
+                    el.child(crate::snow::snowman_icon())
+                } else {
+                    el.child(
+                        svg()
+                            .path(glyphs::SEARCH)
+                            .size(px(theme::SEARCH_ICON))
+                            .text_color(th.accent),
+                    )
+                }
+            })
             .when(!crumbs.is_empty(), |el| {
                 el.child(
                     muted_text(crumbs.join(BREADCRUMB_SEPARATOR), th)
@@ -3248,18 +3254,47 @@ impl Render for Launcher {
         // A Wayland window reports 1.0 until its surface enters an output.
         let scale = window.scale_factor();
         self.icons.update(cx, |icons, _| icons.set_scale(scale));
+        let snow = th.snow();
+        let family = th.font_family.clone();
+        let amount = th.snow_amount;
+        // A figure stands behind the results once there are some: the tree
+        // in the split layout's gap, Santa in the compact corner.
+        let shows_figure = th.decorations
+            && !self.at_home(cx)
+            && !self.settings_open
+            && !self.help.open
+            && !self.command_mode;
+        let figure = shows_figure.then(|| {
+            if th.split() {
+                crate::snow::Figure::Trees
+            } else {
+                crate::snow::Figure::Santa
+            }
+        });
         let content = self.content(th, window, cx);
         div().size_full().flex().justify_center().child(
             div()
+                .relative()
                 .flex_shrink_0()
                 .w(frame.width)
                 .h(frame.height)
-                .child(content),
+                .child(content)
+                .when_some(figure, |el, figure| {
+                    el.child(crate::snow::figure(figure, f32::from(frame.height)))
+                })
+                .when_some(snow, |el, colour| {
+                    el.child(crate::snow::layer(colour, family, amount))
+                }),
         )
     }
 }
 
 impl Launcher {
+    /// The empty query outside any level: the launchpad, or the bar alone.
+    fn at_home(&self, cx: &App) -> bool {
+        self.input.read(cx).text().is_empty() && !self.levels.is_active()
+    }
+
     fn content(
         &mut self,
         th: Arc<Theme>,
@@ -3271,9 +3306,8 @@ impl Launcher {
         self.arm_frost(blur::surfaces_fade(frosted), window, cx);
         let grid_since = self.grid_since.take();
         self.prepare_backdrop(&th, window, cx);
-        let input = self.input.read(cx);
-        let home = input.text().is_empty() && !self.levels.is_active();
-        let focus_handle = input.focus_handle.clone();
+        let home = self.at_home(cx);
+        let focus_handle = self.input.read(cx).focus_handle.clone();
         if self.was_home && !home {
             self.results_epoch += 1;
         }
@@ -3659,15 +3693,18 @@ fn panel(el: Div, th: &Theme, radius: f32) -> Div {
         .border_color(th.border)
         .rounded(px(radius))
         .shadow(th.card_shadow())
-        .children(backdrop_layer(radius, th))
+        .children(backdrop_layers(radius, th))
 }
 
-/// This frame's slice of the background picture for a surface with corner
-/// `radius`, when there is a picture.
-pub(crate) fn backdrop_layer(radius: f32, th: &Theme) -> Option<impl IntoElement> {
-    BACKDROP
+/// This frame's layers behind a surface with corner `radius`: its slice of
+/// the background picture when there is one, and of the bokeh when the
+/// decorations bring it.
+pub(crate) fn backdrop_layers(radius: f32, th: &Theme) -> impl Iterator<Item = AnyElement> {
+    let picture = BACKDROP
         .with_borrow(|b| b.clone())
-        .map(|b| bgimage::layer(b, radius, th))
+        .map(|b| bgimage::layer(b, radius, th).into_any_element());
+    let bokeh = crate::snow::bokeh_layer(radius, th).map(IntoElement::into_any_element);
+    picture.into_iter().chain(bokeh)
 }
 
 /// The band's leading at the hint's size.
@@ -3717,7 +3754,7 @@ fn card(el: Div, th: &Theme, radius: f32) -> Div {
         .border_color(th.border)
         .rounded(px(radius))
         .shadow(th.card_shadow())
-        .children(backdrop_layer(radius, th))
+        .children(backdrop_layers(radius, th))
 }
 
 fn muted_text(text: impl Into<SharedString>, th: &Theme) -> Div {

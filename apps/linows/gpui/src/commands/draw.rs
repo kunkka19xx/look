@@ -1,8 +1,8 @@
 //! Canvas strokes the panels share: circles, dots and centred text.
 
 use gpui::{
-    App, FontWeight, Hsla, PathBuilder, Pixels, Point, SharedString, TextAlign, TextRun, Window,
-    point, px,
+    App, FontWeight, Hsla, PathBuilder, Pixels, Point, ShapedLine, SharedString, TextAlign,
+    TextRun, Window, point, px,
 };
 
 /// A circle of radius `r` as two half arcs, from the top.
@@ -99,15 +99,8 @@ pub struct Type<'a> {
     pub spacing: f32,
 }
 
-/// `text` centred on (`centre_x`, `centre_y`).
-pub fn paint_text(
-    window: &mut Window,
-    cx: &mut App,
-    text: &str,
-    style: &Type,
-    centre_x: f32,
-    centre_y: f32,
-) {
+/// `text` shaped as one line in `style`.
+pub fn shape(window: &Window, text: &str, style: &Type) -> ShapedLine {
     let mut font = window.text_style().font();
     font.family = style.family.to_string().into();
     font.weight = style.weight;
@@ -120,11 +113,21 @@ pub fn paint_text(
         strikethrough: None,
         letter_spacing: (style.spacing != 0.0).then(|| px(style.spacing)),
     };
-    let line = window.text_system().shape_line(
-        SharedString::from(text.to_string()),
-        px(style.size),
-        &[run],
-    );
+    window
+        .text_system()
+        .shape_line(SharedString::from(text.to_string()), px(style.size), &[run])
+}
+
+/// `text` centred on (`centre_x`, `centre_y`).
+pub fn paint_text(
+    window: &mut Window,
+    cx: &mut App,
+    text: &str,
+    style: &Type,
+    centre_x: f32,
+    centre_y: f32,
+) {
+    let line = shape(window, text, style);
     let line_height = px(style.size * crate::theme::LABEL_LINE_HEIGHT);
     let origin = point(
         px(centre_x) - line.width() / 2.0,

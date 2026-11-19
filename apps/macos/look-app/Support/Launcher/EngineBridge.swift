@@ -301,6 +301,22 @@ private func look_hotkey_check_json(_ spec: UnsafePointer<CChar>?) -> UnsafeMuta
 nonisolated
 private func look_lunar_date_json(_ year: Int64, _ month: Int64, _ day: Int64, _ tz: Double) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_snow_max_flakes")
+nonisolated
+private func look_snow_max_flakes() -> Int
+
+@_silgen_name("look_snow_frame")
+nonisolated
+private func look_snow_frame(_ width: Double, _ height: Double, _ seconds: Double, _ amount: Double, _ out: UnsafeMutablePointer<Float>?, _ capacity: Int) -> Int
+
+@_silgen_name("look_bokeh_max_glows")
+nonisolated
+private func look_bokeh_max_glows() -> Int
+
+@_silgen_name("look_bokeh_frame")
+nonisolated
+private func look_bokeh_frame(_ width: Double, _ height: Double, _ seconds: Double, _ out: UnsafeMutablePointer<Float>?, _ capacity: Int) -> Int
+
 @_silgen_name("look_refresh_run_blocks_json")
 nonisolated
 private func look_refresh_run_blocks_json() -> UnsafeMutablePointer<CChar>?
@@ -388,6 +404,19 @@ nonisolated struct LunarDate: Decodable {
     let month: Int
     let year: Int
     let leap: Bool
+}
+
+/// A `core/snow` flake in points from the top-left; a crystal is a glyph
+/// `radius * 2` tall, its index into the core's `CRYSTALS`.
+nonisolated struct Snowflake {
+    let x, y, radius, alpha: Double
+    let crystal: Int?
+}
+
+/// A `core/snow` light: `alpha` at its centre, fading out at its radius.
+nonisolated struct BokehGlow {
+    let center: CGPoint
+    let radius, red, green, blue, alpha: Double
 }
 
 /// The six strings every row-scoped export takes, held as C pointers for one
@@ -734,6 +763,54 @@ final class EngineBridge: @unchecked Sendable {
         defer { look_free_cstring(ptr) }
         guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(LunarDate.self, from: data)
+    }
+
+    /// Record widths of `look_snow_frame` and `look_bokeh_frame`.
+    private nonisolated static let flakeFloats = 5
+    private nonisolated static let glowFloats = 7
+    private nonisolated static let flakeCapacity = look_snow_max_flakes() * flakeFloats
+    private nonisolated static let glowCapacity = look_bokeh_max_glows() * glowFloats
+
+    /// Every flake at `seconds`, `amount` times the default snow.
+    nonisolated func forEachSnowflake(
+        width: Double, height: Double, seconds: Double, amount: Double, _ body: (Snowflake) -> Void
+    ) {
+        Self.records(capacity: Self.flakeCapacity, floats: Self.flakeFloats) {
+            look_snow_frame(width, height, seconds, amount, $0, $1)
+        } each: { value in
+            let crystal = value(4)
+            body(Snowflake(
+                x: value(0), y: value(1), radius: value(2), alpha: value(3),
+                crystal: crystal < 0 ? nil : Int(crystal)))
+        }
+    }
+
+    /// Every bokeh glow at `seconds`, each light as its halo then its core.
+    nonisolated func forEachBokehGlow(
+        width: Double, height: Double, seconds: Double, _ body: (BokehGlow) -> Void
+    ) {
+        Self.records(capacity: Self.glowCapacity, floats: Self.glowFloats) {
+            look_bokeh_frame(width, height, seconds, $0, $1)
+        } each: { value in
+            body(BokehGlow(
+                center: CGPoint(x: value(0), y: value(1)), radius: value(2),
+                red: value(3), green: value(4), blue: value(5), alpha: value(6)))
+        }
+    }
+
+    /// Lets `write` fill a stack buffer, then hands on each `floats`-wide
+    /// record as a reader of its values. Runs once per drawn frame.
+    private nonisolated static func records(
+        capacity: Int,
+        floats: Int,
+        write: (UnsafeMutablePointer<Float>?, Int) -> Int,
+        each: ((Int) -> Double) -> Void
+    ) {
+        withUnsafeTemporaryAllocation(of: Float.self, capacity: capacity) { buffer in
+            for index in 0..<write(buffer.baseAddress, buffer.count) {
+                each { Double(buffer[index * floats + $0]) }
+            }
+        }
     }
 
     /// Runs the shared core speed test. Blocks for 15 seconds and up, so call it

@@ -405,6 +405,7 @@ dependencies = [
  "look-netspeed",
  "look-qactions",
  "look-ranking",
+ "look-snow",
  "look-sources",
  "look-storage",
  "look-todo",
@@ -464,6 +465,10 @@ version = "0.1.0"
 dependencies = [
  "look-indexing",
 ]
+
+[[package]]
+name = "look-snow"
+version = "0.1.0"
 
 [[package]]
 name = "look-sources"

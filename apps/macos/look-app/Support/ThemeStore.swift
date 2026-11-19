@@ -308,6 +308,8 @@ final class ThemeStore: ObservableObject {
         ConfigFileLines.upsert(&lines, key: "super_actions_enabled", value: settings.superActionsEnabled ? "true" : "false")
 
         ConfigFileLines.upsert(&lines, key: "animations_enabled", value: settings.animationsEnabled ? "true" : "false")
+        ConfigFileLines.upsert(&lines, key: "christmas_decorations", value: settings.christmasDecorations ? "true" : "false")
+        ConfigFileLines.upsert(&lines, key: "christmas_snow", value: String(format: "%g", settings.christmasSnowAmount))
 
         do {
             try ConfigFileLines.render(lines).write(to: path, atomically: true, encoding: .utf8)
@@ -662,6 +664,14 @@ final class ThemeStore: ObservableObject {
                 if let parsed = parseBool(value) {
                     settings.animationsEnabled = parsed
                 }
+            case "christmas_decorations":
+                if let parsed = parseBool(value) {
+                    settings.christmasDecorations = parsed
+                }
+            case "christmas_snow":
+                if let parsed = Double(value), parsed.isFinite {
+                    settings.christmasSnowAmount = parsed
+                }
             case "hints_enabled":
                 if let parsed = parseBool(value) {
                     hintsEnabled = parsed
@@ -1011,6 +1021,12 @@ super_actions_enabled=false
 # false shows every change instantly.
 animations_enabled=true
 
+# Christmas decorations over any theme: falling snow, glowing lights behind the
+# panels (dark themes), a tree behind the results and a snowman search icon.
+christmas_decorations=false
+# How much snow falls with them: 1, 1.25, 1.5 or 2 times the default.
+christmas_snow=1
+
 # The hint line along the bottom and the author link. false hides both.
 hints_enabled=true
 
@@ -1068,6 +1084,12 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
         }
         if object["animationsEnabled"] == nil {
             object["animationsEnabled"] = ThemeSettings.default.animationsEnabled
+        }
+        if object["christmasDecorations"] == nil {
+            object["christmasDecorations"] = ThemeSettings.default.christmasDecorations
+        }
+        if object["christmasSnowAmount"] == nil {
+            object["christmasSnowAmount"] = ThemeSettings.default.christmasSnowAmount
         }
         if object["layout"] == nil {
             object["layout"] = ThemeSettings.default.layout.rawValue

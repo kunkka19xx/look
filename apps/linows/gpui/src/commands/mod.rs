@@ -4,7 +4,7 @@
 //! it; the ones not ported yet say so in place of their body.
 
 mod calc;
-mod draw;
+pub(crate) mod draw;
 mod kill;
 mod pomo;
 mod shell;

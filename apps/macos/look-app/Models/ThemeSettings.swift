@@ -312,6 +312,15 @@ struct ThemeSettings: Codable, Equatable {
     /// `animations_enabled`.
     var animationsEnabled: Bool = true
 
+    /// Christmas over whatever theme is active: falling snow, glowing lights
+    /// behind the panels, a tree behind the results and a snowman search icon.
+    /// Persisted in `~/.look/config` under `christmas_decorations`.
+    var christmasDecorations: Bool = false
+
+    /// How much snow falls with the decorations on, against the default: one
+    /// of `AppConstants.ThemeUI.snowAmounts`. Persisted under `christmas_snow`.
+    var christmasSnowAmount: Double = 1
+
     /// Hotkey specs keyed by config key, see `ConfigurableShortcut`.
     var shortcutBindings: [String: String] = [:]
 

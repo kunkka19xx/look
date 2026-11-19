@@ -45,6 +45,7 @@ mod running;
 mod search;
 mod settings;
 mod shortcuts;
+mod snow;
 mod speed;
 mod theme;
 mod todo;

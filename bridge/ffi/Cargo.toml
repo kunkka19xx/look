@@ -23,6 +23,7 @@ look-matching = { path = "../../core/matching" }
 look-netspeed = { path = "../../core/netspeed" }
 look-qactions = { path = "../../core/qactions" }
 look-ranking = { path = "../../core/ranking" }
+look-snow = { path = "../../core/snow" }
 look-storage = { path = "../../core/storage" }
 look-todo = { path = "../../core/todo" }
 look-tools = { path = "../../core/tools" }

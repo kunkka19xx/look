@@ -24,11 +24,46 @@ struct SearchInputBar: View {
         /// Matches where `NSTextField` starts drawing its own text, so the
         /// placeholder does not shift sideways as soon as you type.
         static let placeholderLeadingInset: CGFloat = 2
+        static let snowman = "☃️"
+        /// A touch larger than the glass it replaces, so the emoji's detail reads.
+        static let snowmanFontSize: CGFloat = 17
+    }
+
+    /// Plain search with the decorations on: the other icons say
+    /// which mode the bar is in, so they stay.
+    private var showsSnowman: Bool {
+        breadcrumb == nil && !isCommandMode && !isAIMode && themeStore.showsChristmasDecorations()
     }
 
     /// Command mode wins the bar's identity (see the icon below), so the badge
     /// steps aside rather than sitting next to the `/command` capsule.
     private var showsBetaBadge: Bool { isAIMode && !isCommandMode }
+
+    @ViewBuilder
+    private var snowman: some View {
+        let glyph = Text(Layout.snowman)
+            .font(.system(size: Layout.snowmanFontSize))
+            .accessibilityHidden(true)
+        if reducesMotion {
+            glyph
+        } else {
+            glyph.keyframeAnimator(initialValue: Motion.Snowman.Pose(), trigger: revealToken) { content, pose in
+                content
+                    .scaleEffect(pose.scale)
+                    .rotationEffect(.degrees(pose.angle))
+            } keyframes: { _ in
+                KeyframeTrack(\.scale) {
+                    SpringKeyframe(Motion.Snowman.peakScale, duration: Motion.Snowman.zoomInSeconds)
+                    SpringKeyframe(1, duration: Motion.Snowman.settleSeconds)
+                }
+                KeyframeTrack(\.angle) {
+                    for angle in Motion.Snowman.shakeAngles {
+                        LinearKeyframe(angle, duration: Motion.Snowman.shakeStepSeconds)
+                    }
+                }
+            }
+        }
+    }
 
     private var placeholderText: String {
         if breadcrumb != nil {
@@ -43,19 +78,25 @@ struct SearchInputBar: View {
         return themeStore.searchPlaceholder
     }
 
+    @Environment(\.reducesMotion) private var reducesMotion
+
     var body: some View {
         HStack(spacing: 8) {
-            Image(
-                systemName: breadcrumb != nil
-                    ? "chevron.right"
-                    : (isCommandMode ? "terminal" : (isAIMode ? "sparkles" : "magnifyingglass"))
-            )
-            .foregroundStyle(
-                isCommandMode || isAIMode || breadcrumb != nil
-                    ? themeStore.accentColor() : themeStore.secondaryTextColor()
-            )
-            .contentTransition(.symbolEffect(.replace))
-            .symbolEffect(.bounce, value: revealToken)
+            if showsSnowman {
+                snowman
+            } else {
+                Image(
+                    systemName: breadcrumb != nil
+                        ? "chevron.right"
+                        : (isCommandMode ? "terminal" : (isAIMode ? "sparkles" : "magnifyingglass"))
+                )
+                .foregroundStyle(
+                    isCommandMode || isAIMode || breadcrumb != nil
+                        ? themeStore.accentColor() : themeStore.secondaryTextColor()
+                )
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: revealToken)
+            }
 
             if let breadcrumb {
                 Text(breadcrumb)

@@ -11,6 +11,7 @@ use gpui::{
 use linows_backend::config::{self, LauncherLayout};
 use linows_backend::geometry;
 use linows_backend::highlight::TokenType;
+use linows_backend::look_snow::SNOW_AMOUNTS;
 use palette::IntoColor;
 
 pub const FONT_SIZE_DEFAULT: f32 = 14.0;
@@ -67,6 +68,10 @@ pub const INPUT_PADDING_Y: f32 = 14.0;
 pub const TOP_ROW_HEIGHT: f32 = 26.0;
 pub const SEARCH_GAP: f32 = 10.0;
 pub const SEARCH_ICON: f32 = 16.0;
+/// The snowman that stands in for the search glass, in a box the glass's
+/// size, drawn a touch larger so the emoji's detail reads.
+pub const SNOWMAN_BOX: f32 = SEARCH_ICON;
+pub const SNOWMAN_SIZE: f32 = 17.0;
 pub const ROW_HEIGHT: f32 = 48.0;
 pub const ROW_PADDING_X: f32 = 10.0;
 pub const ROW_SPACING: f32 = 4.0;
@@ -113,6 +118,10 @@ pub const DEFAULT_BG_BLUR: f32 = 10.3;
 /// frozen copy of the wallpaper behind every window.
 pub const COMPOSITOR_BLUR_KEY: &str = "ui_compositor_blur";
 const ANIMATIONS_KEY: &str = "animations_enabled";
+/// Off unless the user turned it on.
+const DECORATIONS_KEY: &str = "christmas_decorations";
+/// How much snow falls with them, against the default.
+pub const SNOW_AMOUNT_KEY: &str = "christmas_snow";
 /// The hint lines and the author link, on unless the user turned them off.
 const HINTS_KEY: &str = "hints_enabled";
 /// No fallback: the default text is written in the config file, so
@@ -521,6 +530,10 @@ pub struct Theme {
     pub hints: bool,
     /// `search_placeholder`: what the empty search field says.
     pub placeholder: SharedString,
+    /// `christmas_decorations`: snow, bokeh, the tree and the snowman.
+    pub decorations: bool,
+    /// `christmas_snow`: times the default snow, which the core holds in range.
+    pub snow_amount: f32,
     syntax: [Rgba; 4],
 }
 
@@ -689,6 +702,8 @@ impl Theme {
             animations: get(ANIMATIONS_KEY) != Some("false"),
             hints: get(HINTS_KEY) != Some("false"),
             placeholder: get(PLACEHOLDER_KEY).unwrap_or_default().to_string().into(),
+            decorations: get(DECORATIONS_KEY) == Some("true"),
+            snow_amount: num(SNOW_AMOUNT_KEY, SNOW_AMOUNTS[0] as f32),
             syntax: preset.syntax,
         }
     }
@@ -716,6 +731,29 @@ impl Theme {
     pub fn divider(&self) -> Rgba {
         let c = self.selection_fill;
         Rgba::new(c.color.red, c.color.green, c.color.blue, DIVIDER_ALPHA)
+    }
+
+    /// Light text, so the panel under it is dark.
+    fn is_dark(&self) -> bool {
+        luminance(self.text) > 0.5
+    }
+
+    /// White on a dark theme; the muted text on a light one, where white
+    /// snow would vanish into the panel. None with decorations off.
+    pub fn snow(&self) -> Option<Rgba> {
+        let white = Rgba::new(1.0, 1.0, 1.0, 1.0);
+        self.decorations.then(|| {
+            if self.is_dark() {
+                white
+            } else {
+                self.text_muted
+            }
+        })
+    }
+
+    /// Bokeh only over a dark theme.
+    pub fn bokeh(&self) -> bool {
+        self.decorations && self.is_dark()
     }
 
     /// Whether the preview column is shown beside the results.
