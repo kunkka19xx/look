@@ -39,13 +39,15 @@ struct SearchInputBar: View {
     /// steps aside rather than sitting next to the `/command` capsule.
     private var showsBetaBadge: Bool { isAIMode && !isCommandMode }
 
+    @ViewBuilder
     private var snowman: some View {
-        Text(Layout.snowman)
+        let glyph = Text(Layout.snowman)
             .font(.system(size: Layout.snowmanFontSize))
-            .keyframeAnimator(
-                initialValue: Motion.Snowman.Pose(),
-                trigger: reducesMotion ? 0 : revealToken
-            ) { content, pose in
+            .accessibilityHidden(true)
+        if reducesMotion {
+            glyph
+        } else {
+            glyph.keyframeAnimator(initialValue: Motion.Snowman.Pose(), trigger: revealToken) { content, pose in
                 content
                     .scaleEffect(pose.scale)
                     .rotationEffect(.degrees(pose.angle))
@@ -60,7 +62,7 @@ struct SearchInputBar: View {
                     }
                 }
             }
-            .accessibilityHidden(true)
+        }
     }
 
     private var placeholderText: String {

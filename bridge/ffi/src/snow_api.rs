@@ -1,3 +1,5 @@
+use std::mem::MaybeUninit;
+
 use look_snow::bokeh::bokeh;
 use look_snow::frame;
 
@@ -8,12 +10,12 @@ const NO_CRYSTAL: f32 = -1.0;
 const FLOATS_PER_GLOW: usize = 7;
 
 /// `out` as whole records of `N` floats; none for a null pointer.
-fn records<'a, const N: usize>(out: *mut f32, capacity: usize) -> &'a mut [[f32; N]] {
+fn records<'a, const N: usize>(out: *mut f32, capacity: usize) -> &'a mut [[MaybeUninit<f32>; N]] {
     if out.is_null() {
         return &mut [];
     }
     // SAFETY: the caller owns `capacity` writable floats at `out`.
-    let out = unsafe { std::slice::from_raw_parts_mut(out, capacity) };
+    let out = unsafe { std::slice::from_raw_parts_mut(out.cast::<MaybeUninit<f32>>(), capacity) };
     out.as_chunks_mut::<N>().0
 }
 
@@ -30,7 +32,7 @@ pub(crate) fn look_snow_frame_impl(
         .zip(frame(width, height, seconds, amount))
         .map(|(slot, flake)| {
             let crystal = flake.crystal.map_or(NO_CRYSTAL, |glyph| glyph as f32);
-            *slot = [flake.x, flake.y, flake.radius, flake.alpha, crystal];
+            *slot = [flake.x, flake.y, flake.radius, flake.alpha, crystal].map(MaybeUninit::new);
         })
         .count()
 }
@@ -47,7 +49,7 @@ pub(crate) fn look_bokeh_frame_impl(
         .zip(bokeh(width, height, seconds))
         .map(|(slot, glow)| {
             let ([x, y], [r, g, b]) = (glow.center, glow.colour);
-            *slot = [x, y, glow.radius, r, g, b, glow.alpha];
+            *slot = [x, y, glow.radius, r, g, b, glow.alpha].map(MaybeUninit::new);
         })
         .count()
 }

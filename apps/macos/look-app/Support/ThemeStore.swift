@@ -669,8 +669,7 @@ final class ThemeStore: ObservableObject {
                     settings.christmasDecorations = parsed
                 }
             case "christmas_snow":
-                // The core holds it to its range.
-                if let parsed = Double(value) {
+                if let parsed = Double(value), parsed.isFinite {
                     settings.christmasSnowAmount = parsed
                 }
             case "hints_enabled":

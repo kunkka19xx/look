@@ -25,8 +25,6 @@ extension ThemeSettingsView {
                             }
                         }
 
-                        // The amount rides in the switch's cell: a column of its
-                        // own does not fit the compact window.
                         HStack(spacing: 10) {
                             appearanceSwitch(
                                 "Christmas",
@@ -313,7 +311,6 @@ extension ThemeSettingsView {
         .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
     }
 
-    /// Between the switch columns, tight enough for the compact window.
     static let switchColumnGap: CGFloat = 32
     static let switchRowGap: CGFloat = 10
 

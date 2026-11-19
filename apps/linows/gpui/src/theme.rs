@@ -751,7 +751,7 @@ impl Theme {
         })
     }
 
-    /// The bokeh glows only against a dark panel; on a light one it stains.
+    /// Bokeh only over a dark theme.
     pub fn bokeh(&self) -> bool {
         self.decorations && self.is_dark()
     }

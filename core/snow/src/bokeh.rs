@@ -1,6 +1,5 @@
 //! Out-of-focus string lights as a pure function of time: balls of light
-//! that drift upwards and pulse, each a warm halo around a hot core so a
-//! painted disc reads as emitted light rather than a stain.
+//! that drift upwards and pulse, each a warm halo around a hot core.
 
 use std::f64::consts::TAU;
 

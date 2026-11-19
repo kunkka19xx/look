@@ -205,7 +205,7 @@ extension ThemeStore {
         themeAppearance() == .dark ? .white : mutedTextColor()
     }
 
-    /// The bokeh glows only against a dark panel; on a light one it stains.
+    /// Bokeh only over a dark theme.
     func showsBokeh() -> Bool {
         settings.christmasDecorations && themeAppearance() == .dark
     }
