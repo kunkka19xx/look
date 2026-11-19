@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, AppContext, Bounds, ContentMask, Corners, FontWeight,
-    Hsla, IntoElement, PaintQuad, ParentElement, Pixels, Point, RenderImage, Rgba, SharedString,
-    Size, Styled, Window, canvas, div, point, px, size, svg,
+    GlyphId, Hsla, IntoElement, PaintQuad, ParentElement, Pixels, Point, RenderImage, Rgba,
+    SharedString, Size, Styled, Window, canvas, div, point, px, size, svg,
 };
 use image::RgbaImage;
 use linows_backend::look_snow::{self, CRYSTALS, bokeh};
@@ -29,6 +29,13 @@ static FRAME_PENDING: AtomicBool = AtomicBool::new(false);
 const SNOWMAN: &str = "☃️";
 /// A font family whose name carries this draws colour emoji.
 const EMOJI_FAMILY_MARK: &str = "Emoji";
+/// What a character no installed font draws is shaped as.
+const MISSING_GLYPH: GlyphId = GlyphId(0);
+/// Without a font for the crystals they fall as dots, this share of a
+/// crystal's radius: a bit larger than the nearest plain flake.
+const CRYSTAL_DOT_SHARE: f32 = 0.35;
+/// Any size shapes the same glyphs.
+const PROBE_SIZE: f32 = 16.0;
 
 /// Glyph size as a share of the frame's height, and its bounds.
 const TREE_SIZING: (f32, f32, f32) = (0.24, 96.0, 170.0);
@@ -165,11 +172,15 @@ pub fn layer(colour: Rgba, family: SharedString, amount: f32) -> impl IntoElemen
             seconds,
             amount.into(),
         );
+        let drawable = crystals_drawable(&family, window);
         for flake in flakes {
             let mut fill = base;
             fill.alpha *= flake.alpha;
             let centre = bounds.origin + point(px(flake.x), px(flake.y));
             match flake.crystal.and_then(|glyph| CRYSTALS.get(glyph)) {
+                Some(_) if !drawable => {
+                    paint_flake(centre, flake.radius * CRYSTAL_DOT_SHARE, fill, window);
+                }
                 Some(glyph) => {
                     let style = Type {
                         size: flake.radius * 2.0,
@@ -183,6 +194,26 @@ pub fn layer(colour: Rgba, family: SharedString, amount: f32) -> impl IntoElemen
                 None => paint_flake(centre, flake.radius, fill, window),
             }
         }
+    })
+}
+
+/// Whether `family` or a fallback of it draws every crystal, shaped once.
+fn crystals_drawable(family: &str, window: &Window) -> bool {
+    static DRAWABLE: OnceLock<bool> = OnceLock::new();
+    *DRAWABLE.get_or_init(|| {
+        let style = Type {
+            size: PROBE_SIZE,
+            family,
+            weight: FontWeight::NORMAL,
+            colour: Hsla::default(),
+            spacing: 0.0,
+        };
+        let line = draw::shape(window, &CRYSTALS.concat(), &style);
+        let mut glyphs = line
+            .paint_fragments
+            .iter()
+            .flat_map(|run| run.glyphs.iter());
+        glyphs.clone().next().is_some() && glyphs.all(|glyph| glyph.id != MISSING_GLYPH)
     })
 }
 
