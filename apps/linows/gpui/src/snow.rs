@@ -1,18 +1,22 @@
 //! The Christmas decorations over any theme: the core's snow and bokeh, a
 //! faded figure behind the results, and the snowman in the search bar.
 
+use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{LazyLock, OnceLock};
+use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, AppContext, Bounds, BoxShadow, ContentMask, Corners,
-    FontWeight, Hsla, IntoElement, PaintQuad, ParentElement, Pixels, Point, Rgba, SharedString,
-    Styled, Window, canvas, div, point, px, size,
+    Animation, AnimationExt, AnyElement, App, AppContext, Bounds, ContentMask, Corners, FontWeight,
+    Hsla, IntoElement, PaintQuad, ParentElement, Pixels, Point, RenderImage, Rgba, SharedString,
+    Size, Styled, Window, canvas, div, point, px, size, svg,
 };
+use image::RgbaImage;
 use linows_backend::look_snow::{self, CRYSTALS, bokeh};
 
+use crate::bgimage;
 use crate::commands::draw::{self, Type};
+use crate::glyphs;
 use crate::motion;
 use crate::theme::{self, Theme};
 
@@ -31,21 +35,45 @@ const TREE_SIZING: (f32, f32, f32) = (0.24, 96.0, 170.0);
 const SANTA_SIZING: (f32, f32, f32) = (0.12, 40.0, 64.0);
 const FIGURE_OPACITY: f32 = 0.55;
 const FIGURE_CORNER_INSET: f32 = 12.0;
+const GROVE_LIFT: f32 = 16.0;
+/// Back to front: share of the front tree's size, centre offset in its
+/// widths, colour.
+const GROVE: [(f32, f32, Rgba); 3] = [
+    (0.7, -0.46, Rgba::new(0.11, 0.36, 0.22, 1.0)),
+    (0.84, 0.4, Rgba::new(0.16, 0.5, 0.29, 1.0)),
+    (1.0, 0.0, Rgba::new(0.24, 0.66, 0.38, 1.0)),
+];
 /// Santa stands behind his gift, up and to the left, in glyph sizes.
 const SANTA_RISE: f32 = 0.5;
 const SANTA_LEAN: f32 = 0.35;
-/// Of a glow's radius, the lit disc and the blur around it.
-const GLOW_CORE_SHARE: f32 = 0.55;
-const GLOW_BLUR_SHARE: f32 = 0.9;
+const SANTA_RED: Rgba = Rgba::new(0.86, 0.22, 0.22, 1.0);
+const SANTA_SKIN: Rgba = Rgba::new(0.96, 0.78, 0.65, 1.0);
+const SANTA_WHITE: Rgba = Rgba::new(0.97, 0.96, 0.94, 1.0);
+const RIBBON_GOLD: Rgba = Rgba::new(0.98, 0.8, 0.36, 1.0);
+/// Layers, back to front.
+const SANTA: [(&str, Rgba); 3] = [
+    (glyphs::SANTA_HAT, SANTA_RED),
+    (glyphs::SANTA_FACE, SANTA_SKIN),
+    (glyphs::SANTA_TRIM, SANTA_WHITE),
+];
+const GIFT: [(&str, Rgba); 2] = [
+    (glyphs::GIFT_BOX, SANTA_RED),
+    (glyphs::GIFT_RIBBON, RIBBON_GOLD),
+];
+/// The lights hold still here, dimmer and wider than the core asks.
+const BOKEH_SECONDS: f64 = 0.0;
+const GLOW_DIM: f32 = 0.4;
+const GLOW_SPREAD: f32 = 1.4;
+const CHANNEL_MAX: f32 = 255.0;
 
 #[derive(Clone, Copy)]
 pub enum Figure {
-    Tree,
+    Trees,
     Santa,
 }
 
 /// Whether an installed family draws colour emoji; without one the glass
-/// stays and no figure stands.
+/// stays.
 pub fn emoji_available(cx: &App) -> bool {
     static AVAILABLE: OnceLock<bool> = OnceLock::new();
     *AVAILABLE.get_or_init(|| {
@@ -77,30 +105,52 @@ pub fn snowman_icon() -> impl IntoElement {
 /// `figure` at the bottom of a frame `frame_height` tall.
 pub fn figure(figure: Figure, frame_height: f32) -> AnyElement {
     let sized = |(share, min, max): (f32, f32, f32)| (frame_height * share).clamp(min, max);
-    let el = div().absolute().bottom_0().opacity(FIGURE_OPACITY);
+    let el = div().absolute().opacity(FIGURE_OPACITY);
     match figure {
-        Figure::Tree => {
-            let size = sized(TREE_SIZING);
-            el.left_0()
+        Figure::Trees => {
+            let front = sized(TREE_SIZING);
+            let grove = GROVE.map(|(share, stand_off, green)| {
+                let tree = front * share;
+                svg()
+                    .path(glyphs::TREE_PINE)
+                    .absolute()
+                    .bottom_0()
+                    .left(px(front * (0.5 + stand_off) - tree / 2.0))
+                    .size(px(tree))
+                    .text_color(green)
+            });
+            el.bottom(px(GROVE_LIFT))
+                .left_0()
                 .right_0()
                 .flex()
                 .justify_center()
-                .text_size(px(size))
-                .line_height(px(size))
-                .child("🎄")
+                .child(div().relative().size(px(front)).children(grove))
         }
         Figure::Santa => {
             let size = sized(SANTA_SIZING);
             el.right(px(FIGURE_CORNER_INSET))
+                .bottom(px(FIGURE_CORNER_INSET))
                 .w(px(size * (1.0 + SANTA_LEAN)))
                 .h(px(size * (1.0 + SANTA_RISE)))
-                .text_size(px(size))
-                .line_height(px(size))
-                .child(div().absolute().left_0().top_0().child("🎅"))
-                .child(div().absolute().right_0().bottom_0().child("🎁"))
+                .child(layered(&SANTA, size).left_0().top_0())
+                .child(layered(&GIFT, size).right_0().bottom_0())
         }
     }
     .into_any_element()
+}
+
+/// One glyph of `size` from its coloured `layers`.
+fn layered(layers: &[(&'static str, Rgba)], size: f32) -> gpui::Div {
+    div()
+        .absolute()
+        .size(px(size))
+        .children(layers.iter().map(|(glyph, colour)| {
+            svg()
+                .path(*glyph)
+                .absolute()
+                .size(px(size))
+                .text_color(*colour)
+        }))
 }
 
 /// Snow over the whole frame: `amount` times the default, dots in `colour`,
@@ -138,15 +188,84 @@ pub fn layer(colour: Rgba, family: SharedString, amount: f32) -> impl IntoElemen
 
 /// This card's slice of one frame-sized bokeh field, as the background
 /// picture is sliced. None unless decorations are on over a dark theme.
-pub fn bokeh_layer(th: &Theme) -> Option<impl IntoElement> {
+pub fn bokeh_layer(radius: f32, th: &Theme) -> Option<impl IntoElement> {
     let frame_size = th.bokeh().then(|| th.frame_size())?;
-    Some(scene_canvas(move |bounds, seconds, window, _| {
-        let frame = theme::place_frame(frame_size, window.viewport_size());
-        let (w, h) = (frame.size.width, frame.size.height);
-        for glow in bokeh::bokeh(f32::from(w).into(), f32::from(h).into(), seconds) {
-            paint_glow(frame.origin, &glow, bounds, window);
+    let corners = Corners::all(px(th.inner_radius(radius)));
+    Some(
+        canvas(
+            |_, _, _| {},
+            move |bounds: Bounds<Pixels>, (), window, _| {
+                let frame = theme::place_frame(frame_size, window.viewport_size());
+                let field = bokeh_field(frame.size, window);
+                let _ = window.paint_image(bounds, frame, corners, 0.0, field, 0, false);
+            },
+        )
+        .absolute()
+        .inset_0(),
+    )
+}
+
+/// A frame's size in logical pixels and its lights.
+type BokehField = ((u32, u32), Arc<RenderImage>);
+
+thread_local! {
+    static BOKEH_FIELD: RefCell<Option<BokehField>> = const { RefCell::new(None) };
+}
+
+/// The lights for `frame`, painted once per size.
+fn bokeh_field(frame: Size<Pixels>, window: &mut Window) -> Arc<RenderImage> {
+    let key = (
+        f32::from(frame.width).round() as u32,
+        f32::from(frame.height).round() as u32,
+    );
+    BOKEH_FIELD.with_borrow_mut(|cached| {
+        if let Some((_, field)) = cached.as_ref().filter(|(of, _)| *of == key) {
+            return field.clone();
         }
-    }))
+        let field = bgimage::frame(paint_bokeh(key.0, key.1));
+        if let Some((_, stale)) = cached.replace((key, field.clone())) {
+            let _ = window.drop_image(stale);
+        }
+        field
+    })
+}
+
+/// BGRA with straight alpha, a logical pixel each.
+fn paint_bokeh(width: u32, height: u32) -> RgbaImage {
+    let mut field = RgbaImage::new(width, height);
+    for glow in bokeh::bokeh(width.into(), height.into(), BOKEH_SECONDS) {
+        let [x, y] = glow.center;
+        let reach = glow.radius * GLOW_SPREAD;
+        let span = |centre: f32, limit: u32| {
+            let from = (centre - reach).floor().max(0.0) as u32;
+            let to = ((centre + reach).ceil().max(0.0) as u32).min(limit);
+            from..to
+        };
+        let [r, g, b] = glow.colour;
+        for py in span(y, height) {
+            for px in span(x, width) {
+                let off = ((px as f32 + 0.5 - x).hypot(py as f32 + 0.5 - y) / reach).min(1.0);
+                let alpha = glow.alpha * GLOW_DIM * glow_falloff(off);
+                let under = field.get_pixel_mut(px, py);
+                let [ub, ug, ur, ua] = under.0.map(|c| f32::from(c) / CHANNEL_MAX);
+                let kept = ua * (1.0 - alpha);
+                let out = alpha + kept;
+                if out <= 0.0 {
+                    continue;
+                }
+                let mix = |over: f32, under: f32| (over * alpha + under * kept) / out;
+                under.0 = [mix(b, ub), mix(g, ug), mix(r, ur), out]
+                    .map(|c| (c * CHANNEL_MAX).round() as u8);
+            }
+        }
+    }
+    field
+}
+
+/// A glow's light at `off` its centre, 0 to 1 of its reach.
+fn glow_falloff(off: f32) -> f32 {
+    let inside = 1.0 - off * off;
+    inside * inside
 }
 
 /// A pointer-transparent canvas over its parent, painting at the scene's
@@ -206,29 +325,21 @@ fn paint_flake(centre: Point<Pixels>, radius: f32, fill: Hsla, window: &mut Wind
     window.paint_quad(quad);
 }
 
-/// A glow as a lit disc's blurred shadow, gpui having no radial gradient.
-/// Skipped when it misses `visible`, as most do for any one card.
-fn paint_glow(
-    origin: Point<Pixels>,
-    glow: &bokeh::Glow,
-    visible: Bounds<Pixels>,
-    window: &mut Window,
-) {
-    let centre = origin + point(px(glow.center[0]), px(glow.center[1]));
-    let reach = px(glow.radius);
-    let extent = Bounds::new(centre - point(reach, reach), size(reach * 2.0, reach * 2.0));
-    if !extent.intersects(&visible) {
-        return;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_glow_fades_from_its_centre_to_nothing_at_its_rim() {
+        assert_eq!(glow_falloff(0.0), 1.0);
+        assert!(glow_falloff(0.5) < 1.0 && glow_falloff(0.5) > glow_falloff(0.9));
+        assert_eq!(glow_falloff(1.0), 0.0);
     }
-    let [r, g, b] = glow.colour;
-    let core = px(glow.radius * GLOW_CORE_SHARE);
-    let shadow = BoxShadow {
-        color: theme::hsla_of(Rgba::new(r, g, b, glow.alpha)).into(),
-        offset: point(px(0.0), px(0.0)),
-        blur_radius: px(glow.radius * GLOW_BLUR_SHARE),
-        spread_radius: px(0.0),
-        inset: false,
-    };
-    let disc = Bounds::new(centre - point(core, core), size(core * 2.0, core * 2.0));
-    window.paint_drop_shadows(disc, Corners::all(core), 0.0, &[shadow]);
+
+    #[test]
+    fn the_field_is_lit_and_stays_see_through() {
+        let field = paint_bokeh(840, 560);
+        assert!(field.pixels().any(|p| p.0[3] > 0));
+        assert!(field.pixels().any(|p| p.0[3] == 0));
+    }
 }

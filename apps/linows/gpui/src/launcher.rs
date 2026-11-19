@@ -3263,11 +3263,10 @@ impl Render for Launcher {
             && !self.at_home(cx)
             && !self.settings_open
             && !self.help.open
-            && !self.command_mode
-            && crate::snow::emoji_available(cx);
+            && !self.command_mode;
         let figure = shows_figure.then(|| {
             if th.split() {
-                crate::snow::Figure::Tree
+                crate::snow::Figure::Trees
             } else {
                 crate::snow::Figure::Santa
             }
@@ -3704,7 +3703,7 @@ pub(crate) fn backdrop_layers(radius: f32, th: &Theme) -> impl Iterator<Item = A
     let picture = BACKDROP
         .with_borrow(|b| b.clone())
         .map(|b| bgimage::layer(b, radius, th).into_any_element());
-    let bokeh = crate::snow::bokeh_layer(th).map(IntoElement::into_any_element);
+    let bokeh = crate::snow::bokeh_layer(radius, th).map(IntoElement::into_any_element);
     picture.into_iter().chain(bokeh)
 }
 
