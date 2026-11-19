@@ -162,6 +162,8 @@ const FRESH_CONFIG_ASK: &str = "Create a fresh config?";
 /// Low bits of a text shift key hold the row index; the change count sits above.
 const SHIFT_ROW_BITS: usize = 20;
 const ROW_ICON: f32 = 22.0;
+/// An emoji fills most of its tile, less its font's bearings.
+const ROW_EMOJI_SCALE: f32 = 0.8;
 const ROW_IMAGES: usize = 64;
 /// The declared tile's inset around the icon, the ring included.
 const DECLARED_PAD: f32 = 1.0;
@@ -2661,7 +2663,9 @@ impl Launcher {
             IconStyle {
                 size: ROW_ICON,
                 radius: th.chip_radius() / 1.5,
+                crop: true,
                 glyph_size: theme::SEARCH_ICON + 2.0,
+                text_size: ROW_ICON * ROW_EMOJI_SCALE,
                 color: th.accent,
             },
             &self.row_images,

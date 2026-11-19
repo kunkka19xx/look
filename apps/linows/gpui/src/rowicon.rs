@@ -1,24 +1,22 @@
 //! One renderer for list icons and preview headers, including decode failures.
 
-use std::sync::Arc;
-
 use gpui::{
-    AnyElement, App, Entity, ObjectFit, RenderImage, Rgba, SharedString, div, img, prelude::*, px,
-    svg,
+    AnyElement, App, Entity, ObjectFit, Rgba, SharedString, Window, div, img, prelude::*, px, svg,
 };
 
 use crate::icons::{IconRequest, IconStore};
 use crate::imagecache::PreviewImages;
 use crate::rows::{Icon, Row};
 
-/// Emoji fills most of its tile while leaving room for its font's bearings.
-const TEXT_ICON_SCALE: f32 = 0.8;
-
 #[derive(Clone, Copy)]
 pub struct IconStyle {
     pub size: f32,
     pub radius: f32,
+    /// A picture on disk fills the tile and loses its overflow, a thumbnail;
+    /// otherwise it is shown whole.
+    pub crop: bool,
     pub glyph_size: f32,
+    pub text_size: f32,
     pub color: Rgba,
 }
 
@@ -39,57 +37,72 @@ pub fn picture(
     icons: &Entity<IconStore>,
     cx: &mut App,
 ) -> AnyElement {
-    let resolved = if needs_resolution(icon) {
-        icons.update(cx, |store, cx| store.get(request(), cx))
-    } else {
-        None
-    };
-    draw(icon, style, images, resolved)
-}
-
-fn needs_resolution(icon: &Icon) -> bool {
     match icon {
-        Icon::Resolve { .. } => true,
-        Icon::File { fallback, .. } => needs_resolution(fallback),
-        Icon::Glyph(_) | Icon::Text(_) => false,
-    }
-}
-
-fn draw(
-    icon: &Icon,
-    style: IconStyle,
-    images: &Entity<PreviewImages>,
-    resolved: Option<Arc<RenderImage>>,
-) -> AnyElement {
-    match (icon, resolved) {
-        (Icon::Resolve { .. }, Some(image)) => img(image).size(px(style.size)).into_any_element(),
-        (Icon::Resolve { glyph } | Icon::Glyph(glyph), _) => svg()
-            .path(*glyph)
-            .size(px(style.glyph_size))
-            .text_color(style.color)
-            .into_any_element(),
-        (Icon::File { path, fallback }, resolved) => {
-            let fallback = fallback.clone();
-            let fallback_images = images.clone();
+        Icon::Resolve { glyph } => match icons.update(cx, |store, cx| store.get(request(), cx)) {
+            Some(image) => img(image).size(px(style.size)).into_any_element(),
+            None => glyph_icon(glyph, style),
+        },
+        Icon::Glyph(glyph) => glyph_icon(glyph, style),
+        Icon::File { path, fallback } => {
+            let fallback = Fallback {
+                icon: fallback.as_ref().clone(),
+                request: request(),
+                style,
+                images: images.clone(),
+                icons: icons.clone(),
+            };
             img(path.clone())
                 .image_cache(images)
                 .size(px(style.size))
                 .rounded(px(style.radius))
-                .object_fit(ObjectFit::Contain)
-                .with_fallback(move || {
-                    div()
-                        .size(px(style.size))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(draw(&fallback, style, &fallback_images, resolved.clone()))
-                        .into_any_element()
+                .object_fit(if style.crop {
+                    ObjectFit::Cover
+                } else {
+                    ObjectFit::Contain
                 })
+                .with_fallback(move || fallback.clone().into_any_element())
                 .into_any_element()
         }
-        (Icon::Text(text), _) => div()
-            .text_size(px(style.size * TEXT_ICON_SCALE))
+        Icon::Text(text) => div()
+            .text_size(px(style.text_size))
             .child(SharedString::from(text.clone()))
             .into_any_element(),
+    }
+}
+
+fn glyph_icon(glyph: &'static str, style: IconStyle) -> AnyElement {
+    svg()
+        .path(glyph)
+        .size(px(style.glyph_size))
+        .text_color(style.color)
+        .into_any_element()
+}
+
+/// What stands in for a picture that did not load. It is built only then, so
+/// a row whose picture loads never asks the icon store for the one behind it.
+#[derive(Clone, IntoElement)]
+struct Fallback {
+    icon: Icon,
+    request: IconRequest,
+    style: IconStyle,
+    images: Entity<PreviewImages>,
+    icons: Entity<IconStore>,
+}
+
+impl RenderOnce for Fallback {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let Self {
+            icon,
+            request,
+            style,
+            images,
+            icons,
+        } = self;
+        div()
+            .size(px(style.size))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(picture(&icon, || request, style, &images, &icons, cx))
     }
 }

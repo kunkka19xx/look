@@ -72,6 +72,8 @@ const LINE_PIECE_BYTES: usize = 512;
 const TEXT_OVERDRAW: f32 = 200.0;
 const HEADER_ICON: f32 = 48.0;
 const HEADER_ICON_RADIUS: f32 = 8.0;
+/// An emoji in the header tile sits near the size of the glyphs beside it.
+const HEADER_EMOJI_SCALE: f32 = 0.6;
 const HEADER_GAP: f32 = 10.0;
 const HEADER_MARGIN: f32 = 14.0;
 const BADGE_PADDING_X: f32 = 8.0;
@@ -744,7 +746,9 @@ impl Preview {
                             IconStyle {
                                 size: HEADER_ICON,
                                 radius: HEADER_ICON_RADIUS,
+                                crop: false,
                                 glyph_size: HEADER_ICON / 2.0,
+                                text_size: HEADER_ICON * HEADER_EMOJI_SCALE,
                                 color: th.accent,
                             },
                             &self.row_images,
