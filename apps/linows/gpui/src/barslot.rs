@@ -1,6 +1,7 @@
 //! The slot at the right end of the top bar, holding what `bar_slot` says.
 //! Read on each open; hidden in the compact layout and while translating.
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -41,11 +42,15 @@ pub fn pins() -> std::sync::MutexGuard<'static, Vec<Pin>> {
     PINS.lock().unwrap_or_else(|p| p.into_inner())
 }
 
-fn pinned_value() -> String {
-    theme::entries()
+fn pinned_in(entries: &HashMap<String, String>) -> String {
+    entries
         .get(bar_slot::PINNED_APPS_KEY)
         .cloned()
         .unwrap_or_default()
+}
+
+fn pinned_value() -> String {
+    pinned_in(&theme::entries())
 }
 
 pub fn is_pinned(id: &str) -> bool {
@@ -71,9 +76,13 @@ fn toggled(mut ids: Vec<String>, id: &str) -> (Vec<String>, PinChange) {
     }
 }
 
-/// Writes the config; the caller loads it and refreshes the bar.
+/// Writes the config; the caller loads it and refreshes the bar. Starts from
+/// the file, one toggle at a time, so two in a row both land.
 pub fn toggle_pin(id: &str) -> Result<PinChange, String> {
-    let (ids, change) = toggled(config_list::parse(&pinned_value()), id);
+    static TOGGLING: Mutex<()> = Mutex::new(());
+    let _toggling = TOGGLING.lock().unwrap_or_else(|p| p.into_inner());
+    let saved = pinned_in(&theme::read_entries());
+    let (ids, change) = toggled(config_list::parse(&saved), id);
     if change != PinChange::Full {
         config::set_config(vec![ConfigUpdate {
             key: bar_slot::PINNED_APPS_KEY.into(),
@@ -133,6 +142,13 @@ pub fn script_result(command: &str) -> Option<Result<String, String>> {
         .map(|(_, result)| result.clone())
 }
 
+fn script_command() -> String {
+    theme::entries()
+        .get(bar_slot::SCRIPT_KEY)
+        .map(|c| c.trim().to_string())
+        .unwrap_or_default()
+}
+
 fn script_text(command: &str) -> Option<SharedString> {
     script_result(command)
         .and_then(Result::ok)
@@ -142,14 +158,8 @@ fn script_text(command: &str) -> Option<SharedString> {
 
 impl Bar {
     pub fn refresh(&mut self, cx: &mut Context<Launcher>) {
-        let entries = theme::entries();
-        self.slot = BarSlot::from_entries(&entries);
-        let ids = bar_slot::pinned_ids(&pinned_value());
-        if ids.is_empty() {
-            pins().clear();
-        } else {
-            bg::fetch(cx, move || resolve(ids), |_, found, _| *pins() = found);
-        }
+        self.slot = BarSlot::from_entries(&theme::entries());
+        self.refresh_pins(cx);
         match self.slot {
             BarSlot::Running => self.running.refresh(cx),
             BarSlot::Todo => {
@@ -165,10 +175,7 @@ impl Bar {
                 );
             }
             BarSlot::Script => {
-                let command = entries
-                    .get(bar_slot::SCRIPT_KEY)
-                    .map(|c| c.trim().to_string())
-                    .unwrap_or_default();
+                let command = script_command();
                 self.script = script_text(&command);
                 self.run_script(command, cx);
             }
@@ -176,7 +183,26 @@ impl Bar {
         }
     }
 
-    /// One run at a time.
+    pub fn refresh_pins(&mut self, cx: &mut Context<Launcher>) {
+        let ids = bar_slot::pinned_ids(&pinned_value());
+        if ids.is_empty() {
+            pins().clear();
+            return;
+        }
+        bg::fetch(
+            cx,
+            move || resolve(ids),
+            |_, found, _| {
+                let saved = bar_slot::pinned_ids(&pinned_value());
+                if found.iter().map(|pin| &pin.id).eq(&saved) {
+                    *pins() = found;
+                }
+            },
+        );
+    }
+
+    /// One run at a time. The answer goes to the launcher on screen by then,
+    /// not the one that asked: the window is rebuilt on every summon.
     fn run_script(&mut self, command: String, cx: &mut Context<Launcher>) {
         if command.is_empty() {
             return;
@@ -184,26 +210,46 @@ impl Bar {
         if std::mem::replace(&mut script().running, true) {
             return;
         }
-        bg::fetch(
-            cx,
-            move || {
+        cx.spawn(async move |_, cx| {
+            bg::blocking(move || {
                 let result = bar_slot::script_line(&command);
                 *script() = Script {
-                    last: Some((command.clone(), result)),
+                    last: Some((command, result)),
                     running: false,
                 };
-                command
-            },
-            |this, command, _| this.bar.script = script_text(&command),
-        );
+            })
+            .get()
+            .await;
+            cx.update(|cx| {
+                crate::with_launcher(cx, |this, cx| {
+                    this.bar.script_finished(cx);
+                    cx.notify();
+                })
+            });
+        })
+        .detach();
+    }
+
+    /// Runs again when the command changed while the last one ran.
+    fn script_finished(&mut self, cx: &mut Context<Launcher>) {
+        if self.slot != BarSlot::Script {
+            return;
+        }
+        let command = script_command();
+        self.script = script_text(&command);
+        if script_result(&command).is_none() {
+            self.run_script(command, cx);
+        }
     }
 
     /// Alt+digit.
     pub fn activate_key(&self, key: u8, shell: &Shell, cx: &mut Context<Launcher>) -> bool {
         match self.slot {
             BarSlot::Running => self.running.activate_key(key, shell, cx),
-            BarSlot::Pinned => running::key_position(shown(&pins()).count(), key)
-                .is_some_and(|at| open_pin(at, shell)),
+            BarSlot::Pinned => {
+                let count = shown(&pins()).count();
+                running::key_position(count, key).is_some_and(|at| open_pin(at, shell))
+            }
             _ => false,
         }
     }

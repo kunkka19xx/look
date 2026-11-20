@@ -1232,7 +1232,7 @@ impl Launcher {
                     Err(err) => (format!("Pin failed: {err}"), Tone::Error),
                 };
                 theme::load();
-                this.bar.refresh(cx);
+                this.bar.refresh_pins(cx);
                 this.banner.show(text, tone, banner::MEDIUM, cx);
             },
         );
