@@ -144,27 +144,7 @@ impl RunningApps {
                         .text_color(th.text_muted)
                         .into_any_element(),
                 });
-            let badge = div()
-                .absolute()
-                .top(px(BADGE_OFFSET))
-                .right(px(BADGE_OFFSET))
-                .size(px(BADGE))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(BADGE / 2.0))
-                .bg(theme::wash(
-                    th.card_face(),
-                    theme::scrim_for(th.text),
-                    SCRIM_ALPHA,
-                ))
-                .border(px(1.0))
-                .border_color(theme::mix(th.text, th.border, 0.45))
-                .font_family(th.mono_family.clone())
-                .text_size(px(BADGE_FONT))
-                .font_weight(FontWeight::BOLD)
-                .text_color(th.text)
-                .child(SharedString::from(keys[i].to_string()));
+            let badge = key_badge(keys[i], th);
             // Each tile slides in from the left behind the bar, staggered.
             let delay = motion::slide_delay(i);
             let duration = motion::dur(motion::SLIDE_MS);
@@ -199,6 +179,31 @@ impl RunningApps {
                 .children(items),
         )
     }
+}
+
+/// The digit an icon answers to, on its top right corner.
+pub fn key_badge(key: u8, th: &Theme) -> Div {
+    div()
+        .absolute()
+        .top(px(BADGE_OFFSET))
+        .right(px(BADGE_OFFSET))
+        .size(px(BADGE))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(BADGE / 2.0))
+        .bg(theme::wash(
+            th.card_face(),
+            theme::scrim_for(th.text),
+            SCRIM_ALPHA,
+        ))
+        .border(px(1.0))
+        .border_color(theme::mix(th.text, th.border, 0.45))
+        .font_family(th.mono_family.clone())
+        .text_size(px(BADGE_FONT))
+        .font_weight(FontWeight::BOLD)
+        .text_color(th.text)
+        .child(SharedString::from(key.to_string()))
 }
 
 #[cfg(test)]

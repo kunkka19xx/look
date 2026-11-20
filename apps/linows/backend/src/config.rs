@@ -173,6 +173,10 @@ fn default_config_contents() -> String {
          # How much snow falls with them: 1, 1.25, 1.5 or 2 times the default.\n\
          christmas_snow=1\n\
          \n\
+         # The digits on the result rows, the ones Ctrl+1..9 open. false hides\n\
+         # them; the chords still work.\n\
+         row_digits=true\n\
+         \n\
          # The hint line along the bottom and the author link. false hides both.\n\
          hints_enabled=true\n\
          \n\

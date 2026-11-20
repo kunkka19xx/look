@@ -148,6 +148,14 @@ const SUPER_ACTIONS: Switch = Switch {
     off: "false",
     default_on: false,
 };
+const ROW_DIGITS: Switch = Switch {
+    id: "settings-row-digits",
+    key: theme::ROW_DIGITS_KEY,
+    label: "Row Digits",
+    on: "true",
+    off: "false",
+    default_on: true,
+};
 /// Saved only: the motion pass (M7) reads it.
 const ANIMATIONS: Switch = Switch {
     id: "settings-animations",
@@ -334,7 +342,7 @@ static SLIDERS: [&Slider; 18] = [
 ];
 
 /// The keys this screen owns besides the sliders'.
-const KEYS: [&str; 10] = [
+const KEYS: [&str; 11] = [
     THEME_KEY,
     SURFACE_KEY,
     LAYOUT_KEY,
@@ -342,6 +350,7 @@ const KEYS: [&str; 10] = [
     BLUR_STYLE_KEY,
     RUNNING_APPS.key,
     SUPER_ACTIONS.key,
+    ROW_DIGITS.key,
     ANIMATIONS.key,
     CHRISTMAS.key,
     theme::SNOW_AMOUNT_KEY,
@@ -1317,7 +1326,8 @@ impl Settings {
                 line()
                     .when(split, |el| el.child(switch(&RUNNING_APPS)))
                     .when(split, |el| el.child(switch(&SUPER_ACTIONS)))
-                    .child(switch(&ANIMATIONS)),
+                    .child(switch(&ANIMATIONS))
+                    .child(switch(&ROW_DIGITS)),
             )
     }
 

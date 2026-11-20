@@ -105,6 +105,7 @@ const DIVIDER_ALPHA: f32 = 0.32;
 pub const DEFAULT_THEME: &str = "kanagawa";
 /// Off unless the user turned it on, as the webview reads it.
 const LAUNCHPAD_KEY: &str = "super_actions_enabled";
+pub const ROW_DIGITS_KEY: &str = "row_digits";
 pub const CUSTOM_THEME: &str = "custom";
 const LAYOUT_KEY: &str = "layout";
 pub const BG_IMAGE_KEY: &str = "ui_bg_image";
@@ -516,6 +517,8 @@ pub struct Theme {
     pub layout: LauncherLayout,
     /// `super_actions_enabled`: whether the empty query shows the launchpad.
     pub launchpad: bool,
+    /// `row_digits`: the Ctrl+digit badges on the rows, on unless turned off.
+    pub row_digits: bool,
     /// `ui_bg_image`: a picture under the cards, above the tint.
     pub bg_image: Option<PathBuf>,
     pub bg_layout: BgLayout,
@@ -692,6 +695,7 @@ impl Theme {
                     .unwrap_or_default(),
             ),
             launchpad: get(LAUNCHPAD_KEY) == Some("true"),
+            row_digits: get(ROW_DIGITS_KEY) != Some("false"),
             bg_image: get(BG_IMAGE_KEY).map(PathBuf::from),
             bg_layout: get(BG_LAYOUT_KEY)
                 .and_then(BgLayout::parse)

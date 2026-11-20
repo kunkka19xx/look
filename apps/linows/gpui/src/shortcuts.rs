@@ -191,6 +191,11 @@ fn build() -> Vec<Group> {
                 ),
                 Entry::new(MOVE_ARROWS, "Up / Down", "Move selection"),
                 Entry::new(
+                    "main.openByDigit",
+                    "Ctrl+1..9",
+                    "Open the row whose icon shows that digit",
+                ),
+                Entry::new(
                     ACTIONS,
                     "Ctrl+K / Ctrl+J",
                     "Show the selected result's actions; inside it, Ctrl+J / Ctrl+K move, Esc closes",
