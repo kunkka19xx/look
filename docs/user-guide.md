@@ -543,6 +543,15 @@ Behavior:
 
 Saved as `running_apps_placement=<value>` in `~/.look/config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
 
+On Linux and Windows the switch is a **Search Bar** dropdown, because that end of the bar can hold other things:
+
+- **Running Apps** - everything above.
+- **Today's Task** - one of today's unfinished tasks, picked anew each time the launcher opens, with the day's count beside it (`1/3`). Click it to open `/todo`. With nothing planned it reads `Plan today`.
+- **Script** - the first line a command of yours prints. The command is `bar_script` in `~/.look/config`: either a one-liner such as `bar_script=date +"%H:%M  %a %d"`, or the path of a script of your own, such as `bar_script=~/.look/bin/bar.sh`, when it needs more than a line. Reload the config after editing it. It runs once each time the launcher opens, in your shell, for 2 seconds at most. The bar keeps the last line until the new one arrives and stays empty if the command fails or prints nothing; Settings shows the command and, beside it, its last line or the reason it failed.
+- **Nothing** - the search bar spans the full width.
+
+Only Running Apps takes the `Alt` digits. Saved as `bar_slot=running|todo|script|none` and `bar_script=<command>`. A config that has no `bar_slot` yet keeps the bar `running_apps_placement` gave it.
+
 **Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`; off by default. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/super-actions.toml`; see [Rearranging the strip](#rearranging-the-strip).
 
 **Animations**: a switch for the launcher's motion, the arrival cascade, the entrance staggers, the selection glide and the caret glide. Off shows every change instantly; the caret still blinks and the answer spinner still turns, since those read as state rather than motion. With it on, the OS preference is still respected (macOS Reduce Motion, the desktop's reduce-motion setting on Linux), except on Windows, where the flag tracks the "best performance" visual-effects preset rather than motion sensitivity. Saved as `animations_enabled=true|false`.

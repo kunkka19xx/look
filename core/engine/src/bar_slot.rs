@@ -1,7 +1,5 @@
-//! What sits at the right end of the search bar: the running apps, the apps
-//! the user pinned, one of today's tasks, a line a script printed, or nothing.
-//! The shells draw it; the names, the fallback from the old key and the
-//! script's limits live here so they cannot drift apart.
+//! What the right end of the search bar holds. The shells draw it; the
+//! names, the old key's fallback and the script's limits live here.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -9,7 +7,7 @@ use std::time::Duration;
 pub const SLOT_KEY: &str = "bar_slot";
 pub const PINNED_APPS_KEY: &str = "pinned_apps";
 pub const SCRIPT_KEY: &str = "bar_script";
-/// The on/off key the slot replaces. Read when `bar_slot` is absent, never written.
+/// Read when `bar_slot` is absent, never written.
 pub const LEGACY_PLACEMENT_KEY: &str = "running_apps_placement";
 const LEGACY_PLACEMENT_NONE: &str = "none";
 
@@ -38,8 +36,7 @@ impl BarSlot {
         BarSlot::None,
     ];
 
-    /// The config spelling.
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             BarSlot::Running => "running",
             BarSlot::Pinned => "pinned",
@@ -49,8 +46,7 @@ impl BarSlot {
         }
     }
 
-    /// A config written before `bar_slot` existed keeps the bar it had; a
-    /// value this build does not know reads as the default.
+    /// An unknown value reads as the default.
     pub fn from_entries(entries: &HashMap<String, String>) -> Self {
         let value = |key: &str| {
             entries
@@ -71,15 +67,14 @@ impl BarSlot {
     }
 }
 
-/// The `pinned_apps` value as candidate ids, in bar order.
 pub fn pinned_ids(value: &str) -> Vec<String> {
     let mut ids = crate::config::parse_csv(value);
     ids.truncate(MAX_PINNED);
     ids
 }
 
-/// The first line `command` prints, or why there is none. Empty when it
-/// printed nothing. Blocks for up to the timeout, so never call it on a UI thread.
+/// The first line `command` prints, empty when it printed nothing. Blocks
+/// for up to the timeout.
 pub fn script_line(command: &str) -> Result<String, String> {
     first_line(command, SCRIPT_TIMEOUT)
 }
@@ -98,8 +93,7 @@ fn first_line(command: &str, timeout: Duration) -> Result<String, String> {
 const ESCAPE: char = '\u{1b}';
 const BELL: char = '\u{7}';
 
-/// A shell config that sets the terminal title, or a command that colors its
-/// output, writes escape sequences the bar would show as stray characters.
+/// A shell config that sets the terminal title prints one ahead of the output.
 fn without_terminal_codes(text: &str) -> String {
     let mut plain = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
@@ -111,7 +105,7 @@ fn without_terminal_codes(text: &str) -> String {
             continue;
         }
         match chars.next() {
-            // `ESC ] text`, closed by a bell or by `ESC \`.
+            // Title: closed by a bell or `ESC \`.
             Some(']') => {
                 while let Some(inner) = chars.next() {
                     if inner == BELL || (inner == ESCAPE && chars.next_if_eq(&'\\').is_some()) {
@@ -119,7 +113,7 @@ fn without_terminal_codes(text: &str) -> String {
                     }
                 }
             }
-            // `ESC [ parameters`, closed by its first letter or symbol from `@` on.
+            // Color and cursor: closed by the first byte from `@` on.
             Some('[') => {
                 for inner in chars.by_ref() {
                     if ('@'..='~').contains(&inner) {

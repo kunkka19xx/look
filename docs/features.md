@@ -87,6 +87,7 @@ This document tracks what `look` supports today and what is planned next.
 - click on an icon also switches; hover shows app name + shortcut tooltip; active app has an accent ring
 - toggled on/off via `Settings > Appearance > Running Apps`. Persisted as `running_apps_placement` in `~/.look/config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` still load as "on"). The window is a single fixed size and never resizes for the row
 - off hides the row and disables the activation shortcut
+- **Linux, Windows**: the row is one of several things that end of the bar can hold. `Settings > Appearance > Search Bar` picks between the running apps, one of today's unfinished tasks with the day's count (a click opens `/todo`), the first line a command of yours prints, or nothing. Saved as `bar_slot` (`running`, `todo`, `script`, `none`) and `bar_script`. A config without `bar_slot` keeps what `running_apps_placement` gave it. The script runs once each time the launcher opens, for 2 seconds at most; the bar shows its last line until the new one arrives, and stays empty when it fails or prints nothing
 - AI mode (`>`) hides the row too, and hands `Cmd+1`..`Cmd+9` plus `Cmd+0` to the conversation list: the digit opens the session carrying that chip. Ten chips is the ceiling (a `Cmd` chord is one keypress), so the list shows ten and older sessions are found by typing
 
 ### Super actions

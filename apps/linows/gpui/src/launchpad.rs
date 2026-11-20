@@ -115,8 +115,6 @@ const UPTIME: &str = "Uptime";
 const PLAYPAUSE: &str = "playpause";
 const NEXT: &str = "next";
 const PREVIOUS: &str = "previous";
-/// The todo store keys days like this.
-const DAY_KEY: &str = "%Y-%m-%d";
 const TIME_FORMAT: &str = "%H:%M";
 /// "Mon, Oct 6", what the webview's short locale date gives.
 const DATE_FORMAT: &str = "%a, %b %-d";
@@ -159,13 +157,6 @@ struct Control {
     value: Option<String>,
     charging: bool,
     reason: Option<String>,
-}
-
-#[derive(Default)]
-struct TodoToday {
-    done: usize,
-    total: usize,
-    open: Vec<String>,
 }
 
 /// What the L slot shows, by priority: a running Pomodoro, today's open
@@ -251,7 +242,7 @@ pub struct Launchpad {
     last_internal: bool,
     lunar: Option<LunarDate>,
     lunar_day: Option<NaiveDate>,
-    todo: TodoToday,
+    todo: crate::todo::Today,
     task_cursor: usize,
     /// None until the first read; a tile with no entry after that is hidden.
     custom: Option<HashMap<String, TileValue>>,
@@ -304,7 +295,7 @@ impl Launchpad {
             last_internal: false,
             lunar: None,
             lunar_day: None,
-            todo: TodoToday::default(),
+            todo: crate::todo::Today::default(),
             task_cursor: 0,
             custom: None,
             images: HashMap::new(),
@@ -513,17 +504,7 @@ impl Launchpad {
                 cx,
                 || todo::todo_list().unwrap_or_default(),
                 |this, tasks, _| {
-                    let today = Local::now().format(DAY_KEY).to_string();
-                    let mine: Vec<_> = tasks.into_iter().filter(|t| t.due_date == today).collect();
-                    this.todo = TodoToday {
-                        done: mine.iter().filter(|t| t.done).count(),
-                        total: mine.len(),
-                        open: mine
-                            .into_iter()
-                            .filter(|t| !t.done)
-                            .map(|t| t.name)
-                            .collect(),
-                    };
+                    this.todo = crate::todo::Today::of(tasks);
                     this.task_cursor = 0;
                 },
             );

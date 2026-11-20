@@ -29,6 +29,7 @@ use linows_backend::{
 use crate::actions::{self, ActionId, Menu};
 use crate::answers::{self, AiAnswer};
 use crate::banner::{self, Banner, Message};
+use crate::barslot::Bar;
 use crate::bg;
 use crate::bgimage::{self, Backdrop};
 use crate::bindings::{self, Scope};
@@ -51,7 +52,6 @@ use crate::qactions::Press;
 use crate::query;
 use crate::rowicon::{self, IconStyle};
 use crate::rows::{Open, Row};
-use crate::running::RunningApps;
 use crate::search::{Changed, SearchInput, input_for, search_field};
 use crate::settings::{self, Settings};
 use crate::shortcuts::{self, Hint, Piece};
@@ -237,7 +237,7 @@ pub struct Launcher {
     picked: Picked,
     confirm: Option<Confirm>,
     menu: Option<Menu>,
-    pub(crate) running: RunningApps,
+    pub(crate) bar: Bar,
     pub(crate) ai: AiAnswer,
     /// The last autocomplete fetch: a search that re-runs for the same
     /// query (a keystroke undone, the index refreshing) takes it as is.
@@ -375,7 +375,7 @@ impl Launcher {
             picked: Picked::default(),
             confirm: None,
             menu: None,
-            running: RunningApps::default(),
+            bar: Bar::default(),
             ai: AiAnswer::default(),
             suggestions: None,
             commands: Commands::new(command_input),
@@ -412,7 +412,7 @@ impl Launcher {
         };
         // Issues reported before this window existed.
         this.set_health(linows_backend::health::get_health_issues(), cx);
-        this.running.refresh(cx);
+        this.bar.refresh(cx);
         // The blocks' names and icons, and whether the web answers are on.
         bg::fetch(
             cx,
@@ -862,14 +862,14 @@ impl Launcher {
             }
             return;
         }
-        // Alt+digit: a running app.
+        // Alt+digit: the bar's slot.
         if ks.modifiers.alt
             && !ctrl
             && !shift
             && let Some(digit) = ks.key.chars().next().and_then(|c| c.to_digit(10))
             && (1..=9).contains(&digit)
             && theme::get().split()
-            && self.running.activate_key(digit as u8, &self.shell, cx)
+            && self.bar.activate_key(digit as u8, &self.shell, cx)
         {
             cx.stop_propagation();
             return;
@@ -1109,7 +1109,7 @@ impl Launcher {
         if self.settings_open {
             self.settings.reload(cx);
         }
-        self.running.refresh(cx);
+        self.bar.refresh(cx);
         // The drawing is read here too: it is the file most likely to be
         // mid-edit when the chord is pressed, and a broken one falls back to
         // the default, so the banner is the only sign anything happened.
@@ -1180,7 +1180,7 @@ impl Launcher {
                         fonts::ensure_family(cx, &theme::get().font_family);
                         crate::hotkey::set_active(true);
                         this.settings.reload(cx);
-                        this.running.refresh(cx);
+                        this.bar.refresh(cx);
                         this.banner.show(
                             FRESH_CONFIG_DONE.into(),
                             Tone::Success,
@@ -1212,6 +1212,12 @@ impl Launcher {
     }
 
     // --- Command screen --------------------------------------------------------
+
+    pub(crate) fn open_todo(&mut self, cx: &mut Context<Self>) {
+        if let Some(index) = Commands::index_of(crate::commands::TODO_ID) {
+            self.enter_command_mode(index, "", cx);
+        }
+    }
 
     fn enter_command_mode(&mut self, index: usize, prefill: &str, cx: &mut Context<Self>) {
         self.close_menu();
@@ -2448,9 +2454,9 @@ impl Launcher {
         } else {
             SharedString::default()
         };
-        // The strip steps aside for the translate panel and the compact layout.
+        // The slot steps aside for the translate panel and the compact layout.
         let strip = (th.split() && self.mode != Mode::Translate)
-            .then(|| self.running.render(&self.icons, th, cx))
+            .then(|| self.bar.render(&self.icons, th, cx))
             .flatten();
         let bar = div()
             .map(|el| {
@@ -2612,11 +2618,7 @@ impl Launcher {
                 this.todo_hovered = *hovered;
                 cx.notify();
             }))
-            .on_click(cx.listener(|this, _, _, cx| {
-                if let Some(index) = Commands::index_of("todo") {
-                    this.enter_command_mode(index, "", cx);
-                }
-            }))
+            .on_click(cx.listener(|this, _, _, cx| this.open_todo(cx)))
             .child(
                 svg()
                     .path(glyphs::LIST_CHECKS)

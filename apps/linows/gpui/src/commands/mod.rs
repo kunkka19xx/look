@@ -12,6 +12,8 @@ mod speed;
 mod sys;
 mod todo;
 
+pub use todo::ID as TODO_ID;
+
 use gpui::{
     AnyElement, Context, Div, Entity, FontWeight, SharedString, deferred, div, prelude::*, px, svg,
 };

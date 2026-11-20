@@ -1,7 +1,5 @@
-//! The running apps strip at the right end of the top bar: up to nine
-//! icons, each wearing the digit that activates it with Alt. Read on each
-//! open; hidden in the compact layout, while translating, and when the
-//! `running_apps_placement` setting says none.
+//! The running apps strip: up to nine icons, each wearing the digit that
+//! activates it with Alt. Drawn by `barslot`.
 
 use gpui::{
     Animation, AnimationExt, Context, Div, FontWeight, SharedString, div, img, prelude::*, px, svg,
@@ -25,13 +23,13 @@ const BADGE_OFFSET: f32 = -4.0;
 const BADGE_FONT: f32 = 9.0;
 const ICON_OPACITY: f32 = 0.82;
 const SCRIM_ALPHA: f32 = 0.72;
-const PLACEMENT_KEY: &str = "running_apps_placement";
-const PLACEMENT_NONE: &str = "none";
+
+/// The strip at its fullest.
+pub const FULL_WIDTH: f32 = MAX_ITEMS as f32 * theme::TOP_ROW_HEIGHT + (MAX_ITEMS - 1) as f32 * GAP;
 
 #[derive(Default)]
 pub struct RunningApps {
     apps: Vec<RunningApp>,
-    enabled: bool,
 }
 
 /// The keys the first `total` apps answer to, in display order.
@@ -42,35 +40,20 @@ fn badge_keys(total: usize) -> Vec<u8> {
 }
 
 impl RunningApps {
-    /// The setting, then the list, off the UI thread.
     pub fn refresh(&mut self, cx: &mut Context<Launcher>) {
         bg::fetch(
             cx,
             || {
-                let enabled = crate::theme::entries()
-                    .get(PLACEMENT_KEY)
-                    .is_none_or(|v| v != PLACEMENT_NONE);
-                let apps = if enabled {
-                    let mut apps = process::list_running_apps();
-                    apps.truncate(MAX_ITEMS);
-                    apps
-                } else {
-                    Vec::new()
-                };
-                (enabled, apps)
+                let mut apps = process::list_running_apps();
+                apps.truncate(MAX_ITEMS);
+                apps
             },
-            |this, (enabled, apps), _| {
-                this.running.enabled = enabled;
-                this.running.apps = apps;
-            },
+            |this, apps, _| this.bar.running.apps = apps,
         );
     }
 
     /// Alt+digit. True when an app answered to it.
     pub fn activate_key(&self, key: u8, shell: &Shell, cx: &mut Context<Launcher>) -> bool {
-        if !self.enabled {
-            return false;
-        }
         let keys = badge_keys(self.apps.len());
         let Some(at) = keys.iter().position(|k| *k == key) else {
             return false;
@@ -104,7 +87,7 @@ impl RunningApps {
         th: &Theme,
         cx: &mut Context<Launcher>,
     ) -> Option<Div> {
-        if !self.enabled || self.apps.is_empty() {
+        if self.apps.is_empty() {
             return None;
         }
         let keys = badge_keys(self.apps.len());
@@ -176,7 +159,9 @@ impl RunningApps {
                 .cursor_pointer()
                 .hover(|s| s.opacity(1.0))
                 .on_click(
-                    cx.listener(move |this, _, _, cx| this.running.activate(i, &this.shell, cx)),
+                    cx.listener(move |this, _, _, cx| {
+                        this.bar.running.activate(i, &this.shell, cx)
+                    }),
                 )
                 .child(icon)
                 .child(badge)

@@ -40,6 +40,29 @@ pub struct Task {
 
 pub type Days = BTreeMap<NaiveDate, Vec<Task>>;
 
+#[derive(Default)]
+pub struct Today {
+    pub done: usize,
+    pub total: usize,
+    pub open: Vec<String>,
+}
+
+impl Today {
+    pub fn of(tasks: Vec<TodoTask>) -> Self {
+        let day = Local::now().format(DAY_KEY).to_string();
+        let mine: Vec<_> = tasks.into_iter().filter(|t| t.due_date == day).collect();
+        Self {
+            done: mine.iter().filter(|t| t.done).count(),
+            total: mine.len(),
+            open: mine
+                .into_iter()
+                .filter(|t| !t.done)
+                .map(|t| t.name)
+                .collect(),
+        }
+    }
+}
+
 #[derive(Clone)]
 struct Snapshot {
     days: Days,
