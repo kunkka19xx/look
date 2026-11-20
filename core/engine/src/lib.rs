@@ -1,4 +1,5 @@
 pub mod action;
+pub mod bar_slot;
 pub mod config;
 pub mod config_path;
 pub mod connectors;
