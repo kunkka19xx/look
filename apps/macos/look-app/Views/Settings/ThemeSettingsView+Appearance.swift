@@ -29,7 +29,9 @@ extension ThemeSettingsView {
                             appearanceSwitch(
                                 "Christmas",
                                 isOn: $settings.christmasDecorations,
-                                help: "Falling snow, glowing lights behind the panels, a tree behind the results and a snowman search icon, over any theme.")
+                                help:
+                                    "Falling snow, glowing lights behind the panels, a tree behind the results and a snowman search icon, over any theme."
+                            )
 
                             if settings.christmasDecorations {
                                 Picker("Snow", selection: $settings.christmasSnowAmount) {
@@ -66,7 +68,9 @@ extension ThemeSettingsView {
                         appearanceSwitch(
                             "Animations",
                             isOn: $settings.animationsEnabled,
-                            help: "Animate the launcher when it opens and as the selection moves. Off shows every change instantly.")
+                            help:
+                                "Animate the launcher when it opens and as the selection moves. Off shows every change instantly."
+                        )
                     }
                 }
 
@@ -90,14 +94,20 @@ extension ThemeSettingsView {
                 LabeledSlider(
                     title: "Inner Gap",
                     value: $settings.innerGap,
-                    range: AppConstants.ThemeUI.innerGapRange)
-                    .help("i3-style gap between the top row, results list and preview. 0 = flat layout; higher turns each into its own card.")
+                    range: AppConstants.ThemeUI.innerGapRange
+                )
+                .help(
+                    "i3-style gap between the top row, results list and preview. 0 = flat layout; higher turns each into its own card."
+                )
 
                 LabeledSlider(
                     title: "Corner Radius",
                     value: $settings.surfaceRadius,
-                    range: AppConstants.ThemeUI.surfaceRadiusRange)
-                    .help("Corner rounding, shared by every surface: the panel, the top bar, the launchpad tiles and the controls. 0 = square.")
+                    range: AppConstants.ThemeUI.surfaceRadiusRange
+                )
+                .help(
+                    "Corner rounding, shared by every surface: the panel, the top bar, the launchpad tiles and the controls. 0 = square."
+                )
 
                 sectionHeader("Tint Color")
 
@@ -234,9 +244,11 @@ extension ThemeSettingsView {
                     settings.layout = option
                 } label: {
                     Text(option.title)
-                        .font(themeStore.uiFont(
-                            size: CGFloat(settings.fontSize - 1),
-                            weight: saved ? .semibold : .regular))
+                        .font(
+                            themeStore.uiFont(
+                                size: CGFloat(settings.fontSize - 1),
+                                weight: saved ? .semibold : .regular)
+                        )
                         .foregroundStyle(saved ? themeStore.onAccentColor() : themeStore.secondaryTextColor())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 3)
@@ -265,7 +277,9 @@ extension ThemeSettingsView {
             RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
                 .stroke(themeStore.dividerColor(), lineWidth: 1)
         )
-        .help("Split shows results beside a preview; Compact is a smaller window with results only. ⌘⇧C switches for this session only, and rings the one in use.")
+        .help(
+            "Split shows results beside a preview; Compact is a smaller window with results only. ⌘⇧C switches for this session only, and rings the one in use."
+        )
     }
 
     private var suggestionCornerRadius: CGFloat {

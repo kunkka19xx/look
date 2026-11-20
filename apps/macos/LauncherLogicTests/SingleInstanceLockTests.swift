@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 final class SingleInstanceLockTests: XCTestCase {

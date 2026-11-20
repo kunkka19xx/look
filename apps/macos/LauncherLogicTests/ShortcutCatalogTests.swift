@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// The catalog is the single source both the help screen and Settings render,

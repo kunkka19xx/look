@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// The launchpad layout crosses the FFI as JSON and is decoded here with

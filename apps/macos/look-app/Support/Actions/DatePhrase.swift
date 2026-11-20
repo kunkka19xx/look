@@ -16,7 +16,8 @@ nonisolated enum DatePhrase {
             // NSDataDetector reads "sunday at 5pm" but trips on "sunday @ 5pm".
             "@": "at",
         ]
-        return text
+        return
+            text
             .split(separator: " ", omittingEmptySubsequences: false)
             .map { token -> String in
                 let lower = token.lowercased()
@@ -33,8 +34,10 @@ nonisolated enum DatePhrase {
     static func resolve(_ phrase: String) -> Date? {
         let trimmed = normalizeShorthand(phrase.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !trimmed.isEmpty else { return nil }
-        guard let detector = try? NSDataDetector(
-            types: NSTextCheckingResult.CheckingType.date.rawValue) else { return nil }
+        guard
+            let detector = try? NSDataDetector(
+                types: NSTextCheckingResult.CheckingType.date.rawValue)
+        else { return nil }
         let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
         return detector.firstMatch(in: trimmed, options: [], range: range)?.date
     }

@@ -37,7 +37,8 @@ extension LauncherView {
         // first run (or if the persisted id refers to a command no
         // longer in the catalog).
         let preferred = appUIState.lastCommandID ?? AppConstants.Launcher.Command.calc
-        let resolved = commandCatalog.contains { $0.id == preferred }
+        let resolved =
+            commandCatalog.contains { $0.id == preferred }
             ? preferred
             : AppConstants.Launcher.Command.calc
         enterCommandMode(commandID: resolved, prefilledInput: "")
@@ -90,7 +91,7 @@ extension LauncherView {
     /// suggestion row; a URL, calc, prefix, or real result row keeps Enter.
     private var escalationBeatsSelection: Bool {
         guard let selectedResultID,
-              let selected = displayedResults.first(where: { $0.id == selectedResultID })
+            let selected = displayedResults.first(where: { $0.id == selectedResultID })
         else { return true }
         if case .webSuggestion = SyntheticRow.classify(resultID: selected.id) {
             return true
@@ -129,7 +130,9 @@ extension LauncherView {
     }
 
     func handleSubmit() {
-        logUIEvent("submit isCommand=\(isCommandMode) active=\(activeCommandID ?? "nil") selectedKill=\(selectedKillSuggestionIndex.map(String.init) ?? "nil") pendingKill=\(pendingKillCandidate?.displayName ?? "nil") input='\(commandArgsPart)'")
+        logUIEvent(
+            "submit isCommand=\(isCommandMode) active=\(activeCommandID ?? "nil") selectedKill=\(selectedKillSuggestionIndex.map(String.init) ?? "nil") pendingKill=\(pendingKillCandidate?.displayName ?? "nil") input='\(commandArgsPart)'"
+        )
 
         // A highlighted `@`-mention takes Enter as "attach this file". With
         // nothing highlighted this returns false and Enter sends, so the popup
@@ -169,13 +172,15 @@ extension LauncherView {
                 actionController.clearPicker()
             }
             if let choice = actionController.pendingChoice,
-               let number = Int(submitTrimmed),
-               number >= 1, number <= choice.candidates.count {
+                let number = Int(submitTrimmed),
+                number >= 1, number <= choice.candidates.count
+            {
                 actionController.choose(choice.candidates[number - 1])
                 clearQuerySilently()
             } else if chat.sessionItems.isEmpty,
-                      selectedConversationIndex >= 0,
-                      selectedConversationIndex < filteredConversations.count {
+                selectedConversationIndex >= 0,
+                selectedConversationIndex < filteredConversations.count
+            {
                 // A highlighted session opens; otherwise Enter starts a new chat.
                 openConversation(filteredConversations[selectedConversationIndex])
                 clearQuerySilently()
@@ -198,7 +203,9 @@ extension LauncherView {
             if activeCommandID == AppConstants.Launcher.Command.kill, let selectedNum = selectedKillSuggestionIndex {
                 if let candidate = killSuggestions.first(where: { $0.number == selectedNum }) {
                     pendingKillCandidate = candidate
-                    logUIEvent("kill submit -> pending from selected index num=\(selectedNum) candidate=\(candidate.displayName) pid=\(candidate.pid)")
+                    logUIEvent(
+                        "kill submit -> pending from selected index num=\(selectedNum) candidate=\(candidate.displayName) pid=\(candidate.pid)"
+                    )
                 } else {
                     selectedKillSuggestionIndex = nil
                     logUIEvent("kill submit -> stale selection num=\(selectedNum), fallback action")
@@ -215,7 +222,8 @@ extension LauncherView {
                 handleTranslation(command: translationCommand)
                 isQueryFocused = true
             } else if themeStore.settings.aiEnabled, !trimmed.isEmpty, escalationBeatsSelection,
-                      !aiAnswer.isActive {
+                !aiAnswer.isActive
+            {
                 // Never while the answer card is answering: re-asking an
                 // answered question in chat is noise, not help.
                 // Dead-end Enter (nothing real to open): escalate to the AI
@@ -238,7 +246,8 @@ extension LauncherView {
     }
 
     func runCommandModeAction() {
-        let resolvedCommand = commandCatalog.first(where: { $0.id == (activeCommandID ?? "") })
+        let resolvedCommand =
+            commandCatalog.first(where: { $0.id == (activeCommandID ?? "") })
             ?? commandCatalog.first(where: { $0.id == commandNamePart.lowercased() })
             ?? commandCatalog.first(where: { $0.id == selectedCommandID })
 
@@ -341,7 +350,8 @@ extension LauncherView {
     /// here. /pomo standby hides it to keep focus on the clock + music card.
     var showsCommandSidebar: Bool {
         if isCompactLayout { return false }
-        let pomoStandby = activeCommandID == AppConstants.Launcher.Command.pomo
+        let pomoStandby =
+            activeCommandID == AppConstants.Launcher.Command.pomo
             && PomoSharedState.shared.idle
         return !pomoStandby
     }
@@ -359,55 +369,56 @@ extension LauncherView {
         let leftWidth: CGFloat = 170
 
         HStack(spacing: splitSpacing) {
-                if showsCommandSidebar {
-                    CommandListView(
-                        commands: commandCatalog,
-                        selectedID: selectedCommandID,
-                        activeID: activeCommandID,
-                        themeStore: themeStore,
-                        onSelect: selectCommand
-                    )
-                    .frame(width: leftWidth)
-                    .frame(maxHeight: .infinity, alignment: .topLeading)
-                    // Keeps the row tooltip above the panel drawn after it.
-                    .zIndex(1)
+            if showsCommandSidebar {
+                CommandListView(
+                    commands: commandCatalog,
+                    selectedID: selectedCommandID,
+                    activeID: activeCommandID,
+                    themeStore: themeStore,
+                    onSelect: selectCommand
+                )
+                .frame(width: leftWidth)
+                .frame(maxHeight: .infinity, alignment: .topLeading)
+                // Keeps the row tooltip above the panel drawn after it.
+                .zIndex(1)
 
-                    Rectangle()
-                        .fill(themeStore.dividerColor())
-                        .frame(width: dividerWidth)
-                        .padding(.vertical, 2)
+                Rectangle()
+                    .fill(themeStore.dividerColor())
+                    .frame(width: dividerWidth)
+                    .padding(.vertical, 2)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                if let activeCommand {
+                    if activeCommandAcceptsInput {
+                        CommandInputBar(
+                            text: $commandInput,
+                            command: activeCommand,
+                            isQueryFocused: $isQueryFocused,
+                            themeStore: themeStore,
+                            onSubmit: handleSubmit
+                        )
+                    } else if activeCommandID != AppConstants.Launcher.Command.pomo
+                        && activeCommandID != AppConstants.Launcher.Command.todo
+                    {
+                        // /pomo and /todo render their own header inside
+                        // their panels, so skip the redundant outer one.
+                        CommandHeaderBar(
+                            command: activeCommand,
+                            themeStore: themeStore,
+                            subtitle: "Read-only command"
+                        )
+                    }
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    if let activeCommand {
-                        if activeCommandAcceptsInput {
-                            CommandInputBar(
-                                text: $commandInput,
-                                command: activeCommand,
-                                isQueryFocused: $isQueryFocused,
-                                themeStore: themeStore,
-                                onSubmit: handleSubmit
-                            )
-                        } else if activeCommandID != AppConstants.Launcher.Command.pomo
-                            && activeCommandID != AppConstants.Launcher.Command.todo {
-                            // /pomo and /todo render their own header inside
-                            // their panels, so skip the redundant outer one.
-                            CommandHeaderBar(
-                                command: activeCommand,
-                                themeStore: themeStore,
-                                subtitle: "Read-only command"
-                            )
-                        }
-                    }
-
-                    ZStack(alignment: .topLeading) {
-                        // Command mode now has a solid opaque backdrop at
-                        // the launcher level (themedBackground branches on
-                        // isCommandMode), so the previous outer panel-fill
-                        // RoundedRectangle isn't needed - its only purpose
-                        // was layering a card over the visualEffect blur,
-                        // which is no longer present here. Each command
-                        // owns its own card-style backdrops where wanted.
+                ZStack(alignment: .topLeading) {
+                    // Command mode now has a solid opaque backdrop at
+                    // the launcher level (themedBackground branches on
+                    // isCommandMode), so the previous outer panel-fill
+                    // RoundedRectangle isn't needed - its only purpose
+                    // was layering a card over the visualEffect blur,
+                    // which is no longer present here. Each command
+                    // owns its own card-style backdrops where wanted.
 
                     if activeCommandID == AppConstants.Launcher.Command.kill {
                         let defaultKillEmptyMessage = "No matching processes"
@@ -422,39 +433,41 @@ extension LauncherView {
                                 selectedKillSuggestionIndex = candidate.number
                             }
                         )
-                            .onAppear {
-                                if selectedKillSuggestionIndex == nil {
-                                    selectedKillSuggestionIndex = killSuggestions.first?.number
-                                }
+                        .onAppear {
+                            if selectedKillSuggestionIndex == nil {
+                                selectedKillSuggestionIndex = killSuggestions.first?.number
                             }
-                            .padding(8)
-                        } else if activeCommandID == AppConstants.Launcher.Command.sys {
-                            SystemInfoView(themeStore: themeStore)
-                                .padding(8)
-                        } else if activeCommandID == AppConstants.Launcher.Command.speed {
-                            SpeedTestView(controller: speedTest, themeStore: themeStore)
-                                .padding(8)
-                        } else if activeCommandID == AppConstants.Launcher.Command.pomo {
-                            PomoView(themeStore: themeStore)
-                                .padding(2)
-                        } else if activeCommandID == AppConstants.Launcher.Command.todo {
-                            TodoView(themeStore: themeStore)
-                                .padding(2)
-                        } else {
-                            VStack(alignment: .leading, spacing: 0) {
-                                CommandFeedbackView(
-                                    message: liveCommandPreview ?? (commandFeedback.isEmpty ? AppConstants.Launcher.commandEmptyMessage : commandFeedback),
-                                    themeStore: themeStore
-                                )
-                                Spacer(minLength: 0)
-                            }
-                            .padding(10)
                         }
+                        .padding(8)
+                    } else if activeCommandID == AppConstants.Launcher.Command.sys {
+                        SystemInfoView(themeStore: themeStore)
+                            .padding(8)
+                    } else if activeCommandID == AppConstants.Launcher.Command.speed {
+                        SpeedTestView(controller: speedTest, themeStore: themeStore)
+                            .padding(8)
+                    } else if activeCommandID == AppConstants.Launcher.Command.pomo {
+                        PomoView(themeStore: themeStore)
+                            .padding(2)
+                    } else if activeCommandID == AppConstants.Launcher.Command.todo {
+                        TodoView(themeStore: themeStore)
+                            .padding(2)
+                    } else {
+                        VStack(alignment: .leading, spacing: 0) {
+                            CommandFeedbackView(
+                                message: liveCommandPreview
+                                    ?? (commandFeedback.isEmpty
+                                        ? AppConstants.Launcher.commandEmptyMessage : commandFeedback),
+                                themeStore: themeStore
+                            )
+                            Spacer(minLength: 0)
+                        }
+                        .padding(10)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// Covers the pure Ollama request/response codec: structured-plan decoding,

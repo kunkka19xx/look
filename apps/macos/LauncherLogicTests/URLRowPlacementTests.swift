@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// Where the "open this URL" row lands among local results.

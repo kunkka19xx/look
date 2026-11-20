@@ -96,13 +96,15 @@ extension LauncherView {
         // Asking one. The menu stays open and swaps to the question, so the
         // answer happens where the user's eyes already are.
         if let blockID = SourceBlockAction.blockID(fromActionID: descriptor.actionId),
-           plansItsOwnQuestion(blockID) {
+            plansItsOwnQuestion(blockID)
+        {
             askTheConnector(blockID: blockID, title: descriptor.title)
             return
         }
 
         if let blockID = SourceBlockAction.blockID(fromActionID: descriptor.actionId),
-           let question = descriptor.confirm {
+            let question = descriptor.confirm
+        {
             pendingActionConfirm = (
                 blockID: blockID, title: descriptor.title, question: question, plan: nil
             )

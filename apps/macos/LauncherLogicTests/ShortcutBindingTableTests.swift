@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// The monitors ask this table instead of comparing keyCodes, so a binding that

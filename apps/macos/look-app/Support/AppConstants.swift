@@ -1,5 +1,5 @@
-import Foundation
 import CoreGraphics
+import Foundation
 
 struct AppCommand: Identifiable {
     let id: String

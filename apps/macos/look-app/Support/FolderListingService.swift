@@ -25,11 +25,13 @@ enum FolderListingService {
     nonisolated private static func listSync(path: String) -> FolderListing? {
         let url = URL(fileURLWithPath: path)
         let keys: [URLResourceKey] = [.isDirectoryKey, .fileSizeKey]
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: keys,
-            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
-        ) else {
+        guard
+            let entries = try? FileManager.default.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: keys,
+                options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
+            )
+        else {
             return nil
         }
 

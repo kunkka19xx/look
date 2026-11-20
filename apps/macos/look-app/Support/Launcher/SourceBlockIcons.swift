@@ -68,8 +68,9 @@ enum SourceBlockCatalog {
         Task {
             let targets = await Task.detached(priority: .userInitiated) {
                 () -> SourceBlockRowTargets in
-                guard let block = EngineBridge.shared.sourceBlock(
-                    candidateID: result.id, row: RowRef(result))
+                guard
+                    let block = EngineBridge.shared.sourceBlock(
+                        candidateID: result.id, row: RowRef(result))
                 else { return .none }
                 return SourceBlockRowTargets(own: block.then, global: block.globals)
             }.value
@@ -228,9 +229,9 @@ enum SourceBlockIcons {
         var icons: [NSImage] = []
         for step in steps {
             guard icons.count < limit,
-                  let name = appName(inStep: step),
-                  seen.insert(name.lowercased()).inserted,
-                  let path = bundlePath(forAppNamed: name)
+                let name = appName(inStep: step),
+                seen.insert(name.lowercased()).inserted,
+                let path = bundlePath(forAppNamed: name)
             else { continue }
             icons.append(RowIconCache.icon(forFile: path))
         }

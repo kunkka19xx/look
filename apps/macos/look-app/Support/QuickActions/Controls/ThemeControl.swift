@@ -23,12 +23,12 @@ struct ThemeControl: SystemControl {
             return .failed("Theme has no run action")
         }
         let source = """
-        tell application "System Events"
-            tell appearance preferences
-                set dark mode to \(target ? "true" : "false")
+            tell application "System Events"
+                tell appearance preferences
+                    set dark mode to \(target ? "true" : "false")
+                end tell
             end tell
-        end tell
-        """
+            """
         return await AppleScriptRunner.run(
             source,
             successBanner: target ? "Dark theme" : "Light theme",

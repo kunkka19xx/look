@@ -39,44 +39,48 @@ struct TextFilePreview: View {
             font: displayFont,
             defaultColor: NSColor(themeStore.secondaryTextColor())
         )
-            .frame(maxWidth: .infinity, maxHeight: maxHeight)
-            .background(themeStore.controlFillColor(),
-                        in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
-            .task(id: path) {
-                let p = path
-                // Cache hit → paint immediately, no debounce / no I/O.
-                if let attrs = try? FileManager.default.attributesOfItem(atPath: p),
-                   let mtime = attrs[.modificationDate] as? Date,
-                   let size = attrs[.size] as? Int64,
-                   let cached = HighlightedTextCache.get(
-                       HighlightedTextCache.key(path: p, mtime: mtime, size: size)
-                   ) {
-                    content = cached
-                    return
-                }
-
-                content = Self.empty
-                try? await Task.sleep(nanoseconds: 150_000_000)
-                if Task.isCancelled { return }
-
-                let result = await Task.detached { () -> HighlightResult in
-                    guard let text = QuickLookPreviewService.head(ofFile: p) else {
-                        return HighlightResult(Self.empty, nil)
-                    }
-                    let highlighted = SyntaxHighlighter.highlight(text, path: p)
-                    let attrs = try? FileManager.default.attributesOfItem(atPath: p)
-                    let mtime = attrs?[.modificationDate] as? Date
-                    let size = attrs?[.size] as? Int64
-                    let keyStr: String? = (mtime != nil && size != nil)
-                        ? HighlightedTextCache.key(path: p, mtime: mtime!, size: size!)
-                        : nil
-                    return HighlightResult(highlighted, keyStr)
-                }.value
-                if Task.isCancelled { return }
-                content = result.attr
-                if let keyStr = result.key {
-                    HighlightedTextCache.set(keyStr, result.attr)
-                }
+        .frame(maxWidth: .infinity, maxHeight: maxHeight)
+        .background(
+            themeStore.controlFillColor(),
+            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
+        )
+        .task(id: path) {
+            let p = path
+            // Cache hit → paint immediately, no debounce / no I/O.
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: p),
+                let mtime = attrs[.modificationDate] as? Date,
+                let size = attrs[.size] as? Int64,
+                let cached = HighlightedTextCache.get(
+                    HighlightedTextCache.key(path: p, mtime: mtime, size: size)
+                )
+            {
+                content = cached
+                return
             }
+
+            content = Self.empty
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            if Task.isCancelled { return }
+
+            let result = await Task.detached { () -> HighlightResult in
+                guard let text = QuickLookPreviewService.head(ofFile: p) else {
+                    return HighlightResult(Self.empty, nil)
+                }
+                let highlighted = SyntaxHighlighter.highlight(text, path: p)
+                let attrs = try? FileManager.default.attributesOfItem(atPath: p)
+                let mtime = attrs?[.modificationDate] as? Date
+                let size = attrs?[.size] as? Int64
+                let keyStr: String? =
+                    (mtime != nil && size != nil)
+                    ? HighlightedTextCache.key(path: p, mtime: mtime!, size: size!)
+                    : nil
+                return HighlightResult(highlighted, keyStr)
+            }.value
+            if Task.isCancelled { return }
+            content = result.attr
+            if let keyStr = result.key {
+                HighlightedTextCache.set(keyStr, result.attr)
+            }
+        }
     }
 }

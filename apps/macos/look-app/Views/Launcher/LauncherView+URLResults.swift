@@ -56,7 +56,8 @@ extension LauncherView {
         guard !recents.isEmpty else { return local }
         var merged: [LauncherResult] = []
         merged.reserveCapacity(local.count + recents.count)
-        var i = 0, j = 0
+        var i = 0
+        var j = 0
         while i < local.count, j < recents.count {
             if recents[j].score > local[i].score {
                 merged.append(recents[j])

@@ -233,11 +233,13 @@ final class PomoMusicPlayer {
     }
 
     private func scanFolder(_ url: URL) -> [URL] {
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) else {
+        guard
+            let entries = try? FileManager.default.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+        else {
             return []
         }
         return entries.filter { Self.supportedExtensions.contains($0.pathExtension.lowercased()) }

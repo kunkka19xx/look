@@ -2,38 +2,52 @@ import Foundation
 
 @_silgen_name("look_search_json")
 nonisolated
-private func look_search_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+    private func look_search_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_search_json_compact")
 nonisolated
-private func look_search_json_compact(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+    private func look_search_json_compact(
+        _ query: UnsafePointer<CChar>?, _ limit: UInt32
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_search_files_json")
 nonisolated
-private func look_search_files_json(_ query: UnsafePointer<CChar>?, _ now: Int64, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+    private func look_search_files_json(
+        _ query: UnsafePointer<CChar>?, _ now: Int64, _ limit: UInt32
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_record_usage_json")
 nonisolated
-private func look_record_usage_json(_ candidateID: UnsafePointer<CChar>?, _ action: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_record_usage_json(
+        _ candidateID: UnsafePointer<CChar>?, _ action: UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_lookbook_preview_json")
 private nonisolated func look_lookbook_preview_json(_ toml: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_lookbook_preview_filled_json")
-private nonisolated func look_lookbook_preview_filled_json(_ fileJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private nonisolated func look_lookbook_preview_filled_json(
+    _ fileJSON: UnsafePointer<CChar>?
+) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_lookbook_missing_json")
-private nonisolated func look_lookbook_missing_json(_ programsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private nonisolated func look_lookbook_missing_json(
+    _ programsJSON: UnsafePointer<CChar>?
+) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_lookbook_present_json")
-private nonisolated func look_lookbook_present_json(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private nonisolated func look_lookbook_present_json(
+    _ requestJSON: UnsafePointer<CChar>?
+) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_lookbook_install_json")
-private nonisolated func look_lookbook_install_json(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private nonisolated func look_lookbook_install_json(
+    _ requestJSON: UnsafePointer<CChar>?
+) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_free_cstring")
 nonisolated
-private func look_free_cstring(_ ptr: UnsafeMutablePointer<CChar>?)
+    private func look_free_cstring(_ ptr: UnsafeMutablePointer<CChar>?)
 
 @_silgen_name("look_connectors_start")
 private nonisolated func look_connectors_start(_ appVersion: UnsafePointer<CChar>?)
@@ -43,321 +57,387 @@ private nonisolated func look_connectors_stop()
 
 @_silgen_name("look_reload_config")
 nonisolated
-private func look_reload_config() -> Bool
+    private func look_reload_config() -> Bool
 
 @_silgen_name("look_request_index_refresh")
 nonisolated
-private func look_request_index_refresh() -> Bool
+    private func look_request_index_refresh() -> Bool
 
 @_silgen_name("look_translate_json")
 nonisolated
-private func look_translate_json(_ text: UnsafePointer<CChar>?, _ targetLang: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_translate_json(
+        _ text: UnsafePointer<CChar>?, _ targetLang: UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_translate_languages_json")
 nonisolated
-private func look_translate_languages_json(_ raw: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_translate_languages_json(_ raw: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_fuzzy_score")
 nonisolated
-private func look_fuzzy_score(_ query: UnsafePointer<CChar>?, _ title: UnsafePointer<CChar>?) -> Int64
+    private func look_fuzzy_score(_ query: UnsafePointer<CChar>?, _ title: UnsafePointer<CChar>?) -> Int64
 
 @_silgen_name("look_instant_answer_json")
 nonisolated
-private func look_instant_answer_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_instant_answer_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_is_referent")
 nonisolated
-private func look_ai_is_referent(_ phrase: UnsafePointer<CChar>?) -> Bool
+    private func look_ai_is_referent(_ phrase: UnsafePointer<CChar>?) -> Bool
 
 @_silgen_name("look_search_files_params_json")
 nonisolated
-private func look_search_files_params_json(_ paramsJSON: UnsafePointer<CChar>?, _ now: Int64, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+    private func look_search_files_params_json(
+        _ paramsJSON: UnsafePointer<CChar>?, _ now: Int64, _ limit: UInt32
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_query_window")
 nonisolated
-private func look_ai_query_window(_ query: UnsafePointer<CChar>?, _ nowEpoch: Int64) -> UnsafeMutablePointer<CChar>?
+    private func look_ai_query_window(_ query: UnsafePointer<CChar>?, _ nowEpoch: Int64) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_day_phrase")
 nonisolated
-private func look_ai_day_phrase(_ phrase: UnsafePointer<CChar>?, _ nowEpoch: Int64) -> Int64
+    private func look_ai_day_phrase(_ phrase: UnsafePointer<CChar>?, _ nowEpoch: Int64) -> Int64
 
 @_silgen_name("look_ai_plan_start")
 nonisolated
-private func look_ai_plan_start(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?) -> UInt64
+    private func look_ai_plan_start(
+        _ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?
+    ) -> UInt64
 
 @_silgen_name("look_ai_plan_poll")
 nonisolated
-private func look_ai_plan_poll(_ id: UInt64) -> UnsafeMutablePointer<CChar>?
+    private func look_ai_plan_poll(_ id: UInt64) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_plan_cancel")
 nonisolated
-private func look_ai_plan_cancel(_ id: UInt64)
+    private func look_ai_plan_cancel(_ id: UInt64)
 
 @_silgen_name("look_ai_warm_planner")
 nonisolated
-private func look_ai_warm_planner(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?)
+    private func look_ai_warm_planner(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?)
 
 @_silgen_name("look_ai_conversations_json")
 nonisolated
-private func look_ai_conversations_json(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_ai_conversations_json(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_conversation_upsert")
 nonisolated
-private func look_ai_conversation_upsert(_ path: UnsafePointer<CChar>?, _ json: UnsafePointer<CChar>?) -> Bool
+    private func look_ai_conversation_upsert(_ path: UnsafePointer<CChar>?, _ json: UnsafePointer<CChar>?) -> Bool
 
 @_silgen_name("look_ai_conversation_delete")
 nonisolated
-private func look_ai_conversation_delete(_ path: UnsafePointer<CChar>?, _ id: UnsafePointer<CChar>?) -> Bool
+    private func look_ai_conversation_delete(_ path: UnsafePointer<CChar>?, _ id: UnsafePointer<CChar>?) -> Bool
 
 @_silgen_name("look_ai_resolve")
 nonisolated
-private func look_ai_resolve(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_ai_resolve(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_load_targets")
 nonisolated
-private func look_ai_load_targets(_ eventsJSON: UnsafePointer<CChar>?, _ remindersJSON: UnsafePointer<CChar>?)
+    private func look_ai_load_targets(_ eventsJSON: UnsafePointer<CChar>?, _ remindersJSON: UnsafePointer<CChar>?)
 
 @_silgen_name("look_ai_memory_context")
 nonisolated
-private func look_ai_memory_context(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_ai_memory_context(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_context_window")
 nonisolated
-private func look_ai_context_window(_ textsJSON: UnsafePointer<CChar>?, _ budget: UInt32) -> UInt32
+    private func look_ai_context_window(_ textsJSON: UnsafePointer<CChar>?, _ budget: UInt32) -> UInt32
 
 @_silgen_name("look_ai_parse_explicit")
 nonisolated
-private func look_ai_parse_explicit(_ input: UnsafePointer<CChar>?, _ modelAvailable: Bool) -> UnsafeMutablePointer<CChar>?
+    private func look_ai_parse_explicit(
+        _ input: UnsafePointer<CChar>?, _ modelAvailable: Bool
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_route")
 nonisolated
-private func look_ai_route(_ memoryPath: UnsafePointer<CChar>?, _ input: UnsafePointer<CChar>?, _ modelAvailable: Bool, _ now: Int64) -> UnsafeMutablePointer<CChar>?
+    private func look_ai_route(
+        _ memoryPath: UnsafePointer<CChar>?, _ input: UnsafePointer<CChar>?, _ modelAvailable: Bool, _ now: Int64
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_meeting_join_query_json")
 nonisolated
-private func look_meeting_join_query_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_meeting_join_query_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_call_query_json")
 nonisolated
-private func look_call_query_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_call_query_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_call_url")
 nonisolated
-private func look_call_url(_ modality: UnsafePointer<CChar>?, _ handle: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_call_url(
+        _ modality: UnsafePointer<CChar>?, _ handle: UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_call_default_modality")
 nonisolated
-private func look_call_default_modality() -> UnsafeMutablePointer<CChar>?
+    private func look_call_default_modality() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_meeting_outcome_json")
 nonisolated
-private func look_meeting_outcome_json(_ eventsJSON: UnsafePointer<CChar>?, _ now: Int64, _ name: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_meeting_outcome_json(
+        _ eventsJSON: UnsafePointer<CChar>?, _ now: Int64, _ name: UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_chat_start")
 nonisolated
-private func look_ai_chat_start(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ messagesJSON: UnsafePointer<CChar>?, _ optionsJSON: UnsafePointer<CChar>?) -> UInt64
+    private func look_ai_chat_start(
+        _ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ messagesJSON: UnsafePointer<CChar>?,
+        _ optionsJSON: UnsafePointer<CChar>?
+    ) -> UInt64
 
 @_silgen_name("look_ai_chat_poll")
 nonisolated
-private func look_ai_chat_poll(_ id: UInt64) -> UnsafeMutablePointer<CChar>?
+    private func look_ai_chat_poll(_ id: UInt64) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_chat_cancel")
 nonisolated
-private func look_ai_chat_cancel(_ id: UInt64)
+    private func look_ai_chat_cancel(_ id: UInt64)
 
 @_silgen_name("look_ai_future_leaning")
 nonisolated
-private func look_ai_future_leaning(_ phrase: UnsafePointer<CChar>?, _ resolvedEpoch: Int64, _ nowEpoch: Int64) -> Int64
+    private func look_ai_future_leaning(
+        _ phrase: UnsafePointer<CChar>?, _ resolvedEpoch: Int64, _ nowEpoch: Int64
+    ) -> Int64
 
 @_silgen_name("look_ai_markdown_segments_json")
 nonisolated
-private func look_ai_markdown_segments_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_ai_markdown_segments_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_plan_verb_json")
 nonisolated
-private func look_plan_verb_json(_ blockID: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_plan_verb_json(
+        _ blockID: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?,
+        _ rowTitle: UnsafePointer<CChar>?,
+        _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_control_json")
 nonisolated
-private func look_control_json(_ actionID: UnsafePointer<CChar>?, _ press: Bool) -> UnsafeMutablePointer<CChar>?
+    private func look_control_json(_ actionID: UnsafePointer<CChar>?, _ press: Bool) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_run_verb_json")
 nonisolated
-private func look_run_verb_json(_ candidateID: UnsafePointer<CChar>?, _ plan: UInt64) -> UnsafeMutablePointer<CChar>?
+    private func look_run_verb_json(
+        _ candidateID: UnsafePointer<CChar>?, _ plan: UInt64
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_markdown_blocks_json")
 nonisolated
-private func look_markdown_blocks_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_markdown_blocks_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_instant_has_match")
 nonisolated
-private func look_instant_has_match(_ query: UnsafePointer<CChar>?) -> Bool
+    private func look_instant_has_match(_ query: UnsafePointer<CChar>?) -> Bool
 
 @_silgen_name("look_calc_eval_json")
 nonisolated
-private func look_calc_eval_json(_ expr: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_calc_eval_json(_ expr: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_calc_inline_json")
 nonisolated
-private func look_calc_inline_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_calc_inline_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_web_suggestions_json")
 nonisolated
-private func look_web_suggestions_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+    private func look_web_suggestions_json(
+        _ query: UnsafePointer<CChar>?, _ limit: UInt32
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_duckduckgo_answer_json")
 nonisolated
-private func look_duckduckgo_answer_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_duckduckgo_answer_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_wikipedia_answer_json")
 nonisolated
-private func look_wikipedia_answer_json(_ searchTerm: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_wikipedia_answer_json(_ searchTerm: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_classify_url_json")
 nonisolated
-private func look_classify_url_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_classify_url_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_record_url_hit")
 nonisolated
-private func look_record_url_hit(_ url: UnsafePointer<CChar>?) -> Bool
+    private func look_record_url_hit(_ url: UnsafePointer<CChar>?) -> Bool
 
 @_silgen_name("look_recent_urls_json")
 nonisolated
-private func look_recent_urls_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+    private func look_recent_urls_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_clipboard_record")
 nonisolated
-private func look_clipboard_record(_ content: UnsafePointer<CChar>?, _ appBundleID: UnsafePointer<CChar>?) -> Int64
+    private func look_clipboard_record(_ content: UnsafePointer<CChar>?, _ appBundleID: UnsafePointer<CChar>?) -> Int64
 
 @_silgen_name("look_clipboard_record_image")
 nonisolated
-private func look_clipboard_record_image(_ label: UnsafePointer<CChar>?, _ imageHash: UnsafePointer<CChar>?, _ appBundleID: UnsafePointer<CChar>?) -> Int64
+    private func look_clipboard_record_image(
+        _ label: UnsafePointer<CChar>?, _ imageHash: UnsafePointer<CChar>?, _ appBundleID: UnsafePointer<CChar>?
+    ) -> Int64
 
 @_silgen_name("look_clipboard_images_dir")
 nonisolated
-private func look_clipboard_images_dir() -> UnsafeMutablePointer<CChar>?
+    private func look_clipboard_images_dir() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_clipboard_list_json")
 nonisolated
-private func look_clipboard_list_json(_ kind: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+    private func look_clipboard_list_json(
+        _ kind: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ limit: UInt32
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_clipboard_delete")
 nonisolated
-private func look_clipboard_delete(_ id: Int64) -> Bool
+    private func look_clipboard_delete(_ id: Int64) -> Bool
 
 @_silgen_name("look_clipboard_clear")
 nonisolated
-private func look_clipboard_clear() -> UInt32
+    private func look_clipboard_clear() -> UInt32
 
 @_silgen_name("look_qactions_json")
 nonisolated
-private func look_qactions_json(_ resultID: UnsafePointer<CChar>?, _ kind: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_qactions_json(
+        _ resultID: UnsafePointer<CChar>?, _ kind: UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_quick_actions_launchpad_json")
 nonisolated
-private func look_quick_actions_launchpad_json() -> UnsafeMutablePointer<CChar>?
+    private func look_quick_actions_launchpad_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_launchpad_warnings_json")
 nonisolated
-private func look_launchpad_warnings_json() -> UnsafeMutablePointer<CChar>?
+    private func look_launchpad_warnings_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_launchpad_tile_values_json")
 nonisolated
-private func look_launchpad_tile_values_json() -> UnsafeMutablePointer<CChar>?
+    private func look_launchpad_tile_values_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_launchpad_refresh_tiles_json")
 nonisolated
-private func look_launchpad_refresh_tiles_json() -> UnsafeMutablePointer<CChar>?
+    private func look_launchpad_refresh_tiles_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_launchpad_press_tile_json")
 nonisolated
-private func look_launchpad_press_tile_json(_ name: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_launchpad_press_tile_json(_ name: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_definitional_entity_json")
 nonisolated
-private func look_definitional_entity_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_definitional_entity_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_todo_list_json")
 nonisolated
-private func look_todo_list_json() -> UnsafeMutablePointer<CChar>?
+    private func look_todo_list_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_todo_save_json")
 nonisolated
-private func look_todo_save_json(_ json: UnsafePointer<CChar>?) -> Bool
+    private func look_todo_save_json(_ json: UnsafePointer<CChar>?) -> Bool
 
 @_silgen_name("look_launcher_hotkey_json")
 nonisolated
-private func look_launcher_hotkey_json() -> UnsafeMutablePointer<CChar>?
+    private func look_launcher_hotkey_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_hotkey_check_local_json")
 nonisolated
-private func look_hotkey_check_local_json(_ spec: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_hotkey_check_local_json(_ spec: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_hotkey_check_json")
 nonisolated
-private func look_hotkey_check_json(_ spec: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_hotkey_check_json(_ spec: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_lunar_date_json")
 nonisolated
-private func look_lunar_date_json(_ year: Int64, _ month: Int64, _ day: Int64, _ tz: Double) -> UnsafeMutablePointer<CChar>?
+    private func look_lunar_date_json(
+        _ year: Int64, _ month: Int64, _ day: Int64, _ tz: Double
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_snow_max_flakes")
 nonisolated
-private func look_snow_max_flakes() -> Int
+    private func look_snow_max_flakes() -> Int
 
 @_silgen_name("look_snow_frame")
 nonisolated
-private func look_snow_frame(_ width: Double, _ height: Double, _ seconds: Double, _ amount: Double, _ out: UnsafeMutablePointer<Float>?, _ capacity: Int) -> Int
+    private func look_snow_frame(
+        _ width: Double, _ height: Double, _ seconds: Double, _ amount: Double, _ out: UnsafeMutablePointer<Float>?,
+        _ capacity: Int
+    ) -> Int
 
 @_silgen_name("look_bokeh_max_glows")
 nonisolated
-private func look_bokeh_max_glows() -> Int
+    private func look_bokeh_max_glows() -> Int
 
 @_silgen_name("look_bokeh_frame")
 nonisolated
-private func look_bokeh_frame(_ width: Double, _ height: Double, _ seconds: Double, _ out: UnsafeMutablePointer<Float>?, _ capacity: Int) -> Int
+    private func look_bokeh_frame(
+        _ width: Double, _ height: Double, _ seconds: Double, _ out: UnsafeMutablePointer<Float>?, _ capacity: Int
+    ) -> Int
 
 @_silgen_name("look_refresh_run_blocks_json")
 nonisolated
-private func look_refresh_run_blocks_json() -> UnsafeMutablePointer<CChar>?
+    private func look_refresh_run_blocks_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_preview_json")
 nonisolated
-private func look_source_preview_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_source_preview_json(
+        _ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?,
+        _ rowPath: UnsafePointer<CChar>?,
+        _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_installed_json")
 private nonisolated func look_installed_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_blocks_json")
 nonisolated
-private func look_source_blocks_json() -> UnsafeMutablePointer<CChar>?
+    private func look_source_blocks_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_set_enabled_json")
-private nonisolated func look_source_set_enabled_json(_ file: UnsafePointer<CChar>?, _ enabled: Bool) -> UnsafeMutablePointer<CChar>?
+private nonisolated func look_source_set_enabled_json(
+    _ file: UnsafePointer<CChar>?, _ enabled: Bool
+) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_rows_json")
 nonisolated
-private func look_source_rows_json(_ blockID: UnsafePointer<CChar>?, _ parentCandidateID: UnsafePointer<CChar>?, _ parentTitle: UnsafePointer<CChar>?, _ parentPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_source_rows_json(
+        _ blockID: UnsafePointer<CChar>?, _ parentCandidateID: UnsafePointer<CChar>?,
+        _ parentTitle: UnsafePointer<CChar>?, _ parentPath: UnsafePointer<CChar>?,
+        _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_block_json")
 nonisolated
-private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_source_block_json(
+        _ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?,
+        _ rowPath: UnsafePointer<CChar>?,
+        _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_perform_block_json")
 nonisolated
-private func look_perform_block_json(_ blockID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?, _ asTarget: Bool) -> UnsafeMutablePointer<CChar>?
+    private func look_perform_block_json(
+        _ blockID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?,
+        _ rowPath: UnsafePointer<CChar>?,
+        _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?, _ asTarget: Bool
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_tool_action_json")
 nonisolated
-private func look_tool_action_json(_ action: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_tool_action_json(
+        _ action: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?,
+        _ path: UnsafePointer<CChar>?, _ isDir: Bool,
+        _ ancestorsJSON: UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_perform_tool_action_json")
 nonisolated
-private func look_perform_tool_action_json(_ action: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_perform_tool_action_json(
+        _ action: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?,
+        _ path: UnsafePointer<CChar>?, _ isDir: Bool,
+        _ ancestorsJSON: UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_netspeed_run_json")
 nonisolated
-private func look_netspeed_run_json() -> UnsafeMutablePointer<CChar>?
+    private func look_netspeed_run_json() -> UnsafeMutablePointer<CChar>?
 
 /// One measurement from the shared `core/netspeed` crate. The display strings
 /// are formatted in core so every shell prints the same text.
@@ -779,9 +859,10 @@ final class EngineBridge: @unchecked Sendable {
             look_snow_frame(width, height, seconds, amount, $0, $1)
         } each: { value in
             let crystal = value(4)
-            body(Snowflake(
-                x: value(0), y: value(1), radius: value(2), alpha: value(3),
-                crystal: crystal < 0 ? nil : Int(crystal)))
+            body(
+                Snowflake(
+                    x: value(0), y: value(1), radius: value(2), alpha: value(3),
+                    crystal: crystal < 0 ? nil : Int(crystal)))
         }
     }
 
@@ -792,9 +873,10 @@ final class EngineBridge: @unchecked Sendable {
         Self.records(capacity: Self.glowCapacity, floats: Self.glowFloats) {
             look_bokeh_frame(width, height, seconds, $0, $1)
         } each: { value in
-            body(BokehGlow(
-                center: CGPoint(x: value(0), y: value(1)), radius: value(2),
-                red: value(3), green: value(4), blue: value(5), alpha: value(6)))
+            body(
+                BokehGlow(
+                    center: CGPoint(x: value(0), y: value(1)), radius: value(2),
+                    red: value(3), green: value(4), blue: value(5), alpha: value(6)))
         }
     }
 
@@ -925,7 +1007,8 @@ final class EngineBridge: @unchecked Sendable {
         return (
             Date(timeIntervalSince1970: TimeInterval(window.start)),
             Date(timeIntervalSince1970: TimeInterval(window.end)),
-            window.label)
+            window.label
+        )
     }
 
     /// One line of a planning session poll: pending until `done`, then the
@@ -1040,7 +1123,9 @@ final class EngineBridge: @unchecked Sendable {
 
     /// The explicit `>verb title @ when` parser (Rust core). Nil = natural
     /// language, deferred to the model.
-    nonisolated func aiParseExplicit(_ input: String, modelAvailable: Bool) -> (toolID: String, params: [String: String])? {
+    nonisolated func aiParseExplicit(
+        _ input: String, modelAvailable: Bool
+    ) -> (toolID: String, params: [String: String])? {
         struct RawCall: Decodable {
             let tool: String
             let params: [String: String]
@@ -1211,7 +1296,7 @@ final class EngineBridge: @unchecked Sendable {
                 look_fuzzy_score(queryCstr, titleCstr)
             }
         }
-        return score == Int64.min ? nil : Int(score) // Int64.min = NO_MATCH sentinel
+        return score == Int64.min ? nil : Int(score)  // Int64.min = NO_MATCH sentinel
     }
 
     /// Network-free gate: whether `query` matches a shared instant-answer
@@ -1365,7 +1450,7 @@ final class EngineBridge: @unchecked Sendable {
         }
         defer { look_free_cstring(ptr) }
         guard let data = String(cString: ptr).data(using: .utf8),
-              let outcome = try? JSONDecoder().decode(RunBlockRefreshOutcome.self, from: data)
+            let outcome = try? JSONDecoder().decode(RunBlockRefreshOutcome.self, from: data)
         else {
             return RunBlockRefreshOutcome(refreshed: 0, errors: [])
         }
@@ -1498,7 +1583,7 @@ final class EngineBridge: @unchecked Sendable {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         guard let data = String(cString: ptr).data(using: .utf8),
-              let outcome = try? decoder.decode(PerformBlockOutcome.self, from: data)
+            let outcome = try? decoder.decode(PerformBlockOutcome.self, from: data)
         else {
             return PerformBlockOutcome(
                 performed: 0, errors: ["the core's answer could not be read"],

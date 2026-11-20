@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// Synthesized rows are identified purely by an id prefix, and `classify`

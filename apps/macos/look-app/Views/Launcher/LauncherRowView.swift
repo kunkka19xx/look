@@ -152,7 +152,8 @@ struct LauncherRowView: View, Equatable {
 
     private var pathInfo: String {
         let parentPath = URL(fileURLWithPath: result.path).deletingLastPathComponent().path
-        let components = parentPath
+        let components =
+            parentPath
             .split(separator: "/")
             .map(String.init)
         let tail = components.suffix(3).joined(separator: "/")
@@ -314,7 +315,8 @@ private struct RowIcon: View {
             .resizable()
             .frame(
                 width: isDeclared ? Tile.size - Tile.inset * 2 : Tile.size,
-                height: isDeclared ? Tile.size - Tile.inset * 2 : Tile.size)
+                height: isDeclared ? Tile.size - Tile.inset * 2 : Tile.size
+            )
             .frame(width: Tile.size, height: Tile.size)
             .background {
                 if isDeclared {

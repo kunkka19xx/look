@@ -309,7 +309,9 @@ struct ResultPreviewView: View {
                 .foregroundStyle(themeStore.accentColor())
                 .frame(minWidth: 36)
                 .padding(.vertical, 4)
-                .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
+                .background(
+                    themeStore.controlFillColor(),
+                    in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
             Text(text)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
                 .foregroundStyle(themeStore.secondaryTextColor())
@@ -377,7 +379,8 @@ struct ResultPreviewView: View {
 
         if let bundlePath {
             if let bundle = Bundle(path: bundlePath) {
-                version = bundle.infoDictionary?["CFBundleShortVersionString"] as? String
+                version =
+                    bundle.infoDictionary?["CFBundleShortVersionString"] as? String
                     ?? bundle.infoDictionary?["CFBundleVersion"] as? String
             }
 
@@ -425,7 +428,7 @@ struct ResultPreviewView: View {
         } else if let linkURL {
             linkPreview(linkURL)
         } else {
-        let info = bundleInfo
+            let info = bundleInfo
 
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
@@ -446,18 +449,28 @@ struct ResultPreviewView: View {
                                 if isTrash {
                                     if let trashItemCount {
                                         Text("\(trashItemCount) item\(trashItemCount == 1 ? "" : "s")")
-                                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                            .font(
+                                                themeStore.uiFont(
+                                                    size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular)
+                                            )
                                             .foregroundStyle(themeStore.secondaryTextColor())
                                     }
                                 } else if let listing = folderListing,
-                                   let counts = folderCountText(listing) {
+                                    let counts = folderCountText(listing)
+                                {
                                     Text(counts)
-                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                        .font(
+                                            themeStore.uiFont(
+                                                size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular)
+                                        )
                                         .foregroundStyle(themeStore.secondaryTextColor())
                                 }
                             } else if let size = info.size {
                                 Text(size)
-                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                    .font(
+                                        themeStore.uiFont(
+                                            size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular)
+                                    )
                                     .foregroundStyle(themeStore.secondaryTextColor())
                             }
                         }
@@ -467,44 +480,44 @@ struct ResultPreviewView: View {
 
                 ZStack(alignment: .topLeading) {
                     VStack(alignment: .leading, spacing: 12) {
-                // A system control rides with its live details: the switch
-                // carries the only printed `⌘O` hint, so hiding it left the
-                // chord unlearnable and the toggle reachable through Cmd+K
-                // alone. Only compiled controls reach here - the row's menu
-                // verbs stay in Cmd+K (see `systemControlDescriptors`).
-                controlsSection
+                        // A system control rides with its live details: the switch
+                        // carries the only printed `⌘O` hint, so hiding it left the
+                        // chord unlearnable and the toggle reachable through Cmd+K
+                        // alone. Only compiled controls reach here - the row's menu
+                        // verbs stay in Cmd+K (see `systemControlDescriptors`).
+                        controlsSection
 
-                if result.kind == .file {
-                    FilePreview(path: result.path)
-                }
+                        if result.kind == .file {
+                            FilePreview(path: result.path)
+                        }
 
-                if result.kind == .folder {
-                    if isTrash {
-                        TrashSummaryView(itemCount: trashItemCount, themeStore: themeStore)
-                    } else {
-                        FolderPreviewView(path: result.path, listing: folderListing)
-                    }
-                }
+                        if result.kind == .folder {
+                            if isTrash {
+                                TrashSummaryView(itemCount: trashItemCount, themeStore: themeStore)
+                            } else {
+                                FolderPreviewView(path: result.path, listing: folderListing)
+                            }
+                        }
 
-                if let version = info.version {
-                    InfoRow(label: "Version", value: version)
-                }
+                        if let version = info.version {
+                            InfoRow(label: "Version", value: version)
+                        }
 
-                // Settings panes have a URL-scheme "path" and a meaningless file
-                // date; hide both for them (only the actions matter there).
-                if !isSetting {
-                    // Middle truncation, so the one line keeps both the root it
-                    // starts from and the name it ends at.
-                    InfoRow(label: "Path", value: result.path, truncation: .middle)
+                        // Settings panes have a URL-scheme "path" and a meaningless file
+                        // date; hide both for them (only the actions matter there).
+                        if !isSetting {
+                            // Middle truncation, so the one line keeps both the root it
+                            // starts from and the name it ends at.
+                            InfoRow(label: "Path", value: result.path, truncation: .middle)
 
-                    if let modified = info.modified {
-                        InfoRow(label: "Modified", value: modified)
-                    }
-                }
+                            if let modified = info.modified {
+                                InfoRow(label: "Modified", value: modified)
+                            }
+                        }
 
-                if result.kind != .file && result.kind != .folder {
-                    Spacer()
-                }
+                        if result.kind != .file && result.kind != .folder {
+                            Spacer()
+                        }
                     }
 
                     if isActionMenuOpen {
@@ -850,7 +863,9 @@ struct ResultPreviewView: View {
                 font: previewFont,
                 defaultColor: NSColor(themeStore.secondaryTextColor())
             )
-            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
+            .background(
+                themeStore.controlFillColor(),
+                in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
 
             InfoRow(label: "Captured", value: capturedAt)
 
@@ -951,7 +966,9 @@ struct ResultPreviewView: View {
                         KindBadge(kind: "process")
                         if let pid = result.processPID {
                             Text("PID \(pid)")
-                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                .font(
+                                    themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular)
+                                )
                                 .foregroundStyle(themeStore.secondaryTextColor())
                         }
                     }

@@ -51,8 +51,9 @@ struct FolderPreviewView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(listing.items.enumerated()), id: \.offset) { index, entry in
                     if index > 0,
-                       entry.isDir == false,
-                       listing.items[index - 1].isDir == true {
+                        entry.isDir == false,
+                        listing.items[index - 1].isDir == true
+                    {
                         Divider()
                             .padding(.vertical, 4)
                     }
@@ -68,7 +69,10 @@ struct FolderPreviewView: View {
                 }
             }
         }
-        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
+        .background(
+            themeStore.controlFillColor(),
+            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
+        )
         .frame(maxHeight: .infinity)
     }
 
@@ -144,6 +148,8 @@ struct TrashSummaryView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(themeStore.controlFillColor().opacity(0.4), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
+        .background(
+            themeStore.controlFillColor().opacity(0.4),
+            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
     }
 }

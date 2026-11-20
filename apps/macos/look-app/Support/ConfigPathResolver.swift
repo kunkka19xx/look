@@ -3,11 +3,11 @@ import Foundation
 
 @_silgen_name("look_config_path")
 nonisolated
-private func look_config_path(_ dev: Bool) -> UnsafeMutablePointer<CChar>?
+    private func look_config_path(_ dev: Bool) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_free_cstring")
 nonisolated
-private func look_free_config_cstring(_ ptr: UnsafeMutablePointer<CChar>?)
+    private func look_free_config_cstring(_ ptr: UnsafeMutablePointer<CChar>?)
 
 enum ConfigPathResolver {
     private static let productionBundleIdentifier = "noah-code.Look"

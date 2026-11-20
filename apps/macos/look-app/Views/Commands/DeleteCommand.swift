@@ -107,19 +107,19 @@ struct EmptyTrashCommand {
     /// isolated so it can't turn a successful empty into a reported failure.
     static func empty(completion: @escaping @Sendable (String?) -> Void) {
         let body = """
-        set prevWarn to warns before emptying of the trash
-        set warns before emptying of the trash to false
-        set emptyErr to missing value
-        try
-            empty the trash
-        on error errMsg
-            set emptyErr to errMsg
-        end try
-        try
-            set warns before emptying of the trash to prevWarn
-        end try
-        if emptyErr is not missing value then error emptyErr
-        """
+            set prevWarn to warns before emptying of the trash
+            set warns before emptying of the trash to false
+            set emptyErr to missing value
+            try
+                empty the trash
+            on error errMsg
+                set emptyErr to errMsg
+            end try
+            try
+                set warns before emptying of the trash to prevWarn
+            end try
+            if emptyErr is not missing value then error emptyErr
+            """
         DispatchQueue.global(qos: .userInitiated).async {
             let error = runFinder(body).1
             DispatchQueue.main.async { completion(error) }
@@ -198,7 +198,9 @@ struct ConfirmActionBar: View {
         }
         .padding(10)
         .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
-        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
+        .background(
+            themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous)
                 .strokeBorder(themeStore.dangerColor().opacity(0.85), lineWidth: 1)

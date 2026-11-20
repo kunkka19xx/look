@@ -60,7 +60,7 @@ struct BuiltinThemeStyle {
     let warning: ThemeRGB?
     let danger: ThemeRGB?
 
-init(
+    init(
         themeName: String = "",
         appearance: ThemeAppearance = .dark,
         tintRed: Double = 0.08,

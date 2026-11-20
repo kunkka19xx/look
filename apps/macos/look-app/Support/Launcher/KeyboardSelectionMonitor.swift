@@ -279,7 +279,9 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
-            if (event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter) && flags == [.command, .shift] {
+            if (event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter)
+                && flags == [.command, .shift]
+            {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                     onSelectCommandByIndex(1)
                 }
@@ -354,7 +356,8 @@ final class KeyboardSelectionMonitor {
                             return nil
                         }
                         Self.logger.debug(
-                            "⌘+\(key, privacy: .public) ignored (command mode maps 1-\(AppConstants.Launcher.commandCatalog.count, privacy: .public))")
+                            "⌘+\(key, privacy: .public) ignored (command mode maps 1-\(AppConstants.Launcher.commandCatalog.count, privacy: .public))"
+                        )
                     } else {
                         // AI mode hides the running-apps strip, so the digits
                         // jump to the Nth listed conversation there (⌘0 being

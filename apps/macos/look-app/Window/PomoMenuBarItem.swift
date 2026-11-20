@@ -115,7 +115,7 @@ final class PomoMenuBarItem {
         // installed tracker, so we install exactly one per refresh and
         // gate re-entry through `refreshScheduled` to keep the count flat.
         withObservationTracking {
-            if let _ = state.activeIndex {
+            if state.activeIndex != nil {
                 button.title = " " + PomoCommand.formattedRemaining(state.secondsLeft)
                 if button.image !== timerImage { button.image = timerImage }
             } else {

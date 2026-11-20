@@ -19,9 +19,11 @@ struct ShortcutFilterCapsule: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(themeStore.uiFont(
-                    size: CGFloat(themeStore.settings.fontSize - 1),
-                    weight: isSelected ? .semibold : .regular))
+                .font(
+                    themeStore.uiFont(
+                        size: CGFloat(themeStore.settings.fontSize - 1),
+                        weight: isSelected ? .semibold : .regular)
+                )
                 .foregroundStyle(isSelected ? themeStore.fontColor() : themeStore.mutedTextColor())
                 .padding(.horizontal, Metrics.horizontalPadding)
                 .padding(.vertical, Metrics.verticalPadding)

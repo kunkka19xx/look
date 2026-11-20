@@ -9,10 +9,10 @@ extension LauncherView {
         guard pendingEmptyTrashCount == nil else { return false }
 
         guard let selectedResultID,
-              let selected = displayedResults.first(where: { $0.id == selectedResultID }),
-              selected.kind == .app,
-              !selected.path.isEmpty,
-              selected.path.hasSuffix(Self.appBundleExtension)
+            let selected = displayedResults.first(where: { $0.id == selectedResultID }),
+            selected.kind == .app,
+            !selected.path.isEmpty,
+            selected.path.hasSuffix(Self.appBundleExtension)
         else {
             showBanner("Select an app to hide", style: .info, duration: 1.2)
             return true
@@ -97,7 +97,8 @@ extension LauncherView {
     /// Mirrors `normalize_app_name` in `core/engine/src/platform/macos/apps.rs`.
     private func normalizeExcludeName(_ value: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        let withoutSuffix = trimmed.hasSuffix(Self.appBundleExtension)
+        let withoutSuffix =
+            trimmed.hasSuffix(Self.appBundleExtension)
             ? String(trimmed.dropLast(Self.appBundleExtension.count))
             : trimmed
         return withoutSuffix.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

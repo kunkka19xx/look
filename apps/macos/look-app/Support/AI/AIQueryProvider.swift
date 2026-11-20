@@ -62,7 +62,9 @@ protocol AIQueryProvider: Sendable {
     /// neutral terms the provider translates itself. This is the seam a cloud
     /// provider plugs into - `answer(query:)` above is the answer-card
     /// shorthand, which cannot express a system prompt or a token budget.
-    func respond(messages: [AIMessage], options: AIGenerationOptions)
+    func respond(
+        messages: [AIMessage], options: AIGenerationOptions
+    )
         -> AsyncThrowingStream<String, Error>?
 
     /// How much this provider can read in one request. Drives the attachment
@@ -82,7 +84,9 @@ extension AIQueryProvider {
 
     /// Degrades to the flattened form rather than failing, so a provider that
     /// has not been taught roles still works exactly as it does today.
-    func respond(messages: [AIMessage], options: AIGenerationOptions)
+    func respond(
+        messages: [AIMessage], options: AIGenerationOptions
+    )
         -> AsyncThrowingStream<String, Error>?
     {
         answer(query: AIMessage.flattened(messages))

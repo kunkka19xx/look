@@ -41,7 +41,8 @@ nonisolated struct AIMessage: Equatable, Sendable {
                 && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         guard turns.count > 1 else { return flattened(turns) }
-        return turns
+        return
+            turns
             .map { turn in
                 switch turn.role {
                 case .assistant: "Assistant: \(turn.content)"

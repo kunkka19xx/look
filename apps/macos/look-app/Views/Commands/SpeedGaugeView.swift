@@ -73,12 +73,13 @@ private nonisolated enum Orbit {
     }
 
     static func circle(center: CGPoint, radius: CGFloat) -> Path {
-        Path(ellipseIn: CGRect(
-            x: center.x - radius,
-            y: center.y - radius,
-            width: radius * 2,
-            height: radius * 2
-        ))
+        Path(
+            ellipseIn: CGRect(
+                x: center.x - radius,
+                y: center.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            ))
     }
 }
 
@@ -108,12 +109,13 @@ private struct GaugePalette {
         label = themeStore.mutedTextColor()
         download = themeStore.successColor()
         upload = themeStore.accentColor()
-        latency = switch latencyLevel {
-        case "bad": themeStore.dangerColor()
-        case "warn": themeStore.warningColor()
-        case "good": themeStore.successColor()
-        default: themeStore.mutedTextColor()
-        }
+        latency =
+            switch latencyLevel {
+            case "bad": themeStore.dangerColor()
+            case "warn": themeStore.warningColor()
+            case "good": themeStore.successColor()
+            default: themeStore.mutedTextColor()
+            }
     }
 }
 
@@ -369,11 +371,13 @@ struct SpeedGaugeView: View {
     private func centreReadout(palette: GaugePalette) -> some View {
         VStack(spacing: 0) {
             Text(Self.latencyValue(latencyDisplay))
-                .font(.system(
-                    size: CGFloat(themeStore.settings.fontSize) * Orbit.centreValueScale,
-                    weight: .medium,
-                    design: .monospaced
-                ))
+                .font(
+                    .system(
+                        size: CGFloat(themeStore.settings.fontSize) * Orbit.centreValueScale,
+                        weight: .medium,
+                        design: .monospaced
+                    )
+                )
                 .foregroundStyle(palette.latency)
 
             Text("MS LATENCY")

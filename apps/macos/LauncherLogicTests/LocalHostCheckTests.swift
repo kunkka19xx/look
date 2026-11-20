@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// The gate deciding whether private context (calendar, clipboard, remembered

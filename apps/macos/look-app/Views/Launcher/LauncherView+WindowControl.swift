@@ -332,8 +332,9 @@ extension LauncherView {
     func reloadTranslateLanguages() {
         let path = ConfigPathResolver.resolvedPath()
         let raw = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-        let configured = ConfigFileLines.keyValues(raw)[
-            AppConstants.Launcher.Translate.languagesConfigKey] ?? ""
+        let configured =
+            ConfigFileLines.keyValues(raw)[
+                AppConstants.Launcher.Translate.languagesConfigKey] ?? ""
         translateLanguages = EngineBridge.shared.translateLanguages(rawConfig: configured)
     }
 

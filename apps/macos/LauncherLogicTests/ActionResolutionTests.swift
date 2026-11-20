@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// The shell half of the resolve contract with `core/ai/src/resolve.rs`. This
@@ -11,14 +12,15 @@ final class ActionResolutionTests: XCTestCase {
     }
 
     func testPlannedCarriesPreviewAndExecuteSpec() throws {
-        let outcome = decode("""
-        {"outcome":"planned","preview_title":"Add event",
-         "preview_detail":"\\"Dentist\\"  Tue Aug 5, 10:00-11:00",
-         "summary":"Added \\"Dentist\\"","subject":"new",
-         "execute":{"kind":"add_event","title":"Dentist","start":1754388000,
-                    "end":1754391600,"all_day":false},
-         "undo":{"kind":"remove_event_by_new_id"}}
-        """)
+        let outcome = decode(
+            """
+            {"outcome":"planned","preview_title":"Add event",
+             "preview_detail":"\\"Dentist\\"  Tue Aug 5, 10:00-11:00",
+             "summary":"Added \\"Dentist\\"","subject":"new",
+             "execute":{"kind":"add_event","title":"Dentist","start":1754388000,
+                        "end":1754391600,"all_day":false},
+             "undo":{"kind":"remove_event_by_new_id"}}
+            """)
         guard case .planned(let plan) = outcome else {
             return XCTFail("expected planned, got \(outcome)")
         }
@@ -34,10 +36,11 @@ final class ActionResolutionTests: XCTestCase {
     }
 
     func testChoiceCarriesCandidates() {
-        let outcome = decode("""
-        {"outcome":"choice","candidates":[{"id":"e1","label":"Sync  ·  Mon"},
-                                          {"id":"e2","label":"Sync  ·  Fri"}]}
-        """)
+        let outcome = decode(
+            """
+            {"outcome":"choice","candidates":[{"id":"e1","label":"Sync  ·  Mon"},
+                                              {"id":"e2","label":"Sync  ·  Fri"}]}
+            """)
         guard case .choice(let candidates) = outcome else {
             return XCTFail("expected choice, got \(outcome)")
         }
@@ -46,8 +49,9 @@ final class ActionResolutionTests: XCTestCase {
     }
 
     func testInvalidKeepsTheCoreMessage() {
-        guard case .invalid(let message) = decode(
-            #"{"outcome":"invalid","message":"Which event?"}"#)
+        guard
+            case .invalid(let message) = decode(
+                #"{"outcome":"invalid","message":"Which event?"}"#)
         else { return XCTFail("expected invalid") }
         XCTAssertEqual(message, "Which event?")
     }
@@ -65,14 +69,15 @@ final class ActionResolutionTests: XCTestCase {
     func testNullDueDecodesAsUndatedReminder() throws {
         // An undated reminder sends `due: null`; treating that as a failure
         // would break every "remind me to X" with no time.
-        let outcome = decode("""
-        {"outcome":"planned","preview_title":"Add reminder","preview_detail":"x",
-         "summary":"Added","subject":"new",
-         "execute":{"kind":"add_reminder","title":"Call plumber","due":null},
-         "undo":{"kind":"remove_reminder_by_new_id"}}
-        """)
+        let outcome = decode(
+            """
+            {"outcome":"planned","preview_title":"Add reminder","preview_detail":"x",
+             "summary":"Added","subject":"new",
+             "execute":{"kind":"add_reminder","title":"Call plumber","due":null},
+             "undo":{"kind":"remove_reminder_by_new_id"}}
+            """)
         guard case .planned(let plan) = outcome,
-              case .addReminder(let title, let due) = plan.execute
+            case .addReminder(let title, let due) = plan.execute
         else { return XCTFail("expected planned addReminder, got \(outcome)") }
         XCTAssertEqual(title, "Call plumber")
         XCTAssertNil(due)

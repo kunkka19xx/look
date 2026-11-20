@@ -73,7 +73,7 @@ extension LauncherView {
     /// another user's process) rather than a silent no-op.
     func killSelectedProcess() {
         guard let selected = displayedResults.first(where: { $0.id == selectedResultID }),
-              let pid = selected.processPID
+            let pid = selected.processPID
         else { return }
         let name = selected.title
         switch processModel.kill(pid: pid) {

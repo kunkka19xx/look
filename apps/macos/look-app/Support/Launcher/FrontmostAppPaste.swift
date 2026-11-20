@@ -129,8 +129,9 @@ enum FrontmostAppPaste {
     }
 
     private static func currentKeyboardLayout() -> Data? {
-        guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?
-            .takeRetainedValue(),
+        guard
+            let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?
+                .takeRetainedValue(),
             let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
         else { return nil }
         return Unmanaged<CFData>.fromOpaque(raw).takeUnretainedValue() as Data
