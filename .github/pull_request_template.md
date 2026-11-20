@@ -45,6 +45,7 @@ Tick what you ran. Delete whole blocks that this PR does not touch.
 
 - [ ] `xcodebuild -project "apps/macos/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build`
 - [ ] `cd apps/macos && swift test`
+- [ ] `make format` leaves no diff
 
 ### By hand
 

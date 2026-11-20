@@ -74,7 +74,8 @@ final class ActionPlanner {
             // whole sentence would silently move the event.
             let hasOwnWhen = !(params["when"] ?? "").isEmpty
             if dated, !hasOwnWhen,
-               raw.tool == "calendar.add_event" || raw.tool == "reminder.add" {
+                raw.tool == "calendar.add_event" || raw.tool == "reminder.add"
+            {
                 params["when"] = query
             }
             return ToolCall(toolID: raw.tool, params: params)

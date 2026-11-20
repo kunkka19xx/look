@@ -9,6 +9,7 @@ enum HintText {
     }
 
     enum Settings {
-        static let shortcutsTips = "Tips: type \" to browse all prefixes | rc\"word for recent files/folders | t\"word for web EN/VI/JA translation | tw\"word for dictionary lookup panel | /kill to force quit apps"
+        static let shortcutsTips =
+            "Tips: type \" to browse all prefixes | rc\"word for recent files/folders | t\"word for web EN/VI/JA translation | tw\"word for dictionary lookup panel | /kill to force quit apps"
     }
 }

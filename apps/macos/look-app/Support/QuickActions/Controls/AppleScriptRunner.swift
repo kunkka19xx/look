@@ -21,7 +21,8 @@ enum AppleScriptRunner {
     static func run(_ source: String, successBanner: String?, failureMessage: String) async -> ActionOutcome {
         await withCheckedContinuation { continuation in
             queue.async {
-                continuation.resume(returning: execute(source, successBanner: successBanner, failureMessage: failureMessage))
+                continuation.resume(
+                    returning: execute(source, successBanner: successBanner, failureMessage: failureMessage))
             }
         }
     }

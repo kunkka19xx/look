@@ -57,7 +57,9 @@ struct OllamaProvider: AIQueryProvider {
     /// local model is slow enough that a truncation warning beats the wait.
     var contextTokens: Int { 16384 }
 
-    func respond(messages: [AIMessage], options: AIGenerationOptions)
+    func respond(
+        messages: [AIMessage], options: AIGenerationOptions
+    )
         -> AsyncThrowingStream<String, Error>?
     {
         let (host, model) = config

@@ -79,7 +79,8 @@ struct BluetoothControl: SystemControl {
 
         if found.connected {
             let result = await MainActor.run { () -> IOReturn in
-                Self.pairedDevices().first(where: { $0.addressString == itemId })?.closeConnection() ?? kIOReturnNoDevice
+                Self.pairedDevices().first(where: { $0.addressString == itemId })?.closeConnection()
+                    ?? kIOReturnNoDevice
             }
             return result == kIOReturnSuccess
                 ? .ok(banner: "Disconnected from \(found.name)")

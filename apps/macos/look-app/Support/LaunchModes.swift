@@ -3,15 +3,15 @@ import Foundation
 
 @_silgen_name("look_modes_list_text")
 nonisolated
-private func look_modes_list_text() -> UnsafeMutablePointer<CChar>?
+    private func look_modes_list_text() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_modes_parse_json")
 nonisolated
-private func look_modes_parse_json(_ argvJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    private func look_modes_parse_json(_ argvJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_free_cstring")
 nonisolated
-private func look_free_cstring(_ ptr: UnsafeMutablePointer<CChar>?)
+    private func look_free_cstring(_ ptr: UnsafeMutablePointer<CChar>?)
 
 /// `lookapp clipboard`: open the launcher already in a mode. The table and the
 /// argv grammar live in core (`core/engine/modes.rs`); this carries the answer

@@ -66,13 +66,15 @@ struct WinterSceneView: View {
                 // One layer, so the gift does not let Santa show through.
                 .compositingGroup()
                 .opacity(FigureStyle.opacity)
-                .mask(LinearGradient(
-                    stops: [
-                        .init(color: .black, location: FigureStyle.fadeStart),
-                        .init(color: .clear, location: 1),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom))
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black, location: FigureStyle.fadeStart),
+                            .init(color: .clear, location: 1),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom)
+                )
                 .padding(.trailing, figure == .santa ? FigureStyle.cornerInset : 0)
                 .frame(
                     maxWidth: .infinity,
@@ -108,7 +110,8 @@ struct WinterSceneView: View {
                     Text(Self.crystals[crystal]).font(.system(size: flake.radius * 2)).foregroundStyle(snowColor),
                     at: CGPoint(x: flake.x, y: flake.y))
             } else {
-                let rect = CGRect(x: flake.x, y: flake.y, width: 0, height: 0).insetBy(dx: -flake.radius, dy: -flake.radius)
+                let rect = CGRect(x: flake.x, y: flake.y, width: 0, height: 0).insetBy(
+                    dx: -flake.radius, dy: -flake.radius)
                 context.fill(Path(ellipseIn: rect), with: shading)
             }
         }
@@ -141,15 +144,17 @@ struct BokehView: View {
                         let color = { (alpha: Double) in
                             Color(.sRGB, red: glow.red, green: glow.green, blue: glow.blue, opacity: alpha)
                         }
-                        context.fill(Path(ellipseIn: rect), with: .radialGradient(
-                            Gradient(stops: [
-                                .init(color: color(glow.alpha), location: 0),
-                                .init(color: color(glow.alpha * Self.discAlphaShare), location: Self.discShare),
-                                .init(color: color(0), location: 1),
-                            ]),
-                            center: glow.center,
-                            startRadius: 0,
-                            endRadius: glow.radius))
+                        context.fill(
+                            Path(ellipseIn: rect),
+                            with: .radialGradient(
+                                Gradient(stops: [
+                                    .init(color: color(glow.alpha), location: 0),
+                                    .init(color: color(glow.alpha * Self.discAlphaShare), location: Self.discShare),
+                                    .init(color: color(0), location: 1),
+                                ]),
+                                center: glow.center,
+                                startRadius: 0,
+                                endRadius: glow.radius))
                     }
                 }
             }

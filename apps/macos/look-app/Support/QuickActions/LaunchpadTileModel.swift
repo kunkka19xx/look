@@ -184,7 +184,7 @@ nonisolated struct LaunchpadLayout: Decodable, Equatable {
 
     init(from decoder: Decoder) throws {
         guard let container = try? decoder.container(keyedBy: CodingKeys.self),
-              let tiles = try? container.decode([LaunchpadTileModel].self, forKey: .tiles)
+            let tiles = try? container.decode([LaunchpadTileModel].self, forKey: .tiles)
         else {
             self.tiles = try [LaunchpadTileModel](from: decoder)
             shape = nil

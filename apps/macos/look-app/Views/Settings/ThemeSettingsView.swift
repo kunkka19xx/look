@@ -230,8 +230,9 @@ struct ThemeSettingsView: View {
             }
 
             if showFreshConfigConfirm,
-               flags.isEmpty,
-               event.charactersIgnoringModifiers?.lowercased() == "y" {
+                flags.isEmpty,
+                event.charactersIgnoringModifiers?.lowercased() == "y"
+            {
                 showFreshConfigConfirm = false
                 runFreshConfigReset()
                 return nil

@@ -63,7 +63,7 @@ struct SpeedTestView: View {
                 "r": { controller.start() },
                 "e": { revealsPublicAddress.toggle() },
             ])
-                .allowsHitTesting(false)
+            .allowsHitTesting(false)
         }
         .onAppear { controller.startIfStale() }
     }

@@ -9,10 +9,10 @@ import Foundation
 @MainActor
 final class AIAnswerController: ObservableObject {
     enum State: Equatable {
-        case idle       // not a question / AI off - no card
+        case idle  // not a question / AI off - no card
         case streaming  // answer is being generated
-        case done       // answer complete
-        case failed     // model declined or errored
+        case done  // answer complete
+        case failed  // model declined or errored
     }
 
     /// One source's answer block. Identity is the source name so SwiftUI keeps
@@ -106,8 +106,10 @@ final class AIAnswerController: ObservableObject {
             // deterministic, instant, and never sent to web sources or a model
             // ("what's on my calendar?" must not shrug "I don't have access").
             if let schedule = ScheduleContextProvider.cardAnswer(for: trimmed) {
-                self.items = [Item(
-                    text: schedule.text, source: schedule.source, url: nil, imageURL: nil)]
+                self.items = [
+                    Item(
+                        text: schedule.text, source: schedule.source, url: nil, imageURL: nil)
+                ]
                 self.state = .done
                 return
             }

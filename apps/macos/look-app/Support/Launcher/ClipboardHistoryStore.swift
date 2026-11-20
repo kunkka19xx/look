@@ -13,7 +13,9 @@ private actor ClipboardWriter {
 
     /// One hop off the main thread: hashing and encoding a screenshot would
     /// stutter the poll loop that found it.
-    func recordImage(data: Data, label: String, appBundleID: String?)
+    func recordImage(
+        data: Data, label: String, appBundleID: String?
+    )
         -> (stored: StoredClipboardImage, storeID: Int64)?
     {
         guard let stored = ClipboardImageFiles.store(data),
@@ -265,7 +267,9 @@ final class ClipboardHistoryStore: ObservableObject {
 
     /// A row whose file is gone is dropped rather than shown broken: the bytes
     /// are the clip, and without them there is nothing to paste.
-    nonisolated private static func restoredImageEntry(from stored: EngineBridge.ClipboardEntry)
+    nonisolated private static func restoredImageEntry(
+        from stored: EngineBridge.ClipboardEntry
+    )
         -> ClipboardImageEntry?
     {
         guard let url = ClipboardImageFiles.fileURL(forHash: stored.contentHash),
@@ -540,8 +544,10 @@ final class ClipboardHistoryStore: ObservableObject {
     ) -> Bool {
         if types.contains(.fileURL) { return true }
         if types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType")) { return true }
-        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
-           !urls.isEmpty {
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+            as? [URL],
+            !urls.isEmpty
+        {
             return true
         }
         return false

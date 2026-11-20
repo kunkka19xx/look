@@ -26,15 +26,18 @@ struct BatteryControl: SystemControl {
     /// (e.g. a desktop Mac), by reading the internal power source via IOKit.
     private static func batteryPercent() -> Int? {
         guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
-              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else {
+            let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef]
+        else {
             return nil
         }
         for source in sources {
-            guard let description = IOPSGetPowerSourceDescription(snapshot, source)?
+            guard
+                let description = IOPSGetPowerSourceDescription(snapshot, source)?
                     .takeUnretainedValue() as? [String: Any],
-                  let current = description[kIOPSCurrentCapacityKey as String] as? Int,
-                  let max = description[kIOPSMaxCapacityKey as String] as? Int,
-                  max > 0 else {
+                let current = description[kIOPSCurrentCapacityKey as String] as? Int,
+                let max = description[kIOPSMaxCapacityKey as String] as? Int,
+                max > 0
+            else {
                 continue
             }
             return Int((Double(current) / Double(max) * 100).rounded())
@@ -45,12 +48,15 @@ struct BatteryControl: SystemControl {
     /// Whether the internal power source is actively charging via IOKit.
     private static func isCharging() -> Bool {
         guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
-              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else {
+            let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef]
+        else {
             return false
         }
         for source in sources {
-            guard let description = IOPSGetPowerSourceDescription(snapshot, source)?
-                    .takeUnretainedValue() as? [String: Any] else {
+            guard
+                let description = IOPSGetPowerSourceDescription(snapshot, source)?
+                    .takeUnretainedValue() as? [String: Any]
+            else {
                 continue
             }
             if let charging = description[kIOPSIsChargingKey as String] as? Bool {

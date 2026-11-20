@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// The shell side of the date seam. NSDataDetector itself is Apple's and not

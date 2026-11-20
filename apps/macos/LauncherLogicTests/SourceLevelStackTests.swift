@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// The drill-down stack: what the query bar says, what the core is told about

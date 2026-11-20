@@ -58,7 +58,9 @@ extension ActionController {
 
     /// Ways to reach the person the user named. Always lists, even for one
     /// option: a call has no undo, so the row the user reads is the confirm.
-    func presentCallChoices(named name: String, modality: String?, didAsk: Bool = false)
+    func presentCallChoices(
+        named name: String, modality: String?, didAsk: Bool = false
+    )
         -> String
     {
         switch ContactsService.shared.access {

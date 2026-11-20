@@ -49,8 +49,9 @@ extension LauncherView {
                     .background {
                         RoundedRectangle(
                             cornerRadius: themeStore.controlRadius,
-                            style: .continuous)
-                            .fill(themeStore.surfaceFill(0.55))
+                            style: .continuous
+                        )
+                        .fill(themeStore.surfaceFill(0.55))
                     }
                     .selectionPill(
                         isSelected: index == picker.selected,

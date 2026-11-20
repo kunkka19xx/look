@@ -61,8 +61,9 @@ struct ThemedBackdrop: View {
                 GlassEffectBackdrop(
                     cornerRadius: cornerRadius,
                     tint: tintColor,
-                    appearance: themeStore.themeAppearance())
-                    .opacity(clamped(blurOpacityMultiplier))
+                    appearance: themeStore.themeAppearance()
+                )
+                .opacity(clamped(blurOpacityMultiplier))
             } else if #available(macOS 26.0, *) {
                 if showsFrost {
                     GlassEffectBackdrop(

@@ -356,17 +356,19 @@ extension View {
     }
     /// Slides the search placeholder in from the right on every launcher open.
     func placeholderReveal(token: UInt64) -> some View {
-        modifier(SlideReveal(
-            token: token,
-            startOffsetX: Motion.Slide.placeholderOffsetX,
-            animation: Motion.Slide.arrive(index: 0)))
+        modifier(
+            SlideReveal(
+                token: token,
+                startOffsetX: Motion.Slide.placeholderOffsetX,
+                animation: Motion.Slide.arrive(index: 0)))
     }
 
     /// Slides a running-apps icon in from the left, staggered by `index`.
     func stripReveal(index: Int, token: UInt64) -> some View {
-        modifier(SlideReveal(
-            token: token,
-            startOffsetX: Motion.Slide.stripOffsetX,
-            animation: Motion.Slide.Strip.arrive(index: index)))
+        modifier(
+            SlideReveal(
+                token: token,
+                startOffsetX: Motion.Slide.stripOffsetX,
+                animation: Motion.Slide.Strip.arrive(index: index)))
     }
 }

@@ -40,15 +40,21 @@ struct LookupDefinitionPanelView: View {
                     Text(definition.query)
                         .font(
                             isWebMode
-                                ? themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 6), weight: Font.Weight.semibold)
-                                : .system(size: CGFloat(themeStore.settings.fontSize + 6), weight: Font.Weight.semibold, design: .serif)
+                                ? themeStore.uiFont(
+                                    size: CGFloat(themeStore.settings.fontSize + 6), weight: Font.Weight.semibold)
+                                : .system(
+                                    size: CGFloat(themeStore.settings.fontSize + 6), weight: Font.Weight.semibold,
+                                    design: .serif)
                         )
                         .foregroundStyle(themeStore.fontColor())
                     Text(definition.sourceLabel.uppercased())
                         .font(
                             isWebMode
-                                ? themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: Font.Weight.semibold)
-                                : .system(size: CGFloat(themeStore.settings.fontSize - 2), weight: Font.Weight.bold, design: .rounded)
+                                ? themeStore.uiFont(
+                                    size: CGFloat(themeStore.settings.fontSize - 2), weight: Font.Weight.semibold)
+                                : .system(
+                                    size: CGFloat(themeStore.settings.fontSize - 2), weight: Font.Weight.bold,
+                                    design: .rounded)
                         )
                         .foregroundStyle(themeStore.mutedTextColor())
                 }
@@ -81,8 +87,11 @@ struct LookupDefinitionPanelView: View {
                 Text(section.label.uppercased())
                     .font(
                         isWebMode
-                            ? themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: Font.Weight.semibold)
-                            : .system(size: CGFloat(themeStore.settings.fontSize - 1), weight: Font.Weight.bold, design: .serif)
+                            ? themeStore.uiFont(
+                                size: CGFloat(themeStore.settings.fontSize - 1), weight: Font.Weight.semibold)
+                            : .system(
+                                size: CGFloat(themeStore.settings.fontSize - 1), weight: Font.Weight.bold,
+                                design: .serif)
                     )
                     .foregroundStyle(themeStore.secondaryTextColor())
 
@@ -115,8 +124,11 @@ struct LookupDefinitionPanelView: View {
                 Text(translated)
                     .font(
                         isWebMode
-                            ? themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 2), weight: Font.Weight.regular)
-                            : .system(size: CGFloat(themeStore.settings.fontSize + 2), weight: Font.Weight.regular, design: .serif)
+                            ? themeStore.uiFont(
+                                size: CGFloat(themeStore.settings.fontSize + 2), weight: Font.Weight.regular)
+                            : .system(
+                                size: CGFloat(themeStore.settings.fontSize + 2), weight: Font.Weight.regular,
+                                design: .serif)
                     )
                     .foregroundStyle(themeStore.secondaryTextColor())
                     .lineSpacing(CGFloat(themeStore.settings.fontSize * 0.15))
@@ -125,8 +137,11 @@ struct LookupDefinitionPanelView: View {
                 Text("No translation")
                     .font(
                         isWebMode
-                            ? themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: Font.Weight.regular)
-                            : .system(size: CGFloat(themeStore.settings.fontSize), weight: Font.Weight.regular, design: .serif)
+                            ? themeStore.uiFont(
+                                size: CGFloat(themeStore.settings.fontSize), weight: Font.Weight.regular)
+                            : .system(
+                                size: CGFloat(themeStore.settings.fontSize), weight: Font.Weight.regular, design: .serif
+                            )
                     )
                     .foregroundStyle(themeStore.mutedTextColor())
             }
@@ -226,8 +241,11 @@ struct LookupDefinitionPanelView: View {
                 Text(emptyHint)
                     .font(
                         isWebMode
-                            ? themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 2), weight: Font.Weight.medium)
-                            : .system(size: CGFloat(themeStore.settings.fontSize + 2), weight: Font.Weight.medium, design: .serif)
+                            ? themeStore.uiFont(
+                                size: CGFloat(themeStore.settings.fontSize + 2), weight: Font.Weight.medium)
+                            : .system(
+                                size: CGFloat(themeStore.settings.fontSize + 2), weight: Font.Weight.medium,
+                                design: .serif)
                     )
                     .foregroundStyle(themeStore.secondaryTextColor())
             }
@@ -343,7 +361,8 @@ struct LookupDefinitionPanelView: View {
         } else if let englishVoice = AVSpeechSynthesisVoice(language: "en-US") {
             utterance.voice = englishVoice
         } else if let preferred = Locale.preferredLanguages.first,
-                  let localeVoice = AVSpeechSynthesisVoice(language: preferred) {
+            let localeVoice = AVSpeechSynthesisVoice(language: preferred)
+        {
             utterance.voice = localeVoice
         }
 
@@ -371,19 +390,20 @@ struct LookupDefinitionPanelView: View {
     }
 
     private func openInDictionary(_ word: String) {
-        NSWorkspace.shared.open(URL(string: "dict:///\(word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word)")!)
+        NSWorkspace.shared.open(
+            URL(string: "dict:///\(word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word)")!)
     }
 
     private func openDictionaryPreferences() {
         let script = """
-        tell application "Dictionary"
-            activate
-            delay 0.3
-            tell application "System Events"
-                keystroke "," using command down
+            tell application "Dictionary"
+                activate
+                delay 0.3
+                tell application "System Events"
+                    keystroke "," using command down
+                end tell
             end tell
-        end tell
-        """
+            """
         var error: NSDictionary?
         if let appleScript = NSAppleScript(source: script) {
             appleScript.executeAndReturnError(&error)

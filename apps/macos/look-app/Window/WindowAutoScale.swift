@@ -76,7 +76,8 @@ enum WindowAutoScale {
     /// Frame for a live layout switch: same top edge and center, so the search
     /// bar stays put and the window grows or shrinks downward.
     static func resizedFrame(from current: NSRect, on screen: NSScreen, layout: LauncherLayout) -> NSRect {
-        frame(size: size(for: screen, layout: layout), midX: current.midX, top: current.maxY, within: screen.visibleFrame)
+        frame(
+            size: size(for: screen, layout: layout), midX: current.midX, top: current.maxY, within: screen.visibleFrame)
     }
 
     private static func frame(size: CGSize, midX: CGFloat, top: CGFloat, within visible: NSRect) -> NSRect {

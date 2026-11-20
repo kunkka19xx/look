@@ -140,7 +140,9 @@ extension LauncherView {
         NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: config) { runningApp, error in
             DispatchQueue.main.async {
                 if let error {
-                    openLaunchLog.error("openApplication failed for \(path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    openLaunchLog.error(
+                        "openApplication failed for \(path, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
                     return
                 }
                 guard let runningApp else { return }
@@ -148,8 +150,9 @@ extension LauncherView {
                 // launching. If the user has since moved to a different app,
                 // don't steal focus back.
                 if let frontmost = NSWorkspace.shared.frontmostApplication,
-                   frontmost.processIdentifier != ownPID,
-                   frontmost.processIdentifier != runningApp.processIdentifier {
+                    frontmost.processIdentifier != ownPID,
+                    frontmost.processIdentifier != runningApp.processIdentifier
+                {
                     return
                 }
                 runningApp.activate()
@@ -175,7 +178,8 @@ extension LauncherView {
         config.activates = true
         NSWorkspace.shared.open(URL(fileURLWithPath: target), configuration: config) { _, error in
             if let error {
-                openLaunchLog.error("open failed for \(target, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                openLaunchLog.error(
+                    "open failed for \(target, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -324,7 +328,7 @@ extension LauncherView {
     /// the field, or nothing (or an unmatched id) is selected.
     func actionableSelectedResult() -> LauncherResult? {
         guard !isCommandMode, !isPrefixSuggestionQuery,
-              let selectedID = selectedResultID
+            let selectedID = selectedResultID
         else { return nil }
         return displayedResults.first(where: { $0.id == selectedID })
     }
@@ -574,12 +578,14 @@ extension LauncherView {
     /// pasteboard, get out of the way, and type ⌘V into the app that owned
     /// the cursor. False leaves the chord unclaimed.
     func pasteSelectedClipboardEntry() -> Bool {
-        guard ClipboardPasteTarget.allowsKeyboardPaste(
-            showsThemeSettings: appUIState.showsThemeSettings,
-            showsHelpScreen: showsHelpScreen,
-            inCommandMode: isCommandMode,
-            inAIMode: isAIMode
-        ) else { return false }
+        guard
+            ClipboardPasteTarget.allowsKeyboardPaste(
+                showsThemeSettings: appUIState.showsThemeSettings,
+                showsHelpScreen: showsHelpScreen,
+                inCommandMode: isCommandMode,
+                inAIMode: isAIMode
+            )
+        else { return false }
 
         let selected = displayedResults.first { $0.id == selectedResultID }
         guard let target = ClipboardPasteTarget.resolve(selected, picked: pickedResults())
@@ -633,13 +639,15 @@ extension LauncherView {
         if !pickedKeys.isEmpty {
             candidates = pickedKeys.compactMap { pickedResultsByKey[$0] }
         } else if let selectedResultID,
-                  let selected = displayedResults.first(where: { $0.id == selectedResultID }) {
+            let selected = displayedResults.first(where: { $0.id == selectedResultID })
+        {
             candidates = [selected]
         } else {
             candidates = []
         }
 
-        return DeleteTargetLogic
+        return
+            DeleteTargetLogic
             .eligible(from: candidates, fileExists: { FileManager.default.fileExists(atPath: $0) })
             .map { result in
                 DeleteCommand.Target(
@@ -670,10 +678,11 @@ extension LauncherView {
 
         // Cmd+D on the pinned Trash folder empties it rather than trashing it.
         if pickedKeys.isEmpty,
-           let selectedResultID,
-           let selected = displayedResults.first(where: { $0.id == selectedResultID }),
-           selected.kind == .folder,
-           DeleteTargetLogic.isTrashPath(selected.path, homeDirectory: NSHomeDirectory()) {
+            let selectedResultID,
+            let selected = displayedResults.first(where: { $0.id == selectedResultID }),
+            selected.kind == .folder,
+            DeleteTargetLogic.isTrashPath(selected.path, homeDirectory: NSHomeDirectory())
+        {
             // Count comes from Finder (TCC blocks reading ~/.Trash directly);
             // this is the right moment to prompt for Automation permission.
             guard let count = EmptyTrashCommand.itemCount() else {
@@ -782,7 +791,8 @@ extension LauncherView {
         guard !isCommandMode, isClipboardQuery || isClipboardImageQuery else { return }
 
         if let selectedResultID,
-           displayedResults.contains(where: { $0.id == selectedResultID }) {
+            displayedResults.contains(where: { $0.id == selectedResultID })
+        {
             return
         }
 

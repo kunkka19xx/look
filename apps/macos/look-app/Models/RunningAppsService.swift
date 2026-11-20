@@ -62,12 +62,16 @@ final class RunningAppsService: ObservableObject {
     func activate(index: Int) -> Bool {
         let log = RunningAppsLog.logger
         guard index >= 0, index < items.count else {
-            log.debug("activate(index: \(index, privacy: .public)) - out of range (count=\(self.items.count, privacy: .public))")
+            log.debug(
+                "activate(index: \(index, privacy: .public)) - out of range (count=\(self.items.count, privacy: .public))"
+            )
             return false
         }
         let item = items[index]
         guard let app = NSRunningApplication(processIdentifier: item.id) else {
-            log.debug("activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) - NSRunningApplication lookup returned nil (process gone?)")
+            log.debug(
+                "activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) - NSRunningApplication lookup returned nil (process gone?)"
+            )
             return false
         }
         guard !app.isTerminated else {
@@ -86,14 +90,18 @@ final class RunningAppsService: ObservableObject {
         // those apps respond by spawning a fresh window.
         let hadVisibleWindow = Self.hasOnScreenWindow(pid: app.processIdentifier)
         let result = app.activate(options: [.activateAllWindows])
-        log.debug("activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) wasHidden=\(wasHidden, privacy: .public) hadVisibleWindow=\(hadVisibleWindow, privacy: .public) - activate returned \(result, privacy: .public)")
+        log.debug(
+            "activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) wasHidden=\(wasHidden, privacy: .public) hadVisibleWindow=\(hadVisibleWindow, privacy: .public) - activate returned \(result, privacy: .public)"
+        )
         if result, !hadVisibleWindow, let bundleURL = app.bundleURL {
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.activates = true
             configuration.addsToRecentItems = false
             NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { _, error in
                 if let error {
-                    log.debug("openApplication(at:) follow-up failed for \(item.name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    log.debug(
+                        "openApplication(at:) follow-up failed for \(item.name, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
                 }
             }
         }
@@ -124,7 +132,8 @@ final class RunningAppsService: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] note in
-            let activatedPID = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
+            let activatedPID = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
+                .processIdentifier
             Task { @MainActor in
                 guard let self else { return }
                 // Track which app is frontmost (for the accent ring) but

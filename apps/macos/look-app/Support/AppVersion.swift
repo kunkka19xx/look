@@ -38,6 +38,6 @@ nonisolated enum AppVersion {
     }
 }
 
-nonisolated private extension String {
-    var nonEmpty: String? { isEmpty ? nil : self }
+nonisolated extension String {
+    fileprivate var nonEmpty: String? { isEmpty ? nil : self }
 }

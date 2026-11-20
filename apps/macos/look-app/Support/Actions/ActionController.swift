@@ -44,7 +44,8 @@ struct ActionSessionItem: Identifiable, Equatable {
     }
 
     private mutating func recomputeSegments() {
-        segments = (kind == .answer && !isStreaming)
+        segments =
+            (kind == .answer && !isStreaming)
             ? EngineBridge.shared.aiMarkdownSegments(text)
             : []
     }
@@ -235,7 +236,8 @@ final class ActionController: ObservableObject {
         // stay fully functional on any provider.
         let modelAvailable = planner.isAvailable
         if let raw = EngineBridge.shared.aiParseExplicit(">" + query, modelAvailable: modelAvailable),
-           case .planned(let plan) = resolveOutcome(toolID: raw.toolID, params: raw.params) {
+            case .planned(let plan) = resolveOutcome(toolID: raw.toolID, params: raw.params)
+        {
             isPlanning = false
             pendingSteps = [plannedAction(toolID: raw.toolID, plan: plan)]
             feedback = ""
@@ -324,7 +326,8 @@ final class ActionController: ObservableObject {
             isPlanning = false
             pendingSteps = []
             if let note = chat.runTextOp(
-                label: label, instruction: instruction, source: textOpSource()) {
+                label: label, instruction: instruction, source: textOpSource())
+            {
                 feedback = note
             }
         case .files:
@@ -414,7 +417,8 @@ final class ActionController: ObservableObject {
             }
             let label = String(instruction.prefix(48))
             if let note = chat.runTextOp(
-                label: label, instruction: instruction, source: textOpSource()) {
+                label: label, instruction: instruction, source: textOpSource())
+            {
                 feedback = note
             }
         default:
@@ -462,7 +466,8 @@ final class ActionController: ObservableObject {
             case .several:
                 // A choice list mid-plan would need a queue of questions.
                 pendingSteps = []
-                feedback = "Step \(index + 1) refers to more than one recent item - "
+                feedback =
+                    "Step \(index + 1) refers to more than one recent item - "
                     + "name it instead."
                 return
             case .nothingToReferTo:
@@ -481,7 +486,8 @@ final class ActionController: ObservableObject {
                 // Disambiguating one step of several would need a queue of
                 // questions; say which step is unclear instead of guessing.
                 pendingSteps = []
-                feedback = "Step \(index + 1) matches more than one thing - "
+                feedback =
+                    "Step \(index + 1) matches more than one thing - "
                     + "name it more precisely."
                 return
             }
@@ -704,15 +710,17 @@ final class ActionController: ObservableObject {
                     let receipt = try step.perform()
                     receipts.append(receipt)
                     if let subjectID = receipt.subjectID {
-                        targets.append(RecentTarget(
-                            domain: Self.domain(of: step.toolID),
-                            id: subjectID,
-                            label: receipt.summary))
+                        targets.append(
+                            RecentTarget(
+                                domain: Self.domain(of: step.toolID),
+                                id: subjectID,
+                                label: receipt.summary))
                     }
                     itemIDs.append(chat.appendAction(receipt.summary))
                     feedback = ""
                 } catch {
-                    feedback = steps.count == 1
+                    feedback =
+                        steps.count == 1
                         ? "Failed: \(error.localizedDescription)"
                         : "Step \(index + 1) of \(steps.count) failed: "
                             + "\(error.localizedDescription)"
@@ -763,7 +771,8 @@ final class ActionController: ObservableObject {
                 failures += 1
             }
         }
-        feedback = failures == 0
+        feedback =
+            failures == 0
             ? ""
             : (failures == lastReceipts.count
                 ? "Undo failed"
@@ -777,7 +786,8 @@ final class ActionController: ObservableObject {
     /// permanent and unrelated to what the user asked for).
     private func ensureAccess(for toolID: String) async {
         let isReminder = toolID.hasPrefix("reminder")
-        let access = isReminder
+        let access =
+            isReminder
             ? EventKitService.shared.reminderAccess
             : EventKitService.shared.calendarAccess
         guard access == .notDetermined else { return }

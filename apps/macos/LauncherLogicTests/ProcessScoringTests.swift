@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// Parity tests for the process-finder ranking, mirroring the Rust reference
@@ -42,8 +43,8 @@ final class ProcessScoringTests: XCTestCase {
 
     func testExactPortBeatsPartialAndName() {
         let server = row("node", 4321, [3000])
-        let other = row("node", 30001, []) // "3000" is a PID substring only
-        let named = row("proc3000", 99, []) // name contains the digits
+        let other = row("node", 30001, [])  // "3000" is a PID substring only
+        let named = row("proc3000", 99, [])  // name contains the digits
         let exact = score(server, "3000")
         XCTAssertEqual(exact, ProcessScoring.portExactScore)
         XCTAssertGreaterThan(exact!, score(other, "3000")!)
@@ -51,15 +52,15 @@ final class ProcessScoringTests: XCTestCase {
     }
 
     func testPartialPortRanksAbovePIDOnly() {
-        let byPort = row("a", 1, [3000]) // "300" is a substring of the port
-        let byPID = row("b", 3009, []) // "300" is a substring of the PID
+        let byPort = row("a", 1, [3000])  // "300" is a substring of the port
+        let byPID = row("b", 3009, [])  // "300" is a substring of the PID
         XCTAssertEqual(score(byPort, "300"), ProcessScoring.numericPartialScore)
         XCTAssertEqual(score(byPID, "300"), ProcessScoring.pidPartialScore)
         XCTAssertGreaterThan(score(byPort, "300")!, score(byPID, "300")!)
     }
 
     func testPIDSubstringKeepsARealNameMatch() {
-        let named = row("proc300", 1300, []) // name and PID both hold "300"
+        let named = row("proc300", 1300, [])  // name and PID both hold "300"
         let pidOnly = row("b", 1300, [])
         XCTAssertGreaterThan(score(named, "300")!, ProcessScoring.pidPartialScore)
         XCTAssertEqual(score(pidOnly, "300"), ProcessScoring.pidPartialScore)

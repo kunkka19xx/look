@@ -105,7 +105,9 @@ nonisolated final class EventKitService: @unchecked Sendable {
     /// Window variant, so "next week" / "tomorrow" questions list the right
     /// days. Returns the listed events too, so the session can remember them as
     /// referent targets ("remove this event" after a listing).
-    func eventsSummary(from start: Date, to end: Date, emptyText: String) -> (text: String, events: [EventCandidateData])? {
+    func eventsSummary(
+        from start: Date, to end: Date, emptyText: String
+    ) -> (text: String, events: [EventCandidateData])? {
         guard calendarAccess == .authorized else { return nil }
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
         let events = store.events(matching: predicate).prefix(30)
@@ -121,7 +123,8 @@ nonisolated final class EventKitService: @unchecked Sendable {
             if event.isAllDay {
                 return "\(day) (all day): \(title)"
             }
-            return "\(day) \(timeFormat.string(from: event.startDate))-\(timeFormat.string(from: event.endDate)): \(title)"
+            return
+                "\(day) \(timeFormat.string(from: event.startDate))-\(timeFormat.string(from: event.endDate)): \(title)"
         }.joined(separator: "\n")
         let candidates = events.compactMap { event -> EventCandidateData? in
             guard let id = event.eventIdentifier else { return nil }

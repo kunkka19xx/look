@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// How much of a `preview` command's output the panel renders.

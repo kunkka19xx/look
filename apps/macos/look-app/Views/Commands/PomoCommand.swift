@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 import OSLog
 @preconcurrency import UserNotifications
 
@@ -147,8 +147,8 @@ enum PomoPersistence {
         for token in trimmed.split(separator: ",") {
             let parts = token.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
             guard parts.count == 3,
-                  let type = PomoSession.SessionType(rawValue: String(parts[0])),
-                  let mins = Int(parts[1]), mins > 0
+                let type = PomoSession.SessionType(rawValue: String(parts[0])),
+                let mins = Int(parts[1]), mins > 0
             else { continue }
             let name = String(parts[2]).removingPercentEncoding ?? String(parts[2])
             result.append(PomoSession(type: type, durationMinutes: mins, name: name))
@@ -257,20 +257,27 @@ enum PomoNotifications {
             case .ephemeral: statusName = "ephemeral"
             @unknown default: statusName = "unknown"
             }
-            pomoNotifLog.notice("auth status=\(statusName, privacy: .public) bundle=\(bundleID, privacy: .public) alertSetting=\(settings.alertSetting.rawValue) soundSetting=\(settings.soundSetting.rawValue)")
+            pomoNotifLog.notice(
+                "auth status=\(statusName, privacy: .public) bundle=\(bundleID, privacy: .public) alertSetting=\(settings.alertSetting.rawValue) soundSetting=\(settings.soundSetting.rawValue)"
+            )
             switch settings.authorizationStatus {
             case .authorized, .provisional, .ephemeral:
                 then(true)
             case .denied:
-                pomoNotifLog.error("DENIED - open System Settings → Notifications → \(bundleID, privacy: .public) and enable")
+                pomoNotifLog.error(
+                    "DENIED - open System Settings → Notifications → \(bundleID, privacy: .public) and enable")
                 then(false)
             case .notDetermined:
-                guard !permissionRequested else { then(false); return }
+                guard !permissionRequested else {
+                    then(false)
+                    return
+                }
                 permissionRequested = true
                 pomoNotifLog.notice("requesting authorization …")
                 center.requestAuthorization(options: [.alert, .sound]) { granted, error in
                     if let error {
-                        pomoNotifLog.error("requestAuthorization error: \(error.localizedDescription, privacy: .public)")
+                        pomoNotifLog.error(
+                            "requestAuthorization error: \(error.localizedDescription, privacy: .public)")
                     }
                     pomoNotifLog.notice("requestAuthorization granted=\(granted)")
                     then(granted)
@@ -287,7 +294,8 @@ enum PomoNotifications {
     nonisolated private static func deliver(_ req: UNNotificationRequest, label: String) {
         UNUserNotificationCenter.current().add(req) { error in
             if let error {
-                pomoNotifLog.error("\(label, privacy: .public) add error: \(error.localizedDescription, privacy: .public)")
+                pomoNotifLog.error(
+                    "\(label, privacy: .public) add error: \(error.localizedDescription, privacy: .public)")
             } else {
                 pomoNotifLog.notice("\(label, privacy: .public) added id=\(req.identifier, privacy: .public)")
             }

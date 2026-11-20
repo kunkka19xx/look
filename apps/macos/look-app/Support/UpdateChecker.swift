@@ -174,24 +174,24 @@ final class UpdateChecker: ObservableObject {
         // process is still the old binary - so on success we quit and relaunch
         // Look for the user instead of asking them to restart it manually.
         let script = """
-        #!/bin/bash
-        export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        echo "Updating Look via Homebrew…"
-        echo ""
-        \(homebrewUpgradeCommand)
-        status=$?
-        echo ""
-        if [ $status -eq 0 ]; then
-          echo "Update complete - relaunching Look…"
-          osascript -e 'tell application id "\(productionBundleID)" to quit' >/dev/null 2>&1
-          sleep 1
-          open -b "\(productionBundleID)" 2>/dev/null || open "/Applications/Look.app"
-          echo "Look has been relaunched. You can close this window."
-        else
-          echo "Update failed (exit $status). See the output above, or run:"
-          echo "  \(homebrewUpgradeCommand)"
-        fi
-        """
+            #!/bin/bash
+            export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+            echo "Updating Look via Homebrew…"
+            echo ""
+            \(homebrewUpgradeCommand)
+            status=$?
+            echo ""
+            if [ $status -eq 0 ]; then
+              echo "Update complete - relaunching Look…"
+              osascript -e 'tell application id "\(productionBundleID)" to quit' >/dev/null 2>&1
+              sleep 1
+              open -b "\(productionBundleID)" 2>/dev/null || open "/Applications/Look.app"
+              echo "Look has been relaunched. You can close this window."
+            else
+              echo "Update failed (exit $status). See the output above, or run:"
+              echo "  \(homebrewUpgradeCommand)"
+            fi
+            """
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("look-update.command")
         do {

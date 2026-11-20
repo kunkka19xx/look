@@ -27,7 +27,8 @@ enum DictionaryParser {
     // MARK: - Language Detection
 
     private static func containsJapanese(_ text: String) -> Bool {
-        let japaneseRange = text.range(of: "[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FAF]", options: .regularExpression)
+        let japaneseRange = text.range(
+            of: "[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FAF]", options: .regularExpression)
         return japaneseRange != nil
     }
 
@@ -41,11 +42,13 @@ enum DictionaryParser {
     private static func cleanJapaneseDefinition(_ text: String) -> String {
         var result = text
         while let bracketStart = result.range(of: "【"),
-              let bracketEnd = result.range(of: "】", range: bracketStart.upperBound..<result.endIndex) {
+            let bracketEnd = result.range(of: "】", range: bracketStart.upperBound..<result.endIndex)
+        {
             result = result.replacingCharacters(in: bracketStart.lowerBound..<bracketEnd.upperBound, with: "")
         }
         if let refMarker = result.range(of: "（⇨", options: .backwards),
-           refMarker.lowerBound > result.startIndex {
+            refMarker.lowerBound > result.startIndex
+        {
             result = String(result[..<refMarker.lowerBound])
         }
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -111,10 +114,13 @@ extension DictionaryParser {
             guard !numberedSenseRanges.isEmpty else {
                 let simpleDef = extractWordChoiceDef(text)
                 if let def = simpleDef {
-                    definitions.append(LookupDefinitionEntry(
-                        partOfSpeech: "word",
-                        senses: [LookupSenseEntry(number: 1, definition: def, examples: [], synonyms: [], antonyms: [])]
-                    ))
+                    definitions.append(
+                        LookupDefinitionEntry(
+                            partOfSpeech: "word",
+                            senses: [
+                                LookupSenseEntry(number: 1, definition: def, examples: [], synonyms: [], antonyms: [])
+                            ]
+                        ))
                 }
                 return LookupPresentation(title: title, partOfSpeech: "word", definitions: definitions)
             }
@@ -128,10 +134,11 @@ extension DictionaryParser {
             guard let wcDef = extractWordChoiceDef(String(text[wordChoiceRange.upperBound...])) else {
                 return parseJapaneseSenses(text, title: title, senses: &senses, definitions: &definitions)
             }
-            definitions.append(LookupDefinitionEntry(
-                partOfSpeech: "WORD CHOICE",
-                senses: [LookupSenseEntry(number: 1, definition: wcDef, examples: [], synonyms: [], antonyms: [])]
-            ))
+            definitions.append(
+                LookupDefinitionEntry(
+                    partOfSpeech: "WORD CHOICE",
+                    senses: [LookupSenseEntry(number: 1, definition: wcDef, examples: [], synonyms: [], antonyms: [])]
+                ))
             let sensesText = String(text[..<wcPos])
             return parseJapaneseSenses(sensesText, title: title, senses: &senses, definitions: &definitions)
         }
@@ -139,27 +146,32 @@ extension DictionaryParser {
         let afterWC = String(text[wordChoiceRange.upperBound...])
         if afterWC.range(of: "1 【") != nil {
             guard let firstSenseRange = afterWC.range(of: "1 【"),
-                  let wcDef = extractWordChoiceDef(String(afterWC[..<firstSenseRange.lowerBound])) else {
+                let wcDef = extractWordChoiceDef(String(afterWC[..<firstSenseRange.lowerBound]))
+            else {
                 return nil
             }
-            definitions.append(LookupDefinitionEntry(
-                partOfSpeech: "WORD CHOICE",
-                senses: [LookupSenseEntry(number: 1, definition: wcDef, examples: [], synonyms: [], antonyms: [])]
-            ))
+            definitions.append(
+                LookupDefinitionEntry(
+                    partOfSpeech: "WORD CHOICE",
+                    senses: [LookupSenseEntry(number: 1, definition: wcDef, examples: [], synonyms: [], antonyms: [])]
+                ))
             let sensesText = String(afterWC[firstSenseRange.lowerBound...])
             return parseJapaneseSenses(sensesText, title: title, senses: &senses, definitions: &definitions)
         }
 
         if let wcDef = extractWordChoiceDef(afterWC) {
-            definitions.append(LookupDefinitionEntry(
-                partOfSpeech: "WORD CHOICE",
-                senses: [LookupSenseEntry(number: 1, definition: wcDef, examples: [], synonyms: [], antonyms: [])]
-            ))
+            definitions.append(
+                LookupDefinitionEntry(
+                    partOfSpeech: "WORD CHOICE",
+                    senses: [LookupSenseEntry(number: 1, definition: wcDef, examples: [], synonyms: [], antonyms: [])]
+                ))
         }
         return LookupPresentation(title: title, partOfSpeech: "WORD CHOICE", definitions: definitions)
     }
 
-    private static func parseJapaneseSenses(_ text: String, title: String, senses: inout [LookupSenseEntry], definitions: inout [LookupDefinitionEntry]) -> LookupPresentation {
+    private static func parseJapaneseSenses(
+        _ text: String, title: String, senses: inout [LookupSenseEntry], definitions: inout [LookupDefinitionEntry]
+    ) -> LookupPresentation {
         let senseNumbers = Array(1...20)
         var searchStart = text.startIndex
 
@@ -189,7 +201,8 @@ extension DictionaryParser {
             defText = truncateText(defText, maxLength: 80)
 
             if !defText.isEmpty && senses.count < 10 {
-                senses.append(LookupSenseEntry(number: num, definition: defText, examples: [], synonyms: [], antonyms: []))
+                senses.append(
+                    LookupSenseEntry(number: num, definition: defText, examples: [], synonyms: [], antonyms: []))
             }
 
             searchStart = range.upperBound
@@ -217,19 +230,26 @@ extension DictionaryParser {
         guard defParts.count >= 3 else { return nil }
 
         let title = defParts[0].trimmingCharacters(in: .whitespacesAndNewlines)
-        let allPosKeywords = ["thán từ", "danh từ", "động từ", "tính từ", "trạng từ", "giới từ", "liên từ", "đại từ",
-                              "interjection", "noun", "verb", "adjective", "adverb", "preposition", "conjunction", "pronoun"]
+        let allPosKeywords = [
+            "thán từ", "danh từ", "động từ", "tính từ", "trạng từ", "giới từ", "liên từ", "đại từ",
+            "interjection", "noun", "verb", "adjective", "adverb", "preposition", "conjunction", "pronoun",
+        ]
 
         let posSections = findPOSSections(raw: raw, keywords: allPosKeywords)
-        let definitions = posSections.isEmpty
+        let definitions =
+            posSections.isEmpty
             ? parseVietnameseNoPOS(raw: raw, allPosKeywords: allPosKeywords)
-            : parseVietnameseWithPOS(raw: raw, posSections: posSections, bulletParts: bulletParts, allPosKeywords: allPosKeywords)
+            : parseVietnameseWithPOS(
+                raw: raw, posSections: posSections, bulletParts: bulletParts, allPosKeywords: allPosKeywords)
 
         guard !definitions.isEmpty else { return nil }
         return LookupPresentation(title: title, partOfSpeech: definitions.first?.partOfSpeech, definitions: definitions)
     }
 
-    private static func parseVietnameseWithPOS(raw: String, posSections: [(pos: String, startIndex: String.Index)], bulletParts: [String], allPosKeywords: [String]) -> [LookupDefinitionEntry] {
+    private static func parseVietnameseWithPOS(
+        raw: String, posSections: [(pos: String, startIndex: String.Index)], bulletParts: [String],
+        allPosKeywords: [String]
+    ) -> [LookupDefinitionEntry] {
         var definitions: [LookupDefinitionEntry] = []
         let senseNumbers = Array(1...50)
 
@@ -237,11 +257,14 @@ extension DictionaryParser {
             let sectionEnd = sectionIdx + 1 < posSections.count ? posSections[sectionIdx + 1].startIndex : raw.endIndex
             let sectionText = String(raw[posInfo.startIndex..<sectionEnd])
 
-            var senses = parseVietnameseSenses(sectionText, maxSenses: 10, posKeywords: allPosKeywords, senseNumbers: senseNumbers)
+            var senses = parseVietnameseSenses(
+                sectionText, maxSenses: 10, posKeywords: allPosKeywords, senseNumbers: senseNumbers)
             if senses.isEmpty {
                 senses = parseVietnameseFallbackSense(sectionText, posKeywords: allPosKeywords)
             }
-            senses = distributeExamplesToSenses(senses: senses, bulletParts: bulletParts, sectionStart: posInfo.startIndex, sectionEnd: sectionEnd, raw: raw)
+            senses = distributeExamplesToSenses(
+                senses: senses, bulletParts: bulletParts, sectionStart: posInfo.startIndex, sectionEnd: sectionEnd,
+                raw: raw)
 
             if !senses.isEmpty {
                 definitions.append(LookupDefinitionEntry(partOfSpeech: posInfo.pos, senses: senses))
@@ -250,7 +273,9 @@ extension DictionaryParser {
         return definitions
     }
 
-    private static func parseVietnameseSenses(_ text: String, maxSenses: Int, posKeywords: [String], senseNumbers: [Int]) -> [LookupSenseEntry] {
+    private static func parseVietnameseSenses(
+        _ text: String, maxSenses: Int, posKeywords: [String], senseNumbers: [Int]
+    ) -> [LookupSenseEntry] {
         var senses: [LookupSenseEntry] = []
 
         for num in senseNumbers {
@@ -319,7 +344,9 @@ extension DictionaryParser {
         var searchStart = textAfterPipe.startIndex
 
         for num in senseNumbers {
-            guard let range = textAfterPipe.range(of: "\(num) ", range: searchStart..<textAfterPipe.endIndex) else { continue }
+            guard let range = textAfterPipe.range(of: "\(num) ", range: searchStart..<textAfterPipe.endIndex) else {
+                continue
+            }
 
             let afterNum = range.upperBound
             var defEnd = textAfterPipe.endIndex
@@ -328,8 +355,10 @@ extension DictionaryParser {
                 defEnd = bulletPos
             }
             for nextNum in senseNumbers where nextNum > num {
-                if let nextPos = textAfterPipe.range(of: "\(nextNum) ", range: afterNum..<textAfterPipe.endIndex)?.lowerBound,
-                   nextPos < defEnd {
+                if let nextPos = textAfterPipe.range(of: "\(nextNum) ", range: afterNum..<textAfterPipe.endIndex)?
+                    .lowerBound,
+                    nextPos < defEnd
+                {
                     defEnd = nextPos
                 }
             }
@@ -337,7 +366,8 @@ extension DictionaryParser {
             if afterNum < defEnd {
                 let def = String(textAfterPipe[afterNum..<defEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
                 if !def.isEmpty && def.count < 100 && senses.count < 10 {
-                    senses.append(LookupSenseEntry(number: num, definition: def, examples: [], synonyms: [], antonyms: []))
+                    senses.append(
+                        LookupSenseEntry(number: num, definition: def, examples: [], synonyms: [], antonyms: []))
                 }
             }
 
@@ -350,15 +380,19 @@ extension DictionaryParser {
         for idx in 0..<senses.count - 1 {
             let nextSenseNum = senses[idx + 1].number
             guard let currentRange = textAfterPipe.range(of: "\(senses[idx].number) "),
-                  let nextRange = textAfterPipe.range(of: "\(nextSenseNum) ") else { continue }
+                let nextRange = textAfterPipe.range(of: "\(nextSenseNum) ")
+            else { continue }
 
             let segment = String(textAfterPipe[currentRange.lowerBound..<nextRange.lowerBound])
             if let lastBulletRange = segment.range(of: "▸", options: .backwards) {
-                var exampleText = String(segment[lastBulletRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                var exampleText = String(segment[lastBulletRange.upperBound...]).trimmingCharacters(
+                    in: .whitespacesAndNewlines)
 
                 if exampleText.contains("\(nextSenseNum) "),
-                   let cutRange = exampleText.range(of: "\(nextSenseNum) ") {
-                    exampleText = String(exampleText[..<cutRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    let cutRange = exampleText.range(of: "\(nextSenseNum) ")
+                {
+                    exampleText = String(exampleText[..<cutRange.lowerBound]).trimmingCharacters(
+                        in: .whitespacesAndNewlines)
                 }
 
                 if !exampleText.isEmpty && exampleText.count > 5 {
@@ -376,7 +410,10 @@ extension DictionaryParser {
         return [LookupDefinitionEntry(partOfSpeech: nil, senses: senses)]
     }
 
-    private static func distributeExamplesToSenses(senses: [LookupSenseEntry], bulletParts: [String], sectionStart: String.Index, sectionEnd: String.Index, raw: String) -> [LookupSenseEntry] {
+    private static func distributeExamplesToSenses(
+        senses: [LookupSenseEntry], bulletParts: [String], sectionStart: String.Index, sectionEnd: String.Index,
+        raw: String
+    ) -> [LookupSenseEntry] {
         guard !senses.isEmpty else { return senses }
         var result = senses
         var senseIndex = 0
@@ -387,7 +424,8 @@ extension DictionaryParser {
             guard !exampleText.isEmpty else { continue }
 
             guard let partRange = raw.range(of: "▸" + bulletParts[partIdx]),
-                  partRange.lowerBound >= sectionStart && partRange.lowerBound < sectionEnd else { continue }
+                partRange.lowerBound >= sectionStart && partRange.lowerBound < sectionEnd
+            else { continue }
 
             if result[senseIndex].examples.count < 2 {
                 result[senseIndex] = LookupSenseEntry(
@@ -438,12 +476,17 @@ extension DictionaryParser {
 
             if pos == "exclamation" {
                 if let phrasesRange = sectionText.lowercased().range(of: " phrases") {
-                    let defText = String(sectionText[..<phrasesRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    let defText = String(sectionText[..<phrasesRange.lowerBound]).trimmingCharacters(
+                        in: .whitespacesAndNewlines)
                     if !defText.isEmpty && defText.count < 300 {
-                        definitions.append(LookupDefinitionEntry(
-                            partOfSpeech: pos,
-                            senses: [LookupSenseEntry(number: 1, definition: defText, examples: [], synonyms: [], antonyms: [])]
-                        ))
+                        definitions.append(
+                            LookupDefinitionEntry(
+                                partOfSpeech: pos,
+                                senses: [
+                                    LookupSenseEntry(
+                                        number: 1, definition: defText, examples: [], synonyms: [], antonyms: [])
+                                ]
+                            ))
                     }
                 }
             } else {
@@ -499,13 +542,14 @@ extension DictionaryParser {
                 let def = String(s.dropFirst(String(num).count + 1)).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard def.count > 5 && senses.count < maxSenses else { continue }
 
-                senses.append(LookupSenseEntry(
-                    number: num,
-                    definition: truncate(def, maxLength: 80),
-                    examples: [],
-                    synonyms: [],
-                    antonyms: (index > 0 && !antonym.isEmpty) ? [antonym] : []
-                ))
+                senses.append(
+                    LookupSenseEntry(
+                        number: num,
+                        definition: truncate(def, maxLength: 80),
+                        examples: [],
+                        synonyms: [],
+                        antonyms: (index > 0 && !antonym.isEmpty) ? [antonym] : []
+                    ))
                 if index > 0 { antonym = "" }
             }
 
@@ -524,15 +568,18 @@ extension DictionaryParser {
 
             for part in parts {
                 let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty && trimmed.count >= 5 && !trimmed.lowercased().contains("antonym") else { continue }
+                guard !trimmed.isEmpty && trimmed.count >= 5 && !trimmed.lowercased().contains("antonym") else {
+                    continue
+                }
 
-                phrases.append(LookupSenseEntry(
-                    number: phrases.count + 1,
-                    definition: truncate(trimmed, maxLength: 80),
-                    examples: [],
-                    synonyms: [],
-                    antonyms: []
-                ))
+                phrases.append(
+                    LookupSenseEntry(
+                        number: phrases.count + 1,
+                        definition: truncate(trimmed, maxLength: 80),
+                        examples: [],
+                        synonyms: [],
+                        antonyms: []
+                    ))
 
                 if phrases.count >= maxItems { break }
             }

@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 final class LauncherSearchLogicTests: XCTestCase {
@@ -15,7 +16,7 @@ final class LauncherSearchLogicTests: XCTestCase {
 
     override func tearDownWithError() throws {
         if let sandboxURL = testSandboxURL,
-           FileManager.default.fileExists(atPath: sandboxURL.path)
+            FileManager.default.fileExists(atPath: sandboxURL.path)
         {
             try? FileManager.default.removeItem(at: sandboxURL)
         }

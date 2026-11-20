@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// Cells to points.
@@ -25,7 +26,8 @@ final class LaunchpadGridTests: XCTestCase {
 
     /// One 1x1 tile at the origin, spelled the way the wire spells one.
     private func singleTile() -> LaunchpadTileModel {
-        let json = #"{"action_id":"mic","title":"Mic","size":"s","role":"toggle","mnemonic":"M","col":0,"row":0,"col_span":1,"row_span":1,"on_label":null,"off_label":null}"#
+        let json =
+            #"{"action_id":"mic","title":"Mic","size":"s","role":"toggle","mnemonic":"M","col":0,"row":0,"col_span":1,"row_span":1,"on_label":null,"off_label":null}"#
         return try! LaunchpadFixture.decode(LaunchpadTileModel.self, from: Data(json.utf8))
     }
 

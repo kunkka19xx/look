@@ -327,7 +327,9 @@ extension ThemeStore {
             return Color(red: r * factor, green: g * factor, blue: b * factor, opacity: settings.fontOpacity)
         } else {
             // Dark text: lighten towards white
-            return Color(red: r + (1.0 - r) * (1.0 - factor), green: g + (1.0 - g) * (1.0 - factor), blue: b + (1.0 - b) * (1.0 - factor), opacity: settings.fontOpacity)
+            return Color(
+                red: r + (1.0 - r) * (1.0 - factor), green: g + (1.0 - g) * (1.0 - factor),
+                blue: b + (1.0 - b) * (1.0 - factor), opacity: settings.fontOpacity)
         }
     }
 }

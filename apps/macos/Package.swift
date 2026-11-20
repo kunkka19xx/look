@@ -4,10 +4,10 @@ import PackageDescription
 let package = Package(
     name: "LauncherLogic",
     platforms: [
-        .macOS(.v13),
+        .macOS(.v13)
     ],
     products: [
-        .library(name: "LauncherLogic", targets: ["LauncherLogic"]),
+        .library(name: "LauncherLogic", targets: ["LauncherLogic"])
     ],
     targets: [
         .target(

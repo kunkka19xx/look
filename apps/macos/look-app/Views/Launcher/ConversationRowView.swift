@@ -68,7 +68,8 @@ struct ConversationRowView: View {
             isSelected: isSelected,
             themeStore: themeStore,
             namespace: namespace,
-            geometryID: Self.geometryID)
+            geometryID: Self.geometryID
+        )
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpen)
     }

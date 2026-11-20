@@ -79,7 +79,8 @@ struct TodoView: View {
                 onSave: save,
                 onUndo: state.undo,
                 onRedo: state.redo
-            ))
+            )
+        )
         // The launcher does not focus /todo (it owns its own field), so
         // focus the search bar on entry and when returning to Tasks.
         // ensureTodayGroup covers day rollover while the app stays
@@ -129,7 +130,7 @@ struct TodoView: View {
                     fontSize: 13.5,
                     onSubmit: {}
                 )
-                    .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity)
 
                 if !search.isEmpty {
                     Button {
@@ -329,11 +330,13 @@ struct TodoTasksPage: View {
                 }
 
                 if hiddenOlderDays > 0 {
-                    Text("\(hiddenOlderDays) older day\(hiddenOlderDays == 1 ? "" : "s") not shown · search to find them")
-                        .font(themeStore.uiFont(size: 11))
-                        .foregroundStyle(themeStore.mutedTextColor())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
+                    Text(
+                        "\(hiddenOlderDays) older day\(hiddenOlderDays == 1 ? "" : "s") not shown · search to find them"
+                    )
+                    .font(themeStore.uiFont(size: 11))
+                    .foregroundStyle(themeStore.mutedTextColor())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
                 }
             }
             .padding(.horizontal, 4)
@@ -757,8 +760,9 @@ final class TodoKeyHostView: NSView {
         observeFieldEditing()
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, let window = self.window,
-                  window.isKeyWindow, event.window === window,
-                  !self.isHiddenOrHasHiddenAncestor else { return event }
+                window.isKeyWindow, event.window === window,
+                !self.isHiddenOrHasHiddenAncestor
+            else { return event }
             let shortcuts = ShortcutBindings.shared
             if shortcuts.matches(.todoRedo, event) {
                 if self.textEditorOwnsUndo(in: window) { return event }
