@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Preview pane for a selected Google autocomplete row. A search suggestion has
+/// Preview pane for a selected search autocomplete row. A suggestion has
 /// no file metadata, so instead of the generic file preview we show a simple
 /// "search the web" action card.
 struct WebSuggestionPreviewView: View {
@@ -22,7 +22,7 @@ struct WebSuggestionPreviewView: View {
                 .lineLimit(3)
                 .textSelection(.enabled)
 
-            Text("Search Google")
+            Text("Search the web")
                 .font(themeStore.uiFont(size: fontSize - 1, weight: .semibold))
                 .foregroundStyle(themeStore.mutedTextColor())
 

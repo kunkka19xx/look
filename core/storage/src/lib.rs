@@ -114,7 +114,13 @@ pub enum SearchEngine {
 }
 
 impl SearchEngine {
-    pub fn key(self) -> &'static str {
+    pub const ALL: [SearchEngine; 3] = [
+        SearchEngine::Google,
+        SearchEngine::DuckDuckGo,
+        SearchEngine::Bing,
+    ];
+
+    pub const fn key(self) -> &'static str {
         match self {
             SearchEngine::DuckDuckGo => SEARCH_ENGINE_DUCKDUCKGO,
             SearchEngine::Google => SEARCH_ENGINE_GOOGLE,
@@ -122,8 +128,16 @@ impl SearchEngine {
         }
     }
 
+    pub const fn label(self) -> &'static str {
+        match self {
+            SearchEngine::DuckDuckGo => "DuckDuckGo",
+            SearchEngine::Google => "Google",
+            SearchEngine::Bing => "Bing",
+        }
+    }
+
     pub fn from_key(value: &str) -> Self {
-        match value {
+        match value.trim().to_ascii_lowercase().as_str() {
             SEARCH_ENGINE_DUCKDUCKGO => SearchEngine::DuckDuckGo,
             SEARCH_ENGINE_GOOGLE => SearchEngine::Google,
             SEARCH_ENGINE_BING => SearchEngine::Bing,
@@ -1319,6 +1333,45 @@ mod tests {
     fn form_encode_query_encodes_spaces_as_plus() {
         assert_eq!(form_encode_query("hello world"), "hello+world");
         assert_eq!(form_encode_query("a&b"), "a%26b");
+    }
+
+    #[test]
+    fn search_engine_builds_urls_for_each_engine() {
+        assert_eq!(
+            SearchEngine::Google.build_search_url("rust"),
+            "https://www.google.com/search?q=rust"
+        );
+        assert_eq!(
+            SearchEngine::DuckDuckGo.build_search_url("rust"),
+            "https://duckduckgo.com/?q=rust"
+        );
+        assert_eq!(
+            SearchEngine::Bing.build_search_url("rust"),
+            "https://www.bing.com/search?q=rust"
+        );
+    }
+
+    #[test]
+    fn search_engine_encodes_special_characters_and_unicode() {
+        assert_eq!(
+            SearchEngine::Google.build_search_url("a&b #c"),
+            "https://www.google.com/search?q=a%26b+%23c"
+        );
+        assert_eq!(form_encode_query("phở"), "ph%E1%BB%9F");
+    }
+
+    #[test]
+    fn search_engine_from_key_is_trimmed_and_case_insensitive() {
+        assert_eq!(SearchEngine::from_key("  BING "), SearchEngine::Bing);
+        assert_eq!(SearchEngine::from_key(""), SearchEngine::Google);
+        assert_eq!(SearchEngine::from_key("yahoo"), SearchEngine::Google);
+    }
+
+    #[test]
+    fn search_engine_key_round_trips_over_all() {
+        for engine in SearchEngine::ALL {
+            assert_eq!(SearchEngine::from_key(engine.key()), engine);
+        }
     }
 
     #[test]

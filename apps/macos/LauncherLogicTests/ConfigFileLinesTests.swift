@@ -181,6 +181,62 @@ final class ConfigFileLinesTests: XCTestCase {
         XCTAssertEqual(values["inner_gap"], "10")
     }
 
+    // ── Documented keys added on launch / reload ───────────────────────
+
+    private var documentedBlock: String {
+        """
+        # Search engine for Cmd+Enter and web suggestion rows:
+        # google, duckduckgo, or bing. Unset or unknown uses google.
+        # web_search_engine=google
+        """
+    }
+
+    func testAddingDocumentedKeysAppendsTheCommentedBlock() {
+        let updated = ConfigFileLines.addingDocumentedKeys("ai_enabled=true\n")
+
+        XCTAssertEqual(updated, "ai_enabled=true\n\n\(documentedBlock)\n")
+    }
+
+    func testAddingDocumentedKeysLeavesAnAssignedKeyAlone() {
+        XCTAssertNil(ConfigFileLines.addingDocumentedKeys("web_search_engine=bing\n"))
+        XCTAssertNil(ConfigFileLines.addingDocumentedKeys("web_search_engine = DuckDuckGo # picked\n"))
+    }
+
+    func testAddingDocumentedKeysLeavesACommentedKeyAlone() {
+        XCTAssertNil(ConfigFileLines.addingDocumentedKeys("# web_search_engine=google\n"))
+        XCTAssertNil(ConfigFileLines.addingDocumentedKeys("#   web_search_engine=bing\n"))
+    }
+
+    func testAddingDocumentedKeysIsIdempotent() {
+        guard let once = ConfigFileLines.addingDocumentedKeys("ai_enabled=true\n") else {
+            return XCTFail("the first pass should append the block")
+        }
+
+        XCTAssertNil(ConfigFileLines.addingDocumentedKeys(once), "a documented config must not be rewritten")
+    }
+
+    func testAddingDocumentedKeysTerminatesALineWithoutANewline() {
+        let updated = ConfigFileLines.addingDocumentedKeys("ai_enabled=true")
+
+        XCTAssertEqual(updated, "ai_enabled=true\n\n\(documentedBlock)\n")
+    }
+
+    func testAddingDocumentedKeysKeepsCRLFLineEndings() {
+        let updated = ConfigFileLines.addingDocumentedKeys("ai_enabled=true\r\n")
+        let crlfBlock = documentedBlock.replacingOccurrences(of: "\n", with: "\r\n")
+
+        XCTAssertEqual(updated, "ai_enabled=true\r\n\r\n\(crlfBlock)\r\n")
+        XCTAssertFalse(
+            updated!.replacingOccurrences(of: "\r\n", with: "").contains("\n"),
+            "no bare LF should be introduced into a CRLF file"
+        )
+    }
+
+    func testAddingDocumentedKeysDoesNotCountADifferentKeyOrMention() {
+        XCTAssertNotNil(ConfigFileLines.addingDocumentedKeys("my_web_search_engine=bing\n"))
+        XCTAssertNotNil(ConfigFileLines.addingDocumentedKeys("# see web_search_engine=bing\n"))
+    }
+
     // ── Parsing ────────────────────────────────────────────────────────
 
     func testParseDropsTheTerminatingNewlineSoAppendsDoNotSitBehindABlank() {

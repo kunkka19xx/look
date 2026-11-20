@@ -858,6 +858,11 @@ pub fn clear_session_layout() {
 /// Read the file again and resolve from it: at start, and when the user
 /// asks. A summon reuses what this read.
 pub fn load() {
+    // Existing configs never see a new template key otherwise. This only
+    // writes when the key is absent from the file outright; an assigned or
+    // commented `web_search_engine` leaves it untouched, so reloading cannot
+    // bounce on a watcher.
+    config::ensure_documented_keys();
     let entries = read_entries();
     let theme = Theme::from_entries(&entries);
     *FILE.write().unwrap_or_else(|p| p.into_inner()) = Some(entries);

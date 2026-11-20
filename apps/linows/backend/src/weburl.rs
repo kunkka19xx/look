@@ -7,7 +7,18 @@
 use crate::state::default_db_path;
 use look_answers::UrlMatch;
 use look_engine::url_history::{ScoredUrlEntry, ranked_url_history};
-use look_storage::SqliteStore;
+use look_storage::{SearchEngine, SqliteStore};
+
+/// URL for a web search of `query` on the engine named by `engine_key`.
+/// Missing or unknown keys fall back to Google, and an empty query has no URL.
+/// The shells pick the engine from `web_search_engine` in the config file.
+pub fn search_url(engine_key: &str, query: &str) -> Option<String> {
+    let query = query.trim();
+    if query.is_empty() {
+        return None;
+    }
+    Some(SearchEngine::from_key(engine_key).build_search_url(query))
+}
 
 /// Classify `query` as a URL to offer as an "Open <url>" row, or `None` to
 /// leave it as a search term. Pure and network-free, stays on the calling
@@ -36,4 +47,34 @@ pub fn recent_urls(query: &str, limit: u32) -> Vec<ScoredUrlEntry> {
         .and_then(|store| store.recent_urls(query, limit as usize).ok())
         .map(|entries| ranked_url_history(entries, query))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_url_uses_the_selected_engine() {
+        assert_eq!(
+            search_url("google", "rust").as_deref(),
+            Some("https://www.google.com/search?q=rust")
+        );
+        assert_eq!(
+            search_url("duckduckgo", "rust").as_deref(),
+            Some("https://duckduckgo.com/?q=rust")
+        );
+        assert_eq!(
+            search_url("bing", "rust").as_deref(),
+            Some("https://www.bing.com/search?q=rust")
+        );
+    }
+
+    #[test]
+    fn search_url_falls_back_to_google_and_skips_empty_queries() {
+        assert_eq!(
+            search_url("yahoo", "rust").as_deref(),
+            Some("https://www.google.com/search?q=rust")
+        );
+        assert_eq!(search_url("bing", "   "), None);
+    }
 }

@@ -68,7 +68,6 @@ static HINT_EMPTY: Hint = Hint::new(&[
     Piece::Text("No match"),
     Piece::Id(shortcuts::WEB_SEARCH, "Search the web"),
 ]);
-const WEB_SEARCH_URL: &str = "https://www.google.com/search?q=";
 /// The browser translation page; the target language and the text follow, the
 /// target being the first configured language, as in the webview.
 const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
@@ -210,7 +209,7 @@ impl Retained {
     }
 }
 
-/// The Google autocomplete list and the query it came back for.
+/// The search autocomplete list and the query it came back for.
 #[derive(Clone)]
 pub struct Suggestions {
     query: String,
@@ -615,7 +614,7 @@ impl Launcher {
         }));
     }
 
-    /// Google autocomplete rows under the local ones, when the answers are
+    /// Search autocomplete rows under the local ones, when the answers are
     /// on and the query is a word or more. Best effort: an empty answer
     /// keeps the list as it is.
     fn fetch_web_suggestions(&mut self, query: String, version: u64, cx: &mut Context<Self>) {
@@ -1381,7 +1380,9 @@ impl Launcher {
                 .preview
                 .update(cx, |preview, cx| preview.measure_cpu(cx)),
             Open::WebSuggestion(text) => {
-                self.open_url(&format!("{WEB_SEARCH_URL}{}", url_encode(&text)))
+                if let Some(url) = self.web_search_url(&text) {
+                    self.open_url(&url);
+                }
             }
         }
         true
@@ -1396,12 +1397,20 @@ impl Launcher {
     /// Ctrl+Enter: the query as a web search.
     fn search_web(&mut self, cx: &mut Context<Self>) -> bool {
         let query = self.input.read(cx).text().to_string();
-        let trimmed = query.trim();
-        if trimmed.is_empty() {
-            return true;
+        if let Some(url) = self.web_search_url(&query) {
+            self.open_url(&url);
         }
-        self.open_url(&format!("{WEB_SEARCH_URL}{}", url_encode(trimmed)));
         true
+    }
+
+    /// Read the engine per search, so a Settings save applies without a restart.
+    fn web_search_url(&self, query: &str) -> Option<String> {
+        let entries = theme::entries();
+        let engine = entries
+            .get("web_search_engine")
+            .map(String::as_str)
+            .unwrap_or_default();
+        weburl::search_url(engine, query)
     }
 
     /// Ctrl+F: through the declared file manager where the action applies,

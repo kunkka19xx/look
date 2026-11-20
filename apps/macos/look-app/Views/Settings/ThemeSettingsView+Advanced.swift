@@ -10,6 +10,19 @@ extension ThemeSettingsView {
                 VStack(alignment: .leading, spacing: 10) {
                     AISettingsSection(settings: $settings)
 
+                    settingRow(
+                        "Search Engine",
+                        hint: "Engine for Cmd+Enter and web suggestion rows"
+                    ) {
+                        Picker("Search Engine", selection: $settings.webSearchEngine) {
+                            ForEach(WebSearchEngine.allCases) { engine in
+                                Text(engine.label).tag(engine)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                    }
+
                     Divider()
                         .overlay(themeStore.dividerColor())
                         .padding(.vertical, 4)

@@ -205,6 +205,10 @@ private func look_calc_inline_json(_ query: UnsafePointer<CChar>?) -> UnsafeMuta
 nonisolated
 private func look_web_suggestions_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_web_search_url")
+nonisolated
+private func look_web_search_url(_ engineKey: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_duckduckgo_answer_json")
 nonisolated
 private func look_duckduckgo_answer_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -1192,6 +1196,18 @@ final class EngineBridge: @unchecked Sendable {
             let list = try? JSONDecoder().decode([String].self, from: data)
         else { return [] }
         return list
+    }
+
+    /// The URL for a web search of `query` on `engine` (Google, DuckDuckGo,
+    /// Bing). Nil when the query is blank. Shares the core's URL builder and
+    /// encoding with linows.
+    nonisolated func webSearchURL(engine: String, query: String) -> URL? {
+        let ptr = engine.withCString { engineC in
+            query.withCString { look_web_search_url(engineC, $0) }
+        }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        return URL(string: String(cString: ptr))
     }
 
     /// Classifies `query` as a URL, or nil to leave it as a search term.

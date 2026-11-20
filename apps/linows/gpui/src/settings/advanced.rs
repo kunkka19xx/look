@@ -17,6 +17,7 @@ use crate::update::Update;
 use gpui::prelude::*;
 use gpui::{Context, Div, FontWeight, div, px};
 use linows_backend::look_engine::config::{ExtraRootProblem, RuntimeConfig};
+use linows_backend::look_storage::SearchEngine;
 
 const NUMBER_BOX_W: f32 = 80.0;
 const ABOUT_PADDING_BOTTOM: f32 = 6.0;
@@ -33,7 +34,7 @@ const BG_PROMPT: &str = "Choose";
 const DIR_PROMPT: &str = "Add";
 const FRESH_CONFIG: &str = "Create Fresh Config";
 const FRESH_CONFIG_HINT: &str = "Regenerate a fresh default config file";
-const AI_HINT: &str = "Inline answers + Google autocomplete over HTTPS";
+const AI_HINT: &str = "Inline answers + web search suggestions over HTTPS";
 const AI_NOTE: &str = "On-device AI (model that rewrites queries, drafts answers) is macOS-only.";
 const LAZY_HINT: &str = "Refresh index automatically when file/app changes";
 const DRIVES_HINT: &str = "Toggle non-system drives to scan them";
@@ -110,6 +111,17 @@ const BG_LAYOUT_HINTS: [&str; 4] = [
     "Stretch to fill exactly",
     "Repeat as tiles",
 ];
+
+const WEB_SEARCH_ENGINE_KEY: &str = "web_search_engine";
+const WEB_SEARCH_ENGINES: &[Option_] = &[
+    (SearchEngine::Google.key(), SearchEngine::Google.label()),
+    (
+        SearchEngine::DuckDuckGo.key(),
+        SearchEngine::DuckDuckGo.label(),
+    ),
+    (SearchEngine::Bing.key(), SearchEngine::Bing.label()),
+];
+const WEB_SEARCH_HINT: &str = "Engine for Ctrl+Enter and web suggestion rows";
 
 const LOG_LEVEL_KEY: &str = "backend_log_level";
 const LOG_LEVELS: &[Option_] = &[
@@ -190,6 +202,7 @@ pub(super) fn keys() -> Vec<&'static str> {
         LAZY_INDEXING.key,
         EXTRA_DIRS.key,
         SKIP_DIRS.key,
+        WEB_SEARCH_ENGINE_KEY,
         LOG_LEVEL_KEY,
         LAUNCH_AT_LOGIN.key,
     ];
@@ -230,6 +243,14 @@ impl Settings {
 
     fn log_level(&self) -> &str {
         self.get(LOG_LEVEL_KEY).unwrap_or(LOG_LEVEL_DEFAULT)
+    }
+
+    /// The configured engine's key; empty or unknown means Google.
+    fn web_search_engine(&self) -> &str {
+        self.get(WEB_SEARCH_ENGINE_KEY)
+            .map(SearchEngine::from_key)
+            .unwrap_or(SearchEngine::Google)
+            .key()
     }
 
     /// Set means what it says; unset is the compositor's default.
@@ -340,6 +361,12 @@ impl Settings {
         cx.notify();
     }
 
+    fn pick_web_search_engine(&mut self, engine: &str, cx: &mut Context<Launcher>) {
+        self.select = None;
+        self.set(WEB_SEARCH_ENGINE_KEY, engine);
+        cx.notify();
+    }
+
     fn flip_compositor_blur(&mut self, cx: &mut Context<Launcher>) {
         let on = !self.compositor_blur_on();
         self.set(
@@ -398,6 +425,19 @@ impl Settings {
                     .child(controls::hint(AI_HINT, th)),
             )
             .child(controls::row("", th).child(controls::hint(AI_NOTE, th)))
+            .child(
+                controls::row("Search Engine", th)
+                    .child(self.select_control(
+                        "settings-web-search-engine",
+                        WEB_SEARCH_ENGINES,
+                        self.web_search_engine(),
+                        WEB_SEARCH_ENGINE_KEY,
+                        Settings::pick_web_search_engine,
+                        th,
+                        cx,
+                    ))
+                    .child(controls::hint(WEB_SEARCH_HINT, th)),
+            )
             .child(controls::divider(th))
             .child(controls::section("Background", th))
             .child(self.bg_rows(th, cx))
@@ -741,5 +781,16 @@ mod tests {
         for ((value, _), layout) in BG_LAYOUTS.iter().zip(BgLayout::ALL) {
             assert_eq!(*value, layout.key());
         }
+    }
+
+    #[test]
+    fn web_search_options_match_the_core_engine_list() {
+        assert_eq!(WEB_SEARCH_ENGINES.len(), SearchEngine::ALL.len());
+        for ((value, label), engine) in WEB_SEARCH_ENGINES.iter().zip(SearchEngine::ALL) {
+            assert_eq!(*value, engine.key());
+            assert_eq!(*label, engine.label());
+        }
+        assert_eq!(SearchEngine::from_key("").key(), "google");
+        assert_eq!(SearchEngine::from_key("unknown").key(), "google");
     }
 }

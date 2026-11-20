@@ -121,7 +121,7 @@ enum ShortcutCatalog {
             ShortcutEntry("main.reveal", "Cmd+F", "Reveal selected app/file/folder in Finder"),
             ShortcutEntry("main.edit", "Cmd+E", "Open selected file/folder in your editor (set text_editor / code_editor)"),
             ShortcutEntry("main.terminal", "Cmd+T", "Open a terminal there (set terminal); switches theme when no row is selected"),
-            ShortcutEntry("main.webSearch", "Cmd+Enter", "Search current query on Google"),
+            ShortcutEntry("main.webSearch", "Cmd+Enter", "Search current query on the web"),
             ShortcutEntry("main.commandMode", "Cmd+/", "Enter command mode"),
             ShortcutEntry("main.commandJump", ":cmd", "Jump to a command from home (e.g. :calc 2+2, :kill chrome)", remappable: false),
             ShortcutEntry("main.hideApp", "Cmd+Shift+H", "Hide the selected app from Look"),

@@ -43,14 +43,19 @@ pub fn set_config(updates: Vec<ConfigUpdate>) -> Result<(), String> {
     write_config(updates, &[])
 }
 
-/// `updates` replace or append their lines, `removals` take theirs out.
-/// One writer at a time: this is a read-modify-write of the whole file,
+/// One writer at a time: these are read-modify-writes of the whole file,
 /// and two threads crossing would drop each other's keys.
-pub fn write_config(updates: Vec<ConfigUpdate>, removals: &[String]) -> Result<(), String> {
-    static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _writing = WRITING
+static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn writing() -> std::sync::MutexGuard<'static, ()> {
+    WRITING
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// `updates` replace or append their lines, `removals` take theirs out.
+pub fn write_config(updates: Vec<ConfigUpdate>, removals: &[String]) -> Result<(), String> {
+    let _writing = writing();
     let path = config_file_path();
     // Distinguish "file absent" (fine, start from empty) from "file exists but
     // is unreadable" (bad permissions, non-UTF-8). Treating an unreadable file
@@ -97,6 +102,91 @@ fn assigns(line: &str, key: &str) -> bool {
         && trimmed
             .split_once('=')
             .is_some_and(|(k, _)| k.trim() == key)
+}
+
+/// The commented block auto-added to a config that never mentions the key.
+/// Kept byte-for-byte equal to the matching section of `default_config_contents`,
+/// so a Reset and a first launch document the key the same way.
+const DOCUMENTED_KEY_BLOCK: &str = "# Search engine for Ctrl+Enter and web suggestion rows: google, duckduckgo,\n\
+     # or bing. Unset or unknown uses google.\n\
+     # web_search_engine=google";
+
+/// The keys `with_documented_keys` can add. One table so a future key gets the
+/// same treatment without a second walk over the file.
+const DOCUMENTED_KEYS: [(&str, &str); 1] = [("web_search_engine", DOCUMENTED_KEY_BLOCK)];
+
+/// Whether `contents` mentions `key`, assigned or commented. A comment counts
+/// when its text after `#` and whitespace starts with `key=`, so an
+/// `# web_search_engine=google` left by this function satisfies it on the next
+/// launch and the file is never rewritten twice.
+fn mentions_key(contents: &str, key: &str) -> bool {
+    let needle = format!("{key}=");
+    contents.lines().any(|line| {
+        let trimmed = line.trim();
+        if let Some(comment) = trimmed.strip_prefix('#') {
+            comment.trim_start().starts_with(&needle)
+        } else {
+            trimmed
+                .split_once('=')
+                .is_some_and(|(name, _)| name.trim() == key)
+        }
+    })
+}
+
+/// `contents` with a commented block for every key it does not mention, or
+/// `None` when it mentions them all. Pure: the caller owns the write and the
+/// watcher.
+fn with_documented_keys(contents: &str) -> Option<String> {
+    let missing: Vec<&str> = DOCUMENTED_KEYS
+        .iter()
+        .filter(|(key, _)| !mentions_key(contents, key))
+        .map(|(_, block)| *block)
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+
+    // A CRLF file stays CRLF: the block follows the convention the rest of
+    // the file already uses.
+    let newline = if contents.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
+    let mut output = String::with_capacity(contents.len() + 256);
+    output.push_str(contents);
+    if !output.is_empty() && !output.ends_with('\n') {
+        output.push_str(newline);
+    }
+    for block in missing {
+        if !output.is_empty() {
+            output.push_str(newline);
+        }
+        for line in block.lines() {
+            output.push_str(line);
+            output.push_str(newline);
+        }
+    }
+    Some(output)
+}
+
+/// Appends the documented block for any key `contents` does not mention. An
+/// existing file that already mentions it is left untouched, not rewritten:
+/// the mtime stays put, so nothing downstream wakes up and loops.
+pub fn ensure_documented_keys() {
+    let _writing = writing();
+    let path = config_file_path();
+    // A missing or unreadable file is not ours to rewrite: writing here would
+    // create one without the rest of the template, or replace every other key.
+    let Ok(contents) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Some(updated) = with_documented_keys(&contents) else {
+        return;
+    };
+    if std::fs::write(&path, updated).is_ok() {
+        invalidate_cache();
+    }
 }
 
 pub fn reset_config() -> Result<(), String> {
@@ -157,6 +247,10 @@ fn default_config_contents() -> String {
          # Web answers - inline answer card for question-like queries. Set false to\n\
          # disable all network answer features and run fully offline.\n\
          ai_enabled=true\n\
+         \n\
+         # Search engine for Ctrl+Enter and web suggestion rows: google, duckduckgo,\n\
+         # or bing. Unset or unknown uses google.\n\
+         # web_search_engine=google\n\
          \n\
          # Super actions - empty-state launchpad of quick toggles / actions. Set\n\
          # false to hide the strip and disable its keyboard accelerators.\n\
@@ -674,5 +768,74 @@ mod tests {
     #[test]
     fn reset_template_includes_translate_languages() {
         assert!(default_config_contents().contains("\ntranslate_languages=vi,en,ja\n"));
+    }
+
+    #[test]
+    fn reset_template_documents_the_web_search_engine() {
+        assert!(default_config_contents().contains(DOCUMENTED_KEY_BLOCK));
+    }
+
+    #[test]
+    fn missing_documented_key_appends_the_commented_block() {
+        let updated =
+            with_documented_keys("ai_enabled=true\n").expect("a missing key should be added");
+
+        assert_eq!(
+            updated,
+            format!("ai_enabled=true\n\n{DOCUMENTED_KEY_BLOCK}\n")
+        );
+    }
+
+    #[test]
+    fn assigned_documented_key_needs_nothing() {
+        assert_eq!(with_documented_keys("web_search_engine=bing\n"), None);
+        assert_eq!(
+            with_documented_keys("web_search_engine = DuckDuckGo # picked\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn commented_documented_key_needs_nothing() {
+        assert_eq!(with_documented_keys("# web_search_engine=google\n"), None);
+        assert_eq!(with_documented_keys("#   web_search_engine=bing\n"), None);
+    }
+
+    #[test]
+    fn adding_documented_keys_is_idempotent() {
+        let once = with_documented_keys("ai_enabled=true\n").expect("first pass adds the block");
+
+        assert_eq!(with_documented_keys(&once), None);
+    }
+
+    #[test]
+    fn a_different_key_does_not_count_as_mentioned() {
+        assert!(with_documented_keys("my_web_search_engine=bing\n").is_some());
+        // A comment that merely talks about the key is not a mention.
+        assert!(with_documented_keys("# see web_search_engine=bing\n").is_some());
+    }
+
+    #[test]
+    fn a_file_without_a_trailing_newline_still_gets_one_clean_append() {
+        let updated = with_documented_keys("ai_enabled=true").expect("a missing key is added");
+
+        assert_eq!(
+            updated,
+            format!("ai_enabled=true\n\n{DOCUMENTED_KEY_BLOCK}\n")
+        );
+    }
+
+    #[test]
+    fn crlf_files_keep_their_line_endings() {
+        let updated = with_documented_keys("ai_enabled=true\r\n").expect("a missing key is added");
+
+        assert_eq!(
+            updated,
+            format!(
+                "ai_enabled=true\r\n\r\n{}\r\n",
+                DOCUMENTED_KEY_BLOCK.replace('\n', "\r\n")
+            )
+        );
+        assert!(!updated.replace("\r\n", "").contains('\n'));
     }
 }

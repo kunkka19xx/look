@@ -187,6 +187,31 @@ enum AIProviderKind: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+/// The engine behind Cmd+Enter and web suggestion rows. The raw value is the
+/// config key in `~/.look/config` under `web_search_engine`; the Rust core
+/// accepts the same strings, so both shells share one URL builder.
+enum WebSearchEngine: String, CaseIterable, Codable, Identifiable {
+    case google
+    case duckduckgo
+    case bing
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .google: return "Google"
+        case .duckduckgo: return "DuckDuckGo"
+        case .bing: return "Bing"
+        }
+    }
+
+    /// Trimmed and case-insensitive, like `SearchEngine::from_key` in core.
+    init?(configValue: String) {
+        let normalized = configValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        self.init(rawValue: normalized)
+    }
+}
+
 enum BackendLogLevel: String, CaseIterable, Codable, Identifiable {
     case error
     case info
@@ -268,6 +293,10 @@ struct ThemeSettings: Codable, Equatable {
     /// on; users can opt out via Settings → Appearance. Persisted in
     /// `~/.look/config` under `ai_enabled`.
     var aiEnabled: Bool = true
+
+    /// Engine for Cmd+Enter and web suggestion rows. Persisted in
+    /// `~/.look/config` under `web_search_engine`; unknown values mean Google.
+    var webSearchEngine: WebSearchEngine = .google
 
     /// Which AI backend powers query understanding when `aiEnabled` is on.
     var aiProvider: AIProviderKind = .appleIntelligence

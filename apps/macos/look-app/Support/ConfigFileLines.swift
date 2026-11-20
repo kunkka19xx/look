@@ -91,6 +91,65 @@ enum ConfigFileLines {
         return repaired == raw ? nil : repaired
     }
 
+    /// Commented blocks auto-added to a config that never mentions the key.
+    /// Each block is the matching section of `ThemeStore.defaultConfigContents`,
+    /// kept byte-for-byte, so Reset and a first launch document it the same way.
+    private static let documentedKeyBlocks: [(key: String, block: String)] = [
+        (
+            "web_search_engine",
+            """
+            # Search engine for Cmd+Enter and web suggestion rows:
+            # google, duckduckgo, or bing. Unset or unknown uses google.
+            # web_search_engine=google
+            """
+        )
+    ]
+
+    /// `raw` with a commented block for every key it does not mention, or nil
+    /// when it mentions them all. Pure: the caller owns the write and the
+    /// watcher. A config that already mentions a key comes back nil, which is
+    /// what keeps launch from bumping the mtime.
+    static func addingDocumentedKeys(_ raw: String) -> String? {
+        let missing = documentedKeyBlocks.filter { !mentions($0.key, in: raw) }
+        guard !missing.isEmpty else { return nil }
+
+        // A CRLF file stays CRLF: the block follows the file's convention.
+        let newline = raw.contains("\r\n") ? "\r\n" : "\n"
+        var output = raw
+        if !output.isEmpty, !output.hasSuffix("\n") {
+            output += newline
+        }
+        for entry in missing {
+            if !output.isEmpty {
+                output += newline
+            }
+            for line in entry.block.split(separator: "\n", omittingEmptySubsequences: false) {
+                output += String(line) + newline
+            }
+        }
+        return output
+    }
+
+    /// Whether `raw` mentions `key`, assigned or commented. A comment counts
+    /// when its text after `#` and whitespace starts with `key=`, so the block
+    /// this type appends satisfies the check on the next launch.
+    private static func mentions(_ key: String, in raw: String) -> Bool {
+        let needle = key + String(keyValueSeparator)
+        for line in raw.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
+            let trimmed = trim(String(line))
+            if trimmed.hasPrefix(commentPrefix) {
+                let comment = trim(String(trimmed.dropFirst()))
+                if comment.hasPrefix(needle) {
+                    return true
+                }
+            } else if let separator = trimmed.firstIndex(of: keyValueSeparator),
+                      trim(String(trimmed[..<separator])) == key {
+                return true
+            }
+        }
+        return false
+    }
+
     /// Rewrites `key` in place, or appends it when absent. Later duplicates are
     /// dropped: `keyValues` reads the last one, which would otherwise shadow the
     /// rewritten line.
