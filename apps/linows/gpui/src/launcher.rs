@@ -13,9 +13,10 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Deferred, Div,
-    Entity, FontWeight, KeyDownEvent, PaintQuad, Pixels, Render, ScrollStrategy, SharedString,
-    Stateful, Task, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred,
-    div, point, prelude::*, px, relative, size, svg, uniform_list,
+    Entity, FontWeight, KeyDownEvent, ModifiersChangedEvent, PaintQuad, Pixels, Render,
+    ScrollStrategy, SharedString, Stateful, Task, Transition, TransitionState,
+    UniformListScrollHandle, Window, canvas, deferred, div, point, prelude::*, px, relative, size,
+    svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
@@ -78,6 +79,7 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 const COPY_FAILED: &str = "Copy failed";
 const PICKS_MISSING: &str = "picked item(s) no longer exist, refreshing index";
 const NOT_RUN: &str = "not run, you moved on";
+const ROW_DIGITS: std::ops::RangeInclusive<u8> = 1..=9;
 const NOT_ELEVATABLE: &str = "Only apps or scripts can run as administrator";
 /// Told to run, not reported on yet.
 const VERB_STARTED: &str = "started";
@@ -308,6 +310,8 @@ pub struct Launcher {
     /// release goes to the app it focused, and the next summon gets the
     /// repeats. A held key only counts once its press landed here.
     pressed: Option<String>,
+    /// Ctrl is held: the rows show their digits.
+    row_digits_shown: bool,
     /// When the launchpad grid last mounted, `None` while it is off screen.
     /// Every mount replays the cascade, so the tiles' frost waits from here.
     grid_since: Option<Instant>,
@@ -405,6 +409,7 @@ impl Launcher {
             confirm_seq: 0,
             shown_at: Instant::now(),
             pressed: None,
+            row_digits_shown: false,
             grid_since: None,
             todo_hovered: false,
             version: 0,
@@ -793,6 +798,19 @@ impl Launcher {
         }
     }
 
+    fn on_modifiers_changed(
+        &mut self,
+        event: &ModifiersChangedEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let shown = ctrl_alone(&event.modifiers);
+        if shown != self.row_digits_shown {
+            self.row_digits_shown = shown;
+            cx.notify();
+        }
+    }
+
     fn handle_key(&mut self, ks: &gpui::Keystroke, cx: &mut Context<Self>) {
         let ctrl = ks.modifiers.control;
         let shift = ks.modifiers.shift;
@@ -970,7 +988,7 @@ impl Launcher {
                 "up" => self.move_selection(-1, cx),
                 "tab" => self.move_selection(if shift { -1 } else { 1 }, cx),
                 "n" if ctrl => self.move_selection(1, cx),
-                _ => false,
+                _ => self.open_row_digit(ks, cx),
             },
         };
         if handled || self.field_key(ks, cx) {
@@ -1291,6 +1309,31 @@ impl Launcher {
             _ => return self.open_selected(cx),
         }
         true
+    }
+
+    /// Ctrl+digit: Enter on that row, counted from the top one in view.
+    fn open_row_digit(&mut self, ks: &gpui::Keystroke, cx: &mut Context<Self>) -> bool {
+        if self.menu.is_some() || !ctrl_alone(&ks.modifiers) {
+            return false;
+        }
+        let Some(digit) = ks.key.parse().ok().filter(|d| ROW_DIGITS.contains(d)) else {
+            return false;
+        };
+        let at = row_at_digit(digit, self.first_row_in_view());
+        if at < self.rows.len() {
+            self.selected = at;
+            self.unpicked = false;
+            self.sync_preview(cx);
+            cx.notify();
+            self.enter(cx);
+        }
+        true
+    }
+
+    /// A row cut by the top edge counts when most of it shows.
+    fn first_row_in_view(&self) -> usize {
+        let scrolled = -f32::from(self.scroll.0.borrow().base_handle.offset().y);
+        (scrolled / theme::ROW_PITCH).round() as usize
     }
 
     fn move_selection(&mut self, delta: isize, cx: &mut Context<Self>) -> bool {
@@ -2425,6 +2468,7 @@ impl Launcher {
             .track_focus(&focus_handle)
             .capture_key_down(cx.listener(Self::drop_stale_repeat))
             .on_key_down(cx.listener(Self::on_key_down))
+            .on_modifiers_changed(cx.listener(Self::on_modifiers_changed))
             .child(blur_commit(frosted))
             .flex()
             .flex_col()
@@ -2672,6 +2716,9 @@ impl Launcher {
 
     fn row(&self, i: usize, row: &Row, th: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let selected = self.picked() == Some(i);
+        let digit = (self.row_digits_shown && self.menu.is_none())
+            .then(|| digit_of_row(i, self.first_row_in_view()))
+            .flatten();
         // Compact has no panel, so the selected process shows its facts here.
         let facts = match &row.open {
             Open::Process(p) if selected && !th.split() => {
@@ -2716,7 +2763,9 @@ impl Launcher {
             "icon",
             i,
             selected,
-            icon_chip(picture, row.declared(), th),
+            icon_chip(picture, row.declared(), th)
+                .relative()
+                .children(digit.map(|digit| crate::running::key_badge(digit, th))),
             -motion::ICON_SHIFT,
         );
         let last = i + 1 == self.rows.len();
@@ -3457,6 +3506,7 @@ impl Launcher {
             .track_focus(&focus_handle)
             .capture_key_down(cx.listener(Self::drop_stale_repeat))
             .on_key_down(cx.listener(Self::on_key_down))
+            .on_modifiers_changed(cx.listener(Self::on_modifiers_changed))
             .child(blur_commit(frosted))
             .child(div().size_full().child(body).with_animation(
                 "arrive",
@@ -3854,6 +3904,20 @@ fn clip_write(open: &Open) -> Option<(ClipWrite, &'static str)> {
 
 /// Files and folders go out in every form at once, so a file manager pastes
 /// the items and a text field pastes the paths.
+fn ctrl_alone(held: &gpui::Modifiers) -> bool {
+    held.control && !held.shift && !held.alt
+}
+
+fn row_at_digit(digit: u8, first: usize) -> usize {
+    first + usize::from(digit) - 1
+}
+
+/// The digit that opens row `i`, None past the nine from `first`.
+fn digit_of_row(i: usize, first: usize) -> Option<u8> {
+    let digit = u8::try_from((i + 1).checked_sub(first)?).ok()?;
+    ROW_DIGITS.contains(&digit).then_some(digit)
+}
+
 fn files_write(paths: Vec<String>) -> ClipWrite {
     Box::new(move || files::copy_files_to_clipboard(&paths))
 }
@@ -3889,4 +3953,19 @@ fn pace_probe() -> impl IntoElement {
             probe.opacity(t)
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nine_rows_from_the_top_one_in_view_take_a_digit() {
+        assert_eq!(digit_of_row(1, 2), None);
+        assert_eq!(digit_of_row(2, 2), Some(1));
+        assert_eq!(digit_of_row(10, 2), Some(9));
+        assert_eq!(digit_of_row(11, 2), None);
+        assert_eq!(row_at_digit(1, 2), 2);
+        assert_eq!(row_at_digit(9, 2), 10);
+    }
 }
