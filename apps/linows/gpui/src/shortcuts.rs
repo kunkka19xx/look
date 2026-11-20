@@ -193,7 +193,7 @@ fn build() -> Vec<Group> {
                 Entry::new(
                     "main.openByDigit",
                     "Ctrl+1..9",
-                    "Open that row of the list; hold Ctrl to see each row's digit on its icon",
+                    "Open the row whose icon shows that digit",
                 ),
                 Entry::new(
                     ACTIONS,

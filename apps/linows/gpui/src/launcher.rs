@@ -13,10 +13,9 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Deferred, Div,
-    Entity, FontWeight, KeyDownEvent, ModifiersChangedEvent, PaintQuad, Pixels, Render,
-    ScrollStrategy, SharedString, Stateful, Task, Transition, TransitionState,
-    UniformListScrollHandle, Window, canvas, deferred, div, point, prelude::*, px, relative, size,
-    svg, uniform_list,
+    Entity, FontWeight, KeyDownEvent, PaintQuad, Pixels, Render, ScrollStrategy, SharedString,
+    Stateful, Task, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred,
+    div, point, prelude::*, px, relative, size, svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
@@ -310,8 +309,6 @@ pub struct Launcher {
     /// release goes to the app it focused, and the next summon gets the
     /// repeats. A held key only counts once its press landed here.
     pressed: Option<String>,
-    /// Ctrl is held: the rows show their digits.
-    row_digits_shown: bool,
     /// When the launchpad grid last mounted, `None` while it is off screen.
     /// Every mount replays the cascade, so the tiles' frost waits from here.
     grid_since: Option<Instant>,
@@ -409,7 +406,6 @@ impl Launcher {
             confirm_seq: 0,
             shown_at: Instant::now(),
             pressed: None,
-            row_digits_shown: false,
             grid_since: None,
             todo_hovered: false,
             version: 0,
@@ -795,19 +791,6 @@ impl Launcher {
             self.pressed = Some(key.clone());
         } else if self.pressed.as_ref() != Some(key) {
             cx.stop_propagation();
-        }
-    }
-
-    fn on_modifiers_changed(
-        &mut self,
-        event: &ModifiersChangedEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let shown = ctrl_alone(&event.modifiers);
-        if shown != self.row_digits_shown {
-            self.row_digits_shown = shown;
-            cx.notify();
         }
     }
 
@@ -1313,7 +1296,8 @@ impl Launcher {
 
     /// Ctrl+digit: Enter on that row, counted from the top one in view.
     fn open_row_digit(&mut self, ks: &gpui::Keystroke, cx: &mut Context<Self>) -> bool {
-        if self.menu.is_some() || !ctrl_alone(&ks.modifiers) {
+        let held = ks.modifiers;
+        if self.menu.is_some() || !held.control || held.shift || held.alt {
             return false;
         }
         let Some(digit) = ks.key.parse().ok().filter(|d| ROW_DIGITS.contains(d)) else {
@@ -2468,7 +2452,6 @@ impl Launcher {
             .track_focus(&focus_handle)
             .capture_key_down(cx.listener(Self::drop_stale_repeat))
             .on_key_down(cx.listener(Self::on_key_down))
-            .on_modifiers_changed(cx.listener(Self::on_modifiers_changed))
             .child(blur_commit(frosted))
             .flex()
             .flex_col()
@@ -2716,7 +2699,8 @@ impl Launcher {
 
     fn row(&self, i: usize, row: &Row, th: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let selected = self.picked() == Some(i);
-        let digit = (self.row_digits_shown && self.menu.is_none())
+        let digit = th
+            .row_digits
             .then(|| digit_of_row(i, self.first_row_in_view()))
             .flatten();
         // Compact has no panel, so the selected process shows its facts here.
@@ -3506,7 +3490,6 @@ impl Launcher {
             .track_focus(&focus_handle)
             .capture_key_down(cx.listener(Self::drop_stale_repeat))
             .on_key_down(cx.listener(Self::on_key_down))
-            .on_modifiers_changed(cx.listener(Self::on_modifiers_changed))
             .child(blur_commit(frosted))
             .child(div().size_full().child(body).with_animation(
                 "arrive",
@@ -3904,10 +3887,6 @@ fn clip_write(open: &Open) -> Option<(ClipWrite, &'static str)> {
 
 /// Files and folders go out in every form at once, so a file manager pastes
 /// the items and a text field pastes the paths.
-fn ctrl_alone(held: &gpui::Modifiers) -> bool {
-    held.control && !held.shift && !held.alt
-}
-
 fn row_at_digit(digit: u8, first: usize) -> usize {
     first + usize::from(digit) - 1
 }

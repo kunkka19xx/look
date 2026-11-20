@@ -148,6 +148,10 @@ christmas_decorations=false\n\
 # How much snow falls with them: 1, 1.25, 1.5 or 2 times the default.\n\
 christmas_snow=1\n\
 \n\
+# The digits on the result rows, the ones Ctrl+1..9 open. false hides\n\
+# them; the chords still work.\n\
+row_digits=true\n\
+\n\
 # UI theme: unset takes the built-in default. Pick one in Settings.\n\
 # ui_theme=\n";
 

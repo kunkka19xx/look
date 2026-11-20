@@ -161,6 +161,14 @@ const SUPER_ACTIONS: Switch = Switch {
     off: "false",
     default_on: false,
 };
+const ROW_DIGITS: Switch = Switch {
+    id: "settings-row-digits",
+    key: theme::ROW_DIGITS_KEY,
+    label: "Row Digits",
+    on: "true",
+    off: "false",
+    default_on: true,
+};
 /// Saved only: the motion pass (M7) reads it.
 const ANIMATIONS: Switch = Switch {
     id: "settings-animations",
@@ -347,7 +355,7 @@ static SLIDERS: [&Slider; 18] = [
 ];
 
 /// The keys this screen owns besides the sliders'.
-const KEYS: [&str; 10] = [
+const KEYS: [&str; 11] = [
     THEME_KEY,
     SURFACE_KEY,
     LAYOUT_KEY,
@@ -355,6 +363,7 @@ const KEYS: [&str; 10] = [
     BLUR_STYLE_KEY,
     bar_slot::SLOT_KEY,
     SUPER_ACTIONS.key,
+    ROW_DIGITS.key,
     ANIMATIONS.key,
     CHRISTMAS.key,
     theme::SNOW_AMOUNT_KEY,
@@ -1328,9 +1337,9 @@ impl Settings {
     /// One line: the first in the label column, the rest after it.
     fn switches_row(&self, split: bool, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let (first, rest): (_, &[&'static Switch]) = if split {
-            (&SUPER_ACTIONS, &[&ANIMATIONS, &CHRISTMAS])
+            (&SUPER_ACTIONS, &[&ANIMATIONS, &ROW_DIGITS, &CHRISTMAS])
         } else {
-            (&ANIMATIONS, &[&CHRISTMAS])
+            (&ANIMATIONS, &[&ROW_DIGITS, &CHRISTMAS])
         };
         self.switch_row(first, th, cx)
             .children(rest.iter().map(|&sw| {
