@@ -39,7 +39,7 @@ pub fn wikipedia_answer(term: &str) -> Option<Answer> {
     look_answers::wikipedia_answer(term)
 }
 
-/// Google autocomplete (via DuckDuckGo's `/ac/` endpoint). Returns up to
+/// Search autocomplete (via DuckDuckGo's `/ac/` endpoint). Returns up to
 /// `limit` suggestions; empty vec on failure or short queries.
 pub fn web_suggestions(query: &str, limit: usize) -> Vec<String> {
     look_answers::web_suggestions(query, limit)

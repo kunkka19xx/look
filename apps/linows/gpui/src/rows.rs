@@ -30,7 +30,7 @@ pub enum Open {
     ClipImage(ClipImage),
     /// A running process: Enter samples its CPU, Ctrl+D kills it.
     Process(Process),
-    /// A Google autocomplete row: Enter searches for it.
+    /// A search autocomplete row: Enter searches for it.
     WebSuggestion(String),
 }
 
@@ -114,7 +114,7 @@ const CLIP_IMAGE_ID: &str = "clipimg:";
 const PROCESS_ID: &str = "proc:";
 const WEB_SUGGEST_ID: &str = "websuggest:";
 pub const KIND_ACTION: &str = "action";
-pub const WEB_SUGGEST_SUBTITLE: &str = "Search Google";
+pub const WEB_SUGGEST_SUBTITLE: &str = "Search the web";
 const IMAGE_EXTENSIONS: [&str; 8] = [
     ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico",
 ];
@@ -380,7 +380,7 @@ impl Row {
         }
     }
 
-    /// A Google autocomplete row, below everything local.
+    /// A search autocomplete row, below everything local.
     pub fn web_suggestion(text: &str, index: usize) -> Self {
         Self {
             id: format!("{WEB_SUGGEST_ID}{text}"),

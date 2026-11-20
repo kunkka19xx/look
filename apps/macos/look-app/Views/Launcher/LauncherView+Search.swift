@@ -276,21 +276,20 @@ extension LauncherView {
         performWebSearch(for: trimmed)
     }
 
-    /// Opens a Google search for `text` in the default browser. Shared by the
-    /// Cmd+Enter web-search shortcut and the autocomplete suggestion rows.
+    /// Opens a web search for `text` in the default browser, on the engine from
+    /// Settings. Shared by the Cmd+Enter shortcut and the suggestion rows.
     func performWebSearch(for text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        var components = URLComponents(string: "https://www.google.com/search")
-        components?.queryItems = [URLQueryItem(name: "q", value: trimmed)]
-        guard let url = components?.url else { return }
+        let engine = themeStore.settings.webSearchEngine
+        guard let url = bridge.webSearchURL(engine: engine.rawValue, query: trimmed) else { return }
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         NSWorkspace.shared.open(url, configuration: config, completionHandler: nil)
     }
 
-    /// Fetches Google autocomplete rows for the current query, debounced, and
+    /// Fetches search autocomplete rows for the current query, debounced, and
     /// only for plain text queries while online features are on. Self-gating -
     /// clears the rows in any non-applicable mode.
     func refreshWebSuggestions() {

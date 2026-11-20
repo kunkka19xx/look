@@ -550,7 +550,7 @@ struct LauncherView: View {
         }
     }
 
-    /// Google autocomplete rows, appended after the engine results. Built by
+    /// Search autocomplete rows, appended after the engine results. Built by
     /// hand like `prefixSuggestionResults`; `openSelectedApp` recognises the id
     /// prefix and runs a web search instead of opening a file.
     var webSuggestionResults: [LauncherResult] {
@@ -560,7 +560,7 @@ struct LauncherView: View {
                 id: "\(AppConstants.Launcher.WebSuggestion.resultIDPrefix)\(text)",
                 kind: .app,
                 title: text,
-                subtitle: "Search Google",
+                subtitle: "Search the web",
                 path: "",
                 score: -1 - index
             )
@@ -1307,7 +1307,7 @@ struct LauncherView: View {
         } else {
             aiAnswer.cancel()
         }
-        // Google autocomplete rows (appended after engine results). Self-gates
+        // Search autocomplete rows (appended after engine results). Self-gates
         // by mode and the online-features flag; never blocks search.
         refreshWebSuggestions()
         // Previously-opened URLs matching the query (url-history spec).

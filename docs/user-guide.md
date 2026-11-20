@@ -41,7 +41,7 @@ Look is designed to need as few macOS permissions as possible:
 - **No Accessibility permission** is required.
 - **No Full Disk Access** is required. Look indexes standard user directories (`~`, `/Applications`, `~/Documents`, `~/Downloads`, etc.). To index a directory outside those defaults, add it via `file_scan_extra_roots` in `~/.look/config`.
 - **No Screen Recording** is required.
-- **Network access** is used for explicit actions - `t"` translation, `tw"` dictionary lookup, `Cmd+Enter` web search, and the lookbook catalog, fetched only while `Settings > Extend` is open - and, when **AI features** are enabled (macOS, on by default), for live Google search suggestions and the DuckDuckGo/Wikipedia answer card as you type. The AI model runs wherever you point it. Apple Intelligence is on-device and Ollama defaults to `localhost`, so by default no prompt leaves the machine. If you change `ollama_host` to a non-loopback address, or select a cloud-routed Ollama model (a `-cloud` tag, which the local daemon proxies to Ollama's service), then **your prompt travels over the network to that provider**. Separately from the prompt, your calendar, clipboard, and remembered facts are attached only when inference is on this machine; for anything remote they are withheld until you turn on `ai_allow_remote_context` in Settings. Turn the AI/web features off by setting `ai_enabled = false` in `~/.look/config` (or via Settings). Local search and indexing never make network calls.
+- **Network access** is used for explicit actions - `t"` translation, `tw"` dictionary lookup, `Cmd+Enter` web search, and the lookbook catalog, fetched only while `Settings > Extend` is open - and, when **AI features** are enabled (macOS, on by default), for live search suggestions and the DuckDuckGo/Wikipedia answer card as you type. The AI model runs wherever you point it. Apple Intelligence is on-device and Ollama defaults to `localhost`, so by default no prompt leaves the machine. If you change `ollama_host` to a non-loopback address, or select a cloud-routed Ollama model (a `-cloud` tag, which the local daemon proxies to Ollama's service), then **your prompt travels over the network to that provider**. Separately from the prompt, your calendar, clipboard, and remembered facts are attached only when inference is on this machine; for anything remote they are withheld until you turn on `ai_allow_remote_context` in Settings. Turn the AI/web features off by setting `ai_enabled = false` in `~/.look/config` (or via Settings). Local search and indexing never make network calls.
 - **Finder Automation** is requested only when you empty the Trash (`Cmd+D` on the pinned Trash folder). The Trash is protected by macOS, so Look asks Finder to empty it; macOS prompts once, and you can manage it under `System Settings > Privacy & Security > Automation`. Moving individual files to the Trash needs no permission.
 
 **Settings > AI > Permissions** lists every capability that needs OS access (Calendar, Reminders), what Look does with it, and whether it's connected. **Grant all** asks for the outstanding ones in turn; macOS has no single "allow everything" prompt, so each still appears on its own. Once a permission has been answered - granted or denied - only System Settings can change it, so those rows link straight to the right pane. Look also asks the first time you use a feature that needs access, which is why `join` may prompt for Calendar.
@@ -70,7 +70,7 @@ Useful actions:
 - `Cmd+Shift+P`: clear all picked items
 - `Cmd+I` (`Ctrl+I` on Linux and Windows): paste the selected file or folder, or every picked item, straight into the app you came from. A file manager or a chat app gets the items, a text field or terminal gets the paths. Same chord, permissions, and limits as pasting a clip (see [Clipboard and translation](#clipboard-and-translation))
 - `Cmd+D`: move the selected file/folder - or all picked items - to the Trash (macOS only for now). Like Finder's `Cmd+Delete`, this is immediate and unconfirmed because it's recoverable: the items go to the Trash, not permanent deletion. The rows disappear from results right away.
-- `Cmd+Enter`: web search current query (Google)
+- `Cmd+Enter`: web search current query, on the engine set in Settings (`web_search_engine`, Google by default)
 
 Picked items show as pills above the results - each pill has an `X` to remove it, followed by **Open all** (`Shift+Enter`) and **Clear**. The preview stays on the right, so you can keep previewing while you pick. Picks stay across hiding and reopening Look until you clear or open them. File/folder copies (both `Cmd+C` and `Cmd+P`) are excluded from clipboard history.
 
@@ -257,15 +257,15 @@ A tile that fails says so and keeps what it last showed - one broken tile never 
 
 ## AI answers and web suggestions (macOS, Linux, Windows)
 
-Look can answer questions and look things up without leaving the launcher. These features are **on by default** on macOS, Linux, and Windows. Toggle them in Settings or with `ai_enabled` in `~/.look/config`.
+Look can answer questions and look things up without leaving the launcher. These features are **on by default** on macOS, Linux, and Windows. Toggle them in Settings or with `ai_enabled` in `~/.look/config`. The web search engine is separate: set `web_search_engine` in Settings or in `~/.look/config`.
 
 - **Answer card.** A question, an entity that has no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather, currency, crypto) shows a Spotlight-style card above the results. Sources resolve independently and each appears as it lands - **DuckDuckGo** and **Wikipedia**. Arithmetic doesn't answer here anymore - see the **Calculator row** under Query prefixes below. On macOS, when no web source has an answer it falls back to a streaming on-device **Apple Intelligence** answer. Click a source label to open it; the copy button copies that block.
-- **Search suggestions.** For plain text queries (2+ characters), Google autocomplete rows appear under the results. `Enter` on a suggestion (or `Cmd+Enter` on your query) runs a web search in your default browser.
+- **Search suggestions.** For plain text queries (2+ characters), DuckDuckGo autocomplete rows appear under the results. `Enter` on a suggestion (or `Cmd+Enter` on your query) runs a web search in your default browser on the engine chosen by `web_search_engine` (Google, DuckDuckGo, or Bing; Google by default).
 - **Model interpretation** _(macOS only)_. When a natural-language query finds nothing locally, the on-device model turns the phrasing into a structured file query - type, time, place - and searches again; it never rewrites your query string. Results say when they were interpreted, or when the search had to be relaxed to find near-misses. It never overrides results you can already see - it only runs when the raw query came up empty.
 
-**Platform note.** The web answer card and Google suggestions are available on macOS, Linux, and Windows. The on-device LLM - model interpretation and the Apple Intelligence answer fallback - is **macOS-only**; there is no on-device model on Linux/Windows, so there the card uses web sources (DuckDuckGo, Wikipedia, currency/weather/crypto) only. The `ai_enabled` toggle is shared across platforms.
+**Platform note.** The web answer card and search suggestions are available on macOS, Linux, and Windows. The on-device LLM - model interpretation and the Apple Intelligence answer fallback - is **macOS-only**; there is no on-device model on Linux/Windows, so there the card uses web sources (DuckDuckGo, Wikipedia, currency/weather/crypto) only. The `ai_enabled` toggle is shared across platforms.
 
-**Network note.** While AI features are on, the answer card's web sources and the Google suggestions send your typed query to those services (DuckDuckGo, Wikipedia, Google). The on-device model makes no network calls of its own. Set `ai_enabled = false` to disable all of it and run fully offline.
+**Network note.** While AI features are on, the answer card's web sources and the search suggestions send your typed query to those services (DuckDuckGo, Wikipedia). An explicit web search goes to the engine you chose with `web_search_engine`. The on-device model makes no network calls of its own. Set `ai_enabled = false` to disable all of it and run fully offline.
 
 ## Query prefixes
 
@@ -627,6 +627,9 @@ Backend-related keys:
 - `skip_dir_names`
 - `alias_<keyword>` (for app + System Settings query aliases, for example `alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq`)
 - `backend_log_level`, `launch_at_login`, `add_to_path` (Windows)
+- `web_search_engine` (`google`, `duckduckgo`, or `bing`; the engine behind `Cmd+Enter` / `Ctrl+Enter` and web suggestion rows. Missing, empty, or unknown means `google`)
+
+An existing config that lacks `web_search_engine` gets `web_search_engine=google` added under `# Added by look update` the next time Look loads it. That is the default, so nothing changes until you pick another engine.
 
 File-only settings (no Settings UI):
 

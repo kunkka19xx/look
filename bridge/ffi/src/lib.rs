@@ -27,6 +27,7 @@ mod tools_api;
 mod translate_api;
 mod url_history_api;
 mod usage_api;
+mod web_search_api;
 
 use look_engine::QueryEngine;
 use search_api::FfiSearchResult;
@@ -1051,6 +1052,20 @@ pub extern "C" fn look_instant_has_match(query: *const c_char) -> bool {
 pub extern "C" fn look_web_suggestions_json(query: *const c_char, limit: u32) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         answers_api::look_web_suggestions_json_impl(query, limit)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Web search URL for `query` on `engine_key` (`google` | `duckduckgo` |
+/// `bing`; unknown falls back to Google). Null when the trimmed query is empty.
+/// Free the result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_web_search_url(
+    engine_key: *const c_char,
+    query: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        web_search_api::look_web_search_url_impl(engine_key, query)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

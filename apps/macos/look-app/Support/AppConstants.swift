@@ -226,7 +226,7 @@ enum AppConstants {
             }
         }
 
-        // Google autocomplete rows appended after the engine results. Like
+        // Search autocomplete rows appended after the engine results. Like
         // PrefixSuggestion, these are Swift-synthesized rows told apart by id.
         enum WebSuggestion {
             static let resultIDPrefix = "websuggest:"
