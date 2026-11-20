@@ -7,6 +7,7 @@
 mod actions;
 mod answers;
 mod banner;
+mod barslot;
 mod bg;
 mod bgimage;
 mod bindings;

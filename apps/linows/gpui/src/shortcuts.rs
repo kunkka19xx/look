@@ -257,7 +257,7 @@ fn build() -> Vec<Group> {
                 Entry::new(
                     "apps.strip",
                     "Settings > Appearance",
-                    "Toggle the running apps strip on or off",
+                    "Choose what the search bar holds: running apps, a task for today, a script's line, or nothing",
                 ),
             ],
         },

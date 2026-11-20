@@ -127,8 +127,13 @@ fn default_config_contents() -> String {
          lazy_indexing_enabled=true\n\
          skip_dir_names=node_modules,target,build,dist,.git,vendor,out,coverage,tmp,cache,venv\n\
          \n\
-         # Running apps switcher: none, right\n\
-         running_apps_placement=right\n\
+         # Right end of the search bar: running, pinned, todo, script, none\n\
+         bar_slot=running\n\
+         # With bar_slot=pinned: up to nine app ids, filled by Pin to bar on an app row\n\
+         pinned_apps=\n\
+         # With bar_slot=script: a command, or the path of a script, whose first\n\
+         # output line the bar shows\n\
+         bar_script=\n\
          \n\
          # How long the main query survives while Look is hidden, in seconds. 0\n\
          # clears it on every hide; a negative value keeps it indefinitely.\n\

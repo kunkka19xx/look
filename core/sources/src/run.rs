@@ -25,6 +25,7 @@ use serde::Deserialize;
 use look_tools::cmd_quote as quote;
 #[cfg(not(windows))]
 use look_tools::shell_quote as quote;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -80,6 +81,9 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const MAX_STDERR_BYTES: usize = 8 * 1024;
 
 const DRAIN_CHUNK_BYTES: usize = 8 * 1024;
+/// How long the pipes get to empty once the shell is gone. Only a child left
+/// in the background keeps one open longer.
+const DRAIN_GRACE: Duration = Duration::from_millis(200);
 
 /// Environment the step can read to know which row it was performed on.
 const ENV_ID: &str = "LOOK_ID";
@@ -539,9 +543,10 @@ pub fn capture(
         }
     };
 
-    let out = stdout.map(join_drained).unwrap_or_default();
+    let settled = Instant::now() + DRAIN_GRACE;
+    let out = stdout.map(|pipe| pipe.text_by(settled)).unwrap_or_default();
     if !status.success() {
-        let errors = stderr.map(join_drained).unwrap_or_default();
+        let errors = stderr.map(|pipe| pipe.text_by(settled)).unwrap_or_default();
         let reason = errors.lines().next().unwrap_or("exited non-zero").trim();
         return Err(if reason.is_empty() {
             "exited non-zero".to_string()
@@ -567,42 +572,53 @@ fn root_dir() -> String {
     format!("{drive}\\")
 }
 
+struct Drain {
+    kept: Arc<Mutex<Vec<u8>>>,
+    reader: JoinHandle<()>,
+}
+
 /// Reads a pipe to its end on its own thread, keeping at most `max_bytes`.
 ///
 /// It keeps reading past the cap rather than stopping, because closing the pipe
 /// early would hand the child a SIGPIPE and turn "your output was long" into
 /// "your command failed".
-fn drain<R: Read + Send + 'static>(mut pipe: R, max_bytes: usize) -> JoinHandle<Vec<u8>> {
-    std::thread::spawn(move || {
-        let mut kept: Vec<u8> = Vec::new();
+fn drain<R: Read + Send + 'static>(mut pipe: R, max_bytes: usize) -> Drain {
+    let kept = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&kept);
+    let reader = std::thread::spawn(move || {
         let mut chunk = [0u8; DRAIN_CHUNK_BYTES];
         while let Ok(read) = pipe.read(&mut chunk) {
             if read == 0 {
                 break;
             }
+            let mut kept = sink.lock().unwrap_or_else(|err| err.into_inner());
             let room = max_bytes.saturating_sub(kept.len());
-            if room > 0 {
-                kept.extend_from_slice(&chunk[..read.min(room)]);
-            }
+            kept.extend_from_slice(&chunk[..read.min(room)]);
         }
-        kept
-    })
+    });
+    Drain { kept, reader }
 }
 
-/// The drained bytes as text, ending on a whole character.
-///
-/// Mid-stream invalid bytes still decode lossily, since genuinely non-UTF8
-/// output is worth showing. Only a trailing replacement character is dropped:
-/// there it is not the command's data but an artifact of the byte cap landing
-/// inside a multi-byte glyph.
-fn join_drained(handle: JoinHandle<Vec<u8>>) -> String {
-    let bytes = handle.join().unwrap_or_default();
-    let mut text = String::from_utf8_lossy(&bytes).into_owned();
-    let cut_a_glyph = std::str::from_utf8(&bytes).is_err();
-    if cut_a_glyph && text.ends_with(char::REPLACEMENT_CHARACTER) {
-        text.pop();
+impl Drain {
+    /// What the pipe gave by `deadline`, ending on a whole character. Not
+    /// joined: `server &` holds the pipe open for as long as the server lives.
+    ///
+    /// Mid-stream invalid bytes still decode lossily, since genuinely non-UTF8
+    /// output is worth showing. Only a trailing replacement character is dropped:
+    /// there it is not the command's data but an artifact of the byte cap landing
+    /// inside a multi-byte glyph.
+    fn text_by(self, deadline: Instant) -> String {
+        while !self.reader.is_finished() && Instant::now() < deadline {
+            std::thread::sleep(POLL_INTERVAL);
+        }
+        let bytes = self.kept.lock().unwrap_or_else(|err| err.into_inner());
+        let mut text = String::from_utf8_lossy(&bytes).into_owned();
+        let cut_a_glyph = std::str::from_utf8(&bytes).is_err();
+        if cut_a_glyph && text.ends_with(char::REPLACEMENT_CHARACTER) {
+            text.pop();
+        }
+        text
     }
-    text
 }
 
 /// Its own process group, so closing the launcher never signals what it started.
@@ -1050,6 +1066,14 @@ mod tests {
         fn a_hung_command_is_killed_rather_than_waited_on() {
             let err = capture("sleep 30", None, Duration::from_millis(150), 1024).unwrap_err();
             assert!(err.contains("timed out"), "{err}");
+        }
+
+        #[test]
+        fn a_child_left_in_the_background_does_not_hold_the_answer() {
+            let started = Instant::now();
+            let out = capture("sleep 30 & echo hi", None, Duration::from_secs(5), 1024).unwrap();
+            assert_eq!(out, "hi\n");
+            assert!(started.elapsed() < Duration::from_secs(5));
         }
 
         #[test]

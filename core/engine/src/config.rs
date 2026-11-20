@@ -862,7 +862,7 @@ fn is_config_key_shaped(key: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
-fn parse_csv(value: &str) -> Vec<String> {
+pub(crate) fn parse_csv(value: &str) -> Vec<String> {
     let mut values = Vec::new();
     let mut current = String::new();
     let mut chars = value.chars().peekable();

@@ -16,6 +16,7 @@ use gpui::{
     SharedString, deferred, div, px, relative,
 };
 use linows_backend::config::{self, ConfigUpdate, LauncherLayout};
+use linows_backend::look_engine::bar_slot::{self, BarSlot};
 use linows_backend::platform::{self, CandidateDrive};
 use linows_backend::{autostart, cli_path, files, hotkey};
 
@@ -84,6 +85,24 @@ const THEMES: &[Option_] = &[
     (LIQUID, "Liquid"),
     (theme::CUSTOM_THEME, "Custom"),
 ];
+const BAR_SLOT_LABEL: &str = "Search Bar";
+const BAR_SLOTS: &[Option_] = &[
+    (BarSlot::Running.as_str(), "Running Apps"),
+    (BarSlot::Pinned.as_str(), PINNED_LABEL),
+    (BarSlot::Todo.as_str(), "Today's Task"),
+    (BarSlot::Script.as_str(), "Script"),
+    (BarSlot::None.as_str(), "Nothing"),
+];
+const PINNED_LABEL: &str = "Pinned Apps";
+const PINNED_EMPTY: &str = "Pin an app from its row's actions menu";
+const PINNED_MISSING: &str = "missing";
+const PINNED_GAP: f32 = 6.0;
+const BAR_SCRIPT_LABEL: &str = "Bar Script";
+const BAR_SCRIPT_UNSET: &str =
+    "Set bar_script in .look/config to a command or the path of a script, then reload the config";
+const BAR_SCRIPT_COMMAND_MAX_W: f32 = 320.0;
+const BAR_SCRIPT_PENDING: &str = "Runs when the launcher opens";
+const BAR_SCRIPT_SILENT: &str = "Printed nothing";
 const SESSION_LAYOUT_HINT: &str = "Ringed: this session only (Ctrl+Shift+C)";
 const LAYOUTS: &[Option_] = &[("split", "Split"), ("compact", "Compact")];
 /// The core's `SNOW_AMOUNTS`, as the config spells them.
@@ -132,14 +151,6 @@ pub(super) struct Switch {
     pub default_on: bool,
 }
 
-const RUNNING_APPS: Switch = Switch {
-    id: "settings-running",
-    key: "running_apps_placement",
-    label: "Running Apps",
-    on: "right",
-    off: "none",
-    default_on: true,
-};
 const SUPER_ACTIONS: Switch = Switch {
     id: "settings-launchpad",
     key: "super_actions_enabled",
@@ -340,7 +351,7 @@ const KEYS: [&str; 10] = [
     LAYOUT_KEY,
     FONT_NAME_KEY,
     BLUR_STYLE_KEY,
-    RUNNING_APPS.key,
+    bar_slot::SLOT_KEY,
     SUPER_ACTIONS.key,
     ANIMATIONS.key,
     CHRISTMAS.key,
@@ -885,6 +896,20 @@ impl Settings {
         self.apply(cx);
     }
 
+    fn bar_slot(&self) -> BarSlot {
+        BarSlot::from_entries(&self.entries)
+    }
+
+    fn pick_bar_slot(&mut self, slot: &str, cx: &mut Context<Launcher>) {
+        self.select = None;
+        self.set(bar_slot::SLOT_KEY, slot);
+        cx.notify();
+    }
+
+    fn bar_script(&self) -> &str {
+        self.get(bar_slot::SCRIPT_KEY).unwrap_or_default()
+    }
+
     fn open_font_field(&mut self, cx: &mut Context<Launcher>) {
         let text = match self.font_name() {
             theme::SYSTEM_FONT => String::new(),
@@ -1036,6 +1061,7 @@ impl Settings {
                 // the bindings below are built from.
                 if written {
                     theme::load();
+                    this.bar.refresh(cx);
                 }
                 bindings::load();
                 this.settings.recorder.state = Some(hotkey::launcher_hotkey_state());
@@ -1315,10 +1341,99 @@ impl Settings {
             )
             .child(
                 line()
-                    .when(split, |el| el.child(switch(&RUNNING_APPS)))
+                    .when(split, |el| {
+                        el.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(HEADER_ITEM_GAP))
+                                .child(
+                                    div()
+                                        .text_size(px(th.font_size - 1.0))
+                                        .text_color(th.text_secondary)
+                                        .child(BAR_SLOT_LABEL),
+                                )
+                                .child(self.select_control(
+                                    "settings-bar-slot",
+                                    BAR_SLOTS,
+                                    self.bar_slot().as_str(),
+                                    bar_slot::SLOT_KEY,
+                                    Settings::pick_bar_slot,
+                                    th,
+                                    cx,
+                                )),
+                        )
+                    })
                     .when(split, |el| el.child(switch(&SUPER_ACTIONS)))
                     .child(switch(&ANIMATIONS)),
             )
+            .when(split && self.bar_slot() == BarSlot::Script, |el| {
+                el.child(self.bar_script_row(th))
+            })
+            .when(split && self.bar_slot() == BarSlot::Pinned, |el| {
+                el.child(self.pinned_row(th, cx))
+            })
+    }
+
+    /// Removing a pin writes the config at once, as pinning from a row does.
+    fn pinned_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+        let pills: Vec<Div> = crate::barslot::pins()
+            .iter()
+            .enumerate()
+            .map(|(i, pin)| {
+                let id = pin.id.clone();
+                let name = pin.title.clone().unwrap_or_else(|| id.clone());
+                let label = div()
+                    .text_size(px(th.font_size - 1.0))
+                    .child(SharedString::from(name.clone()))
+                    .when(pin.title.is_none(), |el| {
+                        el.text_color(th.text_muted)
+                            .child(format!(" ({PINNED_MISSING})"))
+                    });
+                controls::removable_pill(
+                    ("settings-unpin", i),
+                    label,
+                    th,
+                    cx.listener(move |this, _, _, cx| {
+                        this.toggle_pin(id.clone(), name.clone(), cx)
+                    }),
+                )
+            })
+            .collect();
+        controls::row(PINNED_LABEL, th).child(div().flex().flex_wrap().gap(px(PINNED_GAP)).map(
+            |el| {
+                if pills.is_empty() {
+                    el.child(controls::hint(PINNED_EMPTY, th))
+                } else {
+                    el.children(pills)
+                }
+            },
+        ))
+    }
+
+    /// Read-only: the command is set in the config file.
+    fn bar_script_row(&self, th: &Theme) -> Div {
+        let command = self.bar_script();
+        if command.is_empty() {
+            return controls::row(BAR_SCRIPT_LABEL, th).child(controls::hint(BAR_SCRIPT_UNSET, th));
+        }
+        let status = match crate::barslot::script_result(command) {
+            None => controls::hint(BAR_SCRIPT_PENDING, th),
+            Some(Ok(line)) if line.is_empty() => controls::hint(BAR_SCRIPT_SILENT, th),
+            Some(Ok(line)) => controls::hint(line, th),
+            Some(Err(why)) => controls::hint(why, th).text_color(th.danger),
+        };
+        controls::row(BAR_SCRIPT_LABEL, th)
+            .child(
+                div()
+                    .max_w(px(BAR_SCRIPT_COMMAND_MAX_W))
+                    .flex_shrink_0()
+                    .truncate()
+                    .font_family(th.mono_family.clone())
+                    .text_size(px(th.font_size - 1.0))
+                    .child(SharedString::from(command.to_string())),
+            )
+            .child(status.flex_1().min_w_0().truncate())
     }
 
     /// A dropdown whose open state is `self.select == Some(key)`; `pick`
