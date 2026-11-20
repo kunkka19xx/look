@@ -55,6 +55,7 @@ pub enum ActionId {
     OpenConfirmed(String),
     Tool(&'static str),
     CopyPath,
+    TogglePin,
     DeleteClipboard,
     /// A block's `then` target, by block id, with its name for the banner.
     Target {
@@ -81,6 +82,9 @@ pub struct MenuItem {
     /// Asked in the menu before the action runs.
     pub confirm: Option<String>,
 }
+
+const PIN: &str = "Pin to bar";
+const UNPIN: &str = "Unpin from bar";
 
 /// Enter, which no binding carries.
 const ENTER_CHORD: &str = "⏎";
@@ -343,6 +347,19 @@ pub fn descriptors(
             confirm: None,
         }
     }));
+    if row.kind == "app" {
+        items.push(MenuItem {
+            id: ActionId::TogglePin,
+            title: if crate::barslot::is_pinned(&row.id) {
+                UNPIN
+            } else {
+                PIN
+            }
+            .into(),
+            chord: SharedString::default(),
+            confirm: None,
+        });
+    }
     items.extend(declared);
     items
 }

@@ -5,11 +5,14 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gpui::{Animation, AnimationExt, Context, Div, SharedString, div, prelude::*, px};
+use linows_backend::config::{self, ConfigUpdate};
 use linows_backend::look_engine::bar_slot::{self, BarSlot};
 use linows_backend::todo as store;
+use linows_backend::{launch, search};
 
 use crate::Shell;
 use crate::bg;
+use crate::config_list;
 use crate::icons::IconStore;
 use crate::launcher::Launcher;
 use crate::motion;
@@ -20,6 +23,65 @@ use crate::todo::Today;
 const TODO_EMPTY: &str = "Plan today";
 const TODO_ALL_DONE: &str = "done";
 const TEXT_GAP: f32 = 8.0;
+const APP_KIND: &str = "app";
+const APP_USAGE: &str = "open_app";
+
+/// No title when the index no longer has the app.
+#[derive(Clone)]
+pub struct Pin {
+    pub id: String,
+    pub title: Option<String>,
+    path: String,
+}
+
+/// Kept for the process: the settings screen lists them too.
+static PINS: Mutex<Vec<Pin>> = Mutex::new(Vec::new());
+
+pub fn pins() -> std::sync::MutexGuard<'static, Vec<Pin>> {
+    PINS.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+fn pinned_value() -> String {
+    theme::entries()
+        .get(bar_slot::PINNED_APPS_KEY)
+        .cloned()
+        .unwrap_or_default()
+}
+
+pub fn is_pinned(id: &str) -> bool {
+    config_list::parse(&pinned_value()).iter().any(|p| p == id)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum PinChange {
+    Pinned,
+    Unpinned,
+    Full,
+}
+
+fn toggled(mut ids: Vec<String>, id: &str) -> (Vec<String>, PinChange) {
+    if let Some(at) = ids.iter().position(|p| p == id) {
+        ids.remove(at);
+        (ids, PinChange::Unpinned)
+    } else if ids.len() >= bar_slot::MAX_PINNED {
+        (ids, PinChange::Full)
+    } else {
+        ids.push(id.to_string());
+        (ids, PinChange::Pinned)
+    }
+}
+
+/// Writes the config; the caller loads it and refreshes the bar.
+pub fn toggle_pin(id: &str) -> Result<PinChange, String> {
+    let (ids, change) = toggled(config_list::parse(&pinned_value()), id);
+    if change != PinChange::Full {
+        config::set_config(vec![ConfigUpdate {
+            key: bar_slot::PINNED_APPS_KEY.into(),
+            value: config_list::render(&ids),
+        }])?;
+    }
+    Ok(change)
+}
 
 #[derive(Default)]
 pub struct Bar {
@@ -82,6 +144,12 @@ impl Bar {
     pub fn refresh(&mut self, cx: &mut Context<Launcher>) {
         let entries = theme::entries();
         self.slot = BarSlot::from_entries(&entries);
+        let ids = bar_slot::pinned_ids(&pinned_value());
+        if ids.is_empty() {
+            pins().clear();
+        } else {
+            bg::fetch(cx, move || resolve(ids), |_, found, _| *pins() = found);
+        }
         match self.slot {
             BarSlot::Running => self.running.refresh(cx),
             BarSlot::Todo => {
@@ -132,7 +200,12 @@ impl Bar {
 
     /// Alt+digit.
     pub fn activate_key(&self, key: u8, shell: &Shell, cx: &mut Context<Launcher>) -> bool {
-        self.slot == BarSlot::Running && self.running.activate_key(key, shell, cx)
+        match self.slot {
+            BarSlot::Running => self.running.activate_key(key, shell, cx),
+            BarSlot::Pinned => running::key_position(shown(&pins()).count(), key)
+                .is_some_and(|at| open_pin(at, shell)),
+            _ => false,
+        }
     }
 
     pub fn render(
@@ -172,9 +245,49 @@ impl Bar {
                         .child(div().min_w_0().truncate().child(line)),
                 ))
             }),
-            BarSlot::Pinned | BarSlot::None => None,
+            BarSlot::Pinned => {
+                let ids = shown(&pins()).map(|pin| Some(pin.id.clone())).collect();
+                running::strip(ids, icons, th, cx, |this, at, _| {
+                    open_pin(at, &this.shell);
+                })
+            }
+            BarSlot::None => None,
         }
     }
+}
+
+fn resolve(ids: Vec<String>) -> Vec<Pin> {
+    crate::state().with_engine(|engine| {
+        ids.into_iter()
+            .map(|id| {
+                let (title, path) = engine.title_and_path(&id).unzip();
+                Pin {
+                    title: title.map(str::to_string),
+                    path: path.unwrap_or_default().to_string(),
+                    id,
+                }
+            })
+            .collect()
+    })
+}
+
+/// The pins the bar draws.
+fn shown(pins: &[Pin]) -> impl Iterator<Item = &Pin> {
+    pins.iter().filter(|pin| pin.title.is_some())
+}
+
+/// Opens through the row path, which focuses a running instance first.
+fn open_pin(at: usize, shell: &Shell) -> bool {
+    let Some(pin) = shown(&pins()).nth(at).cloned() else {
+        return false;
+    };
+    match launch::open_path(shell, pin.path, Some(APP_KIND), Some(&pin.id)) {
+        Ok(()) => {
+            search::record_usage(crate::state(), &pin.id, APP_USAGE);
+        }
+        Err(err) => eprintln!("[pinned] open failed: {err}"),
+    }
+    true
 }
 
 fn text_slot(th: &Theme) -> Div {
@@ -232,6 +345,21 @@ mod tests {
         assert_eq!(todo_line(&day, 0).task.as_deref(), Some("write"));
         assert_eq!(todo_line(&day, 5).task.as_deref(), Some("ship"));
         assert_eq!(todo_line(&day, 5).note, "1/3");
+    }
+
+    #[test]
+    fn a_pin_toggles_and_the_tenth_is_refused() {
+        let ids = |n: usize| (0..n).map(|i| i.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            toggled(ids(2), "x"),
+            (vec!["0".into(), "1".into(), "x".into()], PinChange::Pinned)
+        );
+        assert_eq!(
+            toggled(ids(2), "0"),
+            (vec!["1".into()], PinChange::Unpinned)
+        );
+        assert_eq!(toggled(ids(9), "x"), (ids(9), PinChange::Full));
+        assert_eq!(toggled(ids(9), "8").1, PinChange::Unpinned);
     }
 
     #[test]

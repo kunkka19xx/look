@@ -20,6 +20,7 @@ use gpui::{
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
 use linows_backend::look_answers::TranslateLanguage;
+use linows_backend::look_engine::bar_slot;
 use linows_backend::qactions;
 use linows_backend::search as engine;
 use linows_backend::{
@@ -29,7 +30,7 @@ use linows_backend::{
 use crate::actions::{self, ActionId, Menu};
 use crate::answers::{self, AiAnswer};
 use crate::banner::{self, Banner, Message};
-use crate::barslot::Bar;
+use crate::barslot::{self, Bar, PinChange};
 use crate::bg;
 use crate::bgimage::{self, Backdrop};
 use crate::bindings::{self, Scope};
@@ -1213,6 +1214,30 @@ impl Launcher {
 
     // --- Command screen --------------------------------------------------------
 
+    pub(crate) fn toggle_pin(&mut self, id: String, title: String, cx: &mut Context<Self>) {
+        bg::fetch(
+            cx,
+            move || barslot::toggle_pin(&id),
+            move |this, change, cx| {
+                let (text, tone) = match change {
+                    Ok(PinChange::Pinned) => (format!("{title} pinned to the bar"), Tone::Success),
+                    Ok(PinChange::Unpinned) => (format!("{title} unpinned"), Tone::Info),
+                    Ok(PinChange::Full) => (
+                        format!(
+                            "The bar holds {} apps; unpin one first",
+                            bar_slot::MAX_PINNED
+                        ),
+                        Tone::Info,
+                    ),
+                    Err(err) => (format!("Pin failed: {err}"), Tone::Error),
+                };
+                theme::load();
+                this.bar.refresh(cx);
+                this.banner.show(text, tone, banner::MEDIUM, cx);
+            },
+        );
+    }
+
     pub(crate) fn open_todo(&mut self, cx: &mut Context<Self>) {
         if let Some(index) = Commands::index_of(crate::commands::TODO_ID) {
             self.enter_command_mode(index, "", cx);
@@ -2065,6 +2090,11 @@ impl Launcher {
                 self.run_tool(action, cx);
             }
             ActionId::CopyPath => self.copy_selected_row(cx),
+            ActionId::TogglePin => {
+                if let Some(row) = self.selected_row() {
+                    self.toggle_pin(row.id.clone(), row.title.clone(), cx);
+                }
+            }
             ActionId::DeleteClipboard => {
                 self.delete(cx);
             }

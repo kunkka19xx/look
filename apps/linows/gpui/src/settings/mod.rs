@@ -88,10 +88,15 @@ const THEMES: &[Option_] = &[
 const BAR_SLOT_LABEL: &str = "Search Bar";
 const BAR_SLOTS: &[Option_] = &[
     (BarSlot::Running.as_str(), "Running Apps"),
+    (BarSlot::Pinned.as_str(), PINNED_LABEL),
     (BarSlot::Todo.as_str(), "Today's Task"),
     (BarSlot::Script.as_str(), "Script"),
     (BarSlot::None.as_str(), "Nothing"),
 ];
+const PINNED_LABEL: &str = "Pinned Apps";
+const PINNED_EMPTY: &str = "Pin an app from its row's actions menu";
+const PINNED_MISSING: &str = "missing";
+const PINNED_GAP: f32 = 6.0;
 const BAR_SCRIPT_LABEL: &str = "Bar Script";
 const BAR_SCRIPT_UNSET: &str =
     "Set bar_script in .look/config to a command or the path of a script, then reload the config";
@@ -1365,6 +1370,45 @@ impl Settings {
             .when(split && self.bar_slot() == BarSlot::Script, |el| {
                 el.child(self.bar_script_row(th))
             })
+            .when(split && self.bar_slot() == BarSlot::Pinned, |el| {
+                el.child(self.pinned_row(th, cx))
+            })
+    }
+
+    /// Removing a pin writes the config at once, as pinning from a row does.
+    fn pinned_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+        let pills: Vec<Div> = crate::barslot::pins()
+            .iter()
+            .enumerate()
+            .map(|(i, pin)| {
+                let id = pin.id.clone();
+                let name = pin.title.clone().unwrap_or_else(|| id.clone());
+                let label = div()
+                    .text_size(px(th.font_size - 1.0))
+                    .child(SharedString::from(name.clone()))
+                    .when(pin.title.is_none(), |el| {
+                        el.text_color(th.text_muted)
+                            .child(format!(" ({PINNED_MISSING})"))
+                    });
+                controls::removable_pill(
+                    ("settings-unpin", i),
+                    label,
+                    th,
+                    cx.listener(move |this, _, _, cx| {
+                        this.toggle_pin(id.clone(), name.clone(), cx)
+                    }),
+                )
+            })
+            .collect();
+        controls::row(PINNED_LABEL, th).child(div().flex().flex_wrap().gap(px(PINNED_GAP)).map(
+            |el| {
+                if pills.is_empty() {
+                    el.child(controls::hint(PINNED_EMPTY, th))
+                } else {
+                    el.children(pills)
+                }
+            },
+        ))
     }
 
     /// Read-only: the command is set in the config file.

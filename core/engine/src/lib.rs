@@ -306,6 +306,14 @@ impl QueryEngine {
         steps
     }
 
+    pub fn title_and_path(&self, candidate_id: &str) -> Option<(&str, &str)> {
+        self.candidates
+            .iter()
+            .map(|c| &c.candidate)
+            .find(|c| c.id.as_ref() == candidate_id)
+            .map(|c| (c.title.as_ref(), c.path.as_ref()))
+    }
+
     pub fn record_usage_in_memory(&mut self, candidate_id: &str, used_at_unix_s: i64) -> bool {
         if let Some(indexed) = self
             .candidates

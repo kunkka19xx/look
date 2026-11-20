@@ -546,11 +546,12 @@ Saved as `running_apps_placement=<value>` in `~/.look/config` (`none` = off, any
 On Linux and Windows the switch is a **Search Bar** dropdown, because that end of the bar can hold other things:
 
 - **Running Apps** - everything above.
+- **Pinned Apps** - up to nine apps you chose, with the same badges and `Alt` digits as the running apps. Pin one from its row's actions menu (**Pin to bar**; the same entry reads **Unpin from bar** afterwards). Opening a pin focuses the app if it is already running. Under the dropdown, Settings lists the pins in bar order, each with an (x) to remove it. The order is the order you pinned them in.
 - **Today's Task** - one of today's unfinished tasks, picked anew each time the launcher opens, with the day's count beside it (`1/3`). Click it to open `/todo`. With nothing planned it reads `Plan today`.
 - **Script** - the first line a command of yours prints. The command is `bar_script` in `~/.look/config`: either a one-liner such as `bar_script=date +"%H:%M  %a %d"`, or the path of a script of your own, such as `bar_script=~/.look/bin/bar.sh`, when it needs more than a line. Reload the config after editing it. It runs once each time the launcher opens, in your shell, for 2 seconds at most. The bar keeps the last line until the new one arrives and stays empty if the command fails or prints nothing; Settings shows the command and, beside it, its last line or the reason it failed.
 - **Nothing** - the search bar spans the full width.
 
-Only Running Apps takes the `Alt` digits. Saved as `bar_slot=running|todo|script|none` and `bar_script=<command>`. A config that has no `bar_slot` yet keeps the bar `running_apps_placement` gave it.
+Running Apps and Pinned Apps take the `Alt` digits; the others leave them free. Saved as `bar_slot=running|pinned|todo|script|none`, `pinned_apps=<app ids, comma-separated>` and `bar_script=<command>`. A config that has no `bar_slot` yet keeps the bar `running_apps_placement` gave it.
 
 **Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`; off by default. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/super-actions.toml`; see [Rearranging the strip](#rearranging-the-strip).
 

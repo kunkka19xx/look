@@ -127,8 +127,10 @@ fn default_config_contents() -> String {
          lazy_indexing_enabled=true\n\
          skip_dir_names=node_modules,target,build,dist,.git,vendor,out,coverage,tmp,cache,venv\n\
          \n\
-         # Right end of the search bar: running, todo, script, none\n\
+         # Right end of the search bar: running, pinned, todo, script, none\n\
          bar_slot=running\n\
+         # With bar_slot=pinned: up to nine app ids, filled by Pin to bar on an app row\n\
+         pinned_apps=\n\
          # With bar_slot=script: a command, or the path of a script, whose first\n\
          # output line the bar shows\n\
          bar_script=\n\
