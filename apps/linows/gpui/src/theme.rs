@@ -573,7 +573,7 @@ pub fn compositor_blur_default() -> bool {
 /// keeps it.
 static FILE: RwLock<Option<Arc<HashMap<String, String>>>> = RwLock::new(None);
 
-fn read_entries() -> Arc<HashMap<String, String>> {
+pub(crate) fn read_entries() -> Arc<HashMap<String, String>> {
     Arc::new(clean(config::get_config().entries))
 }
 
