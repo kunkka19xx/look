@@ -519,6 +519,10 @@ impl Settings {
         self.scroll.set_offset(Default::default());
         self.edited.clear();
         self.load(true, cx);
+        // A pick Esc left unsaved is still on the bar: Save Config keeps it.
+        if let Some(slot) = crate::barslot::session_slot() {
+            self.set(bar_slot::SLOT_KEY, slot.as_str());
+        }
         self.fetch_fonts(cx);
     }
 
@@ -903,6 +907,15 @@ impl Settings {
     fn pick_bar_slot(&mut self, slot: &str, cx: &mut Context<Launcher>) {
         self.select = None;
         self.set(bar_slot::SLOT_KEY, slot);
+        crate::barslot::pick_for_session(self.bar_slot());
+        // Deferred: the bar is the launcher's.
+        let launcher = cx.weak_entity();
+        cx.defer(move |cx| {
+            let _ = launcher.update(cx, |this, cx| {
+                this.bar.refresh(cx);
+                cx.notify();
+            });
+        });
         cx.notify();
     }
 
@@ -1061,7 +1074,7 @@ impl Settings {
                 // the bindings below are built from.
                 if written {
                     theme::load();
-                    this.bar.refresh(cx);
+                    this.bar.reload(cx);
                 }
                 bindings::load();
                 this.settings.recorder.state = Some(hotkey::launcher_hotkey_state());

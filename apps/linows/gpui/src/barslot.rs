@@ -92,6 +92,22 @@ pub fn toggle_pin(id: &str) -> Result<PinChange, String> {
     Ok(change)
 }
 
+/// The settings screen's pick, unsaved: it holds until the config is read
+/// again. Kept for the process: the window is rebuilt on every summon.
+static PICKED: Mutex<Option<BarSlot>> = Mutex::new(None);
+
+fn picked() -> std::sync::MutexGuard<'static, Option<BarSlot>> {
+    PICKED.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+pub fn session_slot() -> Option<BarSlot> {
+    *picked()
+}
+
+pub fn pick_for_session(slot: BarSlot) {
+    *picked() = Some(slot);
+}
+
 #[derive(Default)]
 pub struct Bar {
     slot: BarSlot,
@@ -157,8 +173,14 @@ fn script_text(command: &str) -> Option<SharedString> {
 }
 
 impl Bar {
+    /// The config was read again: it wins over the session's pick.
+    pub fn reload(&mut self, cx: &mut Context<Launcher>) {
+        *picked() = None;
+        self.refresh(cx);
+    }
+
     pub fn refresh(&mut self, cx: &mut Context<Launcher>) {
-        self.slot = BarSlot::from_entries(&theme::entries());
+        self.slot = session_slot().unwrap_or_else(|| BarSlot::from_entries(&theme::entries()));
         self.refresh_pins(cx);
         match self.slot {
             BarSlot::Running => self.running.refresh(cx),

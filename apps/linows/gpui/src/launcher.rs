@@ -1112,7 +1112,7 @@ impl Launcher {
         if self.settings_open {
             self.settings.reload(cx);
         }
-        self.bar.refresh(cx);
+        self.bar.reload(cx);
         // The drawing is read here too: it is the file most likely to be
         // mid-edit when the chord is pressed, and a broken one falls back to
         // the default, so the banner is the only sign anything happened.
@@ -1183,7 +1183,7 @@ impl Launcher {
                         fonts::ensure_family(cx, &theme::get().font_family);
                         crate::hotkey::set_active(true);
                         this.settings.reload(cx);
-                        this.bar.refresh(cx);
+                        this.bar.reload(cx);
                         this.banner.show(
                             FRESH_CONFIG_DONE.into(),
                             Tone::Success,
