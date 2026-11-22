@@ -314,8 +314,15 @@ impl Bar {
                 ))
             }),
             BarSlot::Pinned => {
-                let ids = shown(&pins()).map(|pin| Some(pin.id.clone())).collect();
-                running::strip(ids, icons, th, cx, |this, at, _| {
+                let tiles = shown(&pins())
+                    .map(|pin| {
+                        Some(running::Tile {
+                            id: pin.id.clone(),
+                            path: pin.path.clone(),
+                        })
+                    })
+                    .collect();
+                running::strip(tiles, icons, th, cx, |this, at, _| {
                     open_pin(at, &this.shell);
                 })
             }

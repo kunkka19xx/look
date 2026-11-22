@@ -90,38 +90,49 @@ impl RunningApps {
         th: &Theme,
         cx: &mut Context<Launcher>,
     ) -> Option<Div> {
-        let ids = self.apps.iter().map(|app| app.desktop_id.clone()).collect();
-        strip(ids, icons, th, cx, |this, i, cx| {
+        let tiles = self
+            .apps
+            .iter()
+            .map(|app| {
+                app.desktop_id.as_ref().map(|id| Tile {
+                    path: id.strip_prefix("app:").unwrap_or(id).to_string(),
+                    id: id.clone(),
+                })
+            })
+            .collect();
+        strip(tiles, icons, th, cx, |this, i, cx| {
             this.bar.running.activate(i, &this.shell, cx)
         })
     }
 }
 
-/// One badged tile per app id, or nothing for none. `activate` takes the
+/// What a tile's icon is looked up by.
+pub struct Tile {
+    pub id: String,
+    pub path: String,
+}
+
+/// One badged tile per app, or nothing for none. `activate` takes the
 /// clicked tile's place.
 pub fn strip(
-    ids: Vec<Option<String>>,
+    tiles: Vec<Option<Tile>>,
     icons: &gpui::Entity<IconStore>,
     th: &Theme,
     cx: &mut Context<Launcher>,
     activate: fn(&mut Launcher, usize, &mut Context<Launcher>),
 ) -> Option<Div> {
-    if ids.is_empty() {
+    if tiles.is_empty() {
         return None;
     }
-    let keys = badge_keys(ids.len());
-    let items = ids.iter().enumerate().map(|(i, id)| {
-        let picture = id.as_ref().and_then(|desktop_id| {
-            let path = desktop_id
-                .strip_prefix("app:")
-                .unwrap_or(desktop_id)
-                .to_string();
+    let keys = badge_keys(tiles.len());
+    let items = tiles.into_iter().enumerate().map(|(i, tile)| {
+        let picture = tile.and_then(|tile| {
             icons.update(cx, |store, cx| {
                 store.get(
                     IconRequest {
                         kind: "app".into(),
-                        path,
-                        id: Some(desktop_id.clone()),
+                        path: tile.path,
+                        id: Some(tile.id),
                         size: theme::TOP_ROW_HEIGHT,
                     },
                     cx,
