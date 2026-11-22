@@ -495,7 +495,9 @@ impl Launcher {
 
     /// Run the query again: a keystroke, or the index finishing a refresh.
     /// The rows come back off the UI thread; a stale answer is dropped.
+    /// A pin the index just gained shows up too.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        self.bar.refresh_pins(cx);
         self.search(cx);
     }
 
