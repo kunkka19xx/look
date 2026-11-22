@@ -72,6 +72,15 @@ extension ThemeSettingsView {
                                 "Animate the launcher when it opens and as the selection moves. Off shows every change instantly."
                         )
                     }
+
+                    GridRow {
+                        appearanceSwitch(
+                            "Row Digits",
+                            isOn: $settings.rowDigits,
+                            help:
+                                "Show on each result row the digit that opens it (⌃1-9). Off keeps the chords working."
+                        )
+                    }
                 }
 
                 Divider()

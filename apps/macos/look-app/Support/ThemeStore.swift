@@ -326,6 +326,8 @@ final class ThemeStore: ObservableObject {
 
         ConfigFileLines.upsert(&lines, key: "animations_enabled", value: settings.animationsEnabled ? "true" : "false")
         ConfigFileLines.upsert(
+            &lines, key: AppConstants.Launcher.ResultRowDigits.configKey, value: settings.rowDigits ? "true" : "false")
+        ConfigFileLines.upsert(
             &lines, key: "christmas_decorations", value: settings.christmasDecorations ? "true" : "false")
         ConfigFileLines.upsert(&lines, key: "christmas_snow", value: String(format: "%g", settings.christmasSnowAmount))
 
@@ -689,6 +691,10 @@ final class ThemeStore: ObservableObject {
                 if let parsed = parseBool(value) {
                     settings.animationsEnabled = parsed
                 }
+            case AppConstants.Launcher.ResultRowDigits.configKey:
+                if let parsed = parseBool(value) {
+                    settings.rowDigits = parsed
+                }
             case "christmas_decorations":
                 if let parsed = parseBool(value) {
                     settings.christmasDecorations = parsed
@@ -1046,6 +1052,10 @@ final class ThemeStore: ObservableObject {
         # false shows every change instantly.
         animations_enabled=true
 
+        # The digits on the result rows, the ones Ctrl+1..9 open. false hides
+        # them; the chords still work.
+        row_digits=true
+
         # Christmas decorations over any theme: falling snow, glowing lights behind the
         # panels (dark themes), a tree behind the results and a snowman search icon.
         christmas_decorations=false
@@ -1109,6 +1119,9 @@ final class ThemeStore: ObservableObject {
         }
         if object["animationsEnabled"] == nil {
             object["animationsEnabled"] = ThemeSettings.default.animationsEnabled
+        }
+        if object["rowDigits"] == nil {
+            object["rowDigits"] = ThemeSettings.default.rowDigits
         }
         if object["christmasDecorations"] == nil {
             object["christmasDecorations"] = ThemeSettings.default.christmasDecorations

@@ -308,6 +308,9 @@ extension LauncherView {
             onActivateSession: { [self] index in
                 openSessionAt(index)
             },
+            onOpenResultRow: { [self] digit in
+                openResultRow(digit: digit)
+            },
             onPopLevel: { [self] in
                 popLevel()
             },

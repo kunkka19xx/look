@@ -7,6 +7,28 @@ import SwiftUI
 nonisolated private let openLaunchLog = Logger(subsystem: "noah-code.Look", category: "open")
 
 extension LauncherView {
+    /// Nothing ahead of the results list in the content chain has taken the
+    /// panel, so the rows and their digits are on screen.
+    var showsResultRows: Bool {
+        isLauncherIdle && !isAIMode && !isTranslationQuery && !hidesResultsForEmptyQuery
+    }
+
+    /// ⌃`digit`: open the row wearing that digit, as a click on it would. Takes
+    /// the chord whenever the list shows, even with no row on that digit.
+    func openResultRow(digit: Int) -> Bool {
+        typealias RowDigits = AppConstants.Launcher.ResultRowDigits
+        guard showsResultRows, !isActionMenuOpen else { return false }
+        let rows = displayedResults
+        let firstInView = RowDigits.firstInView(rows, id: firstResultRowInView)
+        if let index = RowDigits.row(forDigit: digit, firstInView: firstInView),
+            rows.indices.contains(index)
+        {
+            selectedResultID = rows[index].id
+            openSelectedApp()
+        }
+        return true
+    }
+
     func openSelectedApp() {
         guard let selectedResultID,
             let selected = displayedResults.first(where: { $0.id == selectedResultID })

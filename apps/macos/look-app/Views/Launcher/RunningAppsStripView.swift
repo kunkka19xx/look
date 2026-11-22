@@ -65,7 +65,7 @@ private struct RunningAppIconItem: View {
     var body: some View {
         ZStack {
             iconView
-                .overlay(alignment: .topTrailing) { badge }
+                .keyDigitBadge(shortcutNumber, themeStore: themeStore)
                 .overlay { activeRing }
                 .scaleEffect(isHovered ? 1.12 : 1.0)
                 .opacity(isActive ? 1.0 : (isHovered ? 0.95 : 0.75))
@@ -97,23 +97,6 @@ private struct RunningAppIconItem: View {
                         .foregroundStyle(themeStore.fontColor())
                 }
         }
-    }
-
-    @ViewBuilder
-    private var badge: some View {
-        Text("\(shortcutNumber)")
-            .font(.system(size: 9, weight: .bold, design: .monospaced))
-            .foregroundStyle(themeStore.fontColor())
-            .frame(width: 14, height: 14)
-            .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(themeStore.scrimColor(opacity: 0.72))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7)
-                    .strokeBorder(themeStore.fontColor(opacityMultiplier: 0.45), lineWidth: 1)
-            )
-            .offset(x: 5, y: -3)
     }
 
     @ViewBuilder

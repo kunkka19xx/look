@@ -271,7 +271,7 @@ open "/Applications/Look.app"
 | Back / hide                                                            | `Escape`         | `Escape`            | `Escape`         |
 | Quit Look (`Cmd+Q` only hides it)                                      | `Cmd+Option+Q`   | `Alt+Shift+Q`       | `Alt+Shift+Q`    |
 | Switch to running app N (home screen)                                  | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
-| Open result row N                                                      | n/a              | `Ctrl+1`..`Ctrl+9`  | `Ctrl+1`..`Ctrl+9` |
+| Open result row N                                                      | `Ctrl+1`..`Ctrl+9` | `Ctrl+1`..`Ctrl+9`  | `Ctrl+1`..`Ctrl+9` |
 | Hide selected app from Look                                            | `Cmd+Shift+H`    | `Ctrl+Shift+H`      | `Ctrl+Shift+H`   |
 | Run selected app as admin                                              | n/a              | `Ctrl+Shift+Enter`  | n/a              |
 | Fire a super action (empty home screen)                                | `Cmd+<letter>`   | `Alt+<letter>`      | `Alt+<letter>`   |

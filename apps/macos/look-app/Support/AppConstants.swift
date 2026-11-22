@@ -128,6 +128,33 @@ enum AppConstants {
             }
         }
 
+        /// ⌃1…⌃9 open the result rows, counted from the top one in view, so
+        /// after scrolling ⌃1 is still the first row the user sees.
+        enum ResultRowDigits {
+            /// Whether the rows wear their digits; the chords work either way.
+            static let configKey = "row_digits"
+            static let digits: ClosedRange<Int> = 1...9
+            /// A row cut by the top edge counts as in view once most of it shows.
+            static let visibleThreshold: Double = 0.5
+
+            /// Where the top row in view sits in `rows`; the top of the list
+            /// when that row is gone.
+            static func firstInView(_ rows: [LauncherResult], id: String?) -> Int {
+                rows.firstIndex { $0.id == id } ?? 0
+            }
+
+            /// The digit row `index` wears, or nil outside the nine in view.
+            static func digit(forRow index: Int, firstInView: Int) -> Int? {
+                let digit = index - firstInView + 1
+                return digits.contains(digit) ? digit : nil
+            }
+
+            /// The row ⌃`digit` opens, or nil when the digit is not one of them.
+            static func row(forDigit digit: Int, firstInView: Int) -> Int? {
+                digits.contains(digit) ? firstInView + digit - 1 : nil
+            }
+        }
+
         enum QueryPrefix {
             static let apps = "a\""
             static let files = "f\""
@@ -519,6 +546,15 @@ enum AppConstants {
             static let keypadEnter: UInt16 = 76
             static let arrowUp: UInt16 = 126
             static let arrowDown: UInt16 = 125
+
+            /// The number row, whose keyCodes are not contiguous.
+            private static let digitKeys: [UInt16: Int] = [
+                18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9, 29: 0,
+            ]
+
+            static func digit(_ keyCode: UInt16) -> Int? {
+                digitKeys[keyCode]
+            }
         }
 
         static let defaultSearchLimit = 40

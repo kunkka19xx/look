@@ -65,6 +65,8 @@ final class KeyboardSelectionMonitor {
         onSelectCommandByIndex: @escaping @MainActor (Int) -> Void,
         onActivateRunningApp: @escaping @MainActor (Int) -> Bool = { _ in false },
         onActivateSession: @escaping @MainActor (Int) -> Bool = { _ in false },
+        /// ⌃digit on the results list. True means the list took the chord.
+        onOpenResultRow: @escaping @MainActor (Int) -> Bool = { _ in false },
         /// Escape inside a drill-down goes back one level. True means it did.
         onPopLevel: (@MainActor () -> Bool)? = nil,
         onEscapeHome: (@MainActor () -> Bool)? = nil,
@@ -328,25 +330,10 @@ final class KeyboardSelectionMonitor {
             if event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control)
                 && !event.modifierFlags.contains(.option)
             {
-                // macOS digit keyCodes are not contiguous: 1=18, 2=19, 3=20, 4=21, 5=23, 6=22, 7=26, 8=28, 9=25, 0=29.
-                let cmdNumberKey: Int?
-                switch event.keyCode {
-                case 18: cmdNumberKey = 1
-                case 19: cmdNumberKey = 2
-                case 20: cmdNumberKey = 3
-                case 21: cmdNumberKey = 4
-                case 23: cmdNumberKey = 5
-                case 22: cmdNumberKey = 6
-                case 26: cmdNumberKey = 7
-                case 28: cmdNumberKey = 8
-                case 25: cmdNumberKey = 9
                 // Only the sessions list claims 0; everything below is 1-based
                 // and declines it, so ⌘0 keeps its "Actual Size" meaning
                 // everywhere else.
-                case 29: cmdNumberKey = 0
-                default: cmdNumberKey = nil
-                }
-                if let key = cmdNumberKey {
+                if let key = KeyCode.digit(event.keyCode) {
                     if inCommandMode() {
                         if key > 0, key <= AppConstants.Launcher.commandCatalog.count {
                             Self.logger.debug("⌘+\(key, privacy: .public) -> command catalog")
@@ -382,6 +369,17 @@ final class KeyboardSelectionMonitor {
                         }
                     }
                 }
+            }
+
+            // ⌃1-9 opens the result row wearing that digit. ⌘ digits stay with
+            // the running apps, which share the screen with the results.
+            if flags.contains(.control),
+                flags.isDisjoint(with: [.command, .option, .shift]),
+                let digit = KeyCode.digit(event.keyCode),
+                onOpenResultRow(digit)
+            {
+                Self.logger.debug("⌃+\(digit, privacy: .public) -> result row")
+                return nil
             }
 
             // Shift+Esc leaves AI mode straight to home (skips the list step).

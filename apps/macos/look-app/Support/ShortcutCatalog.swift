@@ -129,6 +129,9 @@ enum ShortcutCatalog {
                     "Flip the selected row's toggle (Bluetooth, Wi-Fi, Do Not Disturb)"),
                 ShortcutEntry("main.moveTab", "Tab / Shift+Tab", "Move selection"),
                 ShortcutEntry("main.moveArrows", "Up / Down", "Move selection"),
+                ShortcutEntry(
+                    "main.openByDigit", "Ctrl+1..Ctrl+9", "Open the row whose icon shows that digit", remappable: false
+                ),
                 ShortcutEntry("main.reveal", "Cmd+F", "Reveal selected app/file/folder in Finder"),
                 ShortcutEntry(
                     "main.edit", "Cmd+E", "Open selected file/folder in your editor (set text_editor / code_editor)"),

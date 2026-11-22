@@ -78,11 +78,12 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 const COPY_FAILED: &str = "Copy failed";
 const PICKS_MISSING: &str = "picked item(s) no longer exist, refreshing index";
 const NOT_RUN: &str = "not run, you moved on";
-const ROW_DIGITS: std::ops::RangeInclusive<u8> = 1..=9;
 const NOT_ELEVATABLE: &str = "Only apps or scripts can run as administrator";
 /// Told to run, not reported on yet.
 const VERB_STARTED: &str = "started";
 const VERB_FAILED: &str = "failed";
+/// The number keys a digit chord answers to, for running apps and rows alike.
+const DIGIT_KEYS: std::ops::RangeInclusive<u8> = 1..=9;
 
 #[derive(Default)]
 struct SourcesReload {
@@ -870,10 +871,9 @@ impl Launcher {
         if ks.modifiers.alt
             && !ctrl
             && !shift
-            && let Some(digit) = ks.key.chars().next().and_then(|c| c.to_digit(10))
-            && (1..=9).contains(&digit)
+            && let Some(digit) = digit_key(&ks.key)
             && theme::get().split()
-            && self.bar.activate_key(digit as u8, &self.shell, cx)
+            && self.bar.activate_key(digit, &self.shell, cx)
         {
             cx.stop_propagation();
             return;
@@ -1300,7 +1300,7 @@ impl Launcher {
         if self.menu.is_some() || !held.control || held.shift || held.alt {
             return false;
         }
-        let Some(digit) = ks.key.parse().ok().filter(|d| ROW_DIGITS.contains(d)) else {
+        let Some(digit) = digit_key(&ks.key) else {
             return false;
         };
         let at = row_at_digit(digit, self.first_row_in_view());
@@ -2697,12 +2697,16 @@ impl Launcher {
         !self.command_mode && !self.settings_open && self.input.read(cx).text().is_empty()
     }
 
-    fn row(&self, i: usize, row: &Row, th: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn row(
+        &self,
+        i: usize,
+        row: &Row,
+        first: usize,
+        th: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let selected = self.picked() == Some(i);
-        let digit = th
-            .row_digits
-            .then(|| digit_of_row(i, self.first_row_in_view()))
-            .flatten();
+        let digit = digit_of_row(i, first).filter(|_| th.row_digits);
         // Compact has no panel, so the selected process shows its facts here.
         let facts = match &row.open {
             Open::Process(p) if selected && !th.split() => {
@@ -2930,8 +2934,9 @@ impl Launcher {
         let launcher = cx.entity();
         let list = uniform_list("results", rows.len(), move |range, _window, cx| {
             launcher.update(cx, |this, cx| {
+                let first = this.first_row_in_view();
                 range
-                    .map(|i| this.row(i, &rows[i], &row_theme, cx))
+                    .map(|i| this.row(i, &rows[i], first, &row_theme, cx))
                     .collect()
             })
         })
@@ -3885,8 +3890,12 @@ fn clip_write(open: &Open) -> Option<(ClipWrite, &'static str)> {
     }
 }
 
-/// Files and folders go out in every form at once, so a file manager pastes
-/// the items and a text field pastes the paths.
+/// The digit a number key names, None past `DIGIT_KEYS`.
+fn digit_key(key: &str) -> Option<u8> {
+    key.parse().ok().filter(|d| DIGIT_KEYS.contains(d))
+}
+
+/// The row Ctrl+`digit` opens, counted from `first`, the top one in view.
 fn row_at_digit(digit: u8, first: usize) -> usize {
     first + usize::from(digit) - 1
 }
@@ -3894,9 +3903,11 @@ fn row_at_digit(digit: u8, first: usize) -> usize {
 /// The digit that opens row `i`, None past the nine from `first`.
 fn digit_of_row(i: usize, first: usize) -> Option<u8> {
     let digit = u8::try_from((i + 1).checked_sub(first)?).ok()?;
-    ROW_DIGITS.contains(&digit).then_some(digit)
+    DIGIT_KEYS.contains(&digit).then_some(digit)
 }
 
+/// Files and folders go out in every form at once, so a file manager pastes
+/// the items and a text field pastes the paths.
 fn files_write(paths: Vec<String>) -> ClipWrite {
     Box::new(move || files::copy_files_to_clipboard(&paths))
 }
@@ -3946,5 +3957,12 @@ mod tests {
         assert_eq!(digit_of_row(11, 2), None);
         assert_eq!(row_at_digit(1, 2), 2);
         assert_eq!(row_at_digit(9, 2), 10);
+    }
+
+    #[test]
+    fn only_number_keys_one_to_nine_name_a_digit() {
+        assert_eq!(digit_key("9"), Some(9));
+        assert_eq!(digit_key("0"), None);
+        assert_eq!(digit_key("a"), None);
     }
 }

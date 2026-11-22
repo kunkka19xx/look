@@ -129,6 +129,8 @@ struct LauncherView: View {
     @State var pendingQuickActions: Set<String> = []
     @State var quickActionTask: Task<Void, Never>?
     @State var selectedResultID: String?
+    /// The top result row in view, which ⌃1 opens (see `openResultRow`).
+    @State var firstResultRowInView: String?
     /// The row the preview shows, a moment behind the selection (see
     /// `schedulePanelCatchUp`).
     @State var previewSelectionID: String?
@@ -2228,6 +2230,7 @@ struct LauncherView: View {
                     selectedID: selectedResultID,
                     pickedKeys: Set(pickedKeys),
                     themeStore: themeStore,
+                    firstRowInView: $firstResultRowInView,
                     onSelect: { selectedResultID = $0 },
                     onOpen: { _ in openSelectedApp() }
                 )
@@ -2289,6 +2292,7 @@ struct LauncherView: View {
                     selectedID: selectedResultID,
                     pickedKeys: Set(pickedKeys),
                     themeStore: themeStore,
+                    firstRowInView: $firstResultRowInView,
                     selectedRowDetail: compactProcessDetail,
                     onSelect: { selectedResultID = $0 },
                     onOpen: { _ in openSelectedApp() }
