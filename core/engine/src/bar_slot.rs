@@ -131,6 +131,10 @@ fn without_terminal_codes(text: &str) -> String {
 mod tests {
     use super::*;
 
+    /// A loaded CI runner can take longer than the bar's own timeout to
+    /// start a shell.
+    const PATIENT: Duration = Duration::from_secs(30);
+
     fn slot(pairs: &[(&str, &str)]) -> BarSlot {
         let entries = pairs
             .iter()
@@ -183,12 +187,12 @@ mod tests {
 
     #[test]
     fn the_script_gives_its_first_line() {
-        assert_eq!(script_line("echo one&& echo two").unwrap(), "one");
+        assert_eq!(first_line("echo one&& echo two", PATIENT).unwrap(), "one");
     }
 
     #[test]
     fn a_script_that_prints_nothing_gives_an_empty_line() {
-        assert_eq!(script_line("exit 0").unwrap(), "");
+        assert_eq!(first_line("exit 0", PATIENT).unwrap(), "");
     }
 
     #[test]
@@ -210,7 +214,7 @@ mod tests {
         let failing = "echo boom >&2; exit 1";
         #[cfg(windows)]
         let failing = "echo boom 1>&2& exit 1";
-        assert_eq!(script_line(failing).unwrap_err(), "boom");
+        assert_eq!(first_line(failing, PATIENT).unwrap_err(), "boom");
     }
 
     #[cfg(unix)]
