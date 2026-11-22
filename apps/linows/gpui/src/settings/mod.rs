@@ -53,9 +53,8 @@ const SAVE_FLOAT_INSET: f32 = 10.0;
 const SAVE_FLOAT_CLEARANCE: f32 = 36.0;
 const TAB_PADDING_Y: f32 = 7.0;
 const BODY_PADDING_BOTTOM: f32 = 14.0;
-/// The header row's items, spaced as the webview's `margin-left: 40px`.
-const HEADER_ROW_GAP: f32 = 40.0;
-const HEADER_ITEM_GAP: f32 = 10.0;
+const SWITCHES_GAP: f32 = 30.0;
+const SWITCH_LABEL_GAP: f32 = 10.0;
 const FONT_BOX_W: f32 = 200.0;
 const FONT_PLACEHOLDER: &str = "Installed font name";
 const SUGGESTIONS_MAX: usize = 8;
@@ -85,6 +84,8 @@ const THEMES: &[Option_] = &[
     (LIQUID, "Liquid"),
     (theme::CUSTOM_THEME, "Custom"),
 ];
+const LAUNCHER_SECTION: &str = "Launcher";
+const THEME_LABEL: &str = "Theme";
 const BAR_SLOT_LABEL: &str = "Search Bar";
 const BAR_SLOTS: &[Option_] = &[
     (BarSlot::Running.as_str(), "Running Apps"),
@@ -103,6 +104,7 @@ const BAR_SCRIPT_UNSET: &str =
 const BAR_SCRIPT_COMMAND_MAX_W: f32 = 320.0;
 const BAR_SCRIPT_PENDING: &str = "Runs when the launcher opens";
 const BAR_SCRIPT_SILENT: &str = "Printed nothing";
+const BAR_SCRIPT_COPIED: &str = "Script output copied";
 const SESSION_LAYOUT_HINT: &str = "Ringed: this session only (Ctrl+Shift+C)";
 const LAYOUTS: &[Option_] = &[("split", "Split"), ("compact", "Compact")];
 /// The core's `SNOW_AMOUNTS`, as the config spells them.
@@ -1231,8 +1233,7 @@ impl Settings {
         div()
             .flex()
             .flex_col()
-            .child(self.header_row(th, cx))
-            .child(controls::divider(th))
+            .child(self.launcher_rows(th, cx))
             .child(controls::section("Layout", th))
             .child(self.layout_row(th, cx))
             .child(self.slider_row(&INNER_GAP, th, cx))
@@ -1286,105 +1287,74 @@ impl Settings {
             .children(live.map(|_| controls::hint(SESSION_LAYOUT_HINT, th)))
     }
 
-    /// Theme and the Christmas pair on one line, the other switches on the
-    /// next; the strip ones only in the split layout, the only one with a
-    /// strip.
-    fn header_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+    /// Compact has no bar and no home, so their rows are split only.
+    fn launcher_rows(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let split = th.split();
-        let switch = |sw: &'static Switch| {
-            div()
-                .flex()
-                .items_center()
-                .gap(px(HEADER_ITEM_GAP))
-                .child(
-                    div()
-                        .text_size(px(th.font_size - 1.0))
-                        .text_color(th.text_secondary)
-                        .child(sw.label),
-                )
-                .child(
-                    controls::toggle(sw.id, self.is_on(sw), th)
-                        .on_click(cx.listener(move |this, _, _, cx| this.settings.flip(sw, cx))),
-                )
-        };
-        let line = || div().flex().items_center().gap(px(HEADER_ROW_GAP));
+        let slot = self.bar_slot();
         div()
-            .py(px(HEADER_PADDING_Y))
             .flex()
             .flex_col()
-            .gap(px(HEADER_GAP))
-            .child(
-                line()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(HEADER_ITEM_GAP))
-                            .child(
-                                div()
-                                    .text_size(px(th.font_size - 1.0))
-                                    .text_color(th.text_secondary)
-                                    .child("Theme"),
-                            )
-                            .child(self.select_control(
-                                "settings-theme",
-                                THEMES,
-                                self.theme_id(),
-                                THEME_KEY,
-                                Settings::pick_theme,
-                                th,
-                                cx,
-                            )),
-                    )
-                    .child(switch(&CHRISTMAS))
-                    .when(self.is_on(&CHRISTMAS), |el| {
-                        el.child(
-                            self.select_control(
-                                "settings-snow",
-                                SNOW_AMOUNTS,
-                                self.get(theme::SNOW_AMOUNT_KEY)
-                                    .unwrap_or(SNOW_AMOUNTS[0].0),
-                                theme::SNOW_AMOUNT_KEY,
-                                Settings::pick_snow_amount,
-                                th,
-                                cx,
-                            ),
-                        )
-                    }),
-            )
-            .child(
-                line()
-                    .when(split, |el| {
-                        el.child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(HEADER_ITEM_GAP))
-                                .child(
-                                    div()
-                                        .text_size(px(th.font_size - 1.0))
-                                        .text_color(th.text_secondary)
-                                        .child(BAR_SLOT_LABEL),
-                                )
-                                .child(self.select_control(
-                                    "settings-bar-slot",
-                                    BAR_SLOTS,
-                                    self.bar_slot().as_str(),
-                                    bar_slot::SLOT_KEY,
-                                    Settings::pick_bar_slot,
-                                    th,
-                                    cx,
-                                )),
-                        )
-                    })
-                    .when(split, |el| el.child(switch(&SUPER_ACTIONS)))
-                    .child(switch(&ANIMATIONS)),
-            )
-            .when(split && self.bar_slot() == BarSlot::Script, |el| {
-                el.child(self.bar_script_row(th))
+            .child(controls::section(LAUNCHER_SECTION, th))
+            .child(controls::row(THEME_LABEL, th).child(self.select_control(
+                "settings-theme",
+                THEMES,
+                self.theme_id(),
+                THEME_KEY,
+                Settings::pick_theme,
+                th,
+                cx,
+            )))
+            .when(split, |el| {
+                el.child(controls::row(BAR_SLOT_LABEL, th).child(self.select_control(
+                    "settings-bar-slot",
+                    BAR_SLOTS,
+                    slot.as_str(),
+                    bar_slot::SLOT_KEY,
+                    Settings::pick_bar_slot,
+                    th,
+                    cx,
+                )))
             })
-            .when(split && self.bar_slot() == BarSlot::Pinned, |el| {
+            .when(split && slot == BarSlot::Script, |el| {
+                el.child(self.bar_script_row(th, cx))
+            })
+            .when(split && slot == BarSlot::Pinned, |el| {
                 el.child(self.pinned_row(th, cx))
+            })
+            .child(self.switches_row(split, th, cx))
+            .child(controls::divider(th))
+    }
+
+    /// One line: the first in the label column, the rest after it.
+    fn switches_row(&self, split: bool, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+        let (first, rest): (_, &[&'static Switch]) = if split {
+            (&SUPER_ACTIONS, &[&ANIMATIONS, &CHRISTMAS])
+        } else {
+            (&ANIMATIONS, &[&CHRISTMAS])
+        };
+        self.switch_row(first, th, cx)
+            .children(rest.iter().map(|&sw| {
+                div()
+                    .ml(px(SWITCHES_GAP))
+                    .flex()
+                    .items_center()
+                    .gap(px(SWITCH_LABEL_GAP))
+                    .child(controls::label(sw.label, th))
+                    .child(self.switch(sw, th, cx))
+            }))
+            .when(self.is_on(&CHRISTMAS), |el| {
+                el.child(
+                    self.select_control(
+                        "settings-snow",
+                        SNOW_AMOUNTS,
+                        self.get(theme::SNOW_AMOUNT_KEY)
+                            .unwrap_or(SNOW_AMOUNTS[0].0),
+                        theme::SNOW_AMOUNT_KEY,
+                        Settings::pick_snow_amount,
+                        th,
+                        cx,
+                    ),
+                )
             })
     }
 
@@ -1425,17 +1395,29 @@ impl Settings {
     }
 
     /// Read-only: the command is set in the config file.
-    fn bar_script_row(&self, th: &Theme) -> Div {
+    fn bar_script_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let command = self.bar_script();
         if command.is_empty() {
             return controls::row(BAR_SCRIPT_LABEL, th).child(controls::hint(BAR_SCRIPT_UNSET, th));
         }
-        let status = match crate::barslot::script_result(command) {
-            None => controls::hint(BAR_SCRIPT_PENDING, th),
-            Some(Ok(line)) if line.is_empty() => controls::hint(BAR_SCRIPT_SILENT, th),
-            Some(Ok(line)) => controls::hint(line, th),
-            Some(Err(why)) => controls::hint(why, th).text_color(th.danger),
-        };
+        let (text, said, failed): (SharedString, bool, bool) =
+            match crate::barslot::script_result(command) {
+                None => (BAR_SCRIPT_PENDING.into(), false, false),
+                Some(Ok(line)) if line.is_empty() => (BAR_SCRIPT_SILENT.into(), false, false),
+                Some(Ok(line)) => (line.into(), true, false),
+                Some(Err(why)) => (why.into(), true, true),
+            };
+        let status = controls::hint(text.clone(), th)
+            .when(failed, |el| el.text_color(th.danger))
+            .id("settings-bar-script-status")
+            .when(said, |el| {
+                let copied = text.to_string();
+                el.cursor_pointer()
+                    .tooltip(controls::tooltip(text))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.copy_text(copied.clone(), BAR_SCRIPT_COPIED.into(), cx);
+                    }))
+            });
         controls::row(BAR_SCRIPT_LABEL, th)
             .child(
                 div()
@@ -1443,7 +1425,8 @@ impl Settings {
                     .flex_shrink_0()
                     .truncate()
                     .font_family(th.mono_family.clone())
-                    .text_size(px(th.font_size - 1.0))
+                    .text_size(px(th.font_size - 2.0))
+                    .text_color(th.text_secondary)
                     .child(SharedString::from(command.to_string())),
             )
             .child(status.flex_1().min_w_0().truncate())

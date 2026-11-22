@@ -7,9 +7,9 @@ use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Bounds, ClickEvent, CursorStyle, Div, ElementId, FontWeight, HitboxBehavior,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, SharedString,
-    Stateful, Window, canvas, deferred, div, point, px, relative, size, svg,
+    AnyElement, AnyView, App, Bounds, ClickEvent, CursorStyle, Div, ElementId, FontWeight,
+    HitboxBehavior, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels,
+    SharedString, Stateful, Window, canvas, deferred, div, point, px, relative, size, svg,
 };
 
 use crate::glyphs;
@@ -45,6 +45,9 @@ const MENU_GAP: f32 = 4.0;
 const MENU_PADDING: f32 = 4.0;
 const MENU_ITEM_PADDING_X: f32 = 10.0;
 const MENU_ITEM_PADDING_Y: f32 = 5.0;
+const TOOLTIP_MAX_W: f32 = 420.0;
+const TOOLTIP_PADDING_X: f32 = 10.0;
+const TOOLTIP_PADDING_Y: f32 = 6.0;
 const SEGMENT_PADDING: f32 = 2.0;
 const SEGMENT_GAP: f32 = 2.0;
 const SEGMENT_ITEM_PADDING_X: f32 = 14.0;
@@ -129,14 +132,14 @@ pub fn row(label: impl Into<SharedString>, th: &Theme) -> Div {
         .flex()
         .items_center()
         .gap(px(ROW_GAP))
-        .child(
-            div()
-                .w(px(LABEL_W))
-                .flex_shrink_0()
-                .text_size(px(th.font_size - 1.0))
-                .text_color(th.text_secondary)
-                .child(label.into()),
-        )
+        .child(self::label(label, th).w(px(LABEL_W)).flex_shrink_0())
+}
+
+pub fn label(text: impl Into<SharedString>, th: &Theme) -> Div {
+    div()
+        .text_size(px(th.font_size - 1.0))
+        .text_color(th.text_secondary)
+        .child(text.into())
 }
 
 /// The small print after a control.
@@ -146,6 +149,37 @@ pub fn hint(text: impl Into<SharedString>, th: &Theme) -> Div {
         .text_color(th.text_muted)
         .whitespace_nowrap()
         .child(text.into())
+}
+
+/// What floats over the card: a select's menu, a tooltip.
+fn popup(th: &Theme) -> Div {
+    div()
+        .rounded(px(th.control_radius()))
+        .bg(theme::opaque(th.card_face()))
+        .border(px(1.0))
+        .border_color(th.border)
+        .shadow(th.card_shadow())
+}
+
+struct Tooltip(SharedString);
+
+impl Render for Tooltip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let th = theme::get();
+        popup(&th)
+            .max_w(px(TOOLTIP_MAX_W))
+            .px(px(TOOLTIP_PADDING_X))
+            .py(px(TOOLTIP_PADDING_Y))
+            .font_family(th.font_family.clone())
+            .text_size(px(th.font_size - 2.0))
+            .text_color(th.text)
+            .child(self.0.clone())
+    }
+}
+
+/// For `.tooltip()`.
+pub fn tooltip(text: SharedString) -> impl Fn(&mut Window, &mut App) -> AnyView {
+    move |_, cx| cx.new(|_| Tooltip(text.clone())).into()
 }
 
 /// A slider's reading, right-aligned in a fixed column.
@@ -295,7 +329,7 @@ pub fn select(
         );
     div().relative().child(button).when(open, |el| {
         el.child(deferred(
-            div()
+            popup(th)
                 .id(SharedString::from(format!("{id}-menu")))
                 .occlude()
                 .absolute()
@@ -304,11 +338,6 @@ pub fn select(
                 .left_0()
                 .min_w(px(SELECT_MIN_W))
                 .p(px(MENU_PADDING))
-                .rounded(px(th.control_radius()))
-                .bg(theme::opaque(th.card_face()))
-                .border(px(1.0))
-                .border_color(th.border)
-                .shadow(th.card_shadow())
                 .flex()
                 .flex_col()
                 .on_mouse_down_out(move |_, window, cx| on_open(&false, window, cx))

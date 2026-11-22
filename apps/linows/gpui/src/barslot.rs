@@ -92,8 +92,7 @@ pub fn toggle_pin(id: &str) -> Result<PinChange, String> {
     Ok(change)
 }
 
-/// The settings screen's pick, unsaved: it holds until the config is read
-/// again. Kept for the process: the window is rebuilt on every summon.
+/// The settings screen's unsaved pick, until the config is read again.
 static PICKED: Mutex<Option<BarSlot>> = Mutex::new(None);
 
 fn picked() -> std::sync::MutexGuard<'static, Option<BarSlot>> {
