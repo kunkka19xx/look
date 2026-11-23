@@ -153,7 +153,8 @@ extension LauncherView {
         // honest "no files" state instead of the knowledge-lookup AI card;
         // results from a relaxed retry or a model interpretation say so.
         if isFileRecall {
-            fileRecallEmptyMessage = results.isEmpty
+            fileRecallEmptyMessage =
+                results.isEmpty
                 ? "No files match \u{201C}\(requestedQuery)\u{201D}."
                 : nil
             let note = [
@@ -298,9 +299,9 @@ extension LauncherView {
         let trimmed = currentQuery.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard themeStore.settings.aiEnabled,
-              !isCommandMode, !isClipboardQuery, !isClipboardImageQuery, !isPrefixSuggestionQuery,
-              !isCommandSuggestionQuery, !isTranslationQuery,
-              trimmed.count >= AppConstants.Launcher.minSuggestionQueryLength
+            !isCommandMode, !isClipboardQuery, !isClipboardImageQuery, !isPrefixSuggestionQuery,
+            !isCommandSuggestionQuery, !isTranslationQuery,
+            trimmed.count >= AppConstants.Launcher.minSuggestionQueryLength
         else {
             if !webSuggestions.isEmpty { webSuggestions = [] }
             return
@@ -339,7 +340,7 @@ extension LauncherView {
         let trimmed = currentQuery.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard allowsSuggestionRows, !isTranslationQuery,
-              trimmed.count >= AppConstants.Launcher.minSuggestionQueryLength
+            trimmed.count >= AppConstants.Launcher.minSuggestionQueryLength
         else {
             if !recentURLEntries.isEmpty { recentURLEntries = [] }
             return
@@ -391,6 +392,7 @@ extension LauncherView {
         clipboardStore.reloadFromConfig()
         reloadQueryRetentionPolicy()
         reloadTranslateLanguages()
+        refreshBarSlot()
         // Declared block icons and `then` targets are cached for the process, so
         // a reload is the point where an edited file should start showing. The
         // launchpad drawing is cached the same way and for the same reason.

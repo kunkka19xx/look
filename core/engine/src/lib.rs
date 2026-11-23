@@ -1,4 +1,5 @@
 pub mod action;
+pub mod bar_slot;
 pub mod config;
 pub mod config_path;
 pub mod connectors;
@@ -26,6 +27,9 @@ pub use look_indexing::UsageAction;
 use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
 use look_storage::{SearchSettings, SqliteStore, StorageError};
 use normalize::normalize_for_search;
+/// Re-exported so a shell classifies a path the way the engine does: Unix,
+/// drive-letter and UNC spellings alike, whatever OS it runs on.
+pub use platform::paths::{join_path, looks_like_absolute_path, strip_home_prefix};
 pub use result::{LaunchResult, LaunchResultAction};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -300,6 +304,14 @@ impl QueryEngine {
             }
         }
         steps
+    }
+
+    pub fn title_and_path(&self, candidate_id: &str) -> Option<(&str, &str)> {
+        self.candidates
+            .iter()
+            .map(|c| &c.candidate)
+            .find(|c| c.id.as_ref() == candidate_id)
+            .map(|c| (c.title.as_ref(), c.path.as_ref()))
     }
 
     pub fn record_usage_in_memory(&mut self, candidate_id: &str, used_at_unix_s: i64) -> bool {

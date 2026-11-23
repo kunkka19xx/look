@@ -91,7 +91,7 @@ Home Manager as a NixOS module wants `home-manager.extraSpecialArgs = { inherit 
     enable = true;
     theme = "kindle";
     settings = {
-      running_apps_placement = "right";
+      bar_slot = "running";
       file_scan_extra_roots = [ "~/Projects" "/mnt/data" ];
       ai_enabled = false;
     };

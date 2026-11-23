@@ -20,9 +20,14 @@ struct RemovablePill<Label: View>: View {
             .buttonStyle(.plain)
             .accessibilityLabel(removeLabel)
         }
-        .font(themeStore.uiFont(
-            size: CGFloat(max(RemovablePillLayout.minFontSize, themeStore.settings.fontSize - RemovablePillLayout.fontSizeDrop)),
-            weight: .regular))
+        .font(
+            themeStore.uiFont(
+                size: CGFloat(
+                    max(
+                        RemovablePillLayout.minFontSize, themeStore.settings.fontSize - RemovablePillLayout.fontSizeDrop
+                    )),
+                weight: .regular)
+        )
         .foregroundStyle(themeStore.secondaryTextColor())
         .padding(.horizontal, RemovablePillLayout.paddingX)
         .padding(.vertical, RemovablePillLayout.paddingY)

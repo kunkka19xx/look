@@ -292,7 +292,7 @@ final class LaunchpadController {
     /// Fires the armed tile, then clears the prompt.
     func confirmPending() {
         guard let actionID = pendingConfirmActionID,
-              let tile = tiles.first(where: { $0.actionId == actionID })
+            let tile = tiles.first(where: { $0.actionId == actionID })
         else { return }
         pendingConfirmActionID = nil
         dispatch(tile)
@@ -311,10 +311,12 @@ final class LaunchpadController {
     /// matched and was activated (so the key monitor swallows the event).
     func handleMnemonic(_ character: Character) -> Bool {
         let lowered = Character(character.lowercased())
-        guard let tile = tiles.first(where: { tile in
-            guard let mnemonic = tile.mnemonic else { return false }
-            return Character(mnemonic.lowercased()) == lowered
-        }) else { return false }
+        guard
+            let tile = tiles.first(where: { tile in
+                guard let mnemonic = tile.mnemonic else { return false }
+                return Character(mnemonic.lowercased()) == lowered
+            })
+        else { return false }
         activate(tile)
         return true
     }
@@ -376,7 +378,7 @@ final class LaunchpadController {
         }
     }
 
-/// Fallback behavior for a toggle tile without a native adapter: flip local
+    /// Fallback behavior for a toggle tile without a native adapter: flip local
     /// state. Unused while every launchpad toggle is adapter-backed; kept as the
     /// framework's graceful path for a future tile added ahead of its adapter.
     private func activateMock(_ tile: LaunchpadTileModel) {

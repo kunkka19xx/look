@@ -11,8 +11,9 @@ A keyboard-first, local-first launcher for macOS, Windows, and Linux. Open apps,
 [![Latest release](https://img.shields.io/github/v/release/kunkka19xx/look)](https://github.com/kunkka19xx/look/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/kunkka19xx/look/total)](https://github.com/kunkka19xx/look/releases)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/vJSpNpeFBn)
 
-📘 [Docs](https://noah-code.com/docs/look) · 📖 [User guide](docs/user-guide.md) · 🧩 [lookbook](#extend-it-with-lookbook)
+📘 [Docs](https://noah-code.com/docs/look) · 📖 [User guide](docs/user-guide.md) · 🧩 [lookbook](#extend-it-with-lookbook) · 💬 [Discord](https://discord.gg/vJSpNpeFBn)
 
 https://github.com/user-attachments/assets/a0907691-d99b-48a7-862c-8bc43cfa3a2e
 
@@ -44,8 +45,12 @@ Results land as fast as you can type. A Rust core under a native SwiftUI app on 
 brew install --cask look
 ```
 
-Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`), or pick another shortcut with `launcher_hotkey` in `~/.look/config`.
+Look listens on `Cmd+Space` from the first launch, a key Spotlight also holds.
+
+Free it from Spotlight in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`, or leave Spotlight alone and give Look a different chord with `launcher_hotkey` in `~/.look/config`. Settings are a panel inside the launcher, on `Cmd+,`.
+
 Release builds are signed and notarized - no Gatekeeper bypass needed. Releases ship one build per architecture, Apple Silicon and Intel, and Homebrew installs the one that matches your Mac.
+
 
 **Nix (flake):**
 
@@ -262,8 +267,9 @@ open "/Applications/Look.app"
 | Action menu for the selected row                                       | `Cmd+K`          | `Ctrl+K`            | `Ctrl+K`         |
 | Move to Trash (or empty the Trash folder)                              | `Cmd+D`          | n/a                 | n/a              |
 | Command mode (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
-| Settings                                                               | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
+| Settings                                                               | `Cmd+,`          | `Ctrl+,`            | `Ctrl+,`         |
 | Back / hide                                                            | `Escape`         | `Escape`            | `Escape`         |
+| Quit Look (`Cmd+Q` only hides it)                                      | `Cmd+Option+Q`   | `Alt+Shift+Q`       | `Alt+Shift+Q`    |
 | Switch to running app N (home screen)                                  | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
 | Hide selected app from Look                                            | `Cmd+Shift+H`    | `Ctrl+Shift+H`      | `Ctrl+Shift+H`   |
 | Run selected app as admin                                              | n/a              | `Ctrl+Shift+Enter`  | n/a              |
@@ -271,7 +277,7 @@ open "/Applications/Look.app"
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
 
-Every chord in the table is a default. Rebind the in-app ones in `Settings > Shortcuts` on all three platforms, or set `shortcut_<group>_<action>` in `~/.look/config`; the launcher toggle records there too on macOS and Windows, while Linux takes `launcher_hotkey=none` and your own binding of `lookapp --toggle`. Details in [Keyboard shortcuts](docs/user-guide.md#keyboard-shortcuts-quick-reference).
+Every chord in the table is a default. Rebind the in-app ones (all but `Enter`, `Escape`, Quit and the running-app digits, which stay fixed) in `Settings > Shortcuts` on all three platforms, or set `shortcut_<group>_<action>` in `~/.look/config`; the launcher toggle records there too on macOS and Windows, while Linux takes `launcher_hotkey=none` and your own binding of `lookapp --toggle`. A super action's letter is its `mnemonic` in `~/.look/super-actions.toml`. Details in [Keyboard shortcuts](docs/user-guide.md#keyboard-shortcuts-quick-reference).
 
 `Cmd+E` and `Cmd+T` need a tool named in `~/.look/config` (`text_editor`, `code_editor`, `terminal`), and `file_manager` retargets `Cmd+F`. Declare nothing and each falls back to the system default: see [Preferred tools](docs/user-guide.md#preferred-tools).
 
@@ -283,7 +289,7 @@ Full reference: [docs/user-guide.md](docs/user-guide.md).
 
 Look can list your own rows next to apps and files: repos, SSH hosts, containers, tmux sessions, a morning routine. [lookbook](https://github.com/kunkka19xx/lookbook) is a catalog of ready-made ones. Open `Settings > Extend` and choose **Browse lookbook**: each card says whether it works on your machine, and **Install** asks for what it needs (a folder, a terminal) before writing anything.
 
-Made one worth sharing? [Send it to lookbook](https://github.com/kunkka19xx/lookbook#contributing). AI-assisted is fine, as long as it is useful, documented and tested. To write your own, see [Your own sources](docs/user-sources.md); to have an app push its own rows, see [Integrating your app](docs/integrating.md).
+Made one worth sharing? [Send it to lookbook](https://github.com/kunkka19xx/lookbook#contributing), or show it first in `#lookbook-share` on [Discord](https://discord.gg/vJSpNpeFBn). AI-assisted is fine, as long as it is useful, documented and tested. To write your own, see [Your own sources](docs/user-sources.md); to have an app push its own rows, see [Integrating your app](docs/integrating.md).
 
 ## Themes
 
@@ -295,6 +301,7 @@ Switch in `Settings > Appearance`.
 ## Documentation
 
 - 📘 [Docs site](https://noah-code.com/docs/look) - hosted, searchable user guide and reference
+- 💬 [Discord](https://discord.gg/vJSpNpeFBn) - ask for help, show your setup, share sources and tiles
 - [User guide (in-repo)](docs/user-guide.md) - full feature reference, shortcuts, configuration, permissions, troubleshooting
 - [Architecture](docs/architecture.md) - how the Swift app + Rust core fit together
 - [Integrating your app](docs/integrating.md) - the connector contract, for shipping an app that puts its own rows in Look

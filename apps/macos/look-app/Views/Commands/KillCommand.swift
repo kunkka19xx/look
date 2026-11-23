@@ -129,11 +129,16 @@ struct KillCommandView: View {
                                 .foregroundStyle(themeStore.fontColor())
                             Spacer()
                             Text(candidate.detail)
-                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                .font(
+                                    themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular)
+                                )
                                 .foregroundStyle(themeStore.mutedTextColor())
                             if selectedIndex == candidate.number {
                                 Text("→ Enter")
-                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                    .font(
+                                        themeStore.uiFont(
+                                            size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular)
+                                    )
                                     .foregroundStyle(themeStore.accentColor())
                             }
                         }
@@ -205,6 +210,8 @@ struct KillConfirmationBar: View {
             .buttonStyle(.plain)
         }
         .padding(10)
-        .background(themeStore.controlFillColor().opacity(0.92), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
+        .background(
+            themeStore.controlFillColor().opacity(0.92),
+            in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 }

@@ -15,7 +15,7 @@ use crate::search::{Changed, input_for, search_field};
 use crate::theme::{self, BgLayout, Theme};
 use crate::update::Update;
 use gpui::prelude::*;
-use gpui::{Context, Div, FontWeight, div, px};
+use gpui::{Context, Div, FontWeight, Stateful, div, px};
 use linows_backend::look_engine::config::{ExtraRootProblem, RuntimeConfig};
 
 const NUMBER_BOX_W: f32 = 80.0;
@@ -463,11 +463,23 @@ impl Settings {
             .child(update.about(th, cx).pb(px(ABOUT_PADDING_BOTTOM)))
     }
 
-    fn switch_row(&self, sw: &'static Switch, th: &Theme, cx: &mut Context<Launcher>) -> Div {
-        controls::row(sw.label, th).child(
-            controls::toggle(sw.id, self.is_on(sw), th)
-                .on_click(cx.listener(move |this, _, _, cx| this.settings.flip(sw, cx))),
-        )
+    pub(super) fn switch_row(
+        &self,
+        sw: &'static Switch,
+        th: &Theme,
+        cx: &mut Context<Launcher>,
+    ) -> Div {
+        controls::row(sw.label, th).child(self.switch(sw, th, cx))
+    }
+
+    pub(super) fn switch(
+        &self,
+        sw: &'static Switch,
+        th: &Theme,
+        cx: &mut Context<Launcher>,
+    ) -> Stateful<Div> {
+        controls::toggle(sw.id, self.is_on(sw), th)
+            .on_click(cx.listener(move |this, _, _, cx| this.settings.flip(sw, cx)))
     }
 
     fn bg_rows(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {

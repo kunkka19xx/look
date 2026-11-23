@@ -131,8 +131,8 @@ enum ConfigFileLines {
             let next = value.index(after: index)
 
             if character == listEscape,
-               next < value.endIndex,
-               value[next] == listSeparator || value[next] == listEscape
+                next < value.endIndex,
+                value[next] == listSeparator || value[next] == listEscape
             {
                 current.append(value[next])
                 index = value.index(after: next)
@@ -201,7 +201,7 @@ enum ConfigFileLines {
         var index = line.startIndex
         while index < line.endIndex {
             if line[index] == Character(commentPrefix),
-               index == line.startIndex || line[line.index(before: index)].isWhitespace
+                index == line.startIndex || line[line.index(before: index)].isWhitespace
             {
                 return String(line[..<index])
             }

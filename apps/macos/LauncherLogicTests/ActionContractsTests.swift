@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// The Swift-side remains of the action layer: the NSDataDetector date seam's

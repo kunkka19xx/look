@@ -15,11 +15,12 @@ use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Deferred, Div,
     Entity, FontWeight, KeyDownEvent, PaintQuad, Pixels, Render, ScrollStrategy, SharedString,
     Stateful, Task, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred,
-    div, img, point, prelude::*, px, relative, size, svg, uniform_list,
+    div, point, prelude::*, px, relative, size, svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
 use linows_backend::look_answers::TranslateLanguage;
+use linows_backend::look_engine::bar_slot;
 use linows_backend::qactions;
 use linows_backend::search as engine;
 use linows_backend::{
@@ -29,6 +30,7 @@ use linows_backend::{
 use crate::actions::{self, ActionId, Menu};
 use crate::answers::{self, AiAnswer};
 use crate::banner::{self, Banner, Message};
+use crate::barslot::{self, Bar, PinChange};
 use crate::bg;
 use crate::bgimage::{self, Backdrop};
 use crate::bindings::{self, Scope};
@@ -39,7 +41,7 @@ use crate::config_list;
 use crate::confirm::{Confirm, OnYes};
 use crate::glyphs;
 use crate::help::Help;
-use crate::icons::{IconRequest, IconStore};
+use crate::icons::IconStore;
 use crate::imagecache::PreviewImages;
 use crate::launchpad::{self, Launchpad, Notice, Tone};
 use crate::levels::{self, Levels};
@@ -49,8 +51,8 @@ use crate::picked::{self, Picked};
 use crate::preview::{self, ClipDeleted, Preview};
 use crate::qactions::Press;
 use crate::query;
-use crate::rows::{Icon, Open, Row};
-use crate::running::RunningApps;
+use crate::rowicon::{self, IconStyle};
+use crate::rows::{Open, Row};
 use crate::search::{Changed, SearchInput, input_for, search_field};
 use crate::settings::{self, Settings};
 use crate::shortcuts::{self, Hint, Piece};
@@ -76,6 +78,7 @@ const TRANSLATE_URL: &str = "https://translate.google.com/?sl=auto&tl=";
 const COPY_FAILED: &str = "Copy failed";
 const PICKS_MISSING: &str = "picked item(s) no longer exist, refreshing index";
 const NOT_RUN: &str = "not run, you moved on";
+const NOT_ELEVATABLE: &str = "Only apps or scripts can run as administrator";
 /// Told to run, not reported on yet.
 const VERB_STARTED: &str = "started";
 const VERB_FAILED: &str = "failed";
@@ -160,6 +163,8 @@ const FRESH_CONFIG_ASK: &str = "Create a fresh config?";
 /// Low bits of a text shift key hold the row index; the change count sits above.
 const SHIFT_ROW_BITS: usize = 20;
 const ROW_ICON: f32 = 22.0;
+/// An emoji fills most of its tile, less its font's bearings.
+const ROW_EMOJI_SCALE: f32 = 0.8;
 const ROW_IMAGES: usize = 64;
 /// The declared tile's inset around the icon, the ring included.
 const DECLARED_PAD: f32 = 1.0;
@@ -233,7 +238,7 @@ pub struct Launcher {
     picked: Picked,
     confirm: Option<Confirm>,
     menu: Option<Menu>,
-    pub(crate) running: RunningApps,
+    pub(crate) bar: Bar,
     pub(crate) ai: AiAnswer,
     /// The last autocomplete fetch: a search that re-runs for the same
     /// query (a keystroke undone, the index refreshing) takes it as is.
@@ -242,7 +247,7 @@ pub struct Launcher {
     /// The command screen is up: it owns the window and the keys.
     command_mode: bool,
     pub(crate) settings: Settings,
-    /// Ctrl+Shift+, : the settings screen is up, in the command screen's frame.
+    /// Ctrl+, : the settings screen is up, in the command screen's frame.
     settings_open: bool,
     /// A sources reload in flight, and whether another was asked for
     /// meanwhile: run one at a time, so an older pass cannot publish last.
@@ -317,7 +322,9 @@ impl Launcher {
         let scale = window.scale_factor();
         let icons = cx.new(|_| IconStore::new(scale));
         cx.observe(&icons, |_, _, cx| cx.notify()).detach();
-        let preview = cx.new(|cx| Preview::new(shell.clone(), icons.clone(), cx));
+        let row_images = cx.new(|cx| PreviewImages::with_capacity(ROW_IMAGES, cx));
+        let preview =
+            cx.new(|cx| Preview::new(shell.clone(), icons.clone(), row_images.clone(), cx));
         cx.observe(&preview, |_, _, cx| cx.notify()).detach();
         cx.subscribe(&preview, |this, _, notice: &Notice, cx| {
             this.banner
@@ -355,7 +362,7 @@ impl Launcher {
             shell,
             input,
             icons,
-            row_images: cx.new(|cx| PreviewImages::with_capacity(ROW_IMAGES, cx)),
+            row_images,
             preview,
             launchpad,
             banner: Banner::default(),
@@ -369,7 +376,7 @@ impl Launcher {
             picked: Picked::default(),
             confirm: None,
             menu: None,
-            running: RunningApps::default(),
+            bar: Bar::default(),
             ai: AiAnswer::default(),
             suggestions: None,
             commands: Commands::new(command_input),
@@ -406,7 +413,7 @@ impl Launcher {
         };
         // Issues reported before this window existed.
         this.set_health(linows_backend::health::get_health_issues(), cx);
-        this.running.refresh(cx);
+        this.bar.refresh(cx);
         // The blocks' names and icons, and whether the web answers are on.
         bg::fetch(
             cx,
@@ -488,7 +495,9 @@ impl Launcher {
 
     /// Run the query again: a keystroke, or the index finishing a refresh.
     /// The rows come back off the UI thread; a stale answer is dropped.
+    /// A pin the index just gained shows up too.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        self.bar.refresh_pins(cx);
         self.search(cx);
     }
 
@@ -856,14 +865,14 @@ impl Launcher {
             }
             return;
         }
-        // Alt+digit: a running app.
+        // Alt+digit: the bar's slot.
         if ks.modifiers.alt
             && !ctrl
             && !shift
             && let Some(digit) = ks.key.chars().next().and_then(|c| c.to_digit(10))
             && (1..=9).contains(&digit)
             && theme::get().split()
-            && self.running.activate_key(digit as u8, &self.shell, cx)
+            && self.bar.activate_key(digit as u8, &self.shell, cx)
         {
             cx.stop_propagation();
             return;
@@ -951,6 +960,7 @@ impl Launcher {
             Some(shortcuts::HIDE_APP) => self.hide_selected_app(cx),
             Some(shortcuts::COPY) => self.copy(cx),
             Some(shortcuts::REVEAL) if !menu => self.reveal_selected(cx),
+            Some(shortcuts::RUN_AS_ADMIN) if !menu => self.run_as_admin(cx),
             Some(shortcuts::TRASH) if !menu => self.delete(cx),
             Some(shortcuts::CLIP_PASTE) if !menu => self.paste_selected_clip(cx),
             _ => match ks.key.as_str() {
@@ -1102,7 +1112,7 @@ impl Launcher {
         if self.settings_open {
             self.settings.reload(cx);
         }
-        self.running.refresh(cx);
+        self.bar.reload(cx);
         // The drawing is read here too: it is the file most likely to be
         // mid-edit when the chord is pressed, and a broken one falls back to
         // the default, so the banner is the only sign anything happened.
@@ -1173,7 +1183,7 @@ impl Launcher {
                         fonts::ensure_family(cx, &theme::get().font_family);
                         crate::hotkey::set_active(true);
                         this.settings.reload(cx);
-                        this.running.refresh(cx);
+                        this.bar.reload(cx);
                         this.banner.show(
                             FRESH_CONFIG_DONE.into(),
                             Tone::Success,
@@ -1205,6 +1215,36 @@ impl Launcher {
     }
 
     // --- Command screen --------------------------------------------------------
+
+    pub(crate) fn toggle_pin(&mut self, id: String, title: String, cx: &mut Context<Self>) {
+        bg::fetch(
+            cx,
+            move || barslot::toggle_pin(&id),
+            move |this, change, cx| {
+                let (text, tone) = match change {
+                    Ok(PinChange::Pinned) => (format!("{title} pinned to the bar"), Tone::Success),
+                    Ok(PinChange::Unpinned) => (format!("{title} unpinned"), Tone::Info),
+                    Ok(PinChange::Full) => (
+                        format!(
+                            "The bar holds {} apps; unpin one first",
+                            bar_slot::MAX_PINNED
+                        ),
+                        Tone::Info,
+                    ),
+                    Err(err) => (format!("Pin failed: {err}"), Tone::Error),
+                };
+                theme::load();
+                this.bar.refresh_pins(cx);
+                this.banner.show(text, tone, banner::MEDIUM, cx);
+            },
+        );
+    }
+
+    pub(crate) fn open_todo(&mut self, cx: &mut Context<Self>) {
+        if let Some(index) = Commands::index_of(crate::commands::TODO_ID) {
+            self.enter_command_mode(index, "", cx);
+        }
+    }
 
     fn enter_command_mode(&mut self, index: usize, prefill: &str, cx: &mut Context<Self>) {
         self.close_menu();
@@ -1294,6 +1334,35 @@ impl Launcher {
 
     fn picked(&self) -> Option<usize> {
         (!self.unpicked && self.selected < self.rows.len()).then_some(self.selected)
+    }
+
+    /// Ctrl+Shift+Enter (Windows): launch the selected app or script elevated.
+    fn run_as_admin(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(row) = self.selected_row().cloned() else {
+            return true;
+        };
+        let Open::Path { usage } = row.open else {
+            return self.enter(cx);
+        };
+        if !actions::is_elevatable(&row) {
+            self.banner
+                .show(NOT_ELEVATABLE.into(), Tone::Info, banner::SHORT, cx);
+            return true;
+        }
+        let shell = self.shell.clone();
+        let path = row.path.clone();
+        let id = row.id.clone();
+        bg::fetch(
+            cx,
+            move || launch::open_elevated(&shell, &path),
+            move |this, outcome, cx| match outcome {
+                Ok(()) => {
+                    engine::record_usage(app_state(), &id, usage);
+                }
+                Err(err) => this.banner.show(err, Tone::Error, banner::MEDIUM, cx),
+            },
+        );
+        true
     }
 
     /// Enter: what the row says. The backend opens paths and hides the
@@ -1415,19 +1484,25 @@ impl Launcher {
         if self.command_mode {
             return false;
         }
+        self.copy_selected_row(cx);
+        true
+    }
+
+    /// The selected process's PID or row's path, whatever the field has
+    /// selected: what "Copy path" names.
+    fn copy_selected_row(&mut self, cx: &mut Context<Self>) {
         let Some(row) = self.selected_row() else {
-            return true;
+            return;
         };
         if row.is_hint() {
-            return true;
+            return;
         }
         let (text, done) = match &row.open {
             Open::Process(p) => (p.pid.to_string(), format!("Copied PID {}", p.pid)),
-            _ if row.path.is_empty() => return true,
+            _ if row.path.is_empty() => return,
             _ => (row.path.clone(), "Copied to clipboard".to_string()),
         };
         self.copy_text(text, done, cx);
-        true
     }
 
     /// `text` to the clipboard off the UI thread, then `done` or the failure
@@ -2005,6 +2080,9 @@ impl Launcher {
             ActionId::Open => {
                 self.open_selected(cx);
             }
+            ActionId::RunAsAdmin => {
+                self.run_as_admin(cx);
+            }
             ActionId::OpenConfirmed(row_id) => {
                 if let Some(row) = self.selected_row().filter(|r| r.id == row_id).cloned() {
                     self.perform_source_row(row, true, cx);
@@ -2013,8 +2091,11 @@ impl Launcher {
             ActionId::Tool(action) => {
                 self.run_tool(action, cx);
             }
-            ActionId::CopyPath => {
-                self.copy(cx);
+            ActionId::CopyPath => self.copy_selected_row(cx),
+            ActionId::TogglePin => {
+                if let Some(row) = self.selected_row() {
+                    self.toggle_pin(row.id.clone(), row.title.clone(), cx);
+                }
             }
             ActionId::DeleteClipboard => {
                 self.delete(cx);
@@ -2405,9 +2486,9 @@ impl Launcher {
         } else {
             SharedString::default()
         };
-        // The strip steps aside for the translate panel and the compact layout.
+        // The slot steps aside for the translate panel and the compact layout.
         let strip = (th.split() && self.mode != Mode::Translate)
-            .then(|| self.running.render(&self.icons, th, cx))
+            .then(|| self.bar.render(&self.icons, th, cx))
             .flatten();
         let bar = div()
             .map(|el| {
@@ -2427,12 +2508,18 @@ impl Launcher {
             .items_center()
             .gap(px(theme::SEARCH_GAP))
             .text_size(px(th.font_size + 1.0))
-            .child(
-                svg()
-                    .path(glyphs::SEARCH)
-                    .size(px(theme::SEARCH_ICON))
-                    .text_color(th.accent),
-            )
+            .map(|el| {
+                if th.decorations && crate::snow::emoji_available(cx) {
+                    el.child(crate::snow::snowman_icon())
+                } else {
+                    el.child(
+                        svg()
+                            .path(glyphs::SEARCH)
+                            .size(px(theme::SEARCH_ICON))
+                            .text_color(th.accent),
+                    )
+                }
+            })
             .when(!crumbs.is_empty(), |el| {
                 el.child(
                     muted_text(crumbs.join(BREADCRUMB_SEPARATOR), th)
@@ -2563,11 +2650,7 @@ impl Launcher {
                 this.todo_hovered = *hovered;
                 cx.notify();
             }))
-            .on_click(cx.listener(|this, _, _, cx| {
-                if let Some(index) = Commands::index_of("todo") {
-                    this.enter_command_mode(index, "", cx);
-                }
-            }))
+            .on_click(cx.listener(|this, _, _, cx| this.open_todo(cx)))
             .child(
                 svg()
                     .path(glyphs::LIST_CHECKS)
@@ -2614,36 +2697,21 @@ impl Launcher {
             .when(!context.is_empty(), |col| {
                 col.child(muted_text(context, th).truncate())
             });
-        let picture = match &row.icon {
-            Icon::Resolve { glyph } => {
-                let image = self.icons.update(cx, |store, cx| {
-                    store.get(
-                        IconRequest {
-                            kind: row.icon_kind().to_string(),
-                            path: row.path.clone(),
-                            id: Some(row.id.clone()),
-                            size: ROW_ICON,
-                        },
-                        cx,
-                    )
-                });
-                match image {
-                    Some(image) => img(image).size(px(ROW_ICON)).into_any_element(),
-                    None => glyph_icon(glyph, th),
-                }
-            }
-            Icon::Glyph(glyph) => glyph_icon(glyph, th),
-            Icon::File(path) => img(path.clone())
-                .image_cache(&self.row_images)
-                .size(px(ROW_ICON))
-                .rounded(px(th.chip_radius() / 1.5))
-                .object_fit(gpui::ObjectFit::Cover)
-                .into_any_element(),
-            Icon::Text(text) => div()
-                .text_size(px(ROW_ICON * 0.8))
-                .child(SharedString::from(text.clone()))
-                .into_any_element(),
-        };
+        let picture = rowicon::picture(
+            &row.icon,
+            || rowicon::request(row, ROW_ICON),
+            IconStyle {
+                size: ROW_ICON,
+                radius: th.chip_radius() / 1.5,
+                crop: true,
+                glyph_size: theme::SEARCH_ICON + 2.0,
+                text_size: ROW_ICON * ROW_EMOJI_SCALE,
+                color: th.accent,
+            },
+            &self.row_images,
+            &self.icons,
+            cx,
+        );
         let picture = self.glide(
             "icon",
             i,
@@ -3220,18 +3288,47 @@ impl Render for Launcher {
         // A Wayland window reports 1.0 until its surface enters an output.
         let scale = window.scale_factor();
         self.icons.update(cx, |icons, _| icons.set_scale(scale));
+        let snow = th.snow();
+        let family = th.font_family.clone();
+        let amount = th.snow_amount;
+        // A figure stands behind the results once there are some: the tree
+        // in the split layout's gap, Santa in the compact corner.
+        let shows_figure = th.decorations
+            && !self.at_home(cx)
+            && !self.settings_open
+            && !self.help.open
+            && !self.command_mode;
+        let figure = shows_figure.then(|| {
+            if th.split() {
+                crate::snow::Figure::Trees
+            } else {
+                crate::snow::Figure::Santa
+            }
+        });
         let content = self.content(th, window, cx);
         div().size_full().flex().justify_center().child(
             div()
+                .relative()
                 .flex_shrink_0()
                 .w(frame.width)
                 .h(frame.height)
-                .child(content),
+                .child(content)
+                .when_some(figure, |el, figure| {
+                    el.child(crate::snow::figure(figure, f32::from(frame.height)))
+                })
+                .when_some(snow, |el, colour| {
+                    el.child(crate::snow::layer(colour, family, amount))
+                }),
         )
     }
 }
 
 impl Launcher {
+    /// The empty query outside any level: the launchpad, or the bar alone.
+    fn at_home(&self, cx: &App) -> bool {
+        self.input.read(cx).text().is_empty() && !self.levels.is_active()
+    }
+
     fn content(
         &mut self,
         th: Arc<Theme>,
@@ -3243,9 +3340,8 @@ impl Launcher {
         self.arm_frost(blur::surfaces_fade(frosted), window, cx);
         let grid_since = self.grid_since.take();
         self.prepare_backdrop(&th, window, cx);
-        let input = self.input.read(cx);
-        let home = input.text().is_empty() && !self.levels.is_active();
-        let focus_handle = input.focus_handle.clone();
+        let home = self.at_home(cx);
+        let focus_handle = self.input.read(cx).focus_handle.clone();
         if self.was_home && !home {
             self.results_epoch += 1;
         }
@@ -3625,15 +3721,18 @@ fn panel(el: Div, th: &Theme, radius: f32) -> Div {
         .border_color(th.border)
         .rounded(px(radius))
         .shadow(th.card_shadow())
-        .children(backdrop_layer(radius, th))
+        .children(backdrop_layers(radius, th))
 }
 
-/// This frame's slice of the background picture for a surface with corner
-/// `radius`, when there is a picture.
-pub(crate) fn backdrop_layer(radius: f32, th: &Theme) -> Option<impl IntoElement> {
-    BACKDROP
+/// This frame's layers behind a surface with corner `radius`: its slice of
+/// the background picture when there is one, and of the bokeh when the
+/// decorations bring it.
+pub(crate) fn backdrop_layers(radius: f32, th: &Theme) -> impl Iterator<Item = AnyElement> {
+    let picture = BACKDROP
         .with_borrow(|b| b.clone())
-        .map(|b| bgimage::layer(b, radius, th))
+        .map(|b| bgimage::layer(b, radius, th).into_any_element());
+    let bokeh = crate::snow::bokeh_layer(radius, th).map(IntoElement::into_any_element);
+    picture.into_iter().chain(bokeh)
 }
 
 /// The band's leading at the hint's size.
@@ -3683,7 +3782,7 @@ fn card(el: Div, th: &Theme, radius: f32) -> Div {
         .border_color(th.border)
         .rounded(px(radius))
         .shadow(th.card_shadow())
-        .children(backdrop_layer(radius, th))
+        .children(backdrop_layers(radius, th))
 }
 
 fn muted_text(text: impl Into<SharedString>, th: &Theme) -> Div {
@@ -3721,14 +3820,6 @@ fn icon_chip(picture: AnyElement, declared: bool, th: &Theme) -> Div {
         .items_center()
         .justify_center()
         .child(picture)
-}
-
-fn glyph_icon(path: &'static str, th: &Theme) -> AnyElement {
-    svg()
-        .path(path)
-        .size(px(theme::SEARCH_ICON + 2.0))
-        .text_color(th.accent)
-        .into_any_element()
 }
 
 /// What putting a clip back on the clipboard runs, and what the banner says

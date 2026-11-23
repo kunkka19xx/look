@@ -19,7 +19,7 @@ final class PomoState {
     var timerStyle: PomoTimerStyle = .modern
     let music = PomoMusicPlayer()
 
-    private(set) var activeIndex: Int? = nil      // nil = no session selected
+    private(set) var activeIndex: Int? = nil  // nil = no session selected
     private(set) var secondsLeft: Int = 0
     private(set) var running: Bool = false
 
@@ -108,11 +108,12 @@ final class PomoState {
     // ── Persistence side-effects ────────────────────────────────────────
 
     func persist() {
-        PomoPersistence.save(.init(
-            sessions: sessions,
-            timerStyle: timerStyle,
-            musicFolderPath: music.folderPath
-        ))
+        PomoPersistence.save(
+            .init(
+                sessions: sessions,
+                timerStyle: timerStyle,
+                musicFolderPath: music.folderPath
+            ))
     }
 
     // ── Tick driver ─────────────────────────────────────────────────────
@@ -145,9 +146,9 @@ final class PomoState {
         // Fire the "ending soon" notification once per phase, when
         // remaining time first crosses below the threshold.
         if !didNotifyEndingSoon,
-           secondsLeft <= PomoCommand.endingSoonThresholdSeconds,
-           secondsLeft > 0,
-           let s = currentSession
+            secondsLeft <= PomoCommand.endingSoonThresholdSeconds,
+            secondsLeft > 0,
+            let s = currentSession
         {
             didNotifyEndingSoon = true
             PomoNotifications.notifyEndingSoon(session: s, secondsLeft: secondsLeft)
@@ -193,7 +194,7 @@ final class PomoState {
             activeIndex = next
             secondsLeft = sessions[next].durationMinutes * 60
             lastTickAt = Date()
-            if running { /* keep running */ }
+            if running { /* keep running */  }
         } else {
             stopTicking()
             running = false
@@ -292,12 +293,13 @@ struct PomoView: View {
         .onChange(of: state.music.folderPath) { _, _ in
             state.persist()
         }
-        .background(KeyCommandsRecognizer(
-            onToggle: { state.toggle() },
-            onR: { state.reset() },
-            onP: { state.music.togglePlay() },
-            onActivity: { restoreFromIdle() }
-        ))
+        .background(
+            KeyCommandsRecognizer(
+                onToggle: { state.toggle() },
+                onR: { state.reset() },
+                onP: { state.music.togglePlay() },
+                onActivity: { restoreFromIdle() }
+            ))
     }
 
     private func restoreFromIdle() {
@@ -321,10 +323,13 @@ struct PomoView: View {
         HStack(spacing: 8) {
             Image(systemName: "timer")
                 .foregroundStyle(themeStore.accentColor())
-            Text(state.activeIndex.map { "Running: \(state.sessions[$0].name)" } ?? "\(state.sessions.count) sessions planned")
-                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                .foregroundStyle(themeStore.secondaryTextColor())
-                .lineLimit(1)
+            Text(
+                state.activeIndex.map { "Running: \(state.sessions[$0].name)" }
+                    ?? "\(state.sessions.count) sessions planned"
+            )
+            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+            .foregroundStyle(themeStore.secondaryTextColor())
+            .lineLimit(1)
             Spacer(minLength: 4)
             Text("/pomo")
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
@@ -335,7 +340,9 @@ struct PomoView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(themeStore.commandModePanelColor(), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
+        .background(
+            themeStore.commandModePanelColor(),
+            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
     }
 
     // ── Timer + per-session label ──────────────────────────────────────
@@ -364,7 +371,9 @@ struct PomoView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(14)
-        .background(themeStore.commandModePanelColor(), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
+        .background(
+            themeStore.commandModePanelColor(),
+            in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 
     // ── Controls ───────────────────────────────────────────────────────
@@ -379,7 +388,9 @@ struct PomoView: View {
                 Text(toggleLabel)
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
                     .padding(.horizontal, 14).padding(.vertical, 6)
-                    .background(toggleColor, in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
+                    .background(
+                        toggleColor, in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
+                    )
                     .foregroundStyle(themeStore.onAccentColor())
             }
             .buttonStyle(.plain)
@@ -391,7 +402,10 @@ struct PomoView: View {
                     Text("Skip ▸")
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
+                        .background(
+                            themeStore.controlFillColor(),
+                            in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
+                        )
                         .foregroundStyle(themeStore.secondaryTextColor())
                 }
                 .buttonStyle(.plain)
@@ -402,7 +416,10 @@ struct PomoView: View {
                     Text("Reset (R)")
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
+                        .background(
+                            themeStore.controlFillColor(),
+                            in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
+                        )
                         .foregroundStyle(themeStore.dangerColor())
                 }
                 .buttonStyle(.plain)
@@ -452,7 +469,10 @@ struct PomoView: View {
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
                     }
                     .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
+                    .background(
+                        themeStore.controlFillColor(),
+                        in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
+                    )
                     .foregroundStyle(showSessionList ? themeStore.accentColor() : themeStore.secondaryTextColor())
                 }
                 .buttonStyle(.plain)
@@ -463,23 +483,31 @@ struct PomoView: View {
                 // make sense (or be visible) when the list is collapsed.
                 if showSessionList {
                     Button {
-                        state.sessions.append(PomoSession(type: .focus, durationMinutes: PomoCommand.focusDefaultMinutes, name: "Focus"))
+                        state.sessions.append(
+                            PomoSession(type: .focus, durationMinutes: PomoCommand.focusDefaultMinutes, name: "Focus"))
                     } label: {
                         Text("+ Focus")
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
                             .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
+                            .background(
+                                themeStore.controlFillColor(),
+                                in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
+                            )
                             .foregroundStyle(themeStore.dangerColor())
                     }
                     .buttonStyle(.plain)
 
                     Button {
-                        state.sessions.append(PomoSession(type: .break, durationMinutes: PomoCommand.breakDefaultMinutes, name: "Break"))
+                        state.sessions.append(
+                            PomoSession(type: .break, durationMinutes: PomoCommand.breakDefaultMinutes, name: "Break"))
                     } label: {
                         Text("+ Break")
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
                             .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
+                            .background(
+                                themeStore.controlFillColor(),
+                                in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
+                            )
                             .foregroundStyle(themeStore.successColor())
                     }
                     .buttonStyle(.plain)
@@ -505,15 +533,22 @@ struct PomoView: View {
                         Text(style.title)
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
                             .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(state.timerStyle == style ? themeStore.accentColor() : themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
-                            .foregroundStyle(state.timerStyle == style ? themeStore.onAccentColor() : themeStore.secondaryTextColor())
+                            .background(
+                                state.timerStyle == style ? themeStore.accentColor() : themeStore.controlFillColor(),
+                                in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
+                            )
+                            .foregroundStyle(
+                                state.timerStyle == style ? themeStore.onAccentColor() : themeStore.secondaryTextColor()
+                            )
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
         .padding(10)
-        .background(themeStore.commandModePanelColor(), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
+        .background(
+            themeStore.commandModePanelColor(),
+            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
     }
 
     private var sessionListEditor: some View {
@@ -539,8 +574,10 @@ struct PomoView: View {
     // delete.
     private func binding(for id: PomoSession.ID) -> Binding<PomoSession> {
         Binding(
-            get: { state.sessions.first(where: { $0.id == id })
-                ?? PomoSession(type: .focus, durationMinutes: 1, name: "") },
+            get: {
+                state.sessions.first(where: { $0.id == id })
+                    ?? PomoSession(type: .focus, durationMinutes: 1, name: "")
+            },
             set: { newValue in
                 if let idx = state.sessions.firstIndex(where: { $0.id == id }) {
                     state.sessions[idx] = newValue
@@ -595,7 +632,9 @@ struct PomoView: View {
             }
         }
         .padding(10)
-        .background(themeStore.commandModePanelColor(), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
+        .background(
+            themeStore.commandModePanelColor(),
+            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
     }
 
     private var musicTrackTitle: String {
@@ -629,7 +668,10 @@ struct PomoView: View {
     private func scheduleIdleReset() {
         idleResetToken = UUID()
         let token = idleResetToken
-        guard state.running else { state.idle = false; return }
+        guard state.running else {
+            state.idle = false
+            return
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + PomoCommand.idleFadeSeconds) {
             guard token == idleResetToken, state.running else { return }
             state.idle = true
@@ -650,11 +692,17 @@ private struct PomoTimerArea: View {
         let text = themeStore.fontColor()
         switch state.timerStyle {
         case .modern:
-            ModernRingTimer(progress: state.progress, secondsLeft: state.secondsLeft, color: color, dimColor: dim, textColor: text, size: size)
+            ModernRingTimer(
+                progress: state.progress, secondsLeft: state.secondsLeft, color: color, dimColor: dim, textColor: text,
+                size: size)
         case .vintage:
-            VintageDialTimer(progress: state.progress, secondsLeft: state.secondsLeft, color: color, dimColor: dim, textColor: text, size: size)
+            VintageDialTimer(
+                progress: state.progress, secondsLeft: state.secondsLeft, color: color, dimColor: dim, textColor: text,
+                size: size)
         case .minimal:
-            MinimalTextTimer(progress: state.progress, secondsLeft: state.secondsLeft, color: color, dimColor: dim, textColor: text, size: size)
+            MinimalTextTimer(
+                progress: state.progress, secondsLeft: state.secondsLeft, color: color, dimColor: dim, textColor: text,
+                size: size)
         }
     }
 }
@@ -686,7 +734,10 @@ private struct SessionRow: View {
 
             TextField("Name", text: $session.name)
                 .textFieldStyle(.plain)
-                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: isActive ? .semibold : .regular))
+                .font(
+                    themeStore.uiFont(
+                        size: CGFloat(themeStore.settings.fontSize - 1), weight: isActive ? .semibold : .regular)
+                )
                 .foregroundStyle(themeStore.fontColor())
 
             TextField("", value: $session.durationMinutes, format: .number)
@@ -696,7 +747,9 @@ private struct SessionRow: View {
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                 .foregroundStyle(themeStore.fontColor())
                 .padding(.horizontal, 4).padding(.vertical, 2)
-                .background(themeStore.panelFillColor(), in: RoundedRectangle(cornerRadius: themeStore.microRadius, style: .continuous))
+                .background(
+                    themeStore.panelFillColor(),
+                    in: RoundedRectangle(cornerRadius: themeStore.microRadius, style: .continuous))
 
             Text("m")
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
@@ -709,14 +762,19 @@ private struct SessionRow: View {
             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
             .foregroundStyle(session.type == .focus ? themeStore.dangerColor() : themeStore.successColor())
 
-            Button { onDelete() } label: {
+            Button {
+                onDelete()
+            } label: {
                 Image(systemName: "xmark")
                     .foregroundStyle(themeStore.dangerColor())
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 6).padding(.vertical, 4)
-        .background(isActive ? themeStore.selectionFillColor() : Color.clear, in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
+        .background(
+            isActive ? themeStore.selectionFillColor() : Color.clear,
+            in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
+        )
         .opacity(isPast ? 0.45 : 1.0)
     }
 }
@@ -777,7 +835,10 @@ private final class KeyCommandsHostView: NSView {
                 // Don't steal keystrokes from text editing.
                 if event.window?.firstResponder is NSText { return event }
                 if let text = event.window?.firstResponder as? NSView,
-                   text.isKind(of: NSTextField.self) || text.isKind(of: NSTextView.self) { return event }
+                    text.isKind(of: NSTextField.self) || text.isKind(of: NSTextView.self)
+                {
+                    return event
+                }
                 let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
                 let plainModifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
                 // Space (49), no modifiers - start/pause. Cmd+Space
@@ -802,7 +863,9 @@ private final class KeyCommandsHostView: NSView {
         // events are deliberately skipped - they fire constantly and
         // would defeat the idle fade entirely.
         if activityMonitor == nil {
-            let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel, .flagsChanged]
+            let mask: NSEvent.EventTypeMask = [
+                .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel, .flagsChanged,
+            ]
             activityMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
                 self?.onActivity?()
                 return event

@@ -1,5 +1,5 @@
-import Foundation
 import Combine
+import Foundation
 
 final class AppUIState: ObservableObject {
     // Shared instance so AppDelegate (which now owns the launcher NSWindow and

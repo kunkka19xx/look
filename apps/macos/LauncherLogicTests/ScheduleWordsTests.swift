@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// The gates deciding whether a question sees the user's calendar, and which

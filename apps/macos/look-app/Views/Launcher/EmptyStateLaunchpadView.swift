@@ -144,10 +144,10 @@ private func mnemonicText(
     highlight: Color
 ) -> Text {
     guard let mnemonic,
-          let range = label.range(
+        let range = label.range(
             of: String(mnemonic),
             options: [.caseInsensitive]
-          )
+        )
     else {
         return Text(label).font(font).foregroundColor(base)
     }
@@ -710,6 +710,9 @@ struct FrostedTile: View {
                     themeStore: themeStore, blendingMode: blendingMode, cornerRadius: radius)
             }
             themeStore.controlFillColor()
+            if themeStore.showsBokeh() {
+                BokehView()
+            }
             if let tint {
                 tint.opacity(tintOpacity)
             }
@@ -730,7 +733,8 @@ private func tileBorder(isOn: Bool, themeStore: ThemeStore) -> some View {
         style: .continuous
     )
     if isOn {
-        shape.strokeBorder(themeStore.accentColor().opacity(launchpadOnBorderOpacity), lineWidth: launchpadStateBorderWidth)
+        shape.strokeBorder(
+            themeStore.accentColor().opacity(launchpadOnBorderOpacity), lineWidth: launchpadStateBorderWidth)
     } else if themeStore.borderLineWidth() > 0 {
         shape.strokeBorder(themeStore.borderColor(), lineWidth: themeStore.borderLineWidth())
     }

@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 final class ConfigFileLinesTests: XCTestCase {
@@ -6,28 +7,30 @@ final class ConfigFileLinesTests: XCTestCase {
 
     func testWritingAKeyLeavesEveryOtherLineUntouched() {
         let original = """
-        # look configuration
+            # look configuration
 
-        ##########
-        # indexing
-        ##########
-        app_scan_depth=3
+            ##########
+            # indexing
+            ##########
+            app_scan_depth=3
 
 
-        # UI theme
-        ui_font_size=14
+            # UI theme
+            ui_font_size=14
 
-        """
+            """
 
         var lines = ConfigFileLines.parse(original)
         ConfigFileLines.upsert(&lines, key: "ui_font_size", value: "18")
 
         // Every comment, blank run, and divider survives exactly as written. Only the
         // one requested value differs.
-        XCTAssertEqual(ConfigFileLines.render(lines), original.replacingOccurrences(
-            of: "ui_font_size=14",
-            with: "ui_font_size=18"
-        ))
+        XCTAssertEqual(
+            ConfigFileLines.render(lines),
+            original.replacingOccurrences(
+                of: "ui_font_size=14",
+                with: "ui_font_size=18"
+            ))
     }
 
     func testAddingAKeyAppendsItAndChangesNothingElse() {
@@ -123,18 +126,18 @@ final class ConfigFileLinesTests: XCTestCase {
         // Repeated `####` dividers and double blank lines are a layout the user chose.
         // The file carries no damage signature, so it must come back untouched.
         let handWritten = """
-        ##########
-        # indexing
-        ##########
-        app_scan_depth=3
+            ##########
+            # indexing
+            ##########
+            app_scan_depth=3
 
 
-        ##########
-        # theme
-        ##########
-        ui_font_size=14
+            ##########
+            # theme
+            ##########
+            ui_font_size=14
 
-        """
+            """
 
         XCTAssertNil(ConfigFileLines.repairingLegacyDamage(handWritten))
     }
@@ -143,29 +146,31 @@ final class ConfigFileLinesTests: XCTestCase {
         // Two `# Added by look update` blocks are legitimate: each came from a separate
         // migration. Only the legacy header is surplus.
         let scarred = """
-        # Added by look update
-        app_exclude_paths=
+            # Added by look update
+            app_exclude_paths=
 
-        # UI theme
+            # UI theme
 
-        # UI theme
-        # Added by look update
-        file_scan_extra_roots=
+            # UI theme
+            # Added by look update
+            file_scan_extra_roots=
 
-        """
+            """
 
         let repaired = ConfigFileLines.repairingLegacyDamage(scarred)
 
-        XCTAssertEqual(repaired, """
-        # Added by look update
-        app_exclude_paths=
+        XCTAssertEqual(
+            repaired,
+            """
+            # Added by look update
+            app_exclude_paths=
 
-        # UI theme
+            # UI theme
 
-        # Added by look update
-        file_scan_extra_roots=
+            # Added by look update
+            file_scan_extra_roots=
 
-        """)
+            """)
     }
 
     func testRepairNeverLosesAKey() {

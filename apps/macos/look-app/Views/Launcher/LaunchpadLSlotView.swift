@@ -201,7 +201,8 @@ private enum LunarToday {
 
     /// The compact one-line label used in the header clock, e.g. "12/6 Lunar".
     static func inlineLabel(_ lunar: LunarDate) -> String {
-        let name = lunar.leap
+        let name =
+            lunar.leap
             ? AppConstants.Launcher.Launchpad.lunarLeapLabel
             : AppConstants.Launcher.Launchpad.lunarLabel
         return "\(lunar.day)/\(lunar.month) \(name)"

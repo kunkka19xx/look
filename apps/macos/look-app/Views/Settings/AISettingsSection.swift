@@ -22,8 +22,10 @@ struct AISettingsSection: View {
 
             // Only worth a row when the configured provider is off-machine;
             // with a local model there is nothing to decide.
-            if settings.aiEnabled, !AIQueryRouter.shared.allowsPrivateContext(settings.aiProvider)
-                || settings.aiAllowRemoteContext {
+            if settings.aiEnabled,
+                !AIQueryRouter.shared.allowsPrivateContext(settings.aiProvider)
+                    || settings.aiAllowRemoteContext
+            {
                 remoteContextRow
             }
 
@@ -80,8 +82,9 @@ struct AISettingsSection: View {
             OllamaModelField(
                 host: settings.ollamaEndpoint,
                 model: $settings.ollamaModel,
-                themeStore: themeStore)
-                .frame(maxWidth: 160)
+                themeStore: themeStore
+            )
+            .frame(maxWidth: 160)
             Spacer(minLength: 0)
         }
     }
@@ -110,14 +113,16 @@ struct AISettingsSection: View {
             .foregroundStyle(
                 availability.isAvailable
                     ? Color.green.opacity(0.85)
-                    : themeStore.secondaryTextColor())
+                    : themeStore.secondaryTextColor()
+            )
             .contentShape(Rectangle())
             .accessibilityLabel(Text("AI availability"))
             .hoverTooltip(tooltip)
     }
 
     private var tooltip: String {
-        let base = "Shows instant answers (facts, definitions, weather, currency, "
+        let base =
+            "Shows instant answers (facts, definitions, weather, currency, "
             + "crypto, calculations) and web search suggestions for your queries. "
             + "Powered by free web sources (Wikipedia, DuckDuckGo) plus the "
             + "selected AI provider where available. Queries are sent to the web "

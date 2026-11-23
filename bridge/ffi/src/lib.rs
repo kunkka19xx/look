@@ -2,6 +2,7 @@
 
 mod ai_api;
 mod answers_api;
+mod bar_slot_api;
 mod calc_api;
 mod calling_api;
 mod clipboard_api;
@@ -18,6 +19,7 @@ mod qactions_api;
 mod runtime_config;
 mod search_api;
 mod seed_api;
+mod snow_api;
 mod sources_api;
 mod state;
 mod todo_api;
@@ -203,6 +205,88 @@ pub extern "C" fn look_lunar_date_json(year: i64, month: i64, day: i64, tz: f64)
         lunar_api::look_lunar_date_json_impl(year, month, day, tz)
     }))
     .unwrap_or(std::ptr::null_mut())
+}
+
+/// The search bar slot's settings from the config's key/value map (JSON
+/// object): `{slot, pinned, script}`. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_bar_config_json(entries_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        bar_slot_api::look_bar_config_json_impl(entries_json)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The most apps the bar holds pinned.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_bar_max_pinned() -> usize {
+    look_engine::bar_slot::MAX_PINNED
+}
+
+/// Each pinned id (JSON array) as `{id, title, path}`, title and path null
+/// when the index no longer has it. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_bar_pins_json(ids_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        bar_slot_api::look_bar_pins_json_impl(ids_json)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The first line `command` prints, as `{"line": ...}` or `{"error": ...}`.
+/// Blocks for up to two seconds. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_bar_script_line_json(command: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        bar_slot_api::look_bar_script_line_json_impl(command)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The most flakes `look_snow_frame` writes, for sizing its buffer.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_snow_max_flakes() -> usize {
+    look_snow::MAX_FLAKES
+}
+
+/// The snowfall at `seconds`, `amount` times the default, into `out` as five
+/// floats per flake (x, y, radius, alpha, crystal glyph or -1). Returns how
+/// many were written.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_snow_frame(
+    width: f64,
+    height: f64,
+    seconds: f64,
+    amount: f64,
+    out: *mut f32,
+    capacity: usize,
+) -> usize {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        snow_api::look_snow_frame_impl(width, height, seconds, amount, out, capacity)
+    }))
+    .unwrap_or(0)
+}
+
+/// The most glows `look_bokeh_frame` writes, for sizing its buffer.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_bokeh_max_glows() -> usize {
+    look_snow::bokeh::MAX_GLOWS
+}
+
+/// The bokeh at `seconds` into `out` as seven floats per glow (x, y, radius,
+/// r, g, b, centre alpha). Returns how many were written.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_bokeh_frame(
+    width: f64,
+    height: f64,
+    seconds: f64,
+    out: *mut f32,
+    capacity: usize,
+) -> usize {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        snow_api::look_bokeh_frame_impl(width, height, seconds, out, capacity)
+    }))
+    .unwrap_or(0)
 }
 
 /// The resolved `launcher_hotkey`. Free with `look_free_cstring`.

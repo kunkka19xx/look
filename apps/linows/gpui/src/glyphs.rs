@@ -81,6 +81,14 @@ pub const CHEVRON_RIGHT: &str = "icons/chevron-right.svg";
 pub const CHEVRON_DOWN: &str = "icons/chevron-down.svg";
 pub const TRIANGLE_ALERT: &str = "icons/triangle-alert.svg";
 
+// Christmas figures, a layer per colour
+pub const TREE_PINE: &str = "icons/tree-pine.svg";
+pub const GIFT_BOX: &str = "icons/gift-box.svg";
+pub const GIFT_RIBBON: &str = "icons/gift-ribbon.svg";
+pub const SANTA_HAT: &str = "icons/santa-hat.svg";
+pub const SANTA_FACE: &str = "icons/santa-face.svg";
+pub const SANTA_TRIM: &str = "icons/santa-trim.svg";
+
 /// A Lucide body in the shared 24-unit frame.
 macro_rules! lucide {
     ($path:expr, $body:literal) => {
@@ -88,6 +96,21 @@ macro_rules! lucide {
             $path,
             concat!(
                 r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">"##,
+                $body,
+                "</svg>"
+            )
+            .as_bytes(),
+        )
+    };
+}
+
+/// A filled body in the same frame.
+macro_rules! solid {
+    ($path:expr, $body:literal) => {
+        (
+            $path,
+            concat!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">"##,
                 $body,
                 "</svg>"
             )
@@ -104,6 +127,30 @@ const GLYPHS: &[(&str, &[u8])] = &[
     (
         SEARCH,
         br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>"##,
+    ),
+    solid!(
+        TREE_PINE,
+        r#"<g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m17 14 3 3.3a1 1 0 0 1-.7 1.7H4.7a1 1 0 0 1-.7-1.7L7 14h-.3a1 1 0 0 1-.7-1.7L9 9h-.2A1 1 0 0 1 8 7.3L12 3l4 4.3a1 1 0 0 1-.8 1.7H15l3 3.3a1 1 0 0 1-.7 1.7H17Z"/><path d="M12 22v-3"/></g>"#
+    ),
+    solid!(
+        GIFT_BOX,
+        r#"<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12h14v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/>"#
+    ),
+    solid!(
+        GIFT_RIBBON,
+        r#"<g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v13"/><path d="M5 12h14"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></g>"#
+    ),
+    solid!(
+        SANTA_HAT,
+        r#"<path d="M6.5 9C7 5 9.8 2.3 13.2 2.5C16.5 2.7 18.8 5.6 19.6 10.8L18 11.4C17.4 9.6 16.6 8.4 15.6 7.6L17.5 9Z"/>"#
+    ),
+    solid!(
+        SANTA_FACE,
+        r#"<path fill-rule="evenodd" d="M12 7.5a5 5 0 1 0 0 10a5 5 0 0 0 0-10zM10 12.2a.8.8 0 1 0 0 1.6a.8.8 0 0 0 0-1.6zM14 12.2a.8.8 0 1 0 0 1.6a.8.8 0 0 0 0-1.6z"/>"#
+    ),
+    solid!(
+        SANTA_TRIM,
+        r#"<rect x="5.5" y="8.5" width="13" height="3" rx="1.5"/><circle cx="19" cy="12.5" r="1.8"/><path d="M6.3 13.5c1.2 1.6 3.2 2.4 5.7 2.4s4.5-.8 5.7-2.4c0 5-2.3 8.5-5.7 8.5s-5.7-3.5-5.7-8.5z"/>"#
     ),
     lucide!(
         FILE,

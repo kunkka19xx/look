@@ -1,5 +1,5 @@
-import Foundation
 import CoreGraphics
+import Foundation
 
 struct AppCommand: Identifiable {
     let id: String
@@ -547,6 +547,9 @@ enum AppConstants {
             // Slack on each end of the strip to keep the active ring from being clipped.
             static let edgeSlack: CGFloat = 6
             static let maxItems = 9
+            static let textGap: CGFloat = 8
+            static let textRestingOpacity: Double = 0.85
+            static let hoverDuration: Double = 0.15
 
             static var width: CGFloat { iconSize + horizontalPadding * 2 + edgeSlack }
 
@@ -718,6 +721,9 @@ enum AppConstants {
         /// so a value the slider cannot reach is reported rather than clamped.
         static let innerGapRange: ClosedRange<Double> = 0...24
         static let surfaceRadiusRange: ClosedRange<Double> = 0...2.5
+        /// How much snow the Christmas decorations let fall, against the
+        /// default; the core's `SNOW_AMOUNTS`.
+        static let snowAmounts: [Double] = [1, 1.25, 1.5, 2]
         /// Dimming for a control the active theme has taken over, so the value
         /// stays readable while reading as not-yours-to-set.
         static let disabledControlOpacity: Double = 0.4

@@ -130,7 +130,7 @@ final class GlobalHotKeyManager {
             if hotkey.matches(event) {
                 hotkeyLog.notice("LOCAL monitor fired (app active=\(NSApp.isActive))")
                 NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
-                return nil   // consume - don't let any field eat the space
+                return nil  // consume - don't let any field eat the space
             }
             return event
         }
@@ -138,7 +138,8 @@ final class GlobalHotKeyManager {
 
     private func scheduleRetry() {
         guard retryAttempts < Self.maxRetryAttempts else {
-            hotkeyLog.error("RegisterEventHotKey still failing after \(Self.maxRetryAttempts) attempts; giving up on global hotkey")
+            hotkeyLog.error(
+                "RegisterEventHotKey still failing after \(Self.maxRetryAttempts) attempts; giving up on global hotkey")
             return
         }
         retryAttempts += 1

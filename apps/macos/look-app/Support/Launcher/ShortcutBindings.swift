@@ -63,6 +63,13 @@ final class ShortcutBindings: ObservableObject {
         chords(shortcut).contains { $0.matches(event) }
     }
 
+    /// The chords a menu-driven shortcut answers to beyond the one its menu
+    /// item draws: SwiftUI spells a single key equivalent per item, so the
+    /// aliases are matched by the monitors instead.
+    func matchesAlias(_ shortcut: LocalShortcut, _ event: NSEvent) -> Bool {
+        chords(shortcut).dropFirst().contains { $0.matches(event) }
+    }
+
     func chords(_ shortcut: LocalShortcut) -> [LocalChord] {
         resolved[shortcut] ?? []
     }

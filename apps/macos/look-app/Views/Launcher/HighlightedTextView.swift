@@ -48,12 +48,14 @@ struct HighlightedTextView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let text = nsView.documentView as? NSTextView,
-              let storage = text.textStorage else { return }
+            let storage = text.textStorage
+        else { return }
         let coordinator = context.coordinator
         let sameContent = coordinator.applied?.isEqual(to: attributed) ?? false
         if sameContent,
-           coordinator.appliedFont == font,
-           coordinator.appliedColor == defaultColor {
+            coordinator.appliedFont == font,
+            coordinator.appliedColor == defaultColor
+        {
             return
         }
         coordinator.applied = attributed

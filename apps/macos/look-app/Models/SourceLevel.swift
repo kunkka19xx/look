@@ -37,8 +37,10 @@ nonisolated struct ToolActionRow {
     var ancestorsJSON: String = "[]"
 
     func withCStrings<T>(
-        _ body: (UnsafePointer<CChar>?, UnsafePointer<CChar>?, UnsafePointer<CChar>?,
-            UnsafePointer<CChar>?) -> T
+        _ body: (
+            UnsafePointer<CChar>?, UnsafePointer<CChar>?, UnsafePointer<CChar>?,
+            UnsafePointer<CChar>?
+        ) -> T
     ) -> T {
         candidateID.withCString { candidate in
             title.withCString { title in

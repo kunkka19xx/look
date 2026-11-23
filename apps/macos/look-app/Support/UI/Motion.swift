@@ -53,6 +53,22 @@ enum Motion {
         }
     }
 
+    /// The search field's snowman on every open: it zooms up and back while
+    /// it shakes side to side, settling as the window lands.
+    enum Snowman {
+        struct Pose {
+            var scale: CGFloat = 1
+            var angle: Double = 0
+        }
+
+        static let peakScale: CGFloat = 1.35
+        static let zoomInSeconds: Double = 0.16
+        static let settleSeconds: Double = 0.34
+        /// Degrees, each swing smaller than the last.
+        static let shakeAngles: [Double] = [-14, 12, -8, 4, 0]
+        static let shakeStepSeconds: Double = 0.08
+    }
+
     /// The press-down on an interactive surface (result rows, tiles), so a
     /// click reads as physical rather than instant.
     enum Press {
@@ -340,17 +356,19 @@ extension View {
     }
     /// Slides the search placeholder in from the right on every launcher open.
     func placeholderReveal(token: UInt64) -> some View {
-        modifier(SlideReveal(
-            token: token,
-            startOffsetX: Motion.Slide.placeholderOffsetX,
-            animation: Motion.Slide.arrive(index: 0)))
+        modifier(
+            SlideReveal(
+                token: token,
+                startOffsetX: Motion.Slide.placeholderOffsetX,
+                animation: Motion.Slide.arrive(index: 0)))
     }
 
     /// Slides a running-apps icon in from the left, staggered by `index`.
     func stripReveal(index: Int, token: UInt64) -> some View {
-        modifier(SlideReveal(
-            token: token,
-            startOffsetX: Motion.Slide.stripOffsetX,
-            animation: Motion.Slide.Strip.arrive(index: index)))
+        modifier(
+            SlideReveal(
+                token: token,
+                startOffsetX: Motion.Slide.stripOffsetX,
+                animation: Motion.Slide.Strip.arrive(index: index)))
     }
 }

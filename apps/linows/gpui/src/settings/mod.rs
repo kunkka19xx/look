@@ -1,4 +1,4 @@
-//! Ctrl+Shift+, : the settings screen, run the way the macOS ThemeStore runs:
+//! Ctrl+, : the settings screen, run the way the macOS ThemeStore runs:
 //! every control edits a working copy that the theme follows at once, Save
 //! Config writes the lot to the file in one go, Esc discards.
 
@@ -16,6 +16,7 @@ use gpui::{
     SharedString, deferred, div, px, relative,
 };
 use linows_backend::config::{self, ConfigUpdate, LauncherLayout};
+use linows_backend::look_engine::bar_slot::{self, BarSlot};
 use linows_backend::platform::{self, CandidateDrive};
 use linows_backend::{autostart, cli_path, files, hotkey};
 
@@ -52,9 +53,8 @@ const SAVE_FLOAT_INSET: f32 = 10.0;
 const SAVE_FLOAT_CLEARANCE: f32 = 36.0;
 const TAB_PADDING_Y: f32 = 7.0;
 const BODY_PADDING_BOTTOM: f32 = 14.0;
-/// The header row's items, spaced as the webview's `margin-left: 40px`.
-const HEADER_ROW_GAP: f32 = 40.0;
-const HEADER_ITEM_GAP: f32 = 10.0;
+const SWITCHES_GAP: f32 = 30.0;
+const SWITCH_LABEL_GAP: f32 = 10.0;
 const FONT_BOX_W: f32 = 200.0;
 const FONT_PLACEHOLDER: &str = "Installed font name";
 const SUGGESTIONS_MAX: usize = 8;
@@ -84,8 +84,36 @@ const THEMES: &[Option_] = &[
     (LIQUID, "Liquid"),
     (theme::CUSTOM_THEME, "Custom"),
 ];
+const LAUNCHER_SECTION: &str = "Launcher";
+const THEME_LABEL: &str = "Theme";
+const BAR_SLOT_LABEL: &str = "Search Bar";
+const BAR_SLOTS: &[Option_] = &[
+    (BarSlot::Running.as_str(), "Running Apps"),
+    (BarSlot::Pinned.as_str(), PINNED_LABEL),
+    (BarSlot::Todo.as_str(), "Today's Task"),
+    (BarSlot::Script.as_str(), "Script"),
+    (BarSlot::None.as_str(), "Nothing"),
+];
+const PINNED_LABEL: &str = "Pinned Apps";
+const PINNED_EMPTY: &str = "Pin an app from its row's actions menu";
+const PINNED_MISSING: &str = "missing";
+const PINNED_GAP: f32 = 6.0;
+const BAR_SCRIPT_LABEL: &str = "Bar Script";
+const BAR_SCRIPT_UNSET: &str =
+    "Set bar_script in .look/config to a command or the path of a script, then reload the config";
+const BAR_SCRIPT_COMMAND_MAX_W: f32 = 320.0;
+const BAR_SCRIPT_PENDING: &str = "Runs when the launcher opens";
+const BAR_SCRIPT_SILENT: &str = "Printed nothing";
+const BAR_SCRIPT_COPIED: &str = "Script output copied";
 const SESSION_LAYOUT_HINT: &str = "Ringed: this session only (Ctrl+Shift+C)";
 const LAYOUTS: &[Option_] = &[("split", "Split"), ("compact", "Compact")];
+/// The core's `SNOW_AMOUNTS`, as the config spells them.
+const SNOW_AMOUNTS: &[Option_] = &[
+    ("1", "Snow 1x"),
+    ("1.25", "Snow 1.25x"),
+    ("1.5", "Snow 1.5x"),
+    ("2", "Snow 2x"),
+];
 
 #[cfg(target_os = "linux")]
 const BLUR_STYLES: &[Option_] = &[
@@ -125,14 +153,6 @@ pub(super) struct Switch {
     pub default_on: bool,
 }
 
-const RUNNING_APPS: Switch = Switch {
-    id: "settings-running",
-    key: "running_apps_placement",
-    label: "Running Apps",
-    on: "right",
-    off: "none",
-    default_on: true,
-};
 const SUPER_ACTIONS: Switch = Switch {
     id: "settings-launchpad",
     key: "super_actions_enabled",
@@ -149,6 +169,14 @@ const ANIMATIONS: Switch = Switch {
     on: "true",
     off: "false",
     default_on: true,
+};
+const CHRISTMAS: Switch = Switch {
+    id: "settings-christmas",
+    key: "christmas_decorations",
+    label: "Christmas",
+    on: "true",
+    off: "false",
+    default_on: false,
 };
 
 /// Where a slider's value comes from when the config has none: a preset
@@ -319,15 +347,17 @@ static SLIDERS: [&Slider; 18] = [
 ];
 
 /// The keys this screen owns besides the sliders'.
-const KEYS: [&str; 8] = [
+const KEYS: [&str; 10] = [
     THEME_KEY,
     SURFACE_KEY,
     LAYOUT_KEY,
     FONT_NAME_KEY,
     BLUR_STYLE_KEY,
-    RUNNING_APPS.key,
+    bar_slot::SLOT_KEY,
     SUPER_ACTIONS.key,
     ANIMATIONS.key,
+    CHRISTMAS.key,
+    theme::SNOW_AMOUNT_KEY,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -491,6 +521,10 @@ impl Settings {
         self.scroll.set_offset(Default::default());
         self.edited.clear();
         self.load(true, cx);
+        // A pick Esc left unsaved is still on the bar: Save Config keeps it.
+        if let Some(slot) = crate::barslot::session_slot() {
+            self.set(bar_slot::SLOT_KEY, slot.as_str());
+        }
         self.fetch_fonts(cx);
     }
 
@@ -525,6 +559,7 @@ impl Settings {
         self.recorder.resume(kept.pending);
         self.entries = kept.entries;
         self.edited = kept.edited;
+        self.loaded = kept.loaded;
         self.browse = kept.browse;
         self.browse.resume(cx);
         if kept.loaded {
@@ -841,6 +876,12 @@ impl Settings {
         self.apply(cx);
     }
 
+    fn pick_snow_amount(&mut self, amount: &str, cx: &mut Context<Launcher>) {
+        self.select = None;
+        self.set(theme::SNOW_AMOUNT_KEY, amount);
+        self.apply(cx);
+    }
+
     fn pick_layout(&mut self, layout: &str, cx: &mut Context<Launcher>) {
         theme::clear_session_layout();
         self.set(LAYOUT_KEY, layout);
@@ -859,6 +900,29 @@ impl Settings {
             format_value(BLUR_STYLE_OPACITY[at], BLUR_OPACITY.decimals),
         );
         self.apply(cx);
+    }
+
+    fn bar_slot(&self) -> BarSlot {
+        BarSlot::from_entries(&self.entries)
+    }
+
+    fn pick_bar_slot(&mut self, slot: &str, cx: &mut Context<Launcher>) {
+        self.select = None;
+        self.set(bar_slot::SLOT_KEY, slot);
+        crate::barslot::pick_for_session(self.bar_slot());
+        // Deferred: the bar is the launcher's.
+        let launcher = cx.weak_entity();
+        cx.defer(move |cx| {
+            let _ = launcher.update(cx, |this, cx| {
+                this.bar.refresh(cx);
+                cx.notify();
+            });
+        });
+        cx.notify();
+    }
+
+    fn bar_script(&self) -> &str {
+        self.get(bar_slot::SCRIPT_KEY).unwrap_or_default()
     }
 
     fn open_font_field(&mut self, cx: &mut Context<Launcher>) {
@@ -1012,6 +1076,7 @@ impl Settings {
                 // the bindings below are built from.
                 if written {
                     theme::load();
+                    this.bar.reload(cx);
                 }
                 bindings::load();
                 this.settings.recorder.state = Some(hotkey::launcher_hotkey_state());
@@ -1168,8 +1233,7 @@ impl Settings {
         div()
             .flex()
             .flex_col()
-            .child(self.header_row(th, cx))
-            .child(controls::divider(th))
+            .child(self.launcher_rows(th, cx))
             .child(controls::section("Layout", th))
             .child(self.layout_row(th, cx))
             .child(self.slider_row(&INNER_GAP, th, cx))
@@ -1223,55 +1287,149 @@ impl Settings {
             .children(live.map(|_| controls::hint(SESSION_LAYOUT_HINT, th)))
     }
 
-    /// Theme, then the switches; the strip ones only in the split layout,
-    /// which is the only one with a strip.
-    fn header_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+    /// Compact has no bar and no home, so their rows are split only.
+    fn launcher_rows(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let split = th.split();
-        let switch = |sw: &'static Switch| {
-            div()
-                .flex()
-                .items_center()
-                .gap(px(HEADER_ITEM_GAP))
-                .child(
-                    div()
-                        .text_size(px(th.font_size - 1.0))
-                        .text_color(th.text_secondary)
-                        .child(sw.label),
-                )
-                .child(
-                    controls::toggle(sw.id, self.is_on(sw), th)
-                        .on_click(cx.listener(move |this, _, _, cx| this.settings.flip(sw, cx))),
-                )
-        };
+        let slot = self.bar_slot();
         div()
-            .py(px(HEADER_PADDING_Y))
             .flex()
-            .items_center()
-            .gap(px(HEADER_ROW_GAP))
-            .child(
+            .flex_col()
+            .child(controls::section(LAUNCHER_SECTION, th))
+            .child(controls::row(THEME_LABEL, th).child(self.select_control(
+                "settings-theme",
+                THEMES,
+                self.theme_id(),
+                THEME_KEY,
+                Settings::pick_theme,
+                th,
+                cx,
+            )))
+            .when(split, |el| {
+                el.child(controls::row(BAR_SLOT_LABEL, th).child(self.select_control(
+                    "settings-bar-slot",
+                    BAR_SLOTS,
+                    slot.as_str(),
+                    bar_slot::SLOT_KEY,
+                    Settings::pick_bar_slot,
+                    th,
+                    cx,
+                )))
+            })
+            .when(split && slot == BarSlot::Script, |el| {
+                el.child(self.bar_script_row(th, cx))
+            })
+            .when(split && slot == BarSlot::Pinned, |el| {
+                el.child(self.pinned_row(th, cx))
+            })
+            .child(self.switches_row(split, th, cx))
+            .child(controls::divider(th))
+    }
+
+    /// One line: the first in the label column, the rest after it.
+    fn switches_row(&self, split: bool, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+        let (first, rest): (_, &[&'static Switch]) = if split {
+            (&SUPER_ACTIONS, &[&ANIMATIONS, &CHRISTMAS])
+        } else {
+            (&ANIMATIONS, &[&CHRISTMAS])
+        };
+        self.switch_row(first, th, cx)
+            .children(rest.iter().map(|&sw| {
                 div()
+                    .ml(px(SWITCHES_GAP))
                     .flex()
                     .items_center()
-                    .gap(px(HEADER_ITEM_GAP))
-                    .child(
-                        div()
-                            .text_size(px(th.font_size - 1.0))
-                            .text_color(th.text_secondary)
-                            .child("Theme"),
-                    )
-                    .child(self.select_control(
-                        "settings-theme",
-                        THEMES,
-                        self.theme_id(),
-                        THEME_KEY,
-                        Settings::pick_theme,
+                    .gap(px(SWITCH_LABEL_GAP))
+                    .child(controls::label(sw.label, th))
+                    .child(self.switch(sw, th, cx))
+            }))
+            .when(self.is_on(&CHRISTMAS), |el| {
+                el.child(
+                    self.select_control(
+                        "settings-snow",
+                        SNOW_AMOUNTS,
+                        self.get(theme::SNOW_AMOUNT_KEY)
+                            .unwrap_or(SNOW_AMOUNTS[0].0),
+                        theme::SNOW_AMOUNT_KEY,
+                        Settings::pick_snow_amount,
                         th,
                         cx,
-                    )),
+                    ),
+                )
+            })
+    }
+
+    /// Removing a pin writes the config at once, as pinning from a row does.
+    fn pinned_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+        let pills: Vec<Div> = crate::barslot::pins()
+            .iter()
+            .enumerate()
+            .map(|(i, pin)| {
+                let id = pin.id.clone();
+                let name = pin.title.clone().unwrap_or_else(|| id.clone());
+                let label = div()
+                    .text_size(px(th.font_size - 1.0))
+                    .child(SharedString::from(name.clone()))
+                    .when(pin.title.is_none(), |el| {
+                        el.text_color(th.text_muted)
+                            .child(format!(" ({PINNED_MISSING})"))
+                    });
+                controls::removable_pill(
+                    ("settings-unpin", i),
+                    label,
+                    th,
+                    cx.listener(move |this, _, _, cx| {
+                        this.toggle_pin(id.clone(), name.clone(), cx)
+                    }),
+                )
+            })
+            .collect();
+        controls::row(PINNED_LABEL, th).child(div().flex().flex_wrap().gap(px(PINNED_GAP)).map(
+            |el| {
+                if pills.is_empty() {
+                    el.child(controls::hint(PINNED_EMPTY, th))
+                } else {
+                    el.children(pills)
+                }
+            },
+        ))
+    }
+
+    /// Read-only: the command is set in the config file.
+    fn bar_script_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+        let command = self.bar_script();
+        if command.is_empty() {
+            return controls::row(BAR_SCRIPT_LABEL, th).child(controls::hint(BAR_SCRIPT_UNSET, th));
+        }
+        let (text, said, failed): (SharedString, bool, bool) =
+            match crate::barslot::script_result(command) {
+                None => (BAR_SCRIPT_PENDING.into(), false, false),
+                Some(Ok(line)) if line.is_empty() => (BAR_SCRIPT_SILENT.into(), false, false),
+                Some(Ok(line)) => (line.into(), true, false),
+                Some(Err(why)) => (why.into(), true, true),
+            };
+        let status = controls::hint(text.clone(), th)
+            .when(failed, |el| el.text_color(th.danger))
+            .id("settings-bar-script-status")
+            .when(said, |el| {
+                let copied = text.to_string();
+                el.cursor_pointer()
+                    .tooltip(controls::tooltip(text))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.copy_text(copied.clone(), BAR_SCRIPT_COPIED.into(), cx);
+                    }))
+            });
+        controls::row(BAR_SCRIPT_LABEL, th)
+            .child(
+                div()
+                    .max_w(px(BAR_SCRIPT_COMMAND_MAX_W))
+                    .flex_shrink_0()
+                    .truncate()
+                    .font_family(th.mono_family.clone())
+                    .text_size(px(th.font_size - 2.0))
+                    .text_color(th.text_secondary)
+                    .child(SharedString::from(command.to_string())),
             )
-            .when(split, |el| el.child(switch(&RUNNING_APPS)))
-            .when(split, |el| el.child(switch(&SUPER_ACTIONS)))
-            .child(switch(&ANIMATIONS))
+            .child(status.flex_1().min_w_0().truncate())
     }
 
     /// A dropdown whose open state is `self.select == Some(key)`; `pick`

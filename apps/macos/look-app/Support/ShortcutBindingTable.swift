@@ -119,7 +119,9 @@ enum ShortcutBindingTable {
         ShortcutDefinition(.mainHideLauncher, ["shift+esc"], .launcher, mirrors: ["ai.leave"]),
         ShortcutDefinition(.mainQuickActionToggle, ["cmd+o"], .launcher),
         ShortcutDefinition(.clipboardPaste, ["cmd+i"], .launcher),
-        ShortcutDefinition(.viewSettings, ["cmd+shift+,"], .appWide, menuDriven: true),
+        // ⌘, is the macOS convention; ⌘⇧, is what Look shipped with. The menu
+        // item draws the first chord, the launcher monitor answers the rest.
+        ShortcutDefinition(.viewSettings, ["cmd+,", "cmd+shift+,"], .appWide, menuDriven: true),
         ShortcutDefinition(.viewReloadConfig, ["cmd+shift+;"], .appWide, menuDriven: true),
         ShortcutDefinition(.viewToggleLayout, ["cmd+shift+c"], .launcher),
         ShortcutDefinition(.viewZoomIn, ["cmd+="], .appWide, menuDriven: true),

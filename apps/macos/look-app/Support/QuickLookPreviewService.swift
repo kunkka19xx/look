@@ -53,11 +53,11 @@ actor QuickLookPreviewService {
         "java", "kt", "kts", "scala", "groovy",
         "sh", "bash", "zsh", "fish",
         "sql", "lua", "php", "pl", "r", "clj", "ex", "exs", "erl",
-        "hs", "ml", "fs", "fsx", "dart", "vue", "svelte"
+        "hs", "ml", "fs", "fsx", "dart", "vue", "svelte",
     ]
 
-    private static let textFileSizeCap: Int64 = 512 * 1024            // 512 KB
-    private static let defaultSizeCap: Int64 = 20 * 1024 * 1024       // 20 MB
+    private static let textFileSizeCap: Int64 = 512 * 1024  // 512 KB
+    private static let defaultSizeCap: Int64 = 20 * 1024 * 1024  // 20 MB
 
     static func sizeCap(forPath path: String) -> Int64 {
         return isTextFile(path: path) ? textFileSizeCap : defaultSizeCap
@@ -92,15 +92,18 @@ actor QuickLookPreviewService {
     /// type, or QuickLook produced no representation.
     func thumbnail(forPath path: String, size: CGSize, scale: CGFloat) async -> NSImage? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
-              let fileSize = attrs[.size] as? Int64,
-              let mtime = attrs[.modificationDate] as? Date else {
+            let fileSize = attrs[.size] as? Int64,
+            let mtime = attrs[.modificationDate] as? Date
+        else {
             return nil
         }
         guard fileSize <= Self.sizeCap(forPath: path) else { return nil }
 
         // Full sub-second mtime precision: truncating to Int seconds
         // collides on rapid save/resave + same byte size.
-        let key = "\(path)|\(mtime.timeIntervalSince1970)|\(fileSize)|\(Int(size.width))x\(Int(size.height))@\(scale)" as NSString
+        let key =
+            "\(path)|\(mtime.timeIntervalSince1970)|\(fileSize)|\(Int(size.width))x\(Int(size.height))@\(scale)"
+            as NSString
         if let cached = cache.object(forKey: key) { return cached }
 
         let request = QLThumbnailGenerator.Request(

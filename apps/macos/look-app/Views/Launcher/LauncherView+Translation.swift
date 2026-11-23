@@ -22,7 +22,8 @@ extension LauncherView {
         }
 
         if input.count >= translateWord.count,
-            input.prefix(translateWord.count).lowercased() == translateWord {
+            input.prefix(translateWord.count).lowercased() == translateWord
+        {
             let text = String(input.dropFirst(translateWord.count)).trimmingCharacters(in: .whitespacesAndNewlines)
             return text.isEmpty ? nil : .lookup(text)
         }

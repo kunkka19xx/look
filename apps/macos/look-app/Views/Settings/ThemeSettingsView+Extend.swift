@@ -297,7 +297,8 @@ struct ExtendSettingsTab: View {
                 EngineBridge.shared.setSourceEnabled(file: file, on)
             }.value
             guard let outcome, outcome.problems.isEmpty else {
-                failure = outcome?.problems.joined(separator: "\n")
+                failure =
+                    outcome?.problems.joined(separator: "\n")
                     ?? "Could not change \(fileName(file))."
                 return
             }
@@ -350,8 +351,9 @@ struct ExtendSettingsTab: View {
 
     @MainActor
     private func openWith(tool: String, url: URL) {
-        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: tool)
-            ?? NSWorkspace.shared.urlForApplication(toOpen: url)
+        guard
+            let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: tool)
+                ?? NSWorkspace.shared.urlForApplication(toOpen: url)
         else { return }
         NSWorkspace.shared.open(
             [url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration()

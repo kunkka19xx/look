@@ -141,20 +141,6 @@ enum BackgroundImageMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
-/// On/off state for the in-search-bar running-apps row, stored as a string in
-/// `~/.look/config` under `running_apps_placement`. The setting is now a simple
-/// toggle (`.none` = off, `.right` = on); the legacy `.top`/`.bottom` cases are
-/// retained only so old config files still decode - they are normalized to
-/// `.right` ("on") on load. See ThemeStore's config parser.
-enum RunningAppsPlacement: String, CaseIterable, Codable, Identifiable {
-    case none
-    case top
-    case right
-    case bottom
-
-    var id: String { rawValue }
-}
-
 /// Launcher window layout, persisted in `~/.look/config` under `layout`:
 /// results beside the preview (`split`), or a smaller results-only window.
 enum LauncherLayout: String, CaseIterable, Codable, Identifiable {
@@ -244,7 +230,7 @@ struct ThemeSettings: Codable, Equatable {
     var backendLogLevel: BackendLogLevel = .error
     var launchAtLogin: Bool = true
 
-    var runningAppsPlacement: RunningAppsPlacement = .right
+    var barSlot: BarSlot = .running
 
     /// i3-style inner gap (in points) inserted between the three home-screen panes
     /// - the top row (search bar + running apps), the results list and the preview.
@@ -311,6 +297,15 @@ struct ThemeSettings: Codable, Equatable {
     /// still applies when this is on. Persisted in `~/.look/config` under
     /// `animations_enabled`.
     var animationsEnabled: Bool = true
+
+    /// Christmas over whatever theme is active: falling snow, glowing lights
+    /// behind the panels, a tree behind the results and a snowman search icon.
+    /// Persisted in `~/.look/config` under `christmas_decorations`.
+    var christmasDecorations: Bool = false
+
+    /// How much snow falls with the decorations on, against the default: one
+    /// of `AppConstants.ThemeUI.snowAmounts`. Persisted under `christmas_snow`.
+    var christmasSnowAmount: Double = 1
 
     /// Hotkey specs keyed by config key, see `ConfigurableShortcut`.
     var shortcutBindings: [String: String] = [:]

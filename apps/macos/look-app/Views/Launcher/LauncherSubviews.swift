@@ -24,11 +24,46 @@ struct SearchInputBar: View {
         /// Matches where `NSTextField` starts drawing its own text, so the
         /// placeholder does not shift sideways as soon as you type.
         static let placeholderLeadingInset: CGFloat = 2
+        static let snowman = "☃️"
+        /// A touch larger than the glass it replaces, so the emoji's detail reads.
+        static let snowmanFontSize: CGFloat = 17
+    }
+
+    /// Plain search with the decorations on: the other icons say
+    /// which mode the bar is in, so they stay.
+    private var showsSnowman: Bool {
+        breadcrumb == nil && !isCommandMode && !isAIMode && themeStore.showsChristmasDecorations()
     }
 
     /// Command mode wins the bar's identity (see the icon below), so the badge
     /// steps aside rather than sitting next to the `/command` capsule.
     private var showsBetaBadge: Bool { isAIMode && !isCommandMode }
+
+    @ViewBuilder
+    private var snowman: some View {
+        let glyph = Text(Layout.snowman)
+            .font(.system(size: Layout.snowmanFontSize))
+            .accessibilityHidden(true)
+        if reducesMotion {
+            glyph
+        } else {
+            glyph.keyframeAnimator(initialValue: Motion.Snowman.Pose(), trigger: revealToken) { content, pose in
+                content
+                    .scaleEffect(pose.scale)
+                    .rotationEffect(.degrees(pose.angle))
+            } keyframes: { _ in
+                KeyframeTrack(\.scale) {
+                    SpringKeyframe(Motion.Snowman.peakScale, duration: Motion.Snowman.zoomInSeconds)
+                    SpringKeyframe(1, duration: Motion.Snowman.settleSeconds)
+                }
+                KeyframeTrack(\.angle) {
+                    for angle in Motion.Snowman.shakeAngles {
+                        LinearKeyframe(angle, duration: Motion.Snowman.shakeStepSeconds)
+                    }
+                }
+            }
+        }
+    }
 
     private var placeholderText: String {
         if breadcrumb != nil {
@@ -43,19 +78,25 @@ struct SearchInputBar: View {
         return themeStore.searchPlaceholder
     }
 
+    @Environment(\.reducesMotion) private var reducesMotion
+
     var body: some View {
         HStack(spacing: 8) {
-            Image(
-                systemName: breadcrumb != nil
-                    ? "chevron.right"
-                    : (isCommandMode ? "terminal" : (isAIMode ? "sparkles" : "magnifyingglass"))
-            )
-            .foregroundStyle(
-                isCommandMode || isAIMode || breadcrumb != nil
-                    ? themeStore.accentColor() : themeStore.secondaryTextColor()
-            )
-            .contentTransition(.symbolEffect(.replace))
-            .symbolEffect(.bounce, value: revealToken)
+            if showsSnowman {
+                snowman
+            } else {
+                Image(
+                    systemName: breadcrumb != nil
+                        ? "chevron.right"
+                        : (isCommandMode ? "terminal" : (isAIMode ? "sparkles" : "magnifyingglass"))
+                )
+                .foregroundStyle(
+                    isCommandMode || isAIMode || breadcrumb != nil
+                        ? themeStore.accentColor() : themeStore.secondaryTextColor()
+                )
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: revealToken)
+            }
 
             if let breadcrumb {
                 Text(breadcrumb)
@@ -80,33 +121,34 @@ struct SearchInputBar: View {
                 allowsMultiline: isAIMode,
                 onSubmit: onSubmit
             )
-                // The field's own placeholder is empty, so it would otherwise
-                // reach VoiceOver unnamed. A placeholder configured away
-                // still leaves the field a name.
-                .accessibilityLabel(placeholderText.isEmpty ? "Search" : placeholderText)
-                .frame(maxWidth: .infinity)
-                .overlay(alignment: .leading) {
-                    if text.isEmpty {
-                        Text(placeholderText)
-                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize)))
-                            .foregroundStyle(themeStore.placeholderTextColor())
-                            .lineLimit(1)
-                            .padding(.leading, Layout.placeholderLeadingInset)
-                            .allowsHitTesting(false)
-                            // Decorative: the field above carries the name.
-                            // `allowsHitTesting` does not remove it from the
-                            // accessibility tree.
-                            .accessibilityHidden(true)
-                            .placeholderReveal(token: revealToken)
-                    }
+            // The field's own placeholder is empty, so it would otherwise
+            // reach VoiceOver unnamed. A placeholder configured away
+            // still leaves the field a name.
+            .accessibilityLabel(placeholderText.isEmpty ? "Search" : placeholderText)
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .leading) {
+                if text.isEmpty {
+                    Text(placeholderText)
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize)))
+                        .foregroundStyle(themeStore.placeholderTextColor())
+                        .lineLimit(1)
+                        .padding(.leading, Layout.placeholderLeadingInset)
+                        .allowsHitTesting(false)
+                        // Decorative: the field above carries the name.
+                        // `allowsHitTesting` does not remove it from the
+                        // accessibility tree.
+                        .accessibilityHidden(true)
+                        .placeholderReveal(token: revealToken)
                 }
+            }
 
             if showsBetaBadge {
                 Text("BETA")
                     .font(
                         themeStore.uiFont(
                             size: CGFloat(max(9, themeStore.settings.fontSize - 4)),
-                            weight: .semibold))
+                            weight: .semibold)
+                    )
                     .foregroundStyle(themeStore.accentColor().opacity(0.9))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -172,9 +214,13 @@ struct CommandListView: View {
                             .foregroundStyle(themeStore.accentColor())
                         VStack(alignment: .leading, spacing: 1) {
                             Text("/\(command.title)")
-                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
+                                .font(
+                                    themeStore.uiFont(
+                                        size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
                             Text(command.detail)
-                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                .font(
+                                    themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular)
+                                )
                                 .foregroundStyle(themeStore.secondaryTextColor())
                                 .lineLimit(1)
                         }
@@ -231,7 +277,7 @@ struct CommandInputBar: View {
                 focusesOnAppear: true,
                 onSubmit: onSubmit
             )
-                .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity)
 
             Text("/\(command.id)")
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
@@ -242,7 +288,8 @@ struct CommandInputBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
+        .background(
+            themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 }
 
@@ -271,7 +318,8 @@ struct CommandHeaderBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
+        .background(
+            themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 }
 
@@ -383,7 +431,10 @@ struct PickedPillsBar: View {
                     Text("⇧↵")
                         .padding(.horizontal, Layout.chordPaddingX)
                         .padding(.vertical, Layout.chordPaddingY)
-                        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.microRadius, style: .continuous))
+                        .background(
+                            themeStore.controlFillColor(),
+                            in: RoundedRectangle(cornerRadius: themeStore.microRadius, style: .continuous)
+                        )
                         .foregroundStyle(themeStore.mutedTextColor())
                 }
                 .font(font)
@@ -619,10 +670,12 @@ struct RecentEmptyStateView: View {
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
                 .foregroundStyle(themeStore.secondaryTextColor())
 
-            Text("Open files/folders through Look, or download/create some - newest activity shows here. Type rc\"word to filter.")
-                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                .foregroundStyle(themeStore.secondaryTextColor())
-                .lineLimit(3)
+            Text(
+                "Open files/folders through Look, or download/create some - newest activity shows here. Type rc\"word to filter."
+            )
+            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+            .foregroundStyle(themeStore.secondaryTextColor())
+            .lineLimit(3)
 
             Spacer(minLength: 0)
         }

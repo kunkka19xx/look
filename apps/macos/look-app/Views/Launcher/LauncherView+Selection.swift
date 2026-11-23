@@ -42,7 +42,8 @@ extension LauncherView {
         // The `@`-mention popup owns the highlight while it is open, so Tab
         // reaches into the file list instead of the results behind it.
         if direction == .down || direction == .up,
-           moveMentionHighlight(forward: direction == .down) {
+            moveMentionHighlight(forward: direction == .down)
+        {
             return
         }
 
@@ -301,8 +302,8 @@ extension LauncherView {
                 commandFeedback = "Selected /\(command.id)"
                 requestCommandInputFocusIfNeeded()
             },
-            onActivateRunningApp: { [self] key in
-                activateRunningApp(forKey: key)
+            onActivateBarSlot: { [self] key in
+                activateBarSlot(forKey: key)
             },
             onActivateSession: { [self] index in
                 openSessionAt(index)
@@ -334,10 +335,12 @@ extension LauncherView {
                 pendingKillCandidate != nil
             },
             onRequestDelete: { [self] in
-                guard DeleteTargetLogic.allowsKeyboardDelete(
-                    showsThemeSettings: appUIState.showsThemeSettings,
-                    showsHelpScreen: showsHelpScreen
-                ) else { return }
+                guard
+                    DeleteTargetLogic.allowsKeyboardDelete(
+                        showsThemeSettings: appUIState.showsThemeSettings,
+                        showsHelpScreen: showsHelpScreen
+                    )
+                else { return }
                 // In AI mode ⌘D belongs to the sessions list and nothing else:
                 // it deletes the highlighted conversation (same delete as ⌘⌫
                 // and the row's trash button, undoable from the banner). With a
@@ -433,6 +436,9 @@ extension LauncherView {
             },
             onToggleSessionLayout: { [self] in
                 themeStore.toggleSessionLayout()
+            },
+            onToggleSettings: { [self] in
+                toggleThemeSettings()
             }
         )
     }

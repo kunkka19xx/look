@@ -107,15 +107,16 @@ final class ChatSessionController: ObservableObject {
                     || item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
         }
         guard !items.isEmpty else { return }
-        ConversationStore.upsert(AIConversation(
-            id: conversationID,
-            title: AIConversation.singleLine(items.first?.text ?? "Conversation"),
-            updatedAt: Date(),
-            items: items.map {
-                AIConversation.StoredItem(
-                    kind: $0.kind.rawValue, text: $0.text, source: $0.source,
-                    attachedPaths: $0.attachedPaths.isEmpty ? nil : $0.attachedPaths)
-            }))
+        ConversationStore.upsert(
+            AIConversation(
+                id: conversationID,
+                title: AIConversation.singleLine(items.first?.text ?? "Conversation"),
+                updatedAt: Date(),
+                items: items.map {
+                    AIConversation.StoredItem(
+                        kind: $0.kind.rawValue, text: $0.text, source: $0.source,
+                        attachedPaths: $0.attachedPaths.isEmpty ? nil : $0.attachedPaths)
+                }))
     }
 
     // MARK: - Streaming lifecycle
@@ -128,7 +129,8 @@ final class ChatSessionController: ObservableObject {
         chatTask = nil
         if let id = streamingItemID, let idx = sessionItems.firstIndex(where: { $0.id == id }) {
             let partial = sessionItems[idx].text
-            sessionItems[idx].text = partial == "…" || partial.isEmpty
+            sessionItems[idx].text =
+                partial == "…" || partial.isEmpty
                 ? "(stopped)"
                 : partial + "\n\n(stopped)"
         }
@@ -193,10 +195,11 @@ final class ChatSessionController: ObservableObject {
         // A schedule question answered without the calendar would just look
         // uninformed; say why the context is missing.
         if asksSchedule, !allowsPrivate {
-            append(ActionSessionItem(
-                kind: .answer,
-                text: Self.remoteContextBlockedNote("Your calendar"),
-                source: "Look"))
+            append(
+                ActionSessionItem(
+                    kind: .answer,
+                    text: Self.remoteContextBlockedNote("Your calendar"),
+                    source: "Look"))
         }
 
         // Long-term memory (facts the user asked to remember), injected on every
@@ -235,10 +238,11 @@ final class ChatSessionController: ObservableObject {
             ])
         }
         if !attachments.isEmpty, !allowsPrivate {
-            append(ActionSessionItem(
-                kind: .answer,
-                text: Self.remoteContextBlockedNote("Attached files"),
-                source: "Look"))
+            append(
+                ActionSessionItem(
+                    kind: .answer,
+                    text: Self.remoteContextBlockedNote("Attached files"),
+                    source: "Look"))
         }
         // Token-budget window (not a fixed count): keep the newest turns that fit
         // ~2.5k tokens, so long chats stay coherent without a summarizer.
@@ -268,7 +272,8 @@ final class ChatSessionController: ObservableObject {
 
         // Attached files make this a document read, not a chat reply. Decided
         // once, so a third generation profile is one edit rather than three.
-        let requested: AIGenerationOptions = attachments.isEmpty
+        let requested: AIGenerationOptions =
+            attachments.isEmpty
             ? .chat
             : .document(promptCharacters: attachments.totalCharacters)
 
@@ -370,10 +375,11 @@ final class ChatSessionController: ObservableObject {
         // never hand either to an off-machine provider without permission.
         guard AIQueryRouter.shared.allowsPrivateContext(ThemeStore.shared.settings.aiProvider)
         else {
-            append(ActionSessionItem(
-                kind: .answer,
-                text: Self.remoteContextBlockedNote(subject),
-                source: "Look"))
+            append(
+                ActionSessionItem(
+                    kind: .answer,
+                    text: Self.remoteContextBlockedNote(subject),
+                    source: "Look"))
             saveConversation()
             return nil
         }
@@ -387,11 +393,12 @@ final class ChatSessionController: ObservableObject {
         // A capped read is a partial answer, so say so instead of passing the
         // head of the file off as the whole of it.
         if let name = truncatedFrom {
-            append(ActionSessionItem(
-                kind: .answer,
-                text: "\"\(name)\" is large, so this covers only its first "
-                    + "\(TextExtraction.defaultCap / 1024)KB.",
-                source: "Look"))
+            append(
+                ActionSessionItem(
+                    kind: .answer,
+                    text: "\"\(name)\" is large, so this covers only its first "
+                        + "\(TextExtraction.defaultCap / 1024)KB.",
+                    source: "Look"))
             // `beginTurn` already saved; only the note needs another write.
             saveConversation()
         }
@@ -431,7 +438,9 @@ final class ChatSessionController: ObservableObject {
     /// request), the clipboard contributes the text itself, since otherwise
     /// "Translate to vietnamese" gives a transcript with no way to tell which
     /// of five copies it acted on.
-    private static func turnLabel(_ label: String, _ source: TextOpSource, input: String)
+    private static func turnLabel(
+        _ label: String, _ source: TextOpSource, input: String
+    )
         -> String
     {
         switch source {
@@ -445,7 +454,8 @@ final class ChatSessionController: ObservableObject {
 
     /// The answer placeholder, labeled with whoever is about to produce it.
     private func appendPlaceholder(settings: ThemeSettings) -> UUID {
-        let sourceLabel = settings.aiProvider == .ollama
+        let sourceLabel =
+            settings.aiProvider == .ollama
             ? settings.ollamaModel
             : settings.aiProvider.title
         let placeholder = ActionSessionItem(
@@ -461,7 +471,8 @@ final class ChatSessionController: ObservableObject {
         options: String
     ) {
         if let data = try? JSONSerialization.data(withJSONObject: messages),
-           let json = String(data: data, encoding: .utf8) {
+            let json = String(data: data, encoding: .utf8)
+        {
             let session = EngineBridge.shared.aiChatStart(
                 host: settings.ollamaEndpoint, model: settings.ollamaModel, messagesJSON: json,
                 optionsJSON: options)

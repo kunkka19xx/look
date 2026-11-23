@@ -4,13 +4,15 @@
 //! it; the ones not ported yet say so in place of their body.
 
 mod calc;
-mod draw;
+pub(crate) mod draw;
 mod kill;
 mod pomo;
 mod shell;
 mod speed;
 mod sys;
 mod todo;
+
+pub use todo::ID as TODO_ID;
 
 use gpui::{
     AnyElement, Context, Div, Entity, FontWeight, SharedString, deferred, div, prelude::*, px, svg,

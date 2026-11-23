@@ -12,7 +12,9 @@ enum LauncherClipboardImageFeature {
         ClipboardQueryPrefix.image.searchTerm(in: query)
     }
 
-    static func makeResult(entry: ClipboardImageEntry, dateFormatter: DateFormatter)
+    static func makeResult(
+        entry: ClipboardImageEntry, dateFormatter: DateFormatter
+    )
         -> LauncherResult
     {
         let timestamp = dateFormatter.string(from: entry.capturedAt)

@@ -15,7 +15,8 @@ struct ShellCommand {
                 try process.run()
                 process.waitUntilExit()
                 let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                let raw = String(data: data, encoding: .utf8)?
+                let raw =
+                    String(data: data, encoding: .utf8)?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 if raw.isEmpty {
                     message = process.terminationStatus == 0 ? "Done" : "Error: command failed"

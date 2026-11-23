@@ -73,11 +73,11 @@ final class SpeedTestController {
         isRunning = false
 
         switch outcome {
-        case let .reading(value):
+        case .reading(let value):
             reading = value
             errorMessage = nil
             Self.saveLastReading(value)
-        case let .failure(message):
+        case .failure(let message):
             errorMessage = message
         }
     }

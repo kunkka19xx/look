@@ -1,4 +1,5 @@
 import Foundation
+
 @testable import LauncherLogic
 
 /// The shared wire fixture, read the way the app reads the payload.

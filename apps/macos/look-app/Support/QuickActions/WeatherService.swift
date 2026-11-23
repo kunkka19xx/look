@@ -82,7 +82,8 @@ final class WeatherService {
 
     private func coordinates() async throws -> Coordinates {
         if let cached = cached(Coordinates.self, forKey: Self.cachedLocationKey),
-           age(of: cached.fetchedAt) < Self.locationMaxAge {
+            age(of: cached.fetchedAt) < Self.locationMaxAge
+        {
             return cached
         }
         let fresh = try await fetchCoordinates()

@@ -115,10 +115,12 @@ public enum ProcessScoring {
         let port = exactPort(trimmed)
 
         let scored: [(score: Int, key: String, value: Candidate)] = candidates.compactMap { row in
-            guard let s = score(
-                name: row.name, ports: row.ports, pid: row.pid,
-                trimmedQuery: trimmed, isNumeric: numeric, exactPort: port, fuzzy: fuzzy
-            ) else { return nil }
+            guard
+                let s = score(
+                    name: row.name, ports: row.ports, pid: row.pid,
+                    trimmedQuery: trimmed, isNumeric: numeric, exactPort: port, fuzzy: fuzzy
+                )
+            else { return nil }
             return (s, row.name.lowercased(), row)
         }
         return scored.sorted(by: hitOrder).map(\.value)
@@ -154,10 +156,12 @@ public enum ProcessScoring {
         // Processes already shown as an app (its representative PID) are skipped.
         let procHits: [(score: Int, key: String, value: KillTarget)] = procs.compactMap { row in
             guard !appPIDs.contains(row.pid) else { return nil }
-            guard let s = score(
-                name: row.name, ports: row.ports, pid: row.pid,
-                trimmedQuery: trimmed, isNumeric: numeric, exactPort: port, fuzzy: fuzzy
-            ) else { return nil }
+            guard
+                let s = score(
+                    name: row.name, ports: row.ports, pid: row.pid,
+                    trimmedQuery: trimmed, isNumeric: numeric, exactPort: port, fuzzy: fuzzy
+                )
+            else { return nil }
             return (s, row.name.lowercased(), KillTarget(name: row.name, pid: row.pid, isApp: false))
         }
         let sortedProcs = procHits.sorted(by: hitOrder)

@@ -1,8 +1,8 @@
-import Foundation
-import Combine
-import SwiftUI
 import AppKit
+import Combine
+import Foundation
 import ServiceManagement
+import SwiftUI
 
 final class ThemeStore: ObservableObject {
     // Shared instance so AppDelegate (which hosts ContentView in an
@@ -51,6 +51,9 @@ final class ThemeStore: ObservableObject {
     /// `search_placeholder`: what the empty search field says, exactly. The
     /// default text lives in the config file, so empty means none.
     @Published private(set) var searchPlaceholder = ""
+    /// Written on each pin, not on Save Config, so kept outside `settings`.
+    @Published private(set) var pinnedAppIDs: [String] = []
+    @Published private(set) var barScript = ""
 
     enum AddExtraScanRootError: Error {
         case notDirectory
@@ -64,7 +67,7 @@ final class ThemeStore: ObservableObject {
                 return "Please select a directory"
             case .alreadyIncluded:
                 return "Directory is already covered by scan roots"
-            case let .overlapsExistingRoot(path):
+            case .overlapsExistingRoot(let path):
                 return "Overlaps with existing root: \(path)"
             case .riskySystemRoot:
                 return "Refusing risky system root (/, /System, /Library, /private)"
@@ -108,7 +111,7 @@ final class ThemeStore: ObservableObject {
 
         // First, scan raw config for invalid values before applying
         if let raw = try? String(contentsOf: configPath, encoding: .utf8) {
-            for line in raw.split(whereSeparator: \ .isNewline) {
+            for line in raw.split(whereSeparator: \.isNewline) {
                 // Stripped as the apply pass strips it below: a trailing
                 // `# note` would fail to parse here and be clamped there, silently.
                 let stripped = ConfigFileLines.stripComment(String(line))
@@ -121,7 +124,8 @@ final class ThemeStore: ObservableObject {
                 let value = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
 
                 switch key {
-                case "ui_tint_red", "ui_tint_green", "ui_tint_blue", "ui_tint_opacity", "ui_font_opacity", "ui_border_opacity":
+                case "ui_tint_red", "ui_tint_green", "ui_tint_blue", "ui_tint_opacity", "ui_font_opacity",
+                    "ui_border_opacity":
                     if let parsed = Double(value), parsed < 0 || parsed > 1 {
                         warnings.append("\(key)=\(value) invalid (expected 0-1)")
                     }
@@ -132,19 +136,28 @@ final class ThemeStore: ObservableObject {
                 case "inner_gap":
                     appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.innerGapRange)
                 case "ui_surface_radius":
-                    appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.surfaceRadiusRange)
+                    appendRangeWarning(
+                        &warnings, key: key, value: value, range: AppConstants.ThemeUI.surfaceRadiusRange)
                 case "layout":
                     if LauncherLayout(configValue: value) == nil {
                         let expected = LauncherLayout.allCases.map(\.rawValue).joined(separator: " or ")
                         warnings.append("\(key)=\(value) invalid (expected \(expected))")
                     }
                 case "file_scan_depth":
-                    if let parsed = Int(value), parsed < AppConstants.FileScan.minDepth || parsed > AppConstants.FileScan.maxDepth {
-                        warnings.append("\(key)=\(value) invalid (must be \(AppConstants.FileScan.minDepth)-\(AppConstants.FileScan.maxDepth))")
+                    if let parsed = Int(value),
+                        parsed < AppConstants.FileScan.minDepth || parsed > AppConstants.FileScan.maxDepth
+                    {
+                        warnings.append(
+                            "\(key)=\(value) invalid (must be \(AppConstants.FileScan.minDepth)-\(AppConstants.FileScan.maxDepth))"
+                        )
                     }
                 case "file_scan_limit":
-                    if let parsed = Int(value), parsed < AppConstants.FileScan.minLimit || parsed > AppConstants.FileScan.maxLimit {
-                        warnings.append("\(key)=\(value) invalid (must be \(AppConstants.FileScan.minLimit)-\(AppConstants.FileScan.maxLimit))")
+                    if let parsed = Int(value),
+                        parsed < AppConstants.FileScan.minLimit || parsed > AppConstants.FileScan.maxLimit
+                    {
+                        warnings.append(
+                            "\(key)=\(value) invalid (must be \(AppConstants.FileScan.minLimit)-\(AppConstants.FileScan.maxLimit))"
+                        )
                     }
                 case "ui_background_image":
                     if !value.isEmpty {
@@ -232,7 +245,8 @@ final class ThemeStore: ObservableObject {
         ConfigFileLines.upsert(&lines, key: "ui_font_green", value: String(format: "%.2f", settings.fontGreen))
         ConfigFileLines.upsert(&lines, key: "ui_font_blue", value: String(format: "%.2f", settings.fontBlue))
         ConfigFileLines.upsert(&lines, key: "ui_font_opacity", value: String(format: "%.2f", settings.fontOpacity))
-        ConfigFileLines.upsert(&lines, key: "ui_border_thickness", value: String(format: "%.2f", settings.borderThickness))
+        ConfigFileLines.upsert(
+            &lines, key: "ui_border_thickness", value: String(format: "%.2f", settings.borderThickness))
         ConfigFileLines.upsert(&lines, key: "ui_border_red", value: String(format: "%.2f", settings.borderRed))
         ConfigFileLines.upsert(&lines, key: "ui_border_green", value: String(format: "%.2f", settings.borderGreen))
         ConfigFileLines.upsert(&lines, key: "ui_border_blue", value: String(format: "%.2f", settings.borderBlue))
@@ -272,9 +286,13 @@ final class ThemeStore: ObservableObject {
         // Background image
         if let bgPath = settings.backgroundImagePath, !bgPath.isEmpty {
             ConfigFileLines.upsert(&lines, key: "ui_background_image", value: bgPath)
-            ConfigFileLines.upsert(&lines, key: "ui_background_image_mode", value: settings.backgroundImageMode.rawValue)
-            ConfigFileLines.upsert(&lines, key: "ui_background_image_opacity", value: String(format: "%.2f", settings.backgroundImageOpacity))
-            ConfigFileLines.upsert(&lines, key: "ui_background_image_blur", value: String(format: "%.1f", settings.backgroundImageBlur))
+            ConfigFileLines.upsert(
+                &lines, key: "ui_background_image_mode", value: settings.backgroundImageMode.rawValue)
+            ConfigFileLines.upsert(
+                &lines, key: "ui_background_image_opacity",
+                value: String(format: "%.2f", settings.backgroundImageOpacity))
+            ConfigFileLines.upsert(
+                &lines, key: "ui_background_image_blur", value: String(format: "%.1f", settings.backgroundImageBlur))
         } else {
             ConfigFileLines.remove(&lines, key: "ui_background_image")
             ConfigFileLines.remove(&lines, key: "ui_background_image_mode")
@@ -283,10 +301,10 @@ final class ThemeStore: ObservableObject {
         }
 
         // Settings blur multiplier
-        ConfigFileLines.upsert(&lines, key: "settings_blur_multiplier", value: String(format: "%.2f", settings.settingsBlurMultiplier))
+        ConfigFileLines.upsert(
+            &lines, key: "settings_blur_multiplier", value: String(format: "%.2f", settings.settingsBlurMultiplier))
 
-        // Running apps switcher
-        ConfigFileLines.upsert(&lines, key: "running_apps_placement", value: settings.runningAppsPlacement.rawValue)
+        ConfigFileLines.upsert(&lines, key: BarSlot.configKey, value: settings.barSlot.rawValue)
         ConfigFileLines.upsert(&lines, key: "inner_gap", value: String(format: "%.0f", settings.innerGap))
         ConfigFileLines.upsert(&lines, key: "layout", value: settings.layout.rawValue)
         ConfigFileLines.upsert(
@@ -305,9 +323,13 @@ final class ThemeStore: ObservableObject {
             value: settings.aiAllowRemoteContext ? "true" : "false")
 
         // Empty-state super actions launchpad
-        ConfigFileLines.upsert(&lines, key: "super_actions_enabled", value: settings.superActionsEnabled ? "true" : "false")
+        ConfigFileLines.upsert(
+            &lines, key: "super_actions_enabled", value: settings.superActionsEnabled ? "true" : "false")
 
         ConfigFileLines.upsert(&lines, key: "animations_enabled", value: settings.animationsEnabled ? "true" : "false")
+        ConfigFileLines.upsert(
+            &lines, key: "christmas_decorations", value: settings.christmasDecorations ? "true" : "false")
+        ConfigFileLines.upsert(&lines, key: "christmas_snow", value: String(format: "%g", settings.christmasSnowAmount))
 
         do {
             try ConfigFileLines.render(lines).write(to: path, atomically: true, encoding: .utf8)
@@ -371,8 +393,9 @@ final class ThemeStore: ObservableObject {
         let resolvedSize = max(8, baseSize * uiScale)
         let resolvedName = settings.fontName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !resolvedName.isEmpty,
-           let fontName = resolveUsableFontName(resolvedName),
-           let custom = NSFont(name: fontName, size: resolvedSize) {
+            let fontName = resolveUsableFontName(resolvedName),
+            let custom = NSFont(name: fontName, size: resolvedSize)
+        {
             return custom
         }
 
@@ -394,7 +417,9 @@ final class ThemeStore: ObservableObject {
 
         let lowered = query.lowercased()
         var startsWithMatches = allFonts.filter { $0.lowercased().hasPrefix(lowered) }
-        let containsMatches = allFonts.filter { !$0.lowercased().hasPrefix(lowered) && $0.lowercased().contains(lowered) }
+        let containsMatches = allFonts.filter {
+            !$0.lowercased().hasPrefix(lowered) && $0.lowercased().contains(lowered)
+        }
         startsWithMatches.append(contentsOf: containsMatches)
         return Array(startsWithMatches.prefix(limit))
     }
@@ -441,7 +466,8 @@ final class ThemeStore: ObservableObject {
         }
 
         var isDirectory = ObjCBool(false)
-        guard FileManager.default.fileExists(atPath: normalizedPath, isDirectory: &isDirectory), isDirectory.boolValue else {
+        guard FileManager.default.fileExists(atPath: normalizedPath, isDirectory: &isDirectory), isDirectory.boolValue
+        else {
             return .notDirectory
         }
 
@@ -453,7 +479,9 @@ final class ThemeStore: ObservableObject {
             return .alreadyIncluded
         }
 
-        if let overlap = extraFileScanRoots.first(where: { pathContains($0, normalizedPath) || pathContains(normalizedPath, $0) }) {
+        if let overlap = extraFileScanRoots.first(where: {
+            pathContains($0, normalizedPath) || pathContains(normalizedPath, $0)
+        }) {
             return .overlapsExistingRoot(overlap)
         }
 
@@ -503,11 +531,12 @@ final class ThemeStore: ObservableObject {
         // away tuned values on every load. Accepted cost: a hand-written
         // `ui_theme` no longer beats ui_* keys already in the file.
         if let themeValue = ConfigFileLines.keyValues(raw)["ui_theme"],
-           let preset = BuiltinThemePreset.preset(forThemeName: themeValue) {
+            let preset = BuiltinThemePreset.preset(forThemeName: themeValue)
+        {
             applyBuiltinTheme(preset)
         }
 
-        for line in raw.split(whereSeparator: \ .isNewline) {
+        for line in raw.split(whereSeparator: \.isNewline) {
             let stripped = ConfigFileLines.stripComment(String(line)).trimmingCharacters(in: .whitespacesAndNewlines)
             if stripped.isEmpty {
                 continue
@@ -662,6 +691,14 @@ final class ThemeStore: ObservableObject {
                 if let parsed = parseBool(value) {
                     settings.animationsEnabled = parsed
                 }
+            case "christmas_decorations":
+                if let parsed = parseBool(value) {
+                    settings.christmasDecorations = parsed
+                }
+            case "christmas_snow":
+                if let parsed = Double(value), parsed.isFinite {
+                    settings.christmasSnowAmount = parsed
+                }
             case "hints_enabled":
                 if let parsed = parseBool(value) {
                     hintsEnabled = parsed
@@ -688,17 +725,6 @@ final class ThemeStore: ObservableObject {
                 if let parsed = parseUnitDouble(value) {
                     settings.settingsBlurMultiplier = parsed
                 }
-            case "running_apps_placement":
-                // The setting is now a simple on/off (running apps render inside
-                // the search bar, not as a placed floating strip). Legacy values
-                // top/right/bottom all mean "on" - normalize them to `.right`
-                // (canonical on) so the stored config converges on the new model
-                // on next save. Unknown/empty values fall back to off.
-                if let placement = RunningAppsPlacement(rawValue: value.lowercased()) {
-                    settings.runningAppsPlacement = placement == .none ? .none : .right
-                } else {
-                    settings.runningAppsPlacement = .none
-                }
             case _
             where key == LauncherHotkeyConfig.key
                 || ShortcutBindingTable.definition(configKey: key) != nil:
@@ -709,9 +735,36 @@ final class ThemeStore: ObservableObject {
         }
 
         ShortcutBindings.shared.apply(settings.shortcutBindings)
+        applyBarConfig(ConfigFileLines.keyValues(raw))
 
         // Keeps the Settings picker in step when the config file is what changed.
         settings.uiTheme = detectBuiltinTheme(for: settings)
+    }
+
+    private func applyBarConfig(_ entries: [String: String]) {
+        let bar = EngineBridge.shared.barConfig(entries: entries)
+        settings.barSlot = bar.flatMap { BarSlot(rawValue: $0.slot) } ?? .running
+        pinnedAppIDs = bar?.pinned ?? []
+        barScript = bar?.script ?? ""
+    }
+
+    /// Nil when the config cannot be written.
+    func togglePinnedApp(_ id: String) -> PinChange? {
+        let path = Self.configPath()
+        guard let raw = try? String(contentsOf: path, encoding: .utf8) else { return nil }
+        let saved = ConfigFileLines.parseList(ConfigFileLines.keyValues(raw)[BarSlot.pinnedAppsKey] ?? "")
+        let (ids, change) = BarPins.toggled(saved, id, limit: EngineBridge.maxPinnedApps)
+        guard change != .full else { return change }
+        var lines = ConfigFileLines.parse(raw)
+        ConfigFileLines.upsert(&lines, key: BarSlot.pinnedAppsKey, value: ConfigFileLines.renderList(ids))
+        let rendered = ConfigFileLines.render(lines)
+        do {
+            try rendered.write(to: path, atomically: true, encoding: .utf8)
+        } catch {
+            return nil
+        }
+        pinnedAppIDs = EngineBridge.shared.barConfig(entries: ConfigFileLines.keyValues(rendered))?.pinned ?? ids
+        return change
     }
 
     private static func configPath() -> URL {
@@ -733,7 +786,7 @@ final class ThemeStore: ObservableObject {
         }
 
         guard let raw = try? String(contentsOf: path, encoding: .utf8),
-              let repaired = ConfigFileLines.repairingLegacyDamage(raw)
+            let repaired = ConfigFileLines.repairingLegacyDamage(raw)
         else {
             return
         }
@@ -931,100 +984,111 @@ final class ThemeStore: ObservableObject {
     }
 
     private static let defaultConfigContents = """
-# look configuration
-# Generated on first launch. Edit values and press Cmd+Shift+; to reload.
+        # look configuration
+        # Generated on first launch. Edit values and press Cmd+Shift+; to reload.
 
-# Backend indexing
-app_scan_roots=/Applications,/System/Applications,/System/Applications/Utilities,/System/Library/CoreServices/Applications,/System/Library/CoreServices/Finder.app/Contents/Applications
-app_scan_depth=3
-app_exclude_paths=
-app_exclude_names=
-file_scan_roots=Desktop,Documents,Downloads
-file_scan_extra_roots=
-file_scan_depth=4
-file_scan_limit=8000
-file_exclude_paths=
-ignored_patterns_sample=
-# File ignore patterns. Gitignore-style path globs: *, **, ?, [abc].
-# Format: ignored_patterns_<group>=Pattern1|Pattern2|Pattern3
-# macOS/Linux usually use ~/... or /... ; on Windows, C:\\... is the safest documented form and ~ expands to your home dir.
-# ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp
-# ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm
-# ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part
-lazy_indexing_enabled=true
-backend_log_level=error
-launch_at_login=true
-skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data,deriveddata,pods,vendor,out,coverage,tmp,cache,venv
+        # Backend indexing
+        app_scan_roots=/Applications,/System/Applications,/System/Applications/Utilities,/System/Library/CoreServices/Applications,/System/Library/CoreServices/Finder.app/Contents/Applications
+        app_scan_depth=3
+        app_exclude_paths=
+        app_exclude_names=
+        file_scan_roots=Desktop,Documents,Downloads
+        file_scan_extra_roots=
+        file_scan_depth=4
+        file_scan_limit=8000
+        file_exclude_paths=
+        ignored_patterns_sample=
+        # File ignore patterns. Gitignore-style path globs: *, **, ?, [abc].
+        # Format: ignored_patterns_<group>=Pattern1|Pattern2|Pattern3
+        # macOS/Linux usually use ~/... or /... ; on Windows, C:\\... is the safest documented form and ~ expands to your home dir.
+        # ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp
+        # ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm
+        # ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part
+        lazy_indexing_enabled=true
+        backend_log_level=error
+        launch_at_login=true
+        skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data,deriveddata,pods,vendor,out,coverage,tmp,cache,venv
 
-# UI theme
-# Preset: catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle,
-# liquid (liquid needs macOS 26; it falls back to the classic surface below that).
-# A preset supplies base values; the ui_* keys below override it. The name stays
-# recorded as you tune, until you pick Custom. Empty = only the keys below.
-ui_theme=
-ui_tint_red=0.08
-ui_tint_green=0.10
-ui_tint_blue=0.12
-ui_tint_opacity=0.55
-ui_blur_material=hudWindow
-ui_blur_opacity=0.95
-ui_font_name=SF Pro Text
-ui_font_size=14
-ui_font_red=0.96
-ui_font_green=0.96
-ui_font_blue=0.98
-ui_font_opacity=0.96
-ui_border_thickness=1.0
-ui_border_red=1.0
-ui_border_green=1.0
-ui_border_blue=1.0
-ui_border_opacity=0.12
+        # UI theme
+        # Preset: catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle,
+        # liquid (liquid needs macOS 26; it falls back to the classic surface below that).
+        # A preset supplies base values; the ui_* keys below override it. The name stays
+        # recorded as you tune, until you pick Custom. Empty = only the keys below.
+        ui_theme=
+        ui_tint_red=0.08
+        ui_tint_green=0.10
+        ui_tint_blue=0.12
+        ui_tint_opacity=0.55
+        ui_blur_material=hudWindow
+        ui_blur_opacity=0.95
+        ui_font_name=SF Pro Text
+        ui_font_size=14
+        ui_font_red=0.96
+        ui_font_green=0.96
+        ui_font_blue=0.98
+        ui_font_opacity=0.96
+        ui_border_thickness=1.0
+        ui_border_red=1.0
+        ui_border_green=1.0
+        ui_border_blue=1.0
+        ui_border_opacity=0.12
 
-# Running apps switcher: none, top, right, bottom
-running_apps_placement=right
+        # Right end of the search bar: running, pinned, todo, script, none
+        bar_slot=running
+        # With bar_slot=pinned: up to nine app ids, filled by Pin to bar on an app row
+        pinned_apps=
+        # With bar_slot=script: a command, or the path of a script, whose first
+        # output line the bar shows
+        bar_script=
 
-# Inner gap (points, 0-24) between the three home panes; 0 = classic flat layout
-inner_gap=7
-ui_surface_radius=1.50
+        # Inner gap (points, 0-24) between the three home panes; 0 = classic flat layout
+        inner_gap=7
+        ui_surface_radius=1.50
 
-# Window layout: split (results + preview) or compact (smaller, results only)
-layout=split
+        # Window layout: split (results + preview) or compact (smaller, results only)
+        layout=split
 
-# Apple Intelligence / AI features. ai_provider: appleIntelligence | ollama
-ai_enabled=true
-ai_provider=appleIntelligence
-# Ollama (local) settings, used when ai_provider=ollama.
-ollama_host=http://localhost:11434
-ollama_model=qwen3.5:4b
+        # Apple Intelligence / AI features. ai_provider: appleIntelligence | ollama
+        ai_enabled=true
+        ai_provider=appleIntelligence
+        # Ollama (local) settings, used when ai_provider=ollama.
+        ollama_host=http://localhost:11434
+        ollama_model=qwen3.5:4b
 
-# Whether the calendar, clipboard, and remembered facts may be attached to
-# prompts when the AI provider is NOT on this machine (a remote ollama_host, or
-# a future cloud provider). Off means those answers are computed without that
-# context and say so.
-ai_allow_remote_context=false
+        # Whether the calendar, clipboard, and remembered facts may be attached to
+        # prompts when the AI provider is NOT on this machine (a remote ollama_host, or
+        # a future cloud provider). Off means those answers are computed without that
+        # context and say so.
+        ai_allow_remote_context=false
 
-# Super actions: empty-state launchpad of quick toggles / actions.
-# false hides the strip and disables its keyboard accelerators.
-super_actions_enabled=false
+        # Super actions: empty-state launchpad of quick toggles / actions.
+        # false hides the strip and disables its keyboard accelerators.
+        super_actions_enabled=false
 
-# Launcher animations (open cascade, selection glide, caret glide).
-# false shows every change instantly.
-animations_enabled=true
+        # Launcher animations (open cascade, selection glide, caret glide).
+        # false shows every change instantly.
+        animations_enabled=true
 
-# The hint line along the bottom and the author link. false hides both.
-hints_enabled=true
+        # Christmas decorations over any theme: falling snow, glowing lights behind the
+        # panels (dark themes), a tree behind the results and a snowman search icon.
+        christmas_decorations=false
+        # How much snow falls with them: 1, 1.25, 1.5 or 2 times the default.
+        christmas_snow=1
 
-# Search bar placeholder. Empty shows none.
-search_placeholder=Type whatever you want
+        # The hint line along the bottom and the author link. false hides both.
+        hints_enabled=true
 
-# Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3
-alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq
-alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed
-alias_term=Terminal|iTerm|iTerm2|Ghostty|WezTerm|Alacritty|Kitty|Warp
-alias_chat=Slack|Discord|Telegram|Messages
-alias_music=Spotify|Apple Music|Music
-alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
-"""
+        # Search bar placeholder. Empty shows none.
+        search_placeholder=Type whatever you want
+
+        # Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3
+        alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq
+        alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed
+        alias_term=Terminal|iTerm|iTerm2|Ghostty|WezTerm|Alacritty|Kitty|Warp
+        alias_chat=Slack|Discord|Telegram|Messages
+        alias_music=Spotify|Apple Music|Music
+        alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
+        """
 
     private static func loadThemeSettings(from data: Data?) -> ThemeSettings {
         guard let data else {
@@ -1048,8 +1112,8 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
         if object["lazyIndexingEnabled"] == nil {
             object["lazyIndexingEnabled"] = true
         }
-        if object["runningAppsPlacement"] == nil {
-            object["runningAppsPlacement"] = ThemeSettings.default.runningAppsPlacement.rawValue
+        if object["barSlot"] == nil {
+            object["barSlot"] = ThemeSettings.default.barSlot.rawValue
         }
         if object["aiEnabled"] == nil {
             object["aiEnabled"] = ThemeSettings.default.aiEnabled
@@ -1068,6 +1132,12 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
         }
         if object["animationsEnabled"] == nil {
             object["animationsEnabled"] = ThemeSettings.default.animationsEnabled
+        }
+        if object["christmasDecorations"] == nil {
+            object["christmasDecorations"] = ThemeSettings.default.christmasDecorations
+        }
+        if object["christmasSnowAmount"] == nil {
+            object["christmasSnowAmount"] = ThemeSettings.default.christmasSnowAmount
         }
         if object["layout"] == nil {
             object["layout"] = ThemeSettings.default.layout.rawValue

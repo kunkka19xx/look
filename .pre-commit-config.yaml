@@ -40,6 +40,12 @@ repos:
         pass_filenames: false
         types: [rust]
 
+      - id: swift-format
+        name: swift-format (macOS app, auto-fix)
+        entry: ./scripts/format-swift.sh
+        language: system
+        files: ^apps/macos/.*\.swift$
+
       - id: cargo-check-core
         name: cargo check (core workspace)
         entry: cargo check --workspace --manifest-path core/Cargo.toml

@@ -51,7 +51,7 @@ struct LookbookBrowseSection: View {
                 HStack(spacing: 8) {
                     Text(message)
                         .foregroundStyle(themeStore.warningColor())
-                    Button("Try again") { catalog.load(force: true) }
+                    Button("Try again") { catalog.load() }
                         .buttonStyle(.plain)
                         .foregroundStyle(themeStore.accentColor())
                 }
@@ -97,7 +97,9 @@ struct LookbookBrowseSection: View {
     @ViewBuilder
     private func name(_ entry: LookbookCatalog.Entry) -> some View {
         if let readme = catalog.readme(for: entry) {
-            Button { NSWorkspace.shared.open(readme) } label: {
+            Button {
+                NSWorkspace.shared.open(readme)
+            } label: {
                 Text(entry.name)
                     .underline()
                     .foregroundStyle(themeStore.accentColor())
@@ -115,7 +117,8 @@ struct LookbookBrowseSection: View {
     private func card(_ entry: LookbookCatalog.Entry) -> some View {
         let elsewhere = !entry.platforms.contains(LookbookCatalog.thisPlatform)
         let absent = entry.requires.filter { catalog.missing.contains($0) }
-        let here = installed.contains(entry.id)
+        let here =
+            installed.contains(entry.id)
             || (!entry.files.isEmpty && entry.files.allSatisfy(present.contains))
 
         VStack(alignment: .leading, spacing: 4) {
@@ -401,9 +404,10 @@ struct LookbookInstallSheet: View {
 
     private func read() async {
         let asking = LookbookPresent.Request(declarations: entry.files, scripts: entry.bin)
-        replaces = await Task.detached(priority: .userInitiated) {
-            EngineBridge.shared.lookbookPresent(asking)
-        }.value?.all.sorted() ?? []
+        replaces =
+            await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.lookbookPresent(asking)
+            }.value?.all.sorted() ?? []
 
         guard let fetched = await LookbookCatalog.shared.fetchFiles(for: entry) else {
             failure = "Could not read \(entry.id) from lookbook."
@@ -416,9 +420,14 @@ struct LookbookInstallSheet: View {
             // Nil means it is not a file of blocks at all. A preview that
             // came back with problems is still installable: part of it
             // parsed, and the sheet shows what did not.
-            guard let preview = await Task.detached(priority: .userInitiated, operation: {
-                EngineBridge.shared.lookbookPreview(toml: contents)
-            }).value else {
+            guard
+                let preview = await Task.detached(
+                    priority: .userInitiated,
+                    operation: {
+                        EngineBridge.shared.lookbookPreview(toml: contents)
+                    }
+                ).value
+            else {
                 failure = "\(file.name) is not a declaration Look can read."
                 working = false
                 return

@@ -283,7 +283,7 @@ in
       example = lib.literalExpression ''
         {
           ui_tint_opacity = 0.93;
-          running_apps_placement = "right";
+          bar_slot = "running";
           file_scan_extra_roots = [ "~/Projects" "/mnt/data" ];
           ai_enabled = false;
         }

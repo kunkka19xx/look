@@ -4,10 +4,10 @@ import PackageDescription
 let package = Package(
     name: "LauncherLogic",
     platforms: [
-        .macOS(.v13),
+        .macOS(.v13)
     ],
     products: [
-        .library(name: "LauncherLogic", targets: ["LauncherLogic"]),
+        .library(name: "LauncherLogic", targets: ["LauncherLogic"])
     ],
     targets: [
         .target(
@@ -43,6 +43,7 @@ let package = Package(
                 "Support/Actions/MentionAttachments.swift",
                 "Support/SingleInstanceLock.swift",
                 "Models/LauncherResult.swift",
+                "Models/BarSlot.swift",
                 "Support/QuickActions/LaunchpadTileModel.swift",
                 "Support/QuickActions/LaunchpadGrid.swift",
                 "Models/SourceLevel.swift",

@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 import IOKit
 import IOKit.ps
 import SwiftUI
@@ -130,7 +130,10 @@ nonisolated enum SystemInfoCommand {
         let osName = getMacOSName(osVersion: osVersion)
         return [
             SystemInfoItem(label: "Model", value: model, isHeader: false),
-            SystemInfoItem(label: "macOS", value: "\(osName) \(osVersion.majorVersion).\(osVersion.minorVersion).\(osVersion.patchVersion)", isHeader: false)
+            SystemInfoItem(
+                label: "macOS",
+                value: "\(osName) \(osVersion.majorVersion).\(osVersion.minorVersion).\(osVersion.patchVersion)",
+                isHeader: false),
         ]
     }
 
@@ -195,11 +198,13 @@ nonisolated enum SystemInfoCommand {
             SystemInfoItem(label: "", value: "Memory", isHeader: true),
             SystemInfoItem(label: "Total", value: String(format: "%.1f GB", physicalGB), isHeader: false),
             SystemInfoItem(label: "Used", value: String(format: "%.0f MB", usedMB), isHeader: false),
-            SystemInfoItem(label: "Cached", value: String(format: "%.0f MB", cachedMB), isHeader: false)
+            SystemInfoItem(label: "Cached", value: String(format: "%.0f MB", cachedMB), isHeader: false),
         ]
     }
 
-    private static func getCPUItems(currentLoad: host_cpu_load_info?, previousLoad: host_cpu_load_info?) -> [SystemInfoItem] {
+    private static func getCPUItems(
+        currentLoad: host_cpu_load_info?, previousLoad: host_cpu_load_info?
+    ) -> [SystemInfoItem] {
         var cpuBrand = "Unknown"
         let cpuCount = ProcessInfo.processInfo.processorCount
         let cpuCores = ProcessInfo.processInfo.activeProcessorCount
@@ -226,7 +231,7 @@ nonisolated enum SystemInfoCommand {
             SystemInfoItem(label: "", value: "CPU", isHeader: true),
             SystemInfoItem(label: "Chip", value: cpuBrand, isHeader: false),
             SystemInfoItem(label: "Cores", value: "\(cpuCores) (\(cpuCount) logical)", isHeader: false),
-            SystemInfoItem(label: "Usage", value: "\(usage)%", isHeader: false)
+            SystemInfoItem(label: "Usage", value: "\(usage)%", isHeader: false),
         ]
     }
 
@@ -268,17 +273,19 @@ nonisolated enum SystemInfoCommand {
         }
 
         for source in sources {
-            guard let desc = IOPSGetPowerSourceDescription(snapshotRef, source)?.takeUnretainedValue() as? [String: Any] else {
+            guard let desc = IOPSGetPowerSourceDescription(snapshotRef, source)?.takeUnretainedValue() as? [String: Any]
+            else {
                 continue
             }
             guard let type = desc[kIOPSTypeKey as String] as? String,
-                  type == kIOPSInternalBatteryType as String
+                type == kIOPSInternalBatteryType as String
             else { continue }
 
             var items: [SystemInfoItem] = [SystemInfoItem(label: "", value: "Battery", isHeader: true)]
 
             if let current = desc[kIOPSCurrentCapacityKey as String] as? Int,
-               let maxCap = desc[kIOPSMaxCapacityKey as String] as? Int, maxCap > 0 {
+                let maxCap = desc[kIOPSMaxCapacityKey as String] as? Int, maxCap > 0
+            {
                 let pct = Int(Double(current) / Double(maxCap) * 100)
                 items.append(SystemInfoItem(label: "Charge", value: "\(pct)%", isHeader: false))
             }
@@ -307,7 +314,7 @@ nonisolated enum SystemInfoCommand {
     private static func getUptimeItems() -> [SystemInfoItem] {
         return [
             SystemInfoItem(label: "", value: "Uptime", isHeader: true),
-            SystemInfoItem(label: "Time", value: SystemUptime.formattedShort(), isHeader: false)
+            SystemInfoItem(label: "Time", value: SystemUptime.formattedShort(), isHeader: false),
         ]
     }
 
@@ -315,17 +322,23 @@ nonisolated enum SystemInfoCommand {
         var items: [SystemInfoItem] = [SystemInfoItem(label: "", value: "Disk", isHeader: true)]
 
         let fileManager = FileManager.default
-        guard let volumes = fileManager.mountedVolumeURLs(
-            includingResourceValuesForKeys: [.volumeNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey],
-            options: [.skipHiddenVolumes]
-        ) else {
+        guard
+            let volumes = fileManager.mountedVolumeURLs(
+                includingResourceValuesForKeys: [
+                    .volumeNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey,
+                ],
+                options: [.skipHiddenVolumes]
+            )
+        else {
             return items
         }
 
         for volumeURL in volumes {
-            guard let resourceValues = try? volumeURL.resourceValues(forKeys: [
-                .volumeNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey
-            ]) else {
+            guard
+                let resourceValues = try? volumeURL.resourceValues(forKeys: [
+                    .volumeNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey,
+                ])
+            else {
                 continue
             }
 
@@ -334,11 +347,12 @@ nonisolated enum SystemInfoCommand {
             let freeGB = Double(resourceValues.volumeAvailableCapacityForImportantUsage ?? 0) / (1024 * 1024 * 1024)
             let usedPercent = totalGB > 0 ? ((totalGB - freeGB) / totalGB) * 100 : 0
 
-            items.append(SystemInfoItem(
-                label: name,
-                value: String(format: "%.0fGB / %.0fGB (%.0f%%)", freeGB, totalGB, usedPercent),
-                isHeader: false
-            ))
+            items.append(
+                SystemInfoItem(
+                    label: name,
+                    value: String(format: "%.0fGB / %.0fGB (%.0f%%)", freeGB, totalGB, usedPercent),
+                    isHeader: false
+                ))
         }
 
         return items

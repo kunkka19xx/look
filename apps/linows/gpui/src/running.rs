@@ -1,7 +1,5 @@
-//! The running apps strip at the right end of the top bar: up to nine
-//! icons, each wearing the digit that activates it with Alt. Read on each
-//! open; hidden in the compact layout, while translating, and when the
-//! `running_apps_placement` setting says none.
+//! The running apps strip: up to nine icons, each wearing the digit that
+//! activates it with Alt. Drawn by `barslot`.
 
 use gpui::{
     Animation, AnimationExt, Context, Div, FontWeight, SharedString, div, img, prelude::*, px, svg,
@@ -25,13 +23,18 @@ const BADGE_OFFSET: f32 = -4.0;
 const BADGE_FONT: f32 = 9.0;
 const ICON_OPACITY: f32 = 0.82;
 const SCRIM_ALPHA: f32 = 0.72;
-const PLACEMENT_KEY: &str = "running_apps_placement";
-const PLACEMENT_NONE: &str = "none";
+
+/// The strip at its fullest.
+pub const FULL_WIDTH: f32 = MAX_ITEMS as f32 * theme::TOP_ROW_HEIGHT + (MAX_ITEMS - 1) as f32 * GAP;
 
 #[derive(Default)]
 pub struct RunningApps {
     apps: Vec<RunningApp>,
-    enabled: bool,
+}
+
+/// Where in a strip of `total` the tile answering to `key` sits.
+pub fn key_position(total: usize, key: u8) -> Option<usize> {
+    badge_keys(total).iter().position(|k| *k == key)
 }
 
 /// The keys the first `total` apps answer to, in display order.
@@ -42,37 +45,21 @@ fn badge_keys(total: usize) -> Vec<u8> {
 }
 
 impl RunningApps {
-    /// The setting, then the list, off the UI thread.
     pub fn refresh(&mut self, cx: &mut Context<Launcher>) {
         bg::fetch(
             cx,
             || {
-                let enabled = crate::theme::entries()
-                    .get(PLACEMENT_KEY)
-                    .is_none_or(|v| v != PLACEMENT_NONE);
-                let apps = if enabled {
-                    let mut apps = process::list_running_apps();
-                    apps.truncate(MAX_ITEMS);
-                    apps
-                } else {
-                    Vec::new()
-                };
-                (enabled, apps)
+                let mut apps = process::list_running_apps();
+                apps.truncate(MAX_ITEMS);
+                apps
             },
-            |this, (enabled, apps), _| {
-                this.running.enabled = enabled;
-                this.running.apps = apps;
-            },
+            |this, apps, _| this.bar.running.apps = apps,
         );
     }
 
     /// Alt+digit. True when an app answered to it.
     pub fn activate_key(&self, key: u8, shell: &Shell, cx: &mut Context<Launcher>) -> bool {
-        if !self.enabled {
-            return false;
-        }
-        let keys = badge_keys(self.apps.len());
-        let Some(at) = keys.iter().position(|k| *k == key) else {
+        let Some(at) = key_position(self.apps.len(), key) else {
             return false;
         };
         self.activate(at, shell, cx);
@@ -97,108 +84,131 @@ impl RunningApps {
             .detach();
     }
 
-    /// The strip, or nothing to show.
     pub fn render(
         &self,
         icons: &gpui::Entity<IconStore>,
         th: &Theme,
         cx: &mut Context<Launcher>,
     ) -> Option<Div> {
-        if !self.enabled || self.apps.is_empty() {
-            return None;
-        }
-        let keys = badge_keys(self.apps.len());
-        let items = self.apps.iter().enumerate().map(|(i, app)| {
-            let picture = app.desktop_id.as_ref().and_then(|desktop_id| {
-                let path = desktop_id
-                    .strip_prefix("app:")
-                    .unwrap_or(desktop_id)
-                    .to_string();
-                icons.update(cx, |store, cx| {
-                    store.get(
-                        IconRequest {
-                            kind: "app".into(),
-                            path,
-                            id: Some(desktop_id.clone()),
-                            size: theme::TOP_ROW_HEIGHT,
-                        },
-                        cx,
-                    )
+        let tiles = self
+            .apps
+            .iter()
+            .map(|app| {
+                app.desktop_id.as_ref().map(|id| Tile {
+                    path: id.strip_prefix("app:").unwrap_or(id).to_string(),
+                    id: id.clone(),
                 })
-            });
-            let icon = div()
-                .size(px(theme::TOP_ROW_HEIGHT))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(theme::TOP_ROW_HEIGHT * 0.22))
-                .overflow_hidden()
-                .opacity(ICON_OPACITY)
-                .child(match picture {
-                    Some(image) => img(image)
-                        .size(px(theme::TOP_ROW_HEIGHT))
-                        .into_any_element(),
-                    None => svg()
-                        .path(glyphs::APP)
-                        .size(px(theme::SEARCH_ICON))
-                        .text_color(th.text_muted)
-                        .into_any_element(),
-                });
-            let badge = div()
-                .absolute()
-                .top(px(BADGE_OFFSET))
-                .right(px(BADGE_OFFSET))
-                .size(px(BADGE))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(BADGE / 2.0))
-                .bg(theme::wash(
-                    th.card_face(),
-                    theme::scrim_for(th.text),
-                    SCRIM_ALPHA,
-                ))
-                .border(px(1.0))
-                .border_color(theme::mix(th.text, th.border, 0.45))
-                .font_family(th.mono_family.clone())
-                .text_size(px(BADGE_FONT))
-                .font_weight(FontWeight::BOLD)
-                .text_color(th.text)
-                .child(SharedString::from(keys[i].to_string()));
-            // Each tile slides in from the left behind the bar, staggered.
-            let delay = motion::slide_delay(i);
-            let duration = motion::dur(motion::SLIDE_MS);
-            let total = delay + duration;
-            div()
-                .id(("running", i))
-                .relative()
-                .flex_shrink_0()
-                .cursor_pointer()
-                .hover(|s| s.opacity(1.0))
-                .on_click(
-                    cx.listener(move |this, _, _, cx| this.running.activate(i, &this.shell, cx)),
-                )
-                .child(icon)
-                .child(badge)
-                .with_animation(
-                    ("strip", i),
-                    Animation::new(total),
-                    move |tile, progress| {
-                        let t = motion::curve(motion::staggered(progress, total, delay, duration));
-                        tile.opacity(t)
-                            .left(px(motion::rise(0.0, motion::STRIP_SHIFT, t)))
-                    },
-                )
-        });
-        Some(
-            div()
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .gap(px(GAP))
-                .children(items),
-        )
+            })
+            .collect();
+        strip(tiles, icons, th, cx, |this, i, cx| {
+            this.bar.running.activate(i, &this.shell, cx)
+        })
     }
+}
+
+/// What a tile's icon is looked up by.
+pub struct Tile {
+    pub id: String,
+    pub path: String,
+}
+
+/// One badged tile per app, or nothing for none. `activate` takes the
+/// clicked tile's place.
+pub fn strip(
+    tiles: Vec<Option<Tile>>,
+    icons: &gpui::Entity<IconStore>,
+    th: &Theme,
+    cx: &mut Context<Launcher>,
+    activate: fn(&mut Launcher, usize, &mut Context<Launcher>),
+) -> Option<Div> {
+    if tiles.is_empty() {
+        return None;
+    }
+    let keys = badge_keys(tiles.len());
+    let items = tiles.into_iter().enumerate().map(|(i, tile)| {
+        let picture = tile.and_then(|tile| {
+            icons.update(cx, |store, cx| {
+                store.get(
+                    IconRequest {
+                        kind: "app".into(),
+                        path: tile.path,
+                        id: Some(tile.id),
+                        size: theme::TOP_ROW_HEIGHT,
+                    },
+                    cx,
+                )
+            })
+        });
+        let icon = div()
+            .size(px(theme::TOP_ROW_HEIGHT))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(theme::TOP_ROW_HEIGHT * 0.22))
+            .overflow_hidden()
+            .opacity(ICON_OPACITY)
+            .child(match picture {
+                Some(image) => img(image)
+                    .size(px(theme::TOP_ROW_HEIGHT))
+                    .into_any_element(),
+                None => svg()
+                    .path(glyphs::APP)
+                    .size(px(theme::SEARCH_ICON))
+                    .text_color(th.text_muted)
+                    .into_any_element(),
+            });
+        let badge = div()
+            .absolute()
+            .top(px(BADGE_OFFSET))
+            .right(px(BADGE_OFFSET))
+            .size(px(BADGE))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(BADGE / 2.0))
+            .bg(theme::wash(
+                th.card_face(),
+                theme::scrim_for(th.text),
+                SCRIM_ALPHA,
+            ))
+            .border(px(1.0))
+            .border_color(theme::mix(th.text, th.border, 0.45))
+            .font_family(th.mono_family.clone())
+            .text_size(px(BADGE_FONT))
+            .font_weight(FontWeight::BOLD)
+            .text_color(th.text)
+            .child(SharedString::from(keys[i].to_string()));
+        // Each tile slides in from the left behind the bar, staggered.
+        let delay = motion::slide_delay(i);
+        let duration = motion::dur(motion::SLIDE_MS);
+        let total = delay + duration;
+        div()
+            .id(("running", i))
+            .relative()
+            .flex_shrink_0()
+            .cursor_pointer()
+            .hover(|s| s.opacity(1.0))
+            .on_click(cx.listener(move |this, _, _, cx| activate(this, i, cx)))
+            .child(icon)
+            .child(badge)
+            .with_animation(
+                ("strip", i),
+                Animation::new(total),
+                move |tile, progress| {
+                    let t = motion::curve(motion::staggered(progress, total, delay, duration));
+                    tile.opacity(t)
+                        .left(px(motion::rise(0.0, motion::STRIP_SHIFT, t)))
+                },
+            )
+    });
+    Some(
+        div()
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .gap(px(GAP))
+            .children(items),
+    )
 }
 
 #[cfg(test)]

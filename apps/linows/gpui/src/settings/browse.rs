@@ -139,9 +139,9 @@ impl Browse {
     /// A fresh settings session: the catalog is read again, and the sheet
     /// and this visit's installs are gone.
     ///
-    /// Read again rather than kept for the process, as macOS does. Keeping it
-    /// leaves the list, the per-platform gate and the file list all able to
-    /// disagree with the files an install then fetches from a moving branch.
+    /// Read again rather than kept for the process. Keeping it leaves the
+    /// list, the per-platform gate and the file list all able to disagree
+    /// with the files an install then fetches from a moving branch.
     /// The catalog is a few KB and this is an explicit action.
     pub(super) fn forget(&mut self) {
         self.reading = Reading::Pending;

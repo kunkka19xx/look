@@ -31,9 +31,10 @@ enum ScheduleContextProvider {
             return Listing(summary: summary, label: "reminders", events: [], reminders: reminders)
         }
         if let window = EngineBridge.shared.aiQueryWindow(query) {
-            guard let (summary, events) = EventKitService.shared.eventsSummary(
-                from: window.start, to: window.end,
-                emptyText: "No events \(window.label).")
+            guard
+                let (summary, events) = EventKitService.shared.eventsSummary(
+                    from: window.start, to: window.end,
+                    emptyText: "No events \(window.label).")
             else { return nil }
             return Listing(
                 summary: summary, label: "for \(window.label)", events: events, reminders: [])

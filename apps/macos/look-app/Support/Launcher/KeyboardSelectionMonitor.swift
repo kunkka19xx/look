@@ -63,7 +63,7 @@ final class KeyboardSelectionMonitor {
         onToggleHelp: @escaping @MainActor () -> Void,
         onDismissHelpIfVisible: @escaping @MainActor () -> Bool,
         onSelectCommandByIndex: @escaping @MainActor (Int) -> Void,
-        onActivateRunningApp: @escaping @MainActor (Int) -> Bool = { _ in false },
+        onActivateBarSlot: @escaping @MainActor (Int) -> Bool = { _ in false },
         onActivateSession: @escaping @MainActor (Int) -> Bool = { _ in false },
         /// Escape inside a drill-down goes back one level. True means it did.
         onPopLevel: (@MainActor () -> Bool)? = nil,
@@ -91,7 +91,9 @@ final class KeyboardSelectionMonitor {
         onLaunchpadMnemonic: (@MainActor (Character) -> Bool)? = nil,
         onLaunchpadEscape: (@MainActor () -> Bool)? = nil,
         onHideSelectedApp: (@MainActor () -> Bool)? = nil,
-        onToggleSessionLayout: (@MainActor () -> Void)? = nil
+        onToggleSessionLayout: (@MainActor () -> Void)? = nil,
+        /// The settings chords the Theme Settings menu item cannot draw itself.
+        onToggleSettings: (@MainActor () -> Void)? = nil
     ) {
         guard monitor == nil else { return }
         self.isKillConfirmationActive = killConfirmationActive
@@ -224,6 +226,12 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
+            // ⌘, reaches the menu item; its aliases only reach here.
+            if shortcuts.matchesAlias(.viewSettings, event), let onToggleSettings {
+                onToggleSettings()
+                return nil
+            }
+
             // ⌘. stops a running generation (the macOS-standard cancel chord).
             // The handler gates itself, so it only fires while streaming.
             if shortcuts.matches(.aiStop, event) {
@@ -271,7 +279,9 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
-            if (event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter) && flags == [.command, .shift] {
+            if (event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter)
+                && flags == [.command, .shift]
+            {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                     onSelectCommandByIndex(1)
                 }
@@ -346,9 +356,10 @@ final class KeyboardSelectionMonitor {
                             return nil
                         }
                         Self.logger.debug(
-                            "⌘+\(key, privacy: .public) ignored (command mode maps 1-\(AppConstants.Launcher.commandCatalog.count, privacy: .public))")
+                            "⌘+\(key, privacy: .public) ignored (command mode maps 1-\(AppConstants.Launcher.commandCatalog.count, privacy: .public))"
+                        )
                     } else {
-                        // AI mode hides the running-apps strip, so the digits
+                        // AI mode hides the bar slot, so the digits
                         // jump to the Nth listed conversation there (⌘0 being
                         // the tenth). Sessions are asked first and both handlers
                         // gate themselves, so only one can claim the chord.
@@ -361,12 +372,12 @@ final class KeyboardSelectionMonitor {
                         // The strip badges are 1-9, so 0 addresses no icon and
                         // falls through to its "Actual Size" menu equivalent.
                         if key > 0 {
-                            Self.logger.debug("⌘+\(key, privacy: .public) -> running-apps switcher")
-                            if onActivateRunningApp(key) {
+                            Self.logger.debug("⌘+\(key, privacy: .public) -> bar slot")
+                            if onActivateBarSlot(key) {
                                 return nil
                             }
                             Self.logger.debug(
-                                "⌘+\(key, privacy: .public) running-apps activation declined, falling through"
+                                "⌘+\(key, privacy: .public) bar slot activation declined, falling through"
                             )
                         }
                     }

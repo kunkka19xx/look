@@ -114,8 +114,7 @@ struct LauncherView: View {
     /// `plan` is set when a connector worked the question out, and is what
     /// confirming then runs. Nil means a declared `confirm` string, which the
     /// block performs in the ordinary way.
-    @State var pendingActionConfirm:
-        (blockID: String, title: String, question: String, plan: UInt64?)?
+    @State var pendingActionConfirm: (blockID: String, title: String, question: String, plan: UInt64?)?
     @State var quickActionStates: [String: ActionState] = [:]
     // The result `quickActionStates`/`quickActionInfo` were read for. Lets a refresh
     // of the SAME result keep showing what it already resolved, instead of blanking
@@ -200,6 +199,7 @@ struct LauncherView: View {
     /// no keystroke on the translation path touches the filesystem.
     @State var translateLanguages: [TranslateLanguage] = []
     @StateObject var runningAppsService = RunningAppsService()
+    @StateObject var barSlotService = BarSlotService()
     @StateObject var processModel = ProcessFinderModel()
 
     /// Live size of the whole panel, captured so a background image can be
@@ -238,13 +238,13 @@ struct LauncherView: View {
     static let hintItemBudget = 3
     static let hintSeparator = "  •  "
 
-    var runningAppsPlacement: RunningAppsPlacement {
-        themeStore.settings.runningAppsPlacement
+    var barSlot: BarSlot {
+        themeStore.settings.barSlot
     }
 
     /// Not in command mode, not showing theme settings, not showing the help
     /// screen - the coarse "nothing else has taken over the launcher" gate
-    /// shared by the running-apps strip, floating-card layout, home hint,
+    /// shared by the bar slot, floating-card layout, home hint,
     /// empty-query rest state, and delete confirmation.
     var isLauncherIdle: Bool {
         !isCommandMode && !appUIState.showsThemeSettings && !showsHelpScreen
@@ -254,45 +254,48 @@ struct LauncherView: View {
         themeStore.effectiveLayout == .compact
     }
 
-    /// AI mode hides the strip: the assistant screen is about the conversation,
-    /// not about switching apps, and the freed ⌘1-9 chords tag the listed
-    /// sessions instead (see `sessionJumpKeyLimit`). Compact is too narrow for it.
-    var shouldShowRunningAppsStrip: Bool {
-        runningAppsPlacement != .none
-            && !isCompactLayout
-            && isLauncherIdle
-            && !isAIMode
-            && !runningAppsService.items.isEmpty
+    /// AI mode hides the slot: the assistant screen is about the conversation,
+    /// and the freed ⌘1-9 chords tag the listed sessions instead (see
+    /// `sessionJumpKeyLimit`). Compact is too narrow for it.
+    var barSlotHasRoom: Bool {
+        barSlot != .none && !isCompactLayout && isLauncherIdle && !isAIMode
     }
 
     /// Activates the strip icon assigned to Cmd+`key`. The key is mapped
     /// to a visual position via the ergonomic layout in
     /// `AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey:total:)`.
-    /// On success the launcher is *not* hidden here - instead we let
-    /// `didResignActiveNotification` close it, which only fires after
+    /// On success a running app does *not* hide the launcher here - instead we
+    /// let `didResignActiveNotification` close it, which only fires after
     /// macOS has handed key-window status to the target app. Hiding
     /// synchronously raced that handoff and left the keyboard focused
     /// nowhere visible.
     @discardableResult
-    func activateRunningApp(forKey key: Int) -> Bool {
+    func activateBarSlot(forKey key: Int) -> Bool {
         let log = RunningAppsLog.logger
-        let total = runningAppsService.items.count
 
-        // The same gate as `shouldShowRunningAppsStrip`: a chord must never
-        // activate an icon that is not on screen, which is also what hands
-        // ⌘1-9 to the session list in AI mode.
-        if runningAppsPlacement == .none || isCompactLayout || !isLauncherIdle || isAIMode {
-            log.debug("⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) compact=\(self.isCompactLayout, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public) help=\(self.showsHelpScreen, privacy: .public) ai=\(self.isAIMode, privacy: .public))")
+        // The same gate as the slot's own: a chord must never activate an icon
+        // that is not on screen, which is also what hands ⌘1-9 to the session
+        // list in AI mode.
+        guard barSlotHasRoom, barSlot.takesDigitKeys else {
+            log.debug(
+                "⌘+\(key, privacy: .public) declined (slot=\(self.barSlot.rawValue, privacy: .public) compact=\(self.isCompactLayout, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public) help=\(self.showsHelpScreen, privacy: .public) ai=\(self.isAIMode, privacy: .public))"
+            )
             return false
         }
+        let total = barSlot == .pinned ? barSlotService.shownPins.count : runningAppsService.items.count
         guard let position = AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey: key, total: total) else {
             log.debug("⌘+\(key, privacy: .public) declined (no slot for this key, items=\(total, privacy: .public))")
             return false
         }
+        if barSlot == .pinned {
+            return openPinnedApp(at: position)
+        }
 
         let target = runningAppsService.items[position]
         let activated = runningAppsService.activate(index: position)
-        log.debug("⌘+\(key, privacy: .public) -> position \(position, privacy: .public) \(target.name, privacy: .public) (activated=\(activated, privacy: .public))")
+        log.debug(
+            "⌘+\(key, privacy: .public) -> position \(position, privacy: .public) \(target.name, privacy: .public) (activated=\(activated, privacy: .public))"
+        )
         // If activate failed (process gone, denied, etc.) didResignActive
         // won't fire and the launcher stays visible for another attempt.
         return activated
@@ -375,7 +378,8 @@ struct LauncherView: View {
 
         return AppConstants.Launcher.QuickFolder.entries.compactMap { entry in
             let normalizedTitle = entry.title.lowercased()
-            let isMatch = normalizedTitle.contains(normalized)
+            let isMatch =
+                normalizedTitle.contains(normalized)
                 || (normalizedTitle.hasPrefix(normalized)
                     && normalized.count >= AppConstants.Launcher.QuickFolder.minPrefixMatchLength)
             guard isMatch else { return nil }
@@ -420,14 +424,16 @@ struct LauncherView: View {
             // of dropping it, so it's still reachable.
             let rivalAppIndex = sourceResults.firstIndex { item in
                 item.kind == .app
-                    && item.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == quickFolder.title.lowercased()
+                    && item.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                        == quickFolder.title.lowercased()
             }
             sourceResults.insert(quickFolder, at: rivalAppIndex.map { $0 + 1 } ?? 0)
         }
 
         if shouldInjectFinderResult {
             let hasFinder = sourceResults.contains {
-                $0.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == AppConstants.Launcher.Finder.appName
+                $0.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    == AppConstants.Launcher.Finder.appName
                     || $0.path == AppConstants.Launcher.Finder.appPath
             }
             if !hasFinder {
@@ -579,11 +585,12 @@ struct LauncherView: View {
         let tail = webSuggestionResults
         let base: [LauncherResult]
         if let urlResult {
-            base = URLRowPlacement.merged(
-                url: urlResult.result,
-                isBareHost: urlResult.tier == .bareHost,
-                into: ranked
-            ) + tail
+            base =
+                URLRowPlacement.merged(
+                    url: urlResult.result,
+                    isBareHost: urlResult.tier == .bareHost,
+                    into: ranked
+                ) + tail
         } else {
             base = ranked + tail
         }
@@ -676,7 +683,7 @@ struct LauncherView: View {
     /// Settings > Shortcuts.
     var hintItems: [String] {
         if appUIState.showsThemeSettings {
-            return ["Cmd+Shift+; apply config", "Cmd+Shift+, close settings", "Cmd+H help"]
+            return ["Cmd+Shift+; apply config", "Cmd+, close settings", "Cmd+H help"]
         }
 
         if isHideAppConfirmationVisible {
@@ -769,8 +776,8 @@ struct LauncherView: View {
     /// runs its own command, so claiming "open" there is simply wrong.
     private var enterHint: String {
         guard let id = selectedResultID,
-              let selected = displayedResults.first(where: { $0.id == id }),
-              selected.kind == .action
+            let selected = displayedResults.first(where: { $0.id == id }),
+            selected.kind == .action
         else { return "Enter open" }
         return "Enter run"
     }
@@ -797,10 +804,12 @@ struct LauncherView: View {
         let state = TodoSharedState.shared
         let stat = state.todayStat
         guard stat.total > 0 else { return nil }
-        let open = state.today?.tasks.filter { !$0.done }.map(\.name) ?? []
-        return HintBar.TodoQuickView(done: stat.done, total: stat.total, openTasks: open) {
-            enterCommandMode(commandID: AppConstants.Launcher.Command.todo, prefilledInput: "")
-        }
+        return HintBar.TodoQuickView(
+            done: stat.done, total: stat.total, openTasks: state.todayOpenTasks, onTap: openTodo)
+    }
+
+    func openTodo() {
+        enterCommandMode(commandID: AppConstants.Launcher.Command.todo, prefilledInput: "")
     }
 
     var commandNamePart: String {
@@ -918,7 +927,9 @@ struct LauncherView: View {
         // Running apps render inside the search bar (see panelContent), not as a
         // floating strip that grows the window. The launcher is always a single
         // fixed-size panel regardless of the running-apps toggle.
-        borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
+        borderedPanel(
+            windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding
+        )
         // No `.rootReveal`: its opacity rasterized the panel on every show, and
         // the bar's backdrop must draw straight through. The spawnReveal
         // cascade still animates the open.
@@ -936,6 +947,7 @@ struct LauncherView: View {
             reloadQueryRetentionPolicy()
             reloadTranslateLanguages()
             runningAppsService.refresh()
+            refreshBarSlot()
             actionController.pickedFilePaths = pickedFilePathsForTextOp()
             // A cold `lookapp <mode>`: this process launched to serve it.
             if let pending = LaunchModes.pendingQuery {
@@ -986,6 +998,13 @@ struct LauncherView: View {
         // Bumped on every show, so it stands in for the missing re-onAppear.
         .onChange(of: appearanceRevealToken) { _, _ in
             refreshLaunchpadState()
+            refreshBarSlot()
+        }
+        .onChange(of: themeStore.settings.barSlot) { _, _ in
+            refreshBarSlot()
+        }
+        .onChange(of: themeStore.pinnedAppIDs) { _, ids in
+            barSlotService.refreshPins(ids)
         }
         // A model-interpreted file recall (planner `recall` step): the AI panel
         // hands it to the main results panel, which owns file rows.
@@ -1023,156 +1042,155 @@ struct LauncherView: View {
     /// the type checker sees two short chains instead of one long one.
     private var notificationHandlers: some View {
         Color.clear
-        .onReceive(clipboardStore.$entries) { _ in
-            refreshClipboardSelectionIfNeeded()
-        }
-        .onReceive(clipboardStore.$imageEntries) { _ in
-            refreshClipboardSelectionIfNeeded()
-        }
-        .onChange(of: commandInput) { _, _ in
-            if isCommandMode {
-                if commandArgsPart.isEmpty, activeCommandID != AppConstants.Launcher.Command.sys {
-                    commandFeedback = ""
-                }
-                if activeCommandID == AppConstants.Launcher.Command.kill {
-                    if selectedKillSuggestionIndex != nil || pendingKillCandidate != nil {
-                        logUIEvent("kill input changed -> clear pending/select input='\(commandArgsPart)'")
+            .onReceive(clipboardStore.$entries) { _ in
+                refreshClipboardSelectionIfNeeded()
+            }
+            .onReceive(clipboardStore.$imageEntries) { _ in
+                refreshClipboardSelectionIfNeeded()
+            }
+            .onChange(of: commandInput) { _, _ in
+                if isCommandMode {
+                    if commandArgsPart.isEmpty, activeCommandID != AppConstants.Launcher.Command.sys {
+                        commandFeedback = ""
                     }
-                    pendingKillCandidate = nil
-                    selectedKillSuggestionIndex = nil
+                    if activeCommandID == AppConstants.Launcher.Command.kill {
+                        if selectedKillSuggestionIndex != nil || pendingKillCandidate != nil {
+                            logUIEvent("kill input changed -> clear pending/select input='\(commandArgsPart)'")
+                        }
+                        pendingKillCandidate = nil
+                        selectedKillSuggestionIndex = nil
+                    }
+                    setInitialSelection()
                 }
-                setInitialSelection()
             }
-        }
-        .onChange(of: activeCommandID) { _, newID in
-            if let newID { appUIState.lastCommandID = newID }
-            // /kill ranks the same cached snapshot; take a fresh one on entry.
-            if newID == AppConstants.Launcher.Command.kill {
-                processModel.refreshSnapshot()
+            .onChange(of: activeCommandID) { _, newID in
+                if let newID { appUIState.lastCommandID = newID }
+                // /kill ranks the same cached snapshot; take a fresh one on entry.
+                if newID == AppConstants.Launcher.Command.kill {
+                    processModel.refreshSnapshot()
+                }
             }
-        }
-        .onChange(of: appUIState.showsThemeSettings) { _, showsSettings in
-            if showsSettings {
-                showsHelpScreen = false
-                keyboardMonitor.stop()
-                NotificationCenter.default.post(name: .lookFocusSettingsInputRequested, object: nil)
-            } else {
-                startKeyboardNavigationIfNeeded()
-                focusActiveInput()
-            }
-        }
-        .onMoveCommand { direction in
-            moveSelection(direction)
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-        ) { _ in
-            focusActiveInput()
-            refreshClipboardMonitoringMode()
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
-        ) { _ in
-            // Not while a TCC dialog or one of our own file pickers is up:
-            // both steal focus, and hiding here backgrounds the app so the
-            // next prompt never appears and the picker is left orphaned.
-            if !PermissionPrompt.isPresenting, !FilePanel.isPresenting,
-                launcherWindow()?.isVisible == true
-            {
-                Logger(subsystem: "noah-code.Look", category: "window-resize")
-                    .debug("didResignActiveNotification -> hideLauncherWindow(restorePreviousApp: false)")
-                hideLauncherWindow(restorePreviousApp: false)
-            }
-            refreshClipboardMonitoringMode()
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)
-        ) { notification in
-            // Quick-action state is cached and otherwise refreshed only when
-            // the selection changes. The window keeps its query and selection
-            // across hide/show, so on re-show the panel would keep states read
-            // before the hide - stale whenever the system changed underneath
-            // (e.g. Bluetooth flipped in Control Center). Re-read on every show.
-            guard let window = notification.object as? NSWindow,
-                window === launcherWindow()
-            else { return }
-            refreshQuickActions()
-            // The query survives hide/show: re-entering `ps"` must not keep
-            // scoring pids that exited while hidden.
-            if isProcessQuery {
-                processModel.refreshSnapshot()
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in
-            reloadConfig()
-        }
-        // `lookapp reload-config` from a script: applied in place, no window.
-        .onReceive(
-            DistributedNotificationCenter.default().publisher(
-                for: LaunchModes.reloadConfigNotification)
-        ) { _ in
-            reloadConfig(announcesSuccess: false)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .lookSourceTargetsLoaded)) { _ in
-            refreshQuickActions()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .lookRefocusInputRequested)) { _ in
-            DispatchQueue.main.async {
-                focusActiveInput(recoveryDelays: [0.0], activateApp: false)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .lookActivateLauncherRequested)) { _ in
-            // AppDelegate posts this after ordering the window front, where
-            // clearing would repaint a visible panel; PomoMenuBarItem posts it
-            // while still hidden, which is the moment the timeout is for. The
-            // stamp goes either way, or a later open would judge an old hide.
-            if launcherWindow()?.isVisible == true {
-                lastHiddenAt = nil
-            } else {
-                clearQueryIfRetentionExpired()
-            }
-            activateLauncherModeAndFocus()
-            refreshClipboardMonitoringMode()
-        }
-        // `lookapp <mode>` arriving while this instance is already up.
-        .onReceive(
-            DistributedNotificationCenter.default().publisher(
-                for: LaunchModes.deliveryNotification)
-        ) { notification in
-            guard let text = notification.object as? String else { return }
-            revealLauncherWindowForLaunch()
-            activateLauncherModeAndFocus()
-            // After the reveal, which runs `clearQueryIfRetentionExpired` and
-            // would wipe the mode.
-            applyLaunchQuery(text)
-        }
-        .onReceive(
-            DistributedNotificationCenter.default().publisher(for: LaunchModes.toggleNotification)
-        ) { _ in
-            NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .lookToggleSettingsRequested)) { _ in
-            toggleThemeSettings()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .lookHideLauncherRequested)) { _ in
-            hideLauncherWindow()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .lookToggleWindowRequested)) { _ in
-            toggleWindowVisibility()
-            refreshClipboardMonitoringMode()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .lookOpenPomoRequested)) { _ in
-            DispatchQueue.main.async {
-                if !isCommandMode {
-                    enterCommandMode(commandID: AppConstants.Launcher.Command.pomo, prefilledInput: "")
+            .onChange(of: appUIState.showsThemeSettings) { _, showsSettings in
+                if showsSettings {
+                    showsHelpScreen = false
+                    keyboardMonitor.stop()
+                    NotificationCenter.default.post(name: .lookFocusSettingsInputRequested, object: nil)
                 } else {
-                    activeCommandID = AppConstants.Launcher.Command.pomo
-                    selectedCommandID = AppConstants.Launcher.Command.pomo
+                    startKeyboardNavigationIfNeeded()
+                    focusActiveInput()
                 }
             }
-        }
+            .onMoveCommand { direction in
+                moveSelection(direction)
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            ) { _ in
+                focusActiveInput()
+                refreshClipboardMonitoringMode()
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
+            ) { _ in
+                // Not while a TCC dialog or one of our own file pickers is up:
+                // both steal focus, and hiding here backgrounds the app so the
+                // next prompt never appears and the picker is left orphaned.
+                if !PermissionPrompt.isPresenting, !FilePanel.isPresenting,
+                    launcherWindow()?.isVisible == true
+                {
+                    Logger(subsystem: "noah-code.Look", category: "window-resize")
+                        .debug("didResignActiveNotification -> hideLauncherWindow(restorePreviousApp: false)")
+                    hideLauncherWindow(restorePreviousApp: false)
+                }
+                refreshClipboardMonitoringMode()
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)
+            ) { notification in
+                // Quick-action state is cached and otherwise refreshed only when
+                // the selection changes. The window keeps its query and selection
+                // across hide/show, so on re-show the panel would keep states read
+                // before the hide - stale whenever the system changed underneath
+                // (e.g. Bluetooth flipped in Control Center). Re-read on every show.
+                guard let window = notification.object as? NSWindow,
+                    window === launcherWindow()
+                else { return }
+                refreshQuickActions()
+                // The query survives hide/show: re-entering `ps"` must not keep
+                // scoring pids that exited while hidden.
+                if isProcessQuery {
+                    processModel.refreshSnapshot()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in
+                reloadConfig()
+            }
+            // `lookapp reload-config` from a script: applied in place, no window.
+            .onReceive(
+                DistributedNotificationCenter.default().publisher(
+                    for: LaunchModes.reloadConfigNotification)
+            ) { _ in
+                reloadConfig(announcesSuccess: false)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .lookSourceTargetsLoaded)) { _ in
+                refreshQuickActions()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .lookRefocusInputRequested)) { _ in
+                DispatchQueue.main.async {
+                    focusActiveInput(recoveryDelays: [0.0], activateApp: false)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .lookActivateLauncherRequested)) { _ in
+                // AppDelegate posts this after ordering the window front, where
+                // clearing would repaint a visible panel; PomoMenuBarItem posts it
+                // while still hidden, which is the moment the timeout is for. The
+                // stamp goes either way, or a later open would judge an old hide.
+                if launcherWindow()?.isVisible == true {
+                    lastHiddenAt = nil
+                } else {
+                    clearQueryIfRetentionExpired()
+                }
+                activateLauncherModeAndFocus()
+                refreshClipboardMonitoringMode()
+            }
+            // `lookapp <mode>` arriving while this instance is already up.
+            .onReceive(
+                DistributedNotificationCenter.default().publisher(
+                    for: LaunchModes.deliveryNotification)
+            ) { notification in
+                guard let text = notification.object as? String else { return }
+                revealLauncherWindowForLaunch()
+                activateLauncherModeAndFocus()
+                // After the reveal, which runs `clearQueryIfRetentionExpired` and
+                // would wipe the mode.
+                applyLaunchQuery(text)
+            }
+            .onReceive(
+                DistributedNotificationCenter.default().publisher(for: LaunchModes.toggleNotification)
+            ) { _ in
+                NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .lookToggleSettingsRequested)) { _ in
+                toggleThemeSettings()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .lookHideLauncherRequested)) { _ in
+                hideLauncherWindow()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .lookToggleWindowRequested)) { _ in
+                toggleWindowVisibility()
+                refreshClipboardMonitoringMode()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .lookOpenPomoRequested)) { _ in
+                DispatchQueue.main.async {
+                    if !isCommandMode {
+                        enterCommandMode(commandID: AppConstants.Launcher.Command.pomo, prefilledInput: "")
+                    } else {
+                        activeCommandID = AppConstants.Launcher.Command.pomo
+                        selectedCommandID = AppConstants.Launcher.Command.pomo
+                    }
+                }
+            }
     }
-
 
     private func handleRecallRequestChange(_ request: ActionController.RecallRequest?) {
         guard let request else { return }
@@ -1197,106 +1215,109 @@ struct LauncherView: View {
     /// Body of `.onChange(of: query)`, extracted so the view body stays within
     /// the type checker's budget.
     private func handleQueryChange() {
-            let clearedBySubmit = querySilentlyCleared
-            querySilentlyCleared = false
-            // A programmatic set outside AI mode (model recall filling the
-            // input): results were published directly; don't re-search over
-            // them.
-            if clearedBySubmit, !isAIMode {
+        let clearedBySubmit = querySilentlyCleared
+        querySilentlyCleared = false
+        // A programmatic set outside AI mode (model recall filling the
+        // input): results were published directly; don't re-search over
+        // them.
+        if clearedBySubmit, !isAIMode {
+            return
+        }
+        // Editing the query dismisses a pending Empty Trash confirmation,
+        // mirroring how the kill command clears its pending candidate.
+        if pendingEmptyTrashCount != nil {
+            pendingEmptyTrashCount = nil
+        }
+        if pendingHideAppResult != nil {
+            pendingHideAppResult = nil
+        }
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // `>` jumps into AI mode: the prefix is consumed once, and everything
+        // typed after is AI input until Esc leaves the mode.
+        if !isCommandMode, !isAIMode, trimmedQuery.hasPrefix(">") {
+            isAIMode = true
+            conversationCache = ConversationStore.load()
+            query = String(trimmedQuery.dropFirst())
+            return
+        }
+        if isAIMode {
+            // A submit's own input-clear: the submit just set the state this
+            // branch would wipe (feedback, confirm bar, running plan/chat).
+            if clearedBySubmit, trimmedQuery.isEmpty {
                 return
             }
-            // Editing the query dismisses a pending Empty Trash confirmation,
-            // mirroring how the kill command clears its pending candidate.
-            if pendingEmptyTrashCount != nil {
-                pendingEmptyTrashCount = nil
-            }
-            if pendingHideAppResult != nil {
-                pendingHideAppResult = nil
-            }
-            let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            // `>` jumps into AI mode: the prefix is consumed once, and everything
-            // typed after is AI input until Esc leaves the mode.
-            if !isCommandMode, !isAIMode, trimmedQuery.hasPrefix(">") {
-                isAIMode = true
-                conversationCache = ConversationStore.load()
-                query = String(trimmedQuery.dropFirst())
+            // A recall just filled the input: don't reset the cursor or fire a
+            // preview - the user is browsing history, not typing.
+            if isRecallingPrompt {
+                isRecallingPrompt = false
                 return
             }
-            if isAIMode {
-                // A submit's own input-clear: the submit just set the state this
-                // branch would wipe (feedback, confirm bar, running plan/chat).
-                if clearedBySubmit, trimmedQuery.isEmpty {
-                    return
-                }
-                // A recall just filled the input: don't reset the cursor or fire a
-                // preview - the user is browsing history, not typing.
-                if isRecallingPrompt {
-                    isRecallingPrompt = false
-                    return
-                }
-                // Any real edit moves the history cursor back to the live input.
-                promptHistoryIndex = nil
-                aiAnswer.cancel()
-                // A new keystroke dismisses a transient result (e.g. "Remembered
-                // …") so the sessions list returns.
-                actionController.clearFeedback()
-                // While browsing/searching stored conversations (no active one),
-                // don't churn the model per keystroke; typing filters the list
-                // and Enter drives everything. Instant `@` forms still preview.
-                let browsing = chat.sessionItems.isEmpty
-                    && !conversationCache.isEmpty
-                    && !trimmedQuery.contains("@")
-                if browsing {
-                    // Typing re-filters, so a new chat stays the default action.
-                    selectedConversationIndex = -1
-                    // Clearing the input cancels an in-flight preview - but not the
-                    // plan/chat a submit just kicked off (that clear is spared).
-                    actionController.handleComposeCleared()
-                } else {
-                    actionController.previewExplicitAIQuery(trimmedQuery)
-                }
-                return
-            }
-            // Editing away from `>` drops any pending or in-flight action.
-            if actionController.isPresenting || actionController.isPlanning {
-                actionController.cancel()
-            }
-            if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
-                aiAnswer.cancel()
-                enterCommandMode(commandID: cmd.id, prefilledInput: cmd.args)
-                return
-            }
-            previewLookupDefinition(for: query)
-            if !isCommandMode {
-                if showsHelpScreen {
-                    showsHelpScreen = false
-                }
-                if usesOwnResultPanel {
-                    // These render their own panels (clip history / prefix menu /
-                    // command menu / translation / process finder), not backend
-                    // results. Skip the search + AI answer entirely - otherwise a
-                    // background AI activation flips the floating layout and
-                    // flashes the old backdrop while typing. Translation only
-                    // fires on Enter.
-                    aiAnswer.cancel()
-                    setInitialSelection()
-                } else {
-                    // Search drives the AI answer card from its completion handler
-                    // (it needs the local result count to decide whether to fire).
-                    refreshSearchResults()
-                }
+            // Any real edit moves the history cursor back to the live input.
+            promptHistoryIndex = nil
+            aiAnswer.cancel()
+            // A new keystroke dismisses a transient result (e.g. "Remembered
+            // …") so the sessions list returns.
+            actionController.clearFeedback()
+            // While browsing/searching stored conversations (no active one),
+            // don't churn the model per keystroke; typing filters the list
+            // and Enter drives everything. Instant `@` forms still preview.
+            let browsing =
+                chat.sessionItems.isEmpty
+                && !conversationCache.isEmpty
+                && !trimmedQuery.contains("@")
+            if browsing {
+                // Typing re-filters, so a new chat stays the default action.
+                selectedConversationIndex = -1
+                // Clearing the input cancels an in-flight preview - but not the
+                // plan/chat a submit just kicked off (that clear is spared).
+                actionController.handleComposeCleared()
             } else {
-                aiAnswer.cancel()
+                actionController.previewExplicitAIQuery(trimmedQuery)
             }
-            // Google autocomplete rows (appended after engine results). Self-gates
-            // by mode and the online-features flag; never blocks search.
-            refreshWebSuggestions()
-            // Previously-opened URLs matching the query (url-history spec).
-            refreshRecentURLs()
+            return
+        }
+        // Editing away from `>` drops any pending or in-flight action.
+        if actionController.isPresenting || actionController.isPlanning {
+            actionController.cancel()
+        }
+        if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
+            aiAnswer.cancel()
+            enterCommandMode(commandID: cmd.id, prefilledInput: cmd.args)
+            return
+        }
+        previewLookupDefinition(for: query)
+        if !isCommandMode {
+            if showsHelpScreen {
+                showsHelpScreen = false
+            }
+            if usesOwnResultPanel {
+                // These render their own panels (clip history / prefix menu /
+                // command menu / translation / process finder), not backend
+                // results. Skip the search + AI answer entirely - otherwise a
+                // background AI activation flips the floating layout and
+                // flashes the old backdrop while typing. Translation only
+                // fires on Enter.
+                aiAnswer.cancel()
+                setInitialSelection()
+            } else {
+                // Search drives the AI answer card from its completion handler
+                // (it needs the local result count to decide whether to fire).
+                refreshSearchResults()
+            }
+        } else {
+            aiAnswer.cancel()
+        }
+        // Google autocomplete rows (appended after engine results). Self-gates
+        // by mode and the online-features flag; never blocks search.
+        refreshWebSuggestions()
+        // Previously-opened URLs matching the query (url-history spec).
+        refreshRecentURLs()
     }
 
     @ViewBuilder
-    private func borderedPanel(windowCornerRadius: CGFloat, contentSpacing: CGFloat, contentPadding: CGFloat) -> some View {
+    private func borderedPanel(
+        windowCornerRadius: CGFloat, contentSpacing: CGFloat, contentPadding: CGFloat
+    ) -> some View {
         ZStack {
             WindowAppearancePin(appearance: themeStore.themeAppearance())
                 .frame(width: 0, height: 0)
@@ -1326,6 +1347,17 @@ struct LauncherView: View {
             )
             .contentShape(Rectangle())
             .onTapGesture { focusActiveInput() }
+
+            if themeStore.showsChristmasDecorations() {
+                // A figure stands behind the results once there are some: the
+                // tree in the split layout's gap, Santa in the compact corner.
+                WinterSceneView(
+                    snowColor: themeStore.snowColor(),
+                    snowAmount: themeStore.settings.christmasSnowAmount,
+                    figure: isLauncherIdle && !hidesResultsForEmptyQuery
+                        ? (isCompactLayout ? .santa : .tree)
+                        : nil)
+            }
         }
         .coordinateSpace(name: Self.panelCoordinateSpace)
         .environment(\.panelGeometry, barFloatsFree ? panelGeometry : nil)
@@ -1338,13 +1370,15 @@ struct LauncherView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous))
         .overlay { borderOverlay(cornerRadius: windowCornerRadius) }
-        .modifier(PanelDecorationsModifier(
-            testHint: { testHintOverlay },
-            copyright: { copyrightOverlay },
-            killBar: { killConfirmationOverlay },
-            deleteBar: { deleteConfirmationOverlay },
-            hideAppBar: { hideAppConfirmationOverlay }
-        ))
+        .modifier(
+            PanelDecorationsModifier(
+                testHint: { testHintOverlay },
+                copyright: { copyrightOverlay },
+                killBar: { killConfirmationOverlay },
+                deleteBar: { deleteConfirmationOverlay },
+                hideAppBar: { hideAppConfirmationOverlay }
+            )
+        )
         .layoutPriority(1)
     }
 
@@ -1371,7 +1405,7 @@ struct LauncherView: View {
             // too. The launcher's copy below is out of the hierarchy while
             // Settings owns the panel, which made a reload look like a no-op.
             banner
-            ThemeSettingsView(settings: $themeStore.settings)
+            ThemeSettingsView(settings: $themeStore.settings, barSlotService: barSlotService)
         } else {
             if showsTopRowBar {
                 // The search field and running-apps icons always share one
@@ -1389,14 +1423,8 @@ struct LauncherView: View {
                     HStack(alignment: .center, spacing: 10) {
                         searchInputBar(showsBackground: false)
                             .frame(maxWidth: .infinity)
-                        if shouldShowRunningAppsStrip {
-                            RunningAppsStripView(
-                                service: runningAppsService,
-                                themeStore: themeStore,
-                                onActivate: { key in _ = activateRunningApp(forKey: key) },
-                                revealToken: appearanceRevealToken
-                            )
-                            .frame(maxWidth: .infinity)
+                        if barSlotHasRoom {
+                            barSlotView
                         }
                         // Compact has no footer row; the strip's end of the bar is free.
                         if isCompactLayout {
@@ -1460,9 +1488,11 @@ struct LauncherView: View {
                         Text(fileRecallEmptyMessage)
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
                             .foregroundStyle(themeStore.fontColor())
-                        Text("Try a type (\u{201C}pdfs\u{201D}), a time (\u{201C}last week\u{201D}), or a place (\u{201C}downloads\u{201D}).")
-                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                            .foregroundStyle(themeStore.mutedTextColor())
+                        Text(
+                            "Try a type (\u{201C}pdfs\u{201D}), a time (\u{201C}last week\u{201D}), or a place (\u{201C}downloads\u{201D})."
+                        )
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                        .foregroundStyle(themeStore.mutedTextColor())
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1577,10 +1607,11 @@ struct LauncherView: View {
         let all = conversationCache
         let limit = AppConstants.Launcher.AISessions.jumpKeyLimit
         guard !term.isEmpty, Int(term) == nil else { return Array(all.prefix(limit)) }
-        return Array(all.filter { convo in
-            convo.title.lowercased().contains(term)
-                || convo.items.contains { $0.text.lowercased().contains(term) }
-        }.prefix(limit))
+        return Array(
+            all.filter { convo in
+                convo.title.lowercased().contains(term)
+                    || convo.items.contains { $0.text.lowercased().contains(term) }
+            }.prefix(limit))
     }
 
     /// AI compose text (the input with `>` already consumed on entry).
@@ -1601,9 +1632,11 @@ struct LauncherView: View {
 
     /// One-line greyed preview of a conversation's most recent message.
     func conversationSnippet(_ convo: AIConversation) -> String {
-        guard let raw = convo.items.last(where: {
-            !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        })?.text else { return "" }
+        guard
+            let raw = convo.items.last(where: {
+                !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            })?.text
+        else { return "" }
         let flat = raw.replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return flat.count > 200 ? String(flat.prefix(200)) + "…" : flat
@@ -1804,7 +1837,10 @@ struct LauncherView: View {
                         if let choice = actionController.pendingChoice {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Which one?  ·  number + Enter  ·  Esc cancels")
-                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .semibold))
+                                    .font(
+                                        themeStore.uiFont(
+                                            size: CGFloat(themeStore.settings.fontSize - 3), weight: .semibold)
+                                    )
                                     .foregroundStyle(themeStore.mutedTextColor())
                                 ForEach(Array(choice.candidates.enumerated()), id: \.element.id) { index, candidate in
                                     Button {
@@ -1813,17 +1849,28 @@ struct LauncherView: View {
                                     } label: {
                                         HStack(spacing: 8) {
                                             Text("\(index + 1)")
-                                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
+                                                .font(
+                                                    themeStore.uiFont(
+                                                        size: CGFloat(themeStore.settings.fontSize - 2),
+                                                        weight: .semibold)
+                                                )
                                                 .foregroundStyle(themeStore.accentColor())
                                             Text(candidate.label)
-                                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
+                                                .font(
+                                                    themeStore.uiFont(
+                                                        size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium
+                                                    )
+                                                )
                                                 .foregroundStyle(themeStore.fontColor())
                                                 .lineLimit(1)
                                             Spacer()
                                         }
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 6)
-                                        .background(themeStore.surfaceFill(0.55), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
+                                        .background(
+                                            themeStore.surfaceFill(0.55),
+                                            in: RoundedRectangle(
+                                                cornerRadius: themeStore.controlRadius, style: .continuous))
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -1862,7 +1909,8 @@ struct LauncherView: View {
                         } else if chat.sessionItems.isEmpty {
                             if !filteredConversations.isEmpty {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    ForEach(Array(filteredConversations.enumerated()), id: \.element.id) { index, convo in
+                                    ForEach(Array(filteredConversations.enumerated()), id: \.element.id) {
+                                        index, convo in
                                         ConversationRowView(
                                             conversation: convo,
                                             snippet: conversationSnippet(convo),
@@ -1871,7 +1919,8 @@ struct LauncherView: View {
                                             themeStore: themeStore,
                                             namespace: conversationSelectionNamespace,
                                             onOpen: { openConversation(convo) },
-                                            onDelete: { deleteConversation(convo) })
+                                            onDelete: { deleteConversation(convo) }
+                                        )
                                         .id(convo.id)
                                     }
                                 }
@@ -1879,11 +1928,19 @@ struct LauncherView: View {
                             } else {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text("Add events and reminders, or ask anything")
-                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
+                                        .font(
+                                            themeStore.uiFont(
+                                                size: CGFloat(themeStore.settings.fontSize), weight: .semibold)
+                                        )
                                         .foregroundStyle(themeStore.fontColor())
-                                    Text("add lunch with Sarah tomorrow 1pm\nremind me to call mom @ 5pm\nhow do I list open ports on macOS?")
-                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                                        .foregroundStyle(themeStore.mutedTextColor())
+                                    Text(
+                                        "add lunch with Sarah tomorrow 1pm\nremind me to call mom @ 5pm\nhow do I list open ports on macOS?"
+                                    )
+                                    .font(
+                                        themeStore.uiFont(
+                                            size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular)
+                                    )
+                                    .foregroundStyle(themeStore.mutedTextColor())
                                 }
                                 .padding(.horizontal, 4)
                                 .padding(.top, 6)
@@ -1943,8 +2000,9 @@ struct LauncherView: View {
     /// composing (live preview), when the indicator shows in the activity slot.
     private var thinkingTurnID: UUID? {
         guard actionController.isPlanning,
-              let turn = sessionTurns.last,
-              turn.items.last?.kind == .user else { return nil }
+            let turn = sessionTurns.last,
+            turn.items.last?.kind == .user
+        else { return nil }
         return turn.id
     }
 
@@ -2037,41 +2095,43 @@ struct LauncherView: View {
     }
 
     private func answerBody(_ item: ActionSessionItem) -> some View {
-            VStack(alignment: .leading, spacing: 6) {
-                // Mid-stream the text renders raw (markdown is parsed once the
-                // answer settles - see ActionSessionItem.isStreaming).
-                if item.segments.isEmpty {
-                    Text(item.text)
+        VStack(alignment: .leading, spacing: 6) {
+            // Mid-stream the text renders raw (markdown is parsed once the
+            // answer settles - see ActionSessionItem.isStreaming).
+            if item.segments.isEmpty {
+                Text(item.text)
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                    .foregroundStyle(themeStore.fontColor())
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            ForEach(Array(item.segments.enumerated()), id: \.offset) { _, segment in
+                if segment.kind == "code" {
+                    AICodeBlockView(code: segment.text, language: segment.language, themeStore: themeStore)
+                } else {
+                    Text(inlineMarkdown(segment.text))
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                         .foregroundStyle(themeStore.fontColor())
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                ForEach(Array(item.segments.enumerated()), id: \.offset) { _, segment in
-                    if segment.kind == "code" {
-                        AICodeBlockView(code: segment.text, language: segment.language, themeStore: themeStore)
-                    } else {
-                        Text(inlineMarkdown(segment.text))
-                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                            .foregroundStyle(themeStore.fontColor())
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
             }
-            .padding(10)
-            .background(themeStore.surfaceFill(0.55), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
-            // Floated into the bubble's own corner padding rather than added as
-            // a row: a row reserves its full height on EVERY answer just to
-            // hold one icon. Hidden mid-stream, when there is nothing whole to
-            // take yet.
-            .overlay(alignment: .bottomTrailing) {
-                if !item.isStreaming, !item.text.isEmpty {
-                    AnswerCopyButton(text: item.text, themeStore: themeStore)
-                        .padding(.trailing, 6)
-                        .padding(.bottom, 4)
-                }
+        }
+        .padding(10)
+        .background(
+            themeStore.surfaceFill(0.55), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous)
+        )
+        // Floated into the bubble's own corner padding rather than added as
+        // a row: a row reserves its full height on EVERY answer just to
+        // hold one icon. Hidden mid-stream, when there is nothing whole to
+        // take yet.
+        .overlay(alignment: .bottomTrailing) {
+            if !item.isStreaming, !item.text.isEmpty {
+                AnswerCopyButton(text: item.text, themeStore: themeStore)
+                    .padding(.trailing, 6)
+                    .padding(.bottom, 4)
             }
+        }
     }
 
     /// Inline markdown (bold, italic, `code`, links) for chat prose. Block
@@ -2093,7 +2153,8 @@ struct LauncherView: View {
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(themeStore.surfaceFill(0.92), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
+        .background(
+            themeStore.surfaceFill(0.92), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 
     /// Stop the running generation without leaving the chat (Esc ends the whole
@@ -2122,7 +2183,8 @@ struct LauncherView: View {
                 .foregroundStyle(themeStore.mutedTextColor())
         }
         .padding(10)
-        .background(themeStore.surfaceFill(0.92), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
+        .background(
+            themeStore.surfaceFill(0.92), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 
     @ViewBuilder
@@ -2602,8 +2664,9 @@ struct LauncherView: View {
                 }
             }
             .padding(.horizontal, spansWindow ? -contentPadding : 0)
-            .shadow(color: lifts ? .black.opacity(0.25) : .clear,
-                    radius: lifts ? 7 : 0, x: 0, y: lifts ? 3 : 0)
+            .shadow(
+                color: lifts ? .black.opacity(0.25) : .clear,
+                radius: lifts ? 7 : 0, x: 0, y: lifts ? 3 : 0)
     }
 
     /// Wraps a single-panel home state (translation, AI session, recent empty) in
@@ -2634,10 +2697,10 @@ struct LauncherView: View {
     /// the list should span full width (suggestions, nothing selected, etc.).
     private var previewResult: LauncherResult? {
         guard !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
-              let selectedResult = displayedResults.first(where: { $0.id == previewSelectionID })
+            let selectedResult = displayedResults.first(where: { $0.id == previewSelectionID })
                 ?? displayedResults.first(where: { $0.id == selectedResultID }),
-              AppConstants.Launcher.WebSuggestion.text(fromResultID: selectedResult.id) == nil,
-              AppConstants.Launcher.WebURL.url(fromResultID: selectedResult.id) == nil
+            AppConstants.Launcher.WebSuggestion.text(fromResultID: selectedResult.id) == nil,
+            AppConstants.Launcher.WebURL.url(fromResultID: selectedResult.id) == nil
         else { return nil }
         return selectedResult
     }
@@ -2720,8 +2783,8 @@ struct LauncherView: View {
     @ViewBuilder
     private var killConfirmationOverlay: some View {
         if isCommandMode,
-           activeCommandID == AppConstants.Launcher.Command.kill,
-           let pendingKillCandidate
+            activeCommandID == AppConstants.Launcher.Command.kill,
+            let pendingKillCandidate
         {
             KillConfirmationBar(
                 candidate: pendingKillCandidate,
@@ -2769,10 +2832,11 @@ struct LauncherView: View {
         }
     }
 
-
 }
 
-private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar: View, DeleteBar: View, HideAppBar: View>: ViewModifier {
+private struct PanelDecorationsModifier<
+    TestHint: View, Copyright: View, KillBar: View, DeleteBar: View, HideAppBar: View
+>: ViewModifier {
     @ViewBuilder let testHint: () -> TestHint
     @ViewBuilder let copyright: () -> Copyright
     @ViewBuilder let killBar: () -> KillBar

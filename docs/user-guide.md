@@ -17,7 +17,7 @@
 > | `Cmd+<letter>` (super-action tiles)     | `Alt+<letter>`    |
 > | `Cmd+P`                                 | `Ctrl+P`          |
 > | `Cmd+Shift+P`                           | `Ctrl+Shift+P`    |
-> | `Cmd+Shift+,`                           | `Ctrl+Shift+,`    |
+> | `Cmd+,`                                 | `Ctrl+,`          |
 > | `Cmd+Shift+;`                           | `Ctrl+Shift+;`    |
 >
 > "Reveal in Finder" reads as "Reveal in Explorer" on Windows and "Show in Files" on Linux.
@@ -32,7 +32,7 @@ brew install --cask look
 
 On first launch, Look will index your apps, files, and folders in the background. You can start using it immediately - results appear as indexing completes.
 
-To bind `Cmd+Space` to Look, disable Spotlight's default shortcut: `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`. To keep Spotlight, set `launcher_hotkey` in `~/.look/config` to another shortcut (for example `launcher_hotkey=ctrl+space`) and reload with `Cmd+Shift+;`.
+Look listens on `Cmd+Space` from the first launch, so Spotlight's default shortcut has to go: `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`. To keep Spotlight, set `launcher_hotkey` in `~/.look/config` to another shortcut (for example `launcher_hotkey=ctrl+space`) and reload with `Cmd+Shift+;`. Everything else is in the settings panel, on `Cmd+,`.
 
 ## Permissions
 
@@ -253,7 +253,7 @@ The name is `<block>#<control>`, exactly as the app's manifest wrote it. The til
 
 **Keep the command light.** `value` runs unattended - the point of a live tile - so it is capped: **two seconds**, then it is killed along with anything it started, and 16 KB of output. Within a tile's `refresh` window nothing runs at all, so most opens cost nothing. Read something and print it; a slow command will be cut off and the tile keeps its last good reading. Anything that needs to fetch, build, or wait belongs behind `press`, or in a script that caches to a file the tile just reads.
 
-A tile that fails says so and keeps what it last showed - one broken tile never blanks the strip. Its key follows the same rules as the built-ins: it fires with `Cmd` on macOS and `Alt` on Linux/Windows, a letter already used by a tile on the screen is not given away, `Cmd+Q` belongs to quitting Look, and either way the tile still works, it just has no key.
+A tile that fails says so and keeps what it last showed - one broken tile never blanks the strip. Its key follows the same rules as the built-ins: it fires with `Cmd` on macOS and `Alt` on Linux/Windows, a letter already used by a tile on the screen is not given away, `Cmd+Q` belongs to Look itself (it hides the launcher; `Cmd+Option+Q` quits it), and either way the tile still works, it just has no key.
 
 ## AI answers and web suggestions (macOS, Linux, Windows)
 
@@ -261,9 +261,9 @@ Look can answer questions and look things up without leaving the launcher. These
 
 - **Answer card.** A question, an entity that has no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather, currency, crypto) shows a Spotlight-style card above the results. Sources resolve independently and each appears as it lands - **DuckDuckGo** and **Wikipedia**. Arithmetic doesn't answer here anymore - see the **Calculator row** under Query prefixes below. On macOS, when no web source has an answer it falls back to a streaming on-device **Apple Intelligence** answer. Click a source label to open it; the copy button copies that block.
 - **Search suggestions.** For plain text queries (2+ characters), Google autocomplete rows appear under the results. `Enter` on a suggestion (or `Cmd+Enter` on your query) runs a web search in your default browser.
-- **Query rewrite** _(macOS only)_. When a natural-language query finds nothing locally, the on-device model rewrites it into Look's prefix grammar and searches again. It never overrides results you can already see - it only runs when the raw query came up empty.
+- **Model interpretation** _(macOS only)_. When a natural-language query finds nothing locally, the on-device model turns the phrasing into a structured file query - type, time, place - and searches again; it never rewrites your query string. Results say when they were interpreted, or when the search had to be relaxed to find near-misses. It never overrides results you can already see - it only runs when the raw query came up empty.
 
-**Platform note.** The web answer card and Google suggestions are available on macOS, Linux, and Windows. The on-device LLM - query rewrite and the Apple Intelligence answer fallback - is **macOS-only**; there is no on-device model on Linux/Windows, so there the card uses web sources (DuckDuckGo, Wikipedia, currency/weather/crypto) only. The `ai_enabled` toggle is shared across platforms.
+**Platform note.** The web answer card and Google suggestions are available on macOS, Linux, and Windows. The on-device LLM - model interpretation and the Apple Intelligence answer fallback - is **macOS-only**; there is no on-device model on Linux/Windows, so there the card uses web sources (DuckDuckGo, Wikipedia, currency/weather/crypto) only. The `ai_enabled` toggle is shared across platforms.
 
 **Network note.** While AI features are on, the answer card's web sources and the Google suggestions send your typed query to those services (DuckDuckGo, Wikipedia, Google). The on-device model makes no network calls of its own. Set `ai_enabled = false` to disable all of it and run fully offline.
 
@@ -274,7 +274,7 @@ Don't remember the prefixes? Type a single `"` to open a menu listing every pref
 - `a"term` -> apps only
 - `f"term` -> files only
 - `d"term` -> folders only
-- `rc"term` -> recent files/folders, newest activity first (optional filter; `rc"` alone lists all). Blends what you've opened through Look with what recently appeared/changed on disk (downloads, screenshots). macOS for now.
+- `rc"term` -> recent files/folders, newest activity first (optional filter; `rc"` alone lists all). Blends what you've opened through Look with what recently appeared/changed on disk (downloads, screenshots).
 - `r"pattern` -> regex search (case-insensitive)
 - `ps"term` -> running processes; `Enter` measures that process's CPU, `Cmd+D` (`Ctrl+D`) kills it, `Cmd+C` (`Ctrl+C`) copies its PID
 - `c"term` -> clipboard history search
@@ -293,7 +293,7 @@ Arithmetic is detected automatically too (no prefix). Type an expression like `2
 
 Clipboard mode (`c"`):
 
-- stores recent text clips for the running app session (history size is configurable via `clipboard_history_limit`, see File-only settings below),
+- stores recent text clips in the shared `look.db`, so they survive a quit (history size is configurable via `clipboard_history_limit`, see File-only settings below),
 - `Enter` on a clipboard row copies that content back to clipboard,
 - `Cmd+I` (`Ctrl+I` on Linux and Windows) pastes the selected row straight into the app you came from, text clips and image clips (`ci"`) alike. The clip stays on the clipboard afterwards, exactly as `Enter` leaves it. On macOS it needs Look enabled under System Settings > Privacy & Security > Accessibility, and it cannot reach a secure input field (a password prompt, `sudo` in a terminal) - Look says so instead of pasting nothing. On Linux it types `Ctrl+Shift+V` when the app you came from is a terminal, since `Ctrl+V` there is the literal-next key; on a Wayland session that offers no way to type into another window, Look says so and leaves the clip copied for you to paste by hand (GNOME needs Look's shell extension, which it installs itself),
 - `Cmd+D` (`Ctrl+D` on Linux/Windows) removes the selected row from Look's clipboard history.
@@ -468,7 +468,7 @@ Commands are shell text, run by your login shell, so your own scripts are first-
 
 ## Settings and config
 
-Open settings with `Cmd+Shift+,`.
+Open settings with `Cmd+,`. The `Cmd+Shift+,` Look shipped with still works, and both are rebindable in `Settings > Shortcuts`.
 
 ### Appearance / Themes
 
@@ -532,16 +532,19 @@ Then turn `Blur behind window` on. Look is a layer-shell surface on niri, so the
 
 Where there is no frost at all (GNOME 50 and earlier, plain sway, X11 without KWin) Look stays clear glass and `Blur Opacity` applies only when you have set a background image. Driving blur from your own compositor config still works; Look's request is additional, not exclusive.
 
-**Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. AI mode (`>`) hides the row regardless of this setting, and its digits open listed conversations instead. The launcher window stays the same size either way.
+**Search Bar**: a dropdown for what the right end of the search bar holds. With anything but **Nothing** the search field takes the left half and the slot the right.
 
-Behavior:
+- **Running Apps** - running-app icons, right-aligned and growing leftward as more apps open. Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows.
+  - **Stable** - icons sit in alphabetical order and don't shuffle when you switch apps. The activation digit for a given app stays the same until you launch or quit something.
+  - **Ergonomic badge keys** - easier-to-reach keys are assigned first. With 5 running apps the badges are `1, 2, 3, 8, 9` (skipping the harder middle keys); `5/6/7` only get used when you have 7+ apps running.
+  - **Linux focus** - Look's GNOME Shell extension activates the app's most-recent window on Wayland; X11 uses `_NET_ACTIVE_WINDOW` via x11rb; sway/Hyprland use `wlr-foreign-toplevel-management`; i3 uses `i3-msg`; niri uses its own IPC socket, which also scrolls the view to the window's workspace.
+  - **Windowless apps** (Finder with no Finder windows, etc.) get a fresh window via a Dock-style "reopen" so you don't see an empty flash.
+- **Pinned Apps** - up to nine apps you chose, with the same badges and digits as the running apps. Pin one from its row's actions menu (`Cmd+K` on macOS; **Pin to bar**, which reads **Unpin from bar** afterwards). Opening a pin focuses the app if it is already running. Under the dropdown, Settings lists the pins in bar order, each with an (x) to remove it. The order is the order you pinned them in.
+- **Today's Task** - one of today's unfinished tasks, picked anew each time the launcher opens, with the day's count beside it (`1/3`). Click it to open `/todo`. With nothing planned it reads `Plan today`.
+- **Script** - the first line a command of yours prints. The command is `bar_script` in `~/.look/config`: either a one-liner such as `bar_script=date +"%H:%M  %a %d"`, or the path of a script of your own when it needs more than a line: `bar_script=~/.look/bin/bar.sh` on macOS and Linux, `bar_script=%USERPROFILE%\.look\bin\bar.cmd` on Windows, where `cmd` runs it and does not expand `~`. Reload the config after editing it. It runs each time the launcher opens and each time the config is reloaded or saved, one run at a time, in your login shell, for 2 seconds at most. The bar keeps the last line until the new one arrives and stays empty if the command fails or prints nothing; Settings shows the command and, beside it, its last line or the reason it failed.
+- **Nothing** - the search bar spans the full width.
 
-- **Stable** - icons sit in alphabetical order and don't shuffle when you switch apps. The activation digit for a given app stays the same until you launch or quit something.
-- **Ergonomic badge keys** - easier-to-reach keys are assigned first. With 5 running apps the badges are `1, 2, 3, 8, 9` (skipping the harder middle keys); `5/6/7` only get used when you have 7+ apps running.
-- **Linux focus** - Look's GNOME Shell extension activates the app's most-recent window on Wayland; X11 uses `_NET_ACTIVE_WINDOW` via x11rb; sway/Hyprland use `wlr-foreign-toplevel-management`; i3 uses `i3-msg`; niri uses its own IPC socket, which also scrolls the view to the window's workspace.
-- **Windowless apps** (Finder with no Finder windows, etc.) get a fresh window via a Dock-style "reopen" so you don't see an empty flash.
-
-Saved as `running_apps_placement=<value>` in `~/.look/config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
+Running Apps and Pinned Apps take the digits; the others leave them free. AI mode (`>`) hides the slot whatever it holds, and its digits open listed conversations instead. The launcher window stays the same size either way. Saved as `bar_slot=running|pinned|todo|script|none`, `pinned_apps=<app ids, comma-separated>` and `bar_script=<command>`; a pin is written the moment you make it, the dropdown on Save Config. A config that has no `bar_slot` yet keeps the bar `running_apps_placement` gave it (`none` = nothing, any other value = running apps).
 
 **Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`; off by default. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/super-actions.toml`; see [Rearranging the strip](#rearranging-the-strip).
 
@@ -630,6 +633,7 @@ File-only settings (no Settings UI):
 These keys have no control in the Settings screens. Edit `~/.look/config` directly, then reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux/Windows), or restart Look. Out-of-range or unparseable values fall back to the listed default. More keys will be added here over time.
 
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
+- `clipboard_image_limit` (how many copied images `ci"` keeps, range 5 to 50, default 20)
 - `launcher_hotkey` (global shortcut that shows and hides Look; modifiers `cmd`/`win`, `ctrl`, `alt`/`option`, `shift` plus one key: a letter, digit, `space`, `enter`, `tab`, `esc`, `f1`-`f20`, or a symbol like `` ` ``. Examples: `ctrl+space`, `alt+shift+space`, `f13`. Default `cmd+space` on macOS, `alt+space` on Windows and Linux. `none` stops Look registering any key, so you can bind `lookapp --toggle` in your desktop or a tool like skhd/AutoHotkey instead; Linux accepts only `none` and applies it on restart. An invalid value falls back to the default and the reload banner says why)
 - `shortcut_<group>_<action>` (macOS, and the gpui build on Linux and Windows; an in-app shortcut, same grammar as `launcher_hotkey` plus Shift-only chords on keys that type nothing, like `shift+enter`. The name follows the row in `Settings > Shortcuts`: `shortcut_main_copy`, `shortcut_view_reload_config`. Several chords for one action are separated by `|`. Only rebound shortcuts appear in the file; a chord Look cannot parse is ignored and the shortcut keeps its default)
 - `query_retention_seconds` (how long the main query survives while Look is hidden, in seconds; the first open past it returns to the empty home screen; default 5, `0` clears on every hide, and any negative value keeps the query indefinitely)
@@ -689,7 +693,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 
 ## Keyboard shortcuts (quick reference)
 
-Every modifier chord below is the default. On macOS, and in the gpui build on Linux and Windows, you can rebind them in `Settings > Shortcuts`: click a key capsule, press the chord you want, then Save Config (or set `shortcut_<group>_<action>` in `~/.look/config`). The keys that structure navigation - `Enter`, `Tab`, `Escape`, the arrows, the `Y`/`N` confirmations - stay fixed, since each means something different in the main bar, AI mode, command mode and a confirmation.
+Every modifier chord below is the default. On macOS, and in the gpui build on Linux and Windows, you can rebind them in `Settings > Shortcuts`: click a key capsule, press the chord you want, then Save Config (or set `shortcut_<group>_<action>` in `~/.look/config`). The keys that structure navigation - `Enter`, `Tab`, `Escape`, the arrows, the `Y`/`N` confirmations - stay fixed, since each means something different in the main bar, AI mode, command mode and a confirmation. Quit (`Cmd+Option+Q` / `Alt+Shift+Q`) and the running-app digits (`Cmd+1`..`Cmd+9` / `Alt+1`..`Alt+9`) are fixed too. A super action's letter is set by its `mnemonic` in `~/.look/super-actions.toml`, not here.
 
 - `Enter`: open selected result / run command
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
@@ -697,12 +701,12 @@ Every modifier chord below is the default. On macOS, and in the gpui build on Li
 - `Cmd+/`: command mode
 - `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:todo`, `:speed`): jump to a command directly from the home screen
 - `Cmd+1`..`Cmd+7`: in command mode, direct command switch (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`)
-- `Cmd+1`..`Cmd+9` (macOS) / `Alt+1`..`Alt+9` (Linux, Windows): on the home screen, activate the running-app whose badge shows that digit, when `Running Apps` is on. Badge labels are ergonomic, not strictly positional - see Settings → Appearance → Running Apps
+- `Cmd+1`..`Cmd+9` (macOS) / `Alt+1`..`Alt+9` (Linux, Windows): on the home screen, activate the running or pinned app whose badge shows that digit, when the `Search Bar` holds one of them. Badge labels are ergonomic, not strictly positional - see Settings → Appearance → Search Bar
 - `Option+Up` / `Option+Down` in AI mode (`>`): walk your recent prompts, like a shell history. `Shift+Up` / `Shift+Down` select text in the message instead
 - `Shift+Enter` in AI mode (`>`): new line in the message instead of sending. The box grows to 6 lines and stops there. Elsewhere `Shift+Enter` still opens all picked files
 - `join` (or `join meeting`, `join my next meeting`, or `join <meeting name>`): pins a "Join <meeting>" row for the next Teams / Zoom / Meet / Webex / Jitsi / GoToMeeting / Whereby meeting in your calendar; Enter opens the link. Works in the main bar and in `>` AI mode. Looks two days ahead. Needs the account in macOS Calendar (System Settings → Internet Accounts), since Look reads the OS's calendar and makes no network call of its own
 - `call <name>` / `facetime <name>` / `message <name>` in AI mode (`>`): finds the person in Contacts and opens FaceTime or Messages. `call mom on iphone` dials through your iPhone. A bare `call` means FaceTime audio, the one that works with no iPhone nearby. Look always lists what it found first; `Enter` on the highlighted row places the call
-- `Cmd+D` in AI mode (`>`): delete the highlighted conversation (same as `Cmd+Delete`; undo from the banner with `Cmd+Z`)
+- `Cmd+D` in AI mode (`>`): delete the highlighted conversation (the same chord that trashes a file; undo from the banner with `Cmd+Z`)
 - `Cmd+H` in AI mode (`>`): open the help screen on its **AI** topic without leaving the conversation. `Cmd+H`, `Esc`, or typing returns to it. The help screen's topic capsules (All / Main / AI / Prefixes / Command) also switch by click
 - `Cmd+1`..`Cmd+9` and `Cmd+0` in AI mode (`>`): open the listed conversation carrying that chip (`Cmd+0` is the tenth). The running-apps row is hidden on the AI screen, so the digits mean sessions there, and `Cmd+0` opens the tenth session rather than resetting the UI scale while the list is up. The list stops at ten because a `Cmd` chord is a single keypress; older conversations are found by typing, then Tab/arrows and Enter
 - `Cmd+<letter>` (macOS) / `Alt+<letter>` (Linux, Windows): on the empty home screen, fire the super action with that highlighted letter (`B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `P` play/pause, `R` Restart, `D` Shut Down), when `Super Actions` is on. A letter belongs to its tile, so one you have taken off the strip does nothing
@@ -721,10 +725,11 @@ Every modifier chord below is the default. On macOS, and in the gpui build on Li
 - `Cmd+I` (`Ctrl+I` on Linux, Windows): paste the selected clipboard history item, or the selected file/folder (or all picked items), into the app you came from
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
 - `Cmd+O`: flip the selected row's toggle (Bluetooth, Wi-Fi, Do Not Disturb)
-- `Cmd+Shift+,`: toggle settings panel
+- `Cmd+,` (also `Cmd+Shift+,`): toggle settings panel
 - `Cmd+Shift+;` (macOS) / `Ctrl+Shift+;` (Linux, Windows): reload config, re-read your declared sources, and re-read `~/.look/super-actions.toml` so the strip can be arranged while you look at it
 - `Cmd+Shift+H`: hide the selected app from Look
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
+- `Cmd+Option+Q` (macOS) / `Alt+Shift+Q` (Linux, Windows): quit Look for good; `Cmd+Q` only hides it
 
 ## Troubleshooting
 

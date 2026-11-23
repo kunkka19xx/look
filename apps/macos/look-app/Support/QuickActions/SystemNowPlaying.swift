@@ -65,8 +65,9 @@ nonisolated final class SystemNowPlaying: Sendable {
 
     private func read() -> NowPlayingSnapshot? {
         guard let output = runScript(Self.readScript, environment: [:]),
-              let result = try? JSONDecoder().decode(ReadResult.self, from: output),
-              result.hasTrack else {
+            let result = try? JSONDecoder().decode(ReadResult.self, from: output),
+            result.hasTrack
+        else {
             return nil
         }
         return NowPlayingSnapshot(
@@ -155,94 +156,94 @@ nonisolated final class SystemNowPlaying: Sendable {
 
 // MARK: - Scripts
 
-private nonisolated extension SystemNowPlaying {
+nonisolated extension SystemNowPlaying {
     /// Reports the elected player as JSON.
     ///
     /// The track and the owning app come from two independent calls, and the
     /// system can hand the slot to another app in between, pairing one app's
     /// track with another's name. The path is read on both sides and the result
     /// discarded if it moved.
-    static let readScript = """
-    function run() {
-        try {
-            const bundle = $.NSBundle.bundleWithPath('\(mediaRemoteBundlePath)');
-            bundle.load;
-            const Req = $.NSClassFromString('MRNowPlayingRequest');
-            if (!Req) return JSON.stringify({});
+    fileprivate static let readScript = """
+        function run() {
+            try {
+                const bundle = $.NSBundle.bundleWithPath('\(mediaRemoteBundlePath)');
+                bundle.load;
+                const Req = $.NSClassFromString('MRNowPlayingRequest');
+                if (!Req) return JSON.stringify({});
 
-            const unwrap = (v) => (v && !v.isNil()) ? ObjC.unwrap(v) : null;
-            const pathData = () => {
-                const p = Req.localNowPlayingPlayerPath;
-                if (!p || p.isNil()) return null;
-                try { return unwrap(p.data.base64EncodedStringWithOptions(0)); } catch (e) { return null; }
-            };
+                const unwrap = (v) => (v && !v.isNil()) ? ObjC.unwrap(v) : null;
+                const pathData = () => {
+                    const p = Req.localNowPlayingPlayerPath;
+                    if (!p || p.isNil()) return null;
+                    try { return unwrap(p.data.base64EncodedStringWithOptions(0)); } catch (e) { return null; }
+                };
 
-            const before = pathData();
-            const item = Req.localNowPlayingItem;
-            if (!item || item.isNil()) return JSON.stringify({});
-            const info = item.nowPlayingInfo;
-            if (!info || info.isNil()) return JSON.stringify({});
-            const after = pathData();
-            if (before !== after) return JSON.stringify({});
+                const before = pathData();
+                const item = Req.localNowPlayingItem;
+                if (!item || item.isNil()) return JSON.stringify({});
+                const info = item.nowPlayingInfo;
+                if (!info || info.isNil()) return JSON.stringify({});
+                const after = pathData();
+                if (before !== after) return JSON.stringify({});
 
-            const get = (k) => {
-                const v = info.valueForKey(k);
-                return (v && !v.isNil()) ? ObjC.deepUnwrap(v) : null;
-            };
-            const out = {
-                title: get('kMRMediaRemoteNowPlayingInfoTitle'),
-                artist: get('kMRMediaRemoteNowPlayingInfoArtist'),
-                isPlaying: false,
-                path: after
-            };
-            const rate = get('kMRMediaRemoteNowPlayingInfoPlaybackRate');
-            if (typeof rate === 'number') out.isPlaying = rate > 0;
+                const get = (k) => {
+                    const v = info.valueForKey(k);
+                    return (v && !v.isNil()) ? ObjC.deepUnwrap(v) : null;
+                };
+                const out = {
+                    title: get('kMRMediaRemoteNowPlayingInfoTitle'),
+                    artist: get('kMRMediaRemoteNowPlayingInfoArtist'),
+                    isPlaying: false,
+                    path: after
+                };
+                const rate = get('kMRMediaRemoteNowPlayingInfoPlaybackRate');
+                if (typeof rate === 'number') out.isPlaying = rate > 0;
 
-            const path = Req.localNowPlayingPlayerPath;
-            if (path && !path.isNil()) {
-                try {
-                    const client = path.client;
-                    if (client && !client.isNil()) {
-                        out.displayName = unwrap(client.displayName);
-                    }
-                } catch (e) {}
+                const path = Req.localNowPlayingPlayerPath;
+                if (path && !path.isNil()) {
+                    try {
+                        const client = path.client;
+                        if (client && !client.isNil()) {
+                            out.displayName = unwrap(client.displayName);
+                        }
+                    } catch (e) {}
+                }
+                return JSON.stringify(out);
+            } catch (e) {
+                return JSON.stringify({});
             }
-            return JSON.stringify(out);
-        } catch (e) {
-            return JSON.stringify({});
         }
-    }
-    """
+        """
 
     /// Rebuilds a player path and sends one transport command to it.
-    static let sendScript = """
-    function run() {
-        const env = $.NSProcessInfo.processInfo.environment;
-        const envValue = (key) => {
-            const v = env.objectForKey(key);
-            return (v && !v.isNil()) ? ObjC.unwrap(v) : null;
-        };
-        try {
-            const bundle = $.NSBundle.bundleWithPath('\(mediaRemoteBundlePath)');
-            bundle.load;
-            const encoded = envValue('\(commandPathEnvKey)');
-            const code = parseInt(envValue('\(commandCodeEnvKey)'), 10);
-            if (!encoded || isNaN(code)) return '';
+    fileprivate static let sendScript = """
+        function run() {
+            const env = $.NSProcessInfo.processInfo.environment;
+            const envValue = (key) => {
+                const v = env.objectForKey(key);
+                return (v && !v.isNil()) ? ObjC.unwrap(v) : null;
+            };
+            try {
+                const bundle = $.NSBundle.bundleWithPath('\(mediaRemoteBundlePath)');
+                bundle.load;
+                const encoded = envValue('\(commandPathEnvKey)');
+                const code = parseInt(envValue('\(commandCodeEnvKey)'), 10);
+                if (!encoded || isNaN(code)) return '';
 
-            const raw = $.NSData.alloc.initWithBase64EncodedStringOptions(encoded, 0);
-            const PathClass = $.NSClassFromString('MRPlayerPath');
-            const path = PathClass.alloc.initWithData(raw);
-            if (!path || path.isNil()) return '';
+                const raw = $.NSData.alloc.initWithBase64EncodedStringOptions(encoded, 0);
+                const PathClass = $.NSClassFromString('MRPlayerPath');
+                const path = PathClass.alloc.initWithData(raw);
+                if (!path || path.isNil()) return '';
 
-            const Req = $.NSClassFromString('MRNowPlayingRequest');
-            const request = Req.alloc.initWithPlayerPath(path);
-            if (!request || request.isNil()) return '';
+                const Req = $.NSClassFromString('MRNowPlayingRequest');
+                const request = Req.alloc.initWithPlayerPath(path);
+                if (!request || request.isNil()) return '';
 
-            request.sendCommandOptionsQueueCompletion(code, $(), $(), $());
-            return '\(sendSuccessMarker)';
-        } catch (e) {
-            return '';
+                request.sendCommandOptionsQueueCompletion(code, $(), $(), $());
+                return '\(sendSuccessMarker)';
+            } catch (e) {
+                return '';
+            }
         }
-    }
-    """
+        """
 }

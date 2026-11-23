@@ -14,7 +14,6 @@ struct AICodeBlockView: View {
     /// the prose around it.
     var maxVisibleLines: Int? = nil
 
-
     private var highlighted: AttributedString {
         guard let language else { return AttributedString(code) }
         return AttributedString(

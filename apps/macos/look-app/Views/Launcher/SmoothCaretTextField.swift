@@ -166,9 +166,10 @@ struct SmoothCaretTextField: NSViewRepresentable {
             // A field editor routes Shift+Return to insertNewline: too, so the
             // SELECTOR cannot tell a send from a line break - only the event
             // can. Reading the selector alone sent the message instead.
-            let shiftHeld = NSApp.currentEvent.map {
-                $0.type == .keyDown && $0.modifierFlags.contains(.shift)
-            } ?? false
+            let shiftHeld =
+                NSApp.currentEvent.map {
+                    $0.type == .keyDown && $0.modifierFlags.contains(.shift)
+                } ?? false
 
             if parent.allowsMultiline, isSoftReturn || shiftHeld {
                 textView.insertText("\n", replacementRange: textView.selectedRange())
@@ -336,7 +337,8 @@ final class CaretTextField: NSTextField {
         let caretLocation = NSMaxRange(editor.selectedRange())
         layoutManager.ensureLayout(for: container)
 
-        let fontLineHeight = font.map { $0.ascender - $0.descender + $0.leading }
+        let fontLineHeight =
+            font.map { $0.ascender - $0.descender + $0.leading }
             ?? bounds.height
         let barHeight = fontLineHeight * Motion.Caret.heightScale
         let origin = editor.textContainerOrigin
@@ -351,8 +353,9 @@ final class CaretTextField: NSTextField {
                 width: Motion.Caret.width, height: barHeight)
         }
 
-        guard let line = lineGeometry(
-            at: caretLocation, layoutManager: layoutManager, container: container, editor: editor)
+        guard
+            let line = lineGeometry(
+                at: caretLocation, layoutManager: layoutManager, container: container, editor: editor)
         else {
             // Nothing laid out yet (empty field): leading edge, centred.
             let xInField = editor.convert(CGPoint(x: origin.x, y: 0), to: self).x
@@ -422,7 +425,8 @@ final class CaretTextField: NSTextField {
         // instead would push the caret off the right edge on every line but the
         // first.
         let precedingLength = caretGlyph - lineGlyphRange.location
-        let x = precedingLength > 0
+        let x =
+            precedingLength > 0
             ? layoutManager.boundingRect(
                 forGlyphRange: NSRange(location: lineGlyphRange.location, length: precedingLength),
                 in: container

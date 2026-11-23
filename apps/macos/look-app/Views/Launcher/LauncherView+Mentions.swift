@@ -87,8 +87,8 @@ extension LauncherView {
     @discardableResult
     func acceptHighlightedMention() -> Bool {
         guard showsMentionPopup,
-              mentionHighlight >= 0, mentionHighlight < mentionMatches.count,
-              let active = mentionActive
+            mentionHighlight >= 0, mentionHighlight < mentionMatches.count,
+            let active = mentionActive
         else { return false }
         attach(path: mentionMatches[mentionHighlight].path)
         // Consuming the token leaves clean prose behind, so the submitted text
@@ -155,7 +155,8 @@ extension LauncherView {
                         .padding(.vertical, 3)
                         .background(
                             themeStore.accentColor().opacity(0.16),
-                            in: Capsule())
+                            in: Capsule()
+                        )
                         .help(file.path)
                     }
                     Spacer(minLength: 0)
@@ -212,7 +213,8 @@ extension LauncherView {
             .padding(4)
             .background(
                 themeStore.surfaceFill(0.92),
-                in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
+                in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
+            )
             .padding(.horizontal, 4)
         }
     }

@@ -49,7 +49,7 @@ nonisolated enum ProcessService {
             var size = 0
             guard sysctl(&mib, 4, nil, &size, nil, 0) == 0, size > 0 else { return [] }
             let stride = MemoryLayout<kinfo_proc>.stride
-            let capacity = size / stride + 64 // slack for newly-spawned processes
+            let capacity = size / stride + 64  // slack for newly-spawned processes
             procs = [kinfo_proc](repeating: kinfo_proc(), count: capacity)
             var filled = capacity * stride
             let rc = sysctl(&mib, 4, &procs, &filled, nil, 0)
@@ -57,7 +57,7 @@ nonisolated enum ProcessService {
                 procs.removeLast(procs.count - filled / stride)
                 break
             }
-            if errno != ENOMEM { return [] } // real error; retry only on "grew"
+            if errno != ENOMEM { return [] }  // real error; retry only on "grew"
             procs = []
         }
 
@@ -231,7 +231,7 @@ nonisolated enum ProcessService {
                 let arg = String(cString: Array(raw[startIdx..<cursor]) + [0])
                 if !arg.isEmpty { args.append(arg) }
                 collected += 1
-                cursor += 1 // step over the NUL separator
+                cursor += 1  // step over the NUL separator
             }
             return args.isEmpty ? nil : args.joined(separator: " ")
         }

@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LauncherLogic
 
 /// Who owns a plain Cmd+letter chord, checked across the language boundary.
@@ -27,13 +28,13 @@ final class ChordOwnershipTests: XCTestCase {
         let regex = try NSRegularExpression(pattern: pattern)
         for match in regex.matches(in: source, range: NSRange(source.startIndex..., in: source)) {
             guard let keyRange = Range(match.range(at: 1), in: source),
-                  let modRange = Range(match.range(at: 2), in: source)
+                let modRange = Range(match.range(at: 2), in: source)
             else { continue }
             let modifiers = source[modRange]
             guard modifiers.contains(".command"),
-                  !modifiers.contains(".shift"),
-                  !modifiers.contains(".option"),
-                  !modifiers.contains(".control")
+                !modifiers.contains(".shift"),
+                !modifiers.contains(".option"),
+                !modifiers.contains(".control")
             else { continue }
             claimed.insert(source[keyRange].uppercased())
         }

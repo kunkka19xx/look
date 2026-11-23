@@ -86,9 +86,12 @@ struct TodoGroup: Identifiable, Equatable {
     /// phrase reads oddly (the month/day already communicates it).
     var relative: String {
         let cal = Calendar.current
-        let days = cal.dateComponents([.day],
-            from: cal.startOfDay(for: Date()),
-            to: cal.startOfDay(for: date)).day ?? 0
+        let days =
+            cal.dateComponents(
+                [.day],
+                from: cal.startOfDay(for: Date()),
+                to: cal.startOfDay(for: date)
+            ).day ?? 0
         switch days {
         case 0: return "Today"
         case 1: return "Tomorrow"
@@ -99,10 +102,14 @@ struct TodoGroup: Identifiable, Equatable {
     }
 
     private static let weekdayFormatter: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "EEE"; return f
+        let f = DateFormatter()
+        f.dateFormat = "EEE"
+        return f
     }()
     private static let monthDayFormatter: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "MMM d"; return f
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
     }()
     // Produces the due_date keys stored in the shared database, so it is
     // pinned to POSIX/Gregorian: a system set to a non-Gregorian calendar
@@ -222,6 +229,10 @@ final class TodoState {
         return TodoStat(done: t.doneCount, total: t.total)
     }
 
+    var todayOpenTasks: [String] {
+        today?.tasks.filter { !$0.done }.map(\.name) ?? []
+    }
+
     var futureCount: Int { groups.filter { $0.kind == .future }.count }
     var canAddDateGroup: Bool { futureCount < TodoCommand.dateGroupLimit }
     var groupsLeft: Int { max(0, TodoCommand.dateGroupLimit - futureCount) }
@@ -312,7 +323,8 @@ final class TodoState {
         let trimmed = Self.clampName(name)
         guard !trimmed.isEmpty else { return false }
         guard let g = groups.first(where: { $0.key == key }),
-              g.openCount < TodoCommand.taskLimit else { return false }
+            g.openCount < TodoCommand.taskLimit
+        else { return false }
         withGroup(key) { g in
             g.tasks.append(TodoTask(id: TodoTask.newID(), name: trimmed, done: false))
         }
@@ -332,7 +344,7 @@ final class TodoState {
             if !groups.contains(where: { $0.key == key }) {
                 mutate { gs in
                     gs.append(TodoGroup(key: key, date: date, tasks: []))
-                    gs.sort { $0.date > $1.date }   // latest on top
+                    gs.sort { $0.date > $1.date }  // latest on top
                 }
                 futureDaysAdded = offset
                 return
