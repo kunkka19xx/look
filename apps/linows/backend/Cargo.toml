@@ -42,7 +42,7 @@ tokio = { version = "1.52.3", features = ["rt", "time", "sync"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 # xtest: typing the paste chord into another window, the X11 half of Ctrl+I.
 x11rb = { version = "0.14", features = ["allow-unsafe-code", "xtest"] }
-zbus = "5"
+zbus = "6"
 # StreamExt for zbus signal streams.
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
