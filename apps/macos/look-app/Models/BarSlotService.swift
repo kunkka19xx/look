@@ -18,14 +18,10 @@ final class BarSlotService: ObservableObject {
 
     func refresh(slot: BarSlot, pinnedIDs: [String], script: String) {
         refreshPins(pinnedIDs)
-        switch slot {
-        case .todo:
+        if slot == .todo {
             todoPick = Int.random(in: 0..<Int.max)
-        case .script:
-            runScript(script)
-        case .running, .pinned, .none:
-            break
         }
+        runScript(slot == .script ? script : "")
     }
 
     func refreshPins(_ ids: [String]) {

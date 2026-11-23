@@ -87,7 +87,7 @@ This document tracks what `look` supports today and what is planned next.
 - click on an icon also switches; hover shows app name + shortcut tooltip; active app has an accent ring
 - the row is one of several things that end of the bar can hold. `Settings > Appearance > Search Bar` picks between the running apps, up to nine apps pinned from their rows' actions menu (`Pin to bar`), one of today's unfinished tasks with the day's count (a click opens `/todo`), the first line a command of yours prints, or nothing. Saved as `bar_slot` (`running`, `pinned`, `todo`, `script`, `none`), `pinned_apps` and `bar_script`. A config without `bar_slot` keeps what `running_apps_placement` gave it (`none` = nothing, any other value = running apps). The window is a single fixed size and never resizes for the slot
 - only the running and pinned apps take the activation digits; `Nothing` gives the search field the whole bar
-- the script runs each time the launcher opens and each time the config is reloaded or saved, for 2 seconds at most; the bar shows its last line until the new one arrives, and stays empty when it fails or prints nothing
+- the script runs each time the launcher opens and each time the config is reloaded or saved, for 2 seconds at most; a trigger that arrives while the same command runs joins that run; the bar shows its last line until the new one arrives, and stays empty when it fails or prints nothing
 - AI mode (`>`) hides the row too, and hands `Cmd+1`..`Cmd+9` plus `Cmd+0` to the conversation list: the digit opens the session carrying that chip. Ten chips is the ceiling (a `Cmd` chord is one keypress), so the list shows ten and older sessions are found by typing
 
 ### Super actions
