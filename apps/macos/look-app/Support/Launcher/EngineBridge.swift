@@ -344,6 +344,22 @@ nonisolated
 nonisolated
     private func look_hotkey_check_json(_ spec: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_bar_config_json")
+nonisolated
+    private func look_bar_config_json(_ entriesJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_bar_max_pinned")
+nonisolated
+    private func look_bar_max_pinned() -> Int
+
+@_silgen_name("look_bar_pins_json")
+nonisolated
+    private func look_bar_pins_json(_ idsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_bar_script_line_json")
+nonisolated
+    private func look_bar_script_line_json(_ command: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_lunar_date_json")
 nonisolated
     private func look_lunar_date_json(
@@ -833,6 +849,24 @@ final class EngineBridge: @unchecked Sendable {
         defer { look_free_cstring(ptr) }
         return try? JSONDecoder().decode(T.self, from: Data(String(cString: ptr).utf8))
     }
+
+    nonisolated static let maxPinnedApps = look_bar_max_pinned()
+
+    nonisolated func barConfig(entries: [String: String]) -> BarConfig? {
+        encode(entries).flatMap { json in Self.decodeOwnedJSON(json.withCString { look_bar_config_json($0) }) }
+    }
+
+    nonisolated func barPins(ids: [String]) -> [BarPin] {
+        encode(ids).flatMap { json in Self.decodeOwnedJSON(json.withCString { look_bar_pins_json($0) }) } ?? []
+    }
+
+    /// Blocks for up to the script timeout.
+    nonisolated func barScriptLine(_ command: String) -> BarScriptOutcome {
+        Self.decodeOwnedJSON(command.withCString { look_bar_script_line_json($0) })
+            ?? BarScriptOutcome(line: nil, error: Self.noAnswer)
+    }
+
+    private nonisolated static let noAnswer = "no answer from the core"
 
     /// Lunar date from the shared core. `tzHours` is the viewer's UTC offset,
     /// which selects the calendar variant (7 = Vietnamese, 8 = Chinese).

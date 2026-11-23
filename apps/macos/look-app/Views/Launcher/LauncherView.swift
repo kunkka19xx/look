@@ -199,6 +199,7 @@ struct LauncherView: View {
     /// no keystroke on the translation path touches the filesystem.
     @State var translateLanguages: [TranslateLanguage] = []
     @StateObject var runningAppsService = RunningAppsService()
+    @StateObject var barSlotService = BarSlotService()
     @StateObject var processModel = ProcessFinderModel()
 
     /// Live size of the whole panel, captured so a background image can be
@@ -237,13 +238,13 @@ struct LauncherView: View {
     static let hintItemBudget = 3
     static let hintSeparator = "  •  "
 
-    var runningAppsPlacement: RunningAppsPlacement {
-        themeStore.settings.runningAppsPlacement
+    var barSlot: BarSlot {
+        themeStore.settings.barSlot
     }
 
     /// Not in command mode, not showing theme settings, not showing the help
     /// screen - the coarse "nothing else has taken over the launcher" gate
-    /// shared by the running-apps strip, floating-card layout, home hint,
+    /// shared by the bar slot, floating-card layout, home hint,
     /// empty-query rest state, and delete confirmation.
     var isLauncherIdle: Bool {
         !isCommandMode && !appUIState.showsThemeSettings && !showsHelpScreen
@@ -253,42 +254,41 @@ struct LauncherView: View {
         themeStore.effectiveLayout == .compact
     }
 
-    /// AI mode hides the strip: the assistant screen is about the conversation,
-    /// not about switching apps, and the freed ⌘1-9 chords tag the listed
-    /// sessions instead (see `sessionJumpKeyLimit`). Compact is too narrow for it.
-    var shouldShowRunningAppsStrip: Bool {
-        runningAppsPlacement != .none
-            && !isCompactLayout
-            && isLauncherIdle
-            && !isAIMode
-            && !runningAppsService.items.isEmpty
+    /// AI mode hides the slot: the assistant screen is about the conversation,
+    /// and the freed ⌘1-9 chords tag the listed sessions instead (see
+    /// `sessionJumpKeyLimit`). Compact is too narrow for it.
+    var barSlotHasRoom: Bool {
+        barSlot != .none && !isCompactLayout && isLauncherIdle && !isAIMode
     }
 
     /// Activates the strip icon assigned to Cmd+`key`. The key is mapped
     /// to a visual position via the ergonomic layout in
     /// `AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey:total:)`.
-    /// On success the launcher is *not* hidden here - instead we let
-    /// `didResignActiveNotification` close it, which only fires after
+    /// On success a running app does *not* hide the launcher here - instead we
+    /// let `didResignActiveNotification` close it, which only fires after
     /// macOS has handed key-window status to the target app. Hiding
     /// synchronously raced that handoff and left the keyboard focused
     /// nowhere visible.
     @discardableResult
-    func activateRunningApp(forKey key: Int) -> Bool {
+    func activateBarSlot(forKey key: Int) -> Bool {
         let log = RunningAppsLog.logger
-        let total = runningAppsService.items.count
 
-        // The same gate as `shouldShowRunningAppsStrip`: a chord must never
-        // activate an icon that is not on screen, which is also what hands
-        // ⌘1-9 to the session list in AI mode.
-        if runningAppsPlacement == .none || isCompactLayout || !isLauncherIdle || isAIMode {
+        // The same gate as the slot's own: a chord must never activate an icon
+        // that is not on screen, which is also what hands ⌘1-9 to the session
+        // list in AI mode.
+        guard barSlotHasRoom, barSlot.takesDigitKeys else {
             log.debug(
-                "⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) compact=\(self.isCompactLayout, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public) help=\(self.showsHelpScreen, privacy: .public) ai=\(self.isAIMode, privacy: .public))"
+                "⌘+\(key, privacy: .public) declined (slot=\(self.barSlot.rawValue, privacy: .public) compact=\(self.isCompactLayout, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public) help=\(self.showsHelpScreen, privacy: .public) ai=\(self.isAIMode, privacy: .public))"
             )
             return false
         }
+        let total = barSlot == .pinned ? barSlotService.shownPins.count : runningAppsService.items.count
         guard let position = AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey: key, total: total) else {
             log.debug("⌘+\(key, privacy: .public) declined (no slot for this key, items=\(total, privacy: .public))")
             return false
+        }
+        if barSlot == .pinned {
+            return openPinnedApp(at: position)
         }
 
         let target = runningAppsService.items[position]
@@ -804,10 +804,12 @@ struct LauncherView: View {
         let state = TodoSharedState.shared
         let stat = state.todayStat
         guard stat.total > 0 else { return nil }
-        let open = state.today?.tasks.filter { !$0.done }.map(\.name) ?? []
-        return HintBar.TodoQuickView(done: stat.done, total: stat.total, openTasks: open) {
-            enterCommandMode(commandID: AppConstants.Launcher.Command.todo, prefilledInput: "")
-        }
+        return HintBar.TodoQuickView(
+            done: stat.done, total: stat.total, openTasks: state.todayOpenTasks, onTap: openTodo)
+    }
+
+    func openTodo() {
+        enterCommandMode(commandID: AppConstants.Launcher.Command.todo, prefilledInput: "")
     }
 
     var commandNamePart: String {
@@ -945,6 +947,7 @@ struct LauncherView: View {
             reloadQueryRetentionPolicy()
             reloadTranslateLanguages()
             runningAppsService.refresh()
+            refreshBarSlot()
             actionController.pickedFilePaths = pickedFilePathsForTextOp()
             // A cold `lookapp <mode>`: this process launched to serve it.
             if let pending = LaunchModes.pendingQuery {
@@ -995,6 +998,13 @@ struct LauncherView: View {
         // Bumped on every show, so it stands in for the missing re-onAppear.
         .onChange(of: appearanceRevealToken) { _, _ in
             refreshLaunchpadState()
+            refreshBarSlot()
+        }
+        .onChange(of: themeStore.settings.barSlot) { _, _ in
+            refreshBarSlot()
+        }
+        .onChange(of: themeStore.pinnedAppIDs) { _, ids in
+            barSlotService.refreshPins(ids)
         }
         // A model-interpreted file recall (planner `recall` step): the AI panel
         // hands it to the main results panel, which owns file rows.
@@ -1395,7 +1405,7 @@ struct LauncherView: View {
             // too. The launcher's copy below is out of the hierarchy while
             // Settings owns the panel, which made a reload look like a no-op.
             banner
-            ThemeSettingsView(settings: $themeStore.settings)
+            ThemeSettingsView(settings: $themeStore.settings, barSlotService: barSlotService)
         } else {
             if showsTopRowBar {
                 // The search field and running-apps icons always share one
@@ -1413,14 +1423,8 @@ struct LauncherView: View {
                     HStack(alignment: .center, spacing: 10) {
                         searchInputBar(showsBackground: false)
                             .frame(maxWidth: .infinity)
-                        if shouldShowRunningAppsStrip {
-                            RunningAppsStripView(
-                                service: runningAppsService,
-                                themeStore: themeStore,
-                                onActivate: { key in _ = activateRunningApp(forKey: key) },
-                                revealToken: appearanceRevealToken
-                            )
-                            .frame(maxWidth: .infinity)
+                        if barSlotHasRoom {
+                            barSlotView
                         }
                         // Compact has no footer row; the strip's end of the bar is free.
                         if isCompactLayout {
