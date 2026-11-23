@@ -477,11 +477,13 @@ fn append_missing_default_config_entries(path: &Path) {
 }
 
 /// Writes a sibling temp file and renames it over `path`, so a failed write
-/// leaves the old config whole. A symlinked config is replaced at its target
-/// and keeps its permissions, as an in-place write would.
+/// leaves the old config whole. Otherwise it acts as an in-place write would:
+/// a symlink is followed, permissions stay, and a file the user cannot write
+/// is left alone, though the rename alone only needs the folder writable.
 fn replace_file(path: &Path, contents: &str) -> std::io::Result<()> {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let target = std::fs::canonicalize(path)?;
+    std::fs::OpenOptions::new().write(true).open(&target)?;
     let mut temp_name = target.file_name().unwrap_or_default().to_os_string();
     temp_name.push(format!(
         ".{}.{}.{UPDATE_TEMP_SUFFIX}",
@@ -1394,6 +1396,28 @@ mod tests {
 
         let _ = std::fs::remove_file(&link);
         let _ = std::fs::remove_file(&target);
+    }
+
+    #[test]
+    fn update_leaves_a_read_only_config_alone() {
+        let tmp = temp_config("read-only");
+        let original = "app_scan_depth=3\n";
+        std::fs::write(&tmp, original).expect("should write temporary config");
+        let writable = std::fs::metadata(&tmp)
+            .expect("should stat config")
+            .permissions();
+        let mut locked = writable.clone();
+        locked.set_readonly(true);
+        std::fs::set_permissions(&tmp, locked).expect("should lock config");
+
+        ensure_default_config_file(&tmp);
+
+        assert_eq!(
+            std::fs::read_to_string(&tmp).expect("should read config"),
+            original
+        );
+        let _ = std::fs::set_permissions(&tmp, writable);
+        let _ = std::fs::remove_file(&tmp);
     }
 
     #[test]
