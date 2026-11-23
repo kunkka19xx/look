@@ -444,52 +444,84 @@ fn ensure_default_config_file(path: &Path) {
     let _ = std::fs::write(path, default_config_contents());
 }
 
+const UPDATE_MARKER: &str = "# Added by look update";
+
 fn append_missing_default_config_entries(path: &Path) {
     let Ok(contents) = std::fs::read_to_string(path) else {
         return;
     };
-
-    let existing_keys = parse_config_keys(&contents);
-    let mut missing_entries = Vec::new();
-
-    let defaults = default_config_contents();
-    for default_line in defaults.lines() {
-        let line = strip_comments(default_line).trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        let Some((key, _)) = line.split_once('=') else {
-            continue;
-        };
-
-        let key = key.trim();
-        if key.is_empty() || existing_keys.contains(key) {
-            continue;
-        }
-
-        missing_entries.push(line.to_string());
-    }
-
-    if missing_entries.is_empty() {
+    if contents.trim().is_empty() {
+        let _ = std::fs::write(path, default_config_contents());
         return;
     }
 
-    let mut appended = String::new();
-    if !contents.ends_with('\n') {
-        appended.push('\n');
-    }
-    appended.push('\n');
-    appended.push_str("# Added by look update\n");
-    for entry in missing_entries {
-        appended.push_str(&entry);
-        appended.push('\n');
+    let mut updated = without_repeated_markers(&contents);
+    let missing = missing_default_entries(&updated, &default_config_contents());
+    if !missing.is_empty() {
+        if !updated.ends_with('\n') {
+            updated.push('\n');
+        }
+        updated.push('\n');
+        if !updated.lines().any(|line| line.trim() == UPDATE_MARKER) {
+            updated.push_str(UPDATE_MARKER);
+            updated.push('\n');
+        }
+        updated.push_str(&missing);
     }
 
-    let _ = std::fs::OpenOptions::new()
-        .append(true)
-        .open(path)
-        .and_then(|mut file| std::io::Write::write_all(&mut file, appended.as_bytes()));
+    if updated != contents {
+        let _ = std::fs::write(path, updated);
+    }
+}
+
+/// Older versions wrote the marker on every update. The first one stays.
+fn without_repeated_markers(contents: &str) -> String {
+    let mut seen = false;
+    contents
+        .split_inclusive('\n')
+        .filter(|line| {
+            let is_marker = line.trim() == UPDATE_MARKER;
+            let repeated = is_marker && seen;
+            seen |= is_marker;
+            !repeated
+        })
+        .collect()
+}
+
+/// The default entries `contents` lacks, each under its template comment
+/// unless the file has that comment already.
+fn missing_default_entries(contents: &str, defaults: &str) -> String {
+    let existing_keys = parse_config_keys(contents);
+    let existing_lines: HashSet<&str> = contents.lines().map(str::trim).collect();
+    let mut missing = String::new();
+    let mut comments = Vec::new();
+
+    for default_line in defaults.lines() {
+        let line = default_line.trim();
+        if line.starts_with('#') {
+            comments.push(line);
+            continue;
+        }
+
+        let entry = strip_comments(line).trim();
+        let is_missing = assigned_key(entry).is_some_and(|key| !existing_keys.contains(key));
+        let mut new_comments = comments
+            .drain(..)
+            .filter(|comment| !existing_lines.contains(comment))
+            .peekable();
+        if !is_missing {
+            continue;
+        }
+        if new_comments.peek().is_some() && !missing.is_empty() {
+            missing.push('\n');
+        }
+        for line in new_comments.chain([entry]) {
+            missing.push_str(line);
+            missing.push('\n');
+        }
+    }
+
+    missing
 }
 
 /// The cosmetic `ui_*` block. Never read back into `RuntimeConfig`: it seeds
@@ -525,7 +557,9 @@ fn theme_config_section() -> String {
     )
 }
 
-fn default_config_contents() -> String {
+/// The file a first launch writes, and the source of every key the update
+/// pass appends.
+pub fn default_config_contents() -> String {
     let app_roots = default_app_scan_roots().join(",");
     let file_roots = platform::file_scan_root_suffixes().join(",");
     let theme_section = theme_config_section();
@@ -552,6 +586,7 @@ ignored_patterns_sample=\n\
 # ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp\n\
 # ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm\n\
 # ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part\n\
+\n\
 lazy_indexing_enabled=true\n\
 # Super actions: empty-state launchpad of quick toggles / actions. Hidden by\n\
 # default; set true to show it (Settings > Appearance).\n\
@@ -581,15 +616,14 @@ hints_enabled=true\n\
 search_placeholder=Type whatever you want\n\
 \n\
 {launcher_hotkey_section}\
-# Preferred tools. Name the tool, not a command: Look knows how to drive it,\n\
-# including running a terminal editor inside your terminal. Declare nothing and\n\
-# nothing changes. Editing uses text_editor on a file and code_editor on a\n\
-# folder; declaring only one of the two covers both.\n\
-# Acted on from the row's action menu, and from Cmd+E / Cmd+T (Ctrl elsewhere).\n\
-# text_editor=nvim\n\
-# code_editor=zed\n\
-# terminal=ghostty\n\
-# file_manager=nautilus\n\
+# Preferred tools, by name (nvim, zed, ghostty, nautilus), not a command.\n\
+# Empty changes nothing. Editing uses text_editor on a file and code_editor on\n\
+# a folder; one of the two covers both. Used by the row's action menu and by\n\
+# Cmd+E / Cmd+T (Ctrl elsewhere).\n\
+text_editor=\n\
+code_editor=\n\
+terminal=\n\
+file_manager=\n\
 \n\
 {theme_section}\
 # Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3\n\
@@ -1255,21 +1289,73 @@ mod tests {
         assert!(tools.text_editor.is_none());
     }
 
-    /// The keys ship commented out: an existing config is not grown by lines it
-    /// did not ask for, and Cmd+E names the key to set at the point of use.
     #[test]
-    fn tool_keys_are_documented_but_not_enabled_by_default() {
+    fn tool_keys_ship_empty_and_declare_nothing() {
         let defaults = default_config_contents();
         for key in ADVERTISED_TOOL_KEYS {
-            assert!(
-                defaults.contains(&format!("# {key}=")),
-                "{key} should appear commented out in the generated config"
-            );
-            assert!(
-                !defaults.contains(&format!("\n{key}=")),
-                "{key} should not be live in the generated config"
-            );
+            assert!(defaults.contains(&format!("\n{key}=\n")));
         }
+        assert!(config_from(&defaults, "tools-default").tools.is_empty());
+    }
+
+    #[test]
+    fn update_adds_missing_keys_under_their_comment_once() {
+        let defaults = "# group\nfirst=1\n\n# group\n# about second\nsecond=\nthird=3\n\n# about fourth\nfourth=4\n";
+        let existing = "# group\nfirst=9\n# third=0\n";
+        let added = missing_default_entries(existing, defaults);
+
+        assert_eq!(
+            added,
+            "# about second\nsecond=\n\n# about fourth\nfourth=4\n"
+        );
+        assert_eq!(
+            missing_default_entries(&format!("{existing}{added}"), defaults),
+            ""
+        );
+    }
+
+    #[test]
+    fn update_keeps_one_marker_and_drops_older_repeats() {
+        let tmp = temp_config("marker");
+        std::fs::write(
+            &tmp,
+            format!("app_scan_depth=3\n\n{UPDATE_MARKER}\nfirst=1\n\n{UPDATE_MARKER}\nsecond=2\n"),
+        )
+        .expect("should write temporary config");
+
+        ensure_default_config_file(&tmp);
+        let contents = std::fs::read_to_string(&tmp).expect("should read updated config");
+
+        assert_eq!(contents.matches(UPDATE_MARKER).count(), 1);
+        assert!(contents.contains("first=1\n\nsecond=2\n"));
+        assert!(contents.contains("\nfile_scan_limit=8000"));
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn a_blank_config_gets_the_whole_template() {
+        let tmp = temp_config("blank");
+        std::fs::write(&tmp, "\n").expect("should write temporary config");
+
+        ensure_default_config_file(&tmp);
+
+        assert_eq!(
+            std::fs::read_to_string(&tmp).expect("should read config"),
+            default_config_contents()
+        );
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    fn temp_config(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "look-config-test-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ))
     }
 
     /// `browser` parses, but no action reads it yet: Look has no URL row for it
