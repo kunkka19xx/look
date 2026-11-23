@@ -107,9 +107,7 @@ pub fn reset_config() -> Result<(), String> {
     Ok(())
 }
 
-/// The template Reset writes: the engine's, then the keys only this shell
-/// reads. Cosmetic keys are documented but never given a value: the shell's
-/// `theme.rs` owns those defaults.
+/// Reset's template: the engine's, then keys only this shell reads.
 fn default_config_contents() -> String {
     look_engine::config::default_config_contents() + SHELL_CONFIG_SECTION
 }

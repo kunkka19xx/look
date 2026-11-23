@@ -476,10 +476,9 @@ fn append_missing_default_config_entries(path: &Path) {
     }
 }
 
-/// Writes a sibling temp file and renames it over `path`, so a failed write
-/// leaves the old config whole. Otherwise it acts as an in-place write would:
-/// a symlink is followed, permissions stay, and a file the user cannot write
-/// is left alone, though the rename alone only needs the folder writable.
+/// Temp file then rename, so a failed write keeps the old config. Like an
+/// in-place write, it follows symlinks, keeps permissions, and skips a file the
+/// user cannot write.
 fn replace_file(path: &Path, contents: &str) -> std::io::Result<()> {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let target = std::fs::canonicalize(path)?;
@@ -502,7 +501,7 @@ fn replace_file(path: &Path, contents: &str) -> std::io::Result<()> {
     written
 }
 
-/// Older versions wrote the marker on every update. The first one stays.
+/// Older versions wrote a marker per update.
 fn without_repeated_markers(contents: &str) -> String {
     let mut seen = false;
     contents
@@ -516,13 +515,15 @@ fn without_repeated_markers(contents: &str) -> String {
         .collect()
 }
 
-/// The default entries `contents` lacks, each under its template comment
-/// unless the file has that comment already.
+/// The default entries `contents` lacks, under template comments it lacks. The
+/// comment opening a blank-line group goes to the group's first missing key.
 fn missing_default_entries(contents: &str, defaults: &str) -> String {
     let existing_keys = parse_config_keys(contents);
     let existing_lines: HashSet<&str> = contents.lines().map(str::trim).collect();
     let mut missing = String::new();
     let mut comments = Vec::new();
+    let mut group_comments = Vec::new();
+    let mut in_group = false;
 
     for default_line in defaults.lines() {
         let line = default_line.trim();
@@ -532,14 +533,26 @@ fn missing_default_entries(contents: &str, defaults: &str) -> String {
         }
 
         let entry = strip_comments(line).trim();
-        let is_missing = assigned_key(entry).is_some_and(|key| !existing_keys.contains(key));
-        let mut new_comments = comments
-            .drain(..)
-            .filter(|comment| !existing_lines.contains(comment))
-            .peekable();
-        if !is_missing {
+        let Some(key) = assigned_key(entry) else {
+            comments.clear();
+            group_comments.clear();
+            in_group = false;
+            continue;
+        };
+        if !in_group {
+            in_group = true;
+            group_comments = std::mem::take(&mut comments);
+        }
+        let key_comments = std::mem::take(&mut comments);
+        if existing_keys.contains(key) {
             continue;
         }
+
+        let mut new_comments = std::mem::take(&mut group_comments)
+            .into_iter()
+            .chain(key_comments)
+            .filter(|comment| !existing_lines.contains(comment))
+            .peekable();
         if new_comments.peek().is_some() && !missing.is_empty() {
             missing.push('\n');
         }
@@ -585,8 +598,7 @@ fn theme_config_section() -> String {
     )
 }
 
-/// The file a first launch writes, and the source of every key the update
-/// pass appends.
+/// The first-launch template, and the source of every backfilled key.
 pub fn default_config_contents() -> String {
     let app_roots = default_app_scan_roots().join(",");
     let file_roots = platform::file_scan_root_suffixes().join(",");
@@ -883,8 +895,6 @@ fn strip_comments(value: &str) -> &str {
 /// helpfully append the key right back: commenting a key out would not stick. Absence
 /// and a commented-out key both mean "use the default", so resurrecting it changes no
 /// behaviour today, but it does rewrite a config the user deliberately arranged.
-/// The exception is `EXAMPLE_ONLY_KEYS`: older templates wrote those commented out
-/// themselves, so the line is not the user's choice.
 fn parse_config_keys(contents: &str) -> HashSet<String> {
     let mut keys = HashSet::new();
     for raw_line in contents.lines() {
@@ -897,8 +907,7 @@ fn parse_config_keys(contents: &str) -> HashSet<String> {
     keys
 }
 
-/// Keys older templates shipped only as commented examples, such as
-/// `# text_editor=nvim`.
+/// Older templates commented these out themselves, so that is no user choice.
 const EXAMPLE_ONLY_KEYS: &[&str] = &[
     look_tools::key::TEXT_EDITOR,
     look_tools::key::CODE_EDITOR,
@@ -1354,6 +1363,14 @@ mod tests {
     }
 
     #[test]
+    fn update_gives_the_group_comment_to_the_first_missing_key() {
+        let defaults = "# tools\nfirst=\nsecond=\n# about third\nthird=\nfourth=\n";
+        let added = missing_default_entries("first=zed\nthird=1\n", defaults);
+
+        assert_eq!(added, "# tools\nsecond=\nfourth=\n");
+    }
+
+    #[test]
     fn update_adds_tool_keys_a_config_has_only_as_examples() {
         let defaults = default_config_contents();
         let with_examples = ADVERTISED_TOOL_KEYS
@@ -1410,12 +1427,15 @@ mod tests {
         locked.set_readonly(true);
         std::fs::set_permissions(&tmp, locked).expect("should lock config");
 
-        ensure_default_config_file(&tmp);
+        // Root can write it anyway.
+        if std::fs::OpenOptions::new().write(true).open(&tmp).is_err() {
+            ensure_default_config_file(&tmp);
 
-        assert_eq!(
-            std::fs::read_to_string(&tmp).expect("should read config"),
-            original
-        );
+            assert_eq!(
+                std::fs::read_to_string(&tmp).expect("should read config"),
+                original
+            );
+        }
         let _ = std::fs::set_permissions(&tmp, writable);
         let _ = std::fs::remove_file(&tmp);
     }
