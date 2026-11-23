@@ -23,6 +23,7 @@ struct ThemeSettingsView: View {
     @EnvironmentObject var themeStore: ThemeStore
     @ObservedObject var updateChecker = UpdateChecker.shared
     @Binding var settings: ThemeSettings
+    @ObservedObject var barSlotService: BarSlotService
     @State var selectedTab = 0
     @State var saveMessage: SaveMessage?
     @State var fontSuggestions: [String] = []
@@ -132,33 +133,43 @@ struct ThemeSettingsView: View {
 
     /// One settings row: label column, control column, then the hint. The two
     /// fixed columns are what keep every control and every hint on one x.
+    /// A nil `controlWidth` lets the control take the rest of the row.
     func settingRow<Control: View, Trailing: View>(
         _ label: String?,
         hint: String? = nil,
         alignment: VerticalAlignment = .center,
+        controlWidth: CGFloat? = AppConstants.ThemeUI.controlWidth,
         @ViewBuilder control: () -> Control,
         @ViewBuilder trailing: () -> Trailing = { EmptyView() }
     ) -> some View {
         HStack(alignment: alignment, spacing: 10) {
-            Text(label ?? "")
+            settingLabel(label ?? "")
                 .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
-                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
-                .foregroundStyle(themeStore.secondaryTextColor())
 
             control()
-                .frame(width: AppConstants.ThemeUI.controlWidth, alignment: .leading)
+                .frame(width: controlWidth, alignment: .leading)
 
             if let hint {
-                Text(hint)
-                    .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
-                    .foregroundStyle(themeStore.mutedTextColor())
-                    .lineLimit(1)
+                settingHint(hint)
             }
 
             trailing()
 
             Spacer(minLength: 0)
         }
+    }
+
+    func settingLabel(_ text: String) -> some View {
+        Text(text)
+            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+            .foregroundStyle(themeStore.secondaryTextColor())
+    }
+
+    func settingHint(_ text: String, color: Color? = nil) -> some View {
+        Text(text)
+            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+            .foregroundStyle(color ?? themeStore.mutedTextColor())
+            .lineLimit(1)
     }
 
     func sectionHeader(_ title: String) -> some View {
