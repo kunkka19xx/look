@@ -115,8 +115,13 @@ fn default_config_contents() -> String {
 }
 
 const SHELL_CONFIG_SECTION: &str = "\n\
-# Running apps switcher: none, right\n\
-running_apps_placement=right\n\
+# Right end of the search bar: running, pinned, todo, script, none\n\
+bar_slot=running\n\
+# With bar_slot=pinned: up to nine app ids, filled by Pin to bar on an app row\n\
+pinned_apps=\n\
+# With bar_slot=script: a command, or the path of a script, whose first\n\
+# output line the bar shows\n\
+bar_script=\n\
 \n\
 # How many copied images ci\" keeps (5-50). Each one is a file on disk,\n\
 # so this is capped well below the text history.\n\
@@ -642,6 +647,15 @@ mod tests {
         assert!(
             default_config_contents().starts_with(&look_engine::config::default_config_contents())
         );
+    }
+
+    #[test]
+    fn reset_template_writes_bar_slot_not_the_legacy_key() {
+        use look_engine::bar_slot::{LEGACY_PLACEMENT_KEY, SLOT_KEY};
+        let template = default_config_contents();
+
+        assert!(template.contains(&format!("\n{SLOT_KEY}=")));
+        assert!(!template.contains(&format!("\n{LEGACY_PLACEMENT_KEY}=")));
     }
 
     #[test]

@@ -9,6 +9,7 @@ use look_tools::Tools;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 pub const APP_SCAN_DEPTH: usize = 3;
@@ -445,13 +446,14 @@ fn ensure_default_config_file(path: &Path) {
 }
 
 const UPDATE_MARKER: &str = "# Added by look update";
+const UPDATE_TEMP_SUFFIX: &str = "tmp";
 
 fn append_missing_default_config_entries(path: &Path) {
     let Ok(contents) = std::fs::read_to_string(path) else {
         return;
     };
     if contents.trim().is_empty() {
-        let _ = std::fs::write(path, default_config_contents());
+        let _ = replace_file(path, &default_config_contents());
         return;
     }
 
@@ -470,8 +472,32 @@ fn append_missing_default_config_entries(path: &Path) {
     }
 
     if updated != contents {
-        let _ = std::fs::write(path, updated);
+        let _ = replace_file(path, &updated);
     }
+}
+
+/// Writes a sibling temp file and renames it over `path`, so a failed write
+/// leaves the old config whole. A symlinked config is replaced at its target
+/// and keeps its permissions, as an in-place write would.
+fn replace_file(path: &Path, contents: &str) -> std::io::Result<()> {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let target = std::fs::canonicalize(path)?;
+    let mut temp_name = target.file_name().unwrap_or_default().to_os_string();
+    temp_name.push(format!(
+        ".{}.{}.{UPDATE_TEMP_SUFFIX}",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    let temp = target.with_file_name(temp_name);
+
+    let written = std::fs::write(&temp, contents)
+        .and_then(|()| std::fs::metadata(&target))
+        .and_then(|metadata| std::fs::set_permissions(&temp, metadata.permissions()))
+        .and_then(|()| std::fs::rename(&temp, &target));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    written
 }
 
 /// Older versions wrote the marker on every update. The first one stays.
@@ -855,17 +881,28 @@ fn strip_comments(value: &str) -> &str {
 /// helpfully append the key right back: commenting a key out would not stick. Absence
 /// and a commented-out key both mean "use the default", so resurrecting it changes no
 /// behaviour today, but it does rewrite a config the user deliberately arranged.
+/// The exception is `EXAMPLE_ONLY_KEYS`: older templates wrote those commented out
+/// themselves, so the line is not the user's choice.
 fn parse_config_keys(contents: &str) -> HashSet<String> {
     let mut keys = HashSet::new();
     for raw_line in contents.lines() {
-        if let Some(key) =
-            assigned_key(strip_comments(raw_line)).or_else(|| commented_out_key(raw_line))
-        {
+        let key = assigned_key(strip_comments(raw_line))
+            .or_else(|| commented_out_key(raw_line).filter(|key| !EXAMPLE_ONLY_KEYS.contains(key)));
+        if let Some(key) = key {
             keys.insert(key.to_string());
         }
     }
     keys
 }
+
+/// Keys older templates shipped only as commented examples, such as
+/// `# text_editor=nvim`.
+const EXAMPLE_ONLY_KEYS: &[&str] = &[
+    look_tools::key::TEXT_EDITOR,
+    look_tools::key::CODE_EDITOR,
+    look_tools::key::TERMINAL,
+    look_tools::key::FILE_MANAGER,
+];
 
 /// The key in an `key=value` assignment, if the line is one.
 fn assigned_key(line: &str) -> Option<&str> {
@@ -1315,6 +1352,51 @@ mod tests {
     }
 
     #[test]
+    fn update_adds_tool_keys_a_config_has_only_as_examples() {
+        let defaults = default_config_contents();
+        let with_examples = ADVERTISED_TOOL_KEYS
+            .iter()
+            .fold(defaults.clone(), |config, key| {
+                config.replace(&format!("\n{key}=\n"), &format!("\n# {key}=example\n"))
+            });
+
+        let added = missing_default_entries(&with_examples, &defaults);
+        let expected: String = ADVERTISED_TOOL_KEYS
+            .iter()
+            .map(|key| format!("{key}=\n"))
+            .collect();
+        assert_eq!(added, expected);
+        assert_eq!(
+            missing_default_entries(&format!("{with_examples}{added}"), &defaults),
+            ""
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn update_writes_through_a_symlinked_config() {
+        let target = temp_config("symlink-target");
+        let link = temp_config("symlink");
+        std::fs::write(&target, "app_scan_depth=3\n").expect("should write temporary config");
+        std::os::unix::fs::symlink(&target, &link).expect("should link temporary config");
+
+        ensure_default_config_file(&link);
+
+        let contents = std::fs::read_to_string(&target).expect("should read updated config");
+        assert!(contents.starts_with("app_scan_depth=3\n"));
+        assert!(contents.contains("\nfile_scan_limit=8000"));
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .expect("link should remain")
+                .file_type()
+                .is_symlink()
+        );
+
+        let _ = std::fs::remove_file(&link);
+        let _ = std::fs::remove_file(&target);
+    }
+
+    #[test]
     fn update_keeps_one_marker_and_drops_older_repeats() {
         let tmp = temp_config("marker");
         std::fs::write(
@@ -1729,6 +1811,14 @@ mod tests {
             keys.contains("file_scan_limit"),
             "a `#key=value` with no space still names a key"
         );
+    }
+
+    #[test]
+    fn parse_config_keys_skips_commented_tool_examples() {
+        let keys = parse_config_keys("# text_editor=nvim\ncode_editor=zed\n");
+
+        assert!(!keys.contains(look_tools::key::TEXT_EDITOR));
+        assert!(keys.contains(look_tools::key::CODE_EDITOR));
     }
 
     #[test]
