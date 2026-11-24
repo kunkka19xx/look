@@ -530,7 +530,7 @@ pub struct Theme {
     pub hints: bool,
     /// `search_placeholder`: what the empty search field says.
     pub placeholder: SharedString,
-    /// `christmas_decorations`: snow, bokeh, the tree and the snowman.
+    /// `christmas_decorations`: snow, bokeh, Santa and the snowman.
     pub decorations: bool,
     /// `christmas_snow`: times the default snow, which the core holds in range.
     pub snow_amount: f32,

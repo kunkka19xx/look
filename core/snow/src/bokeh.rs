@@ -19,11 +19,12 @@ pub struct Glow {
 const MAX_LIGHTS: usize = 40;
 /// Each light is two glows, its halo then its core.
 pub const MAX_GLOWS: usize = 2 * MAX_LIGHTS;
-const AREA_PER_LIGHT: f64 = 16_000.0;
+const AREA_PER_LIGHT: f64 = 24_000.0;
 const RADIUS: (f64, f64) = (12.0, 40.0);
 /// Small lights outnumber big ones: size is a uniform draw raised to this.
 const SIZE_SKEW: f64 = 1.5;
-const ALPHA: (f64, f64) = (0.35, 0.70);
+/// Faint, so text over a light stays readable.
+const ALPHA: (f64, f64) = (0.14, 0.28);
 const PULSE: (f64, f64) = (0.6, 1.0);
 const PULSE_PERIOD: (f64, f64) = (4.0, 9.0);
 /// Points per second upwards.
