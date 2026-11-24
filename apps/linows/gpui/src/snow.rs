@@ -58,9 +58,8 @@ const GIFT: [(&str, Rgba); 2] = [
     (glyphs::GIFT_BOX, SANTA_RED),
     (glyphs::GIFT_RIBBON, RIBBON_GOLD),
 ];
-/// The lights hold still here, dimmer and wider than the core asks.
+/// The lights hold still here, wider than the core asks.
 const BOKEH_SECONDS: f64 = 0.0;
-const GLOW_DIM: f32 = 0.4;
 const GLOW_SPREAD: f32 = 1.4;
 const CHANNEL_MAX: f32 = 255.0;
 
@@ -250,7 +249,7 @@ fn paint_bokeh(width: u32, height: u32) -> RgbaImage {
         for py in span(y, height) {
             for px in span(x, width) {
                 let off = ((px as f32 + 0.5 - x).hypot(py as f32 + 0.5 - y) / reach).min(1.0);
-                let alpha = glow.alpha * GLOW_DIM * glow_falloff(off);
+                let alpha = glow.alpha * glow_falloff(off);
                 let under = field.get_pixel_mut(px, py);
                 let [ub, ug, ur, ua] = under.0.map(|c| f32::from(c) / CHANNEL_MAX);
                 let kept = ua * (1.0 - alpha);
