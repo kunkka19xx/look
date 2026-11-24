@@ -583,6 +583,9 @@ enum AppConstants {
             // Slack on each end of the strip to keep the active ring from being clipped.
             static let edgeSlack: CGFloat = 6
             static let maxItems = 9
+            static let textGap: CGFloat = 8
+            static let textRestingOpacity: Double = 0.85
+            static let hoverDuration: Double = 0.15
 
             static var width: CGFloat { iconSize + horizontalPadding * 2 + edgeSlack }
 

@@ -5,83 +5,43 @@ extension ThemeSettingsView {
     var appearanceTab: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 10) {
-                // One grid, so each switch lines up with the one above it
-                // whatever the labels' widths.
-                Grid(alignment: .leading, horizontalSpacing: Self.switchColumnGap, verticalSpacing: Self.switchRowGap) {
-                    GridRow {
-                        HStack(spacing: 14) {
-                            inlinePickerLabel("Theme")
-                                .fixedSize()
-                            Picker("Theme", selection: $settings.uiTheme) {
-                                ForEach(BuiltinThemePreset.options(including: settings.uiTheme)) { preset in
-                                    Text(preset.pickerTitle).tag(preset)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .labelsHidden()
-                            .frame(width: AppConstants.ThemeUI.pickerWidth)
-                            .onChange(of: settings.uiTheme) { _, newValue in
-                                themeStore.applyBuiltinTheme(newValue)
-                            }
-                        }
+                sectionHeader(Self.launcherSection)
 
-                        HStack(spacing: 10) {
-                            appearanceSwitch(
-                                "Christmas",
-                                isOn: $settings.christmasDecorations,
-                                help:
-                                    "Falling snow, glowing lights behind the panels, a tree behind the results and a snowman search icon, over any theme."
-                            )
-
-                            if settings.christmasDecorations {
-                                Picker("Snow", selection: $settings.christmasSnowAmount) {
-                                    ForEach(AppConstants.ThemeUI.snowAmounts, id: \.self) { amount in
-                                        Text("Snow \(amount.formatted())x").tag(amount)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .labelsHidden()
-                                .fixedSize()
-                                .help("How much snow falls")
-                            }
+                settingRow(Self.themeLabel) {
+                    Picker(Self.themeLabel, selection: $settings.uiTheme) {
+                        ForEach(BuiltinThemePreset.options(including: settings.uiTheme)) { preset in
+                            Text(preset.pickerTitle).tag(preset)
                         }
                     }
-
-                    GridRow {
-                        // Compact shows neither the strip nor the launchpad, so
-                        // the session override (⌘⇧C) hides these too.
-                        if themeStore.effectiveLayout == .split {
-                            appearanceSwitch(
-                                "Running Apps",
-                                isOn: Binding(
-                                    get: { settings.runningAppsPlacement != .none },
-                                    set: { settings.runningAppsPlacement = $0 ? .right : .none }
-                                ),
-                                help: "Show running apps in the right half of the search bar (⌘1-9 to switch)")
-
-                            appearanceSwitch(
-                                "Super Actions",
-                                isOn: $settings.superActionsEnabled,
-                                help: "Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
-                        }
-
-                        appearanceSwitch(
-                            "Animations",
-                            isOn: $settings.animationsEnabled,
-                            help:
-                                "Animate the launcher when it opens and as the selection moves. Off shows every change instantly."
-                        )
-                    }
-
-                    GridRow {
-                        appearanceSwitch(
-                            "Row Digits",
-                            isOn: $settings.rowDigits,
-                            help:
-                                "Show on each result row the digit that opens it (⌃1-9). Off keeps the chords working."
-                        )
+                    .settingsMenuPicker()
+                    .onChange(of: settings.uiTheme) { _, newValue in
+                        themeStore.applyBuiltinTheme(newValue)
                     }
                 }
+
+                // Compact has no bar slot and no launchpad, so their rows are split only.
+                if themeStore.effectiveLayout == .split {
+                    settingRow(Self.barSlotLabel) {
+                        Picker(Self.barSlotLabel, selection: $settings.barSlot) {
+                            ForEach(BarSlot.allCases) { slot in
+                                Text(slot.title).tag(slot)
+                            }
+                        }
+                        .settingsMenuPicker()
+                        .help(Self.barSlotHelp)
+                    }
+
+                    switch settings.barSlot {
+                    case .pinned:
+                        pinnedAppsRow
+                    case .script:
+                        barScriptRow
+                    case .running, .todo, .none:
+                        EmptyView()
+                    }
+                }
+
+                switchesRow
 
                 Divider()
                     .overlay(themeStore.dividerColor())
@@ -89,15 +49,8 @@ extension ThemeSettingsView {
 
                 sectionHeader("Layout")
 
-                HStack(spacing: 10) {
-                    Text("Window")
-                        .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
-                        .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
-                        .foregroundStyle(themeStore.secondaryTextColor())
-
+                settingRow("Window", controlWidth: nil) {
                     layoutSegment
-
-                    Spacer(minLength: 0)
                 }
 
                 LabeledSlider(
@@ -146,9 +99,7 @@ extension ThemeSettingsView {
                             Text(item.pickerTitle).tag(item)
                         }
                     }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(width: AppConstants.ThemeUI.pickerWidth)
+                    .settingsMenuPicker()
 
                     Text(settings.blurMaterial.detail)
                         .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
@@ -334,31 +285,67 @@ extension ThemeSettingsView {
         .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
     }
 
-    static let switchColumnGap: CGFloat = 32
-    static let switchRowGap: CGFloat = 10
+    private struct LauncherSwitch {
+        let title: String
+        let isOn: WritableKeyPath<ThemeSettings, Bool>
+        let help: String
+    }
 
-    @ViewBuilder
-    func inlinePickerLabel(_ title: String) -> some View {
-        HStack(spacing: 6) {
-            Text("▶")
-                .font(.system(size: CGFloat(settings.fontSize - 2)))
-                .foregroundStyle(themeStore.secondaryTextColor())
-            Text(title)
-                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
-                .foregroundStyle(themeStore.secondaryTextColor())
+    private static let launcherSection = "Launcher"
+    private static let themeLabel = "Theme"
+    private static let switchGap: CGFloat = 30
+    private static let switchLabelGap: CGFloat = 10
+    private static let superActionsSwitch = LauncherSwitch(
+        title: "Super Actions", isOn: \.superActionsEnabled,
+        help: "Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
+    private static let animationsSwitch = LauncherSwitch(
+        title: "Animations", isOn: \.animationsEnabled,
+        help: "Animate the launcher when it opens and as the selection moves. Off shows every change instantly.")
+    private static let rowDigitsSwitch = LauncherSwitch(
+        title: "Row Digits", isOn: \.rowDigits,
+        help: "Show on each result row the digit that opens it (⌃1-9). Off keeps the chords working.")
+    private static let christmasSwitch = LauncherSwitch(
+        title: "Christmas", isOn: \.christmasDecorations,
+        help:
+            "Falling snow, glowing lights behind the panels, a tree behind the results and a snowman search icon, over any theme."
+    )
+
+    /// One line: the first switch in the label column, the rest after it.
+    private var switchesRow: some View {
+        let switches =
+            themeStore.effectiveLayout == .split
+            ? [Self.superActionsSwitch, Self.animationsSwitch, Self.rowDigitsSwitch, Self.christmasSwitch]
+            : [Self.animationsSwitch, Self.rowDigitsSwitch, Self.christmasSwitch]
+        return settingRow(switches[0].title, controlWidth: nil) {
+            HStack(spacing: Self.switchGap) {
+                launcherToggle(switches[0])
+                ForEach(switches.dropFirst(), id: \.title) { item in
+                    HStack(spacing: Self.switchLabelGap) {
+                        settingLabel(item.title)
+                            .fixedSize()
+                        launcherToggle(item)
+                    }
+                }
+                if settings.christmasDecorations {
+                    Picker("Snow", selection: $settings.christmasSnowAmount) {
+                        ForEach(AppConstants.ThemeUI.snowAmounts, id: \.self) { amount in
+                            Text("Snow \(amount.formatted())x").tag(amount)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .fixedSize()
+                    .help("How much snow falls")
+                }
+            }
         }
     }
 
-    /// A labelled switch; the label keeps one line so a narrow row cannot wrap it.
-    func appearanceSwitch(_ title: String, isOn: Binding<Bool>, help: String) -> some View {
-        HStack(spacing: 14) {
-            inlinePickerLabel(title)
-                .fixedSize()
-            Toggle(title, isOn: isOn)
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .help(help)
-        }
+    private func launcherToggle(_ item: LauncherSwitch) -> some View {
+        Toggle(item.title, isOn: $settings[dynamicMember: item.isOn])
+            .toggleStyle(.switch)
+            .labelsHidden()
+            .help(item.help)
     }
 
     func placeCaretAtEndOfFontField() {
@@ -367,5 +354,14 @@ extension ThemeSettingsView {
         }
         let location = (editor.string as NSString).length
         editor.setSelectedRange(NSRange(location: location, length: 0))
+    }
+}
+
+extension View {
+    /// A menu picker hugs its title, so it is pinned to the control column's edge.
+    fileprivate func settingsMenuPicker() -> some View {
+        pickerStyle(.menu)
+            .labelsHidden()
+            .frame(width: AppConstants.ThemeUI.pickerWidth, alignment: .leading)
     }
 }

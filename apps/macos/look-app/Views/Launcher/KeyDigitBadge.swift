@@ -2,7 +2,7 @@ import SwiftUI
 
 extension View {
     /// Pins the digit this icon answers to on its top trailing corner, the badge
-    /// the running apps strip and the result rows share. Nil draws nothing.
+    /// the search bar's app icons and the result rows share. Nil draws nothing.
     func keyDigitBadge(_ digit: Int?, themeStore: ThemeStore) -> some View {
         overlay(alignment: .topTrailing) {
             if let digit {

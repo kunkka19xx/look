@@ -302,8 +302,8 @@ extension LauncherView {
                 commandFeedback = "Selected /\(command.id)"
                 requestCommandInputFocusIfNeeded()
             },
-            onActivateRunningApp: { [self] key in
-                activateRunningApp(forKey: key)
+            onActivateBarSlot: { [self] key in
+                activateBarSlot(forKey: key)
             },
             onActivateSession: { [self] index in
                 openSessionAt(index)

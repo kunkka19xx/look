@@ -229,6 +229,10 @@ final class TodoState {
         return TodoStat(done: t.doneCount, total: t.total)
     }
 
+    var todayOpenTasks: [String] {
+        today?.tasks.filter { !$0.done }.map(\.name) ?? []
+    }
+
     var futureCount: Int { groups.filter { $0.kind == .future }.count }
     var canAddDateGroup: Bool { futureCount < TodoCommand.dateGroupLimit }
     var groupsLeft: Int { max(0, TodoCommand.dateGroupLimit - futureCount) }

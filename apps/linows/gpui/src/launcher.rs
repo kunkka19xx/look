@@ -3329,20 +3329,13 @@ impl Render for Launcher {
         let snow = th.snow();
         let family = th.font_family.clone();
         let amount = th.snow_amount;
-        // A figure stands behind the results once there are some: the tree
-        // in the split layout's gap, Santa in the compact corner.
-        let shows_figure = th.decorations
+        // Santa stands in the compact layout's corner once there are results.
+        let shows_santa = th.decorations
+            && !th.split()
             && !self.at_home(cx)
             && !self.settings_open
             && !self.help.open
             && !self.command_mode;
-        let figure = shows_figure.then(|| {
-            if th.split() {
-                crate::snow::Figure::Trees
-            } else {
-                crate::snow::Figure::Santa
-            }
-        });
         let content = self.content(th, window, cx);
         div().size_full().flex().justify_center().child(
             div()
@@ -3351,8 +3344,8 @@ impl Render for Launcher {
                 .w(frame.width)
                 .h(frame.height)
                 .child(content)
-                .when_some(figure, |el, figure| {
-                    el.child(crate::snow::figure(figure, f32::from(frame.height)))
+                .when(shows_santa, |el| {
+                    el.child(crate::snow::santa(f32::from(frame.height)))
                 })
                 .when_some(snow, |el, colour| {
                     el.child(crate::snow::layer(colour, family, amount))

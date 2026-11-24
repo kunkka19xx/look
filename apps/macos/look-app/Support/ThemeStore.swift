@@ -51,6 +51,9 @@ final class ThemeStore: ObservableObject {
     /// `search_placeholder`: what the empty search field says, exactly. The
     /// default text lives in the config file, so empty means none.
     @Published private(set) var searchPlaceholder = ""
+    /// Written on each pin, not on Save Config, so kept outside `settings`.
+    @Published private(set) var pinnedAppIDs: [String] = []
+    @Published private(set) var barScript = ""
 
     enum AddExtraScanRootError: Error {
         case notDirectory
@@ -301,8 +304,7 @@ final class ThemeStore: ObservableObject {
         ConfigFileLines.upsert(
             &lines, key: "settings_blur_multiplier", value: String(format: "%.2f", settings.settingsBlurMultiplier))
 
-        // Running apps switcher
-        ConfigFileLines.upsert(&lines, key: "running_apps_placement", value: settings.runningAppsPlacement.rawValue)
+        ConfigFileLines.upsert(&lines, key: BarSlot.configKey, value: settings.barSlot.rawValue)
         ConfigFileLines.upsert(&lines, key: "inner_gap", value: String(format: "%.0f", settings.innerGap))
         ConfigFileLines.upsert(&lines, key: "layout", value: settings.layout.rawValue)
         ConfigFileLines.upsert(
@@ -729,17 +731,6 @@ final class ThemeStore: ObservableObject {
                 if let parsed = parseUnitDouble(value) {
                     settings.settingsBlurMultiplier = parsed
                 }
-            case "running_apps_placement":
-                // The setting is now a simple on/off (running apps render inside
-                // the search bar, not as a placed floating strip). Legacy values
-                // top/right/bottom all mean "on" - normalize them to `.right`
-                // (canonical on) so the stored config converges on the new model
-                // on next save. Unknown/empty values fall back to off.
-                if let placement = RunningAppsPlacement(rawValue: value.lowercased()) {
-                    settings.runningAppsPlacement = placement == .none ? .none : .right
-                } else {
-                    settings.runningAppsPlacement = .none
-                }
             case _
             where key == LauncherHotkeyConfig.key
                 || ShortcutBindingTable.definition(configKey: key) != nil:
@@ -750,9 +741,36 @@ final class ThemeStore: ObservableObject {
         }
 
         ShortcutBindings.shared.apply(settings.shortcutBindings)
+        applyBarConfig(ConfigFileLines.keyValues(raw))
 
         // Keeps the Settings picker in step when the config file is what changed.
         settings.uiTheme = detectBuiltinTheme(for: settings)
+    }
+
+    private func applyBarConfig(_ entries: [String: String]) {
+        let bar = EngineBridge.shared.barConfig(entries: entries)
+        settings.barSlot = bar.flatMap { BarSlot(rawValue: $0.slot) } ?? .running
+        pinnedAppIDs = bar?.pinned ?? []
+        barScript = bar?.script ?? ""
+    }
+
+    /// Nil when the config cannot be written.
+    func togglePinnedApp(_ id: String) -> PinChange? {
+        let path = Self.configPath()
+        guard let raw = try? String(contentsOf: path, encoding: .utf8) else { return nil }
+        let saved = ConfigFileLines.parseList(ConfigFileLines.keyValues(raw)[BarSlot.pinnedAppsKey] ?? "")
+        let (ids, change) = BarPins.toggled(saved, id, limit: EngineBridge.maxPinnedApps)
+        guard change != .full else { return change }
+        var lines = ConfigFileLines.parse(raw)
+        ConfigFileLines.upsert(&lines, key: BarSlot.pinnedAppsKey, value: ConfigFileLines.renderList(ids))
+        let rendered = ConfigFileLines.render(lines)
+        do {
+            try rendered.write(to: path, atomically: true, encoding: .utf8)
+        } catch {
+            return nil
+        }
+        pinnedAppIDs = EngineBridge.shared.barConfig(entries: ConfigFileLines.keyValues(rendered))?.pinned ?? ids
+        return change
     }
 
     private static func configPath() -> URL {
@@ -1021,8 +1039,13 @@ final class ThemeStore: ObservableObject {
         ui_border_blue=1.0
         ui_border_opacity=0.12
 
-        # Running apps switcher: none, top, right, bottom
-        running_apps_placement=right
+        # Right end of the search bar: running, pinned, todo, script, none
+        bar_slot=running
+        # With bar_slot=pinned: up to nine app ids, filled by Pin to bar on an app row
+        pinned_apps=
+        # With bar_slot=script: a command, or the path of a script, whose first
+        # output line the bar shows
+        bar_script=
 
         # Inner gap (points, 0-24) between the three home panes; 0 = classic flat layout
         inner_gap=7
@@ -1099,8 +1122,8 @@ final class ThemeStore: ObservableObject {
         if object["lazyIndexingEnabled"] == nil {
             object["lazyIndexingEnabled"] = true
         }
-        if object["runningAppsPlacement"] == nil {
-            object["runningAppsPlacement"] = ThemeSettings.default.runningAppsPlacement.rawValue
+        if object["barSlot"] == nil {
+            object["barSlot"] = ThemeSettings.default.barSlot.rawValue
         }
         if object["aiEnabled"] == nil {
             object["aiEnabled"] = ThemeSettings.default.aiEnabled
