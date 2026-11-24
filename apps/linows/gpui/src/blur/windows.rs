@@ -173,10 +173,14 @@ impl Layer {
         if scale == self.scale && patches == self.patches {
             return Ok(());
         }
+        // Any early return below leaves the cards half moved: the cache must
+        // not claim they match, so the next call redoes the whole pass.
+        self.scale = 0.0;
         let children = self.root.Children()?;
         while self.cards.len() > patches.len() {
-            if let Some(card) = self.cards.pop() {
+            if let Some(card) = self.cards.last() {
                 children.Remove(&card.visual)?;
+                self.cards.pop();
             }
         }
         while self.cards.len() < patches.len() {
