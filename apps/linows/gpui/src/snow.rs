@@ -7,9 +7,9 @@ use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, AppContext, Bounds, ContentMask, Corners, FontWeight,
-    GlyphId, Hsla, IntoElement, PaintQuad, ParentElement, Pixels, Point, RenderImage, Rgba,
-    SharedString, Size, Styled, Window, canvas, div, point, px, size, svg,
+    Animation, AnimationExt, App, AppContext, Bounds, ContentMask, Corners, FontWeight, GlyphId,
+    Hsla, IntoElement, PaintQuad, ParentElement, Pixels, Point, RenderImage, Rgba, SharedString,
+    Size, Styled, Window, canvas, div, point, px, size, svg,
 };
 use image::RgbaImage;
 use linows_backend::look_snow::{self, CRYSTALS, bokeh};
@@ -38,18 +38,9 @@ const CRYSTAL_DOT_SHARE: f32 = 0.35;
 const PROBE_SIZE: f32 = 16.0;
 
 /// Glyph size as a share of the frame's height, and its bounds.
-const TREE_SIZING: (f32, f32, f32) = (0.24, 96.0, 170.0);
 const SANTA_SIZING: (f32, f32, f32) = (0.12, 40.0, 64.0);
 const FIGURE_OPACITY: f32 = 0.55;
 const FIGURE_CORNER_INSET: f32 = 12.0;
-const GROVE_LIFT: f32 = 16.0;
-/// Back to front: share of the front tree's size, centre offset in its
-/// widths, colour.
-const GROVE: [(f32, f32, Rgba); 3] = [
-    (0.7, -0.46, Rgba::new(0.11, 0.36, 0.22, 1.0)),
-    (0.84, 0.4, Rgba::new(0.16, 0.5, 0.29, 1.0)),
-    (1.0, 0.0, Rgba::new(0.24, 0.66, 0.38, 1.0)),
-];
 /// Santa stands behind his gift, up and to the left, in glyph sizes.
 const SANTA_RISE: f32 = 0.5;
 const SANTA_LEAN: f32 = 0.35;
@@ -67,17 +58,10 @@ const GIFT: [(&str, Rgba); 2] = [
     (glyphs::GIFT_BOX, SANTA_RED),
     (glyphs::GIFT_RIBBON, RIBBON_GOLD),
 ];
-/// The lights hold still here, dimmer and wider than the core asks.
+/// The lights hold still here, wider than the core asks.
 const BOKEH_SECONDS: f64 = 0.0;
-const GLOW_DIM: f32 = 0.4;
 const GLOW_SPREAD: f32 = 1.4;
 const CHANNEL_MAX: f32 = 255.0;
-
-#[derive(Clone, Copy)]
-pub enum Figure {
-    Trees,
-    Santa,
-}
 
 /// Whether an installed family draws colour emoji; without one the glass
 /// stays.
@@ -109,41 +93,20 @@ pub fn snowman_icon() -> impl IntoElement {
         ))
 }
 
-/// `figure` at the bottom of a frame `frame_height` tall.
-pub fn figure(figure: Figure, frame_height: f32) -> AnyElement {
-    let sized = |(share, min, max): (f32, f32, f32)| (frame_height * share).clamp(min, max);
-    let el = div().absolute().opacity(FIGURE_OPACITY);
-    match figure {
-        Figure::Trees => {
-            let front = sized(TREE_SIZING);
-            let grove = GROVE.map(|(share, stand_off, green)| {
-                let tree = front * share;
-                svg()
-                    .path(glyphs::TREE_PINE)
-                    .absolute()
-                    .bottom_0()
-                    .left(px(front * (0.5 + stand_off) - tree / 2.0))
-                    .size(px(tree))
-                    .text_color(green)
-            });
-            el.bottom(px(GROVE_LIFT))
-                .left_0()
-                .right_0()
-                .flex()
-                .justify_center()
-                .child(div().relative().size(px(front)).children(grove))
-        }
-        Figure::Santa => {
-            let size = sized(SANTA_SIZING);
-            el.right(px(FIGURE_CORNER_INSET))
-                .bottom(px(FIGURE_CORNER_INSET))
-                .w(px(size * (1.0 + SANTA_LEAN)))
-                .h(px(size * (1.0 + SANTA_RISE)))
-                .child(layered(&SANTA, size).left_0().top_0())
-                .child(layered(&GIFT, size).right_0().bottom_0())
-        }
-    }
-    .into_any_element()
+/// Santa and his gift in the bottom right corner of a frame `frame_height`
+/// tall.
+pub fn santa(frame_height: f32) -> impl IntoElement {
+    let (share, min, max) = SANTA_SIZING;
+    let size = (frame_height * share).clamp(min, max);
+    div()
+        .absolute()
+        .opacity(FIGURE_OPACITY)
+        .right(px(FIGURE_CORNER_INSET))
+        .bottom(px(FIGURE_CORNER_INSET))
+        .w(px(size * (1.0 + SANTA_LEAN)))
+        .h(px(size * (1.0 + SANTA_RISE)))
+        .child(layered(&SANTA, size).left_0().top_0())
+        .child(layered(&GIFT, size).right_0().bottom_0())
 }
 
 /// One glyph of `size` from its coloured `layers`.
@@ -286,7 +249,7 @@ fn paint_bokeh(width: u32, height: u32) -> RgbaImage {
         for py in span(y, height) {
             for px in span(x, width) {
                 let off = ((px as f32 + 0.5 - x).hypot(py as f32 + 0.5 - y) / reach).min(1.0);
-                let alpha = glow.alpha * GLOW_DIM * glow_falloff(off);
+                let alpha = glow.alpha * glow_falloff(off);
                 let under = field.get_pixel_mut(px, py);
                 let [ub, ug, ur, ua] = under.0.map(|c| f32::from(c) / CHANNEL_MAX);
                 let kept = ua * (1.0 - alpha);

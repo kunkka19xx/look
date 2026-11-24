@@ -82,7 +82,6 @@ pub const CHEVRON_DOWN: &str = "icons/chevron-down.svg";
 pub const TRIANGLE_ALERT: &str = "icons/triangle-alert.svg";
 
 // Christmas figures, a layer per colour
-pub const TREE_PINE: &str = "icons/tree-pine.svg";
 pub const GIFT_BOX: &str = "icons/gift-box.svg";
 pub const GIFT_RIBBON: &str = "icons/gift-ribbon.svg";
 pub const SANTA_HAT: &str = "icons/santa-hat.svg";
@@ -127,10 +126,6 @@ const GLYPHS: &[(&str, &[u8])] = &[
     (
         SEARCH,
         br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>"##,
-    ),
-    solid!(
-        TREE_PINE,
-        r#"<g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m17 14 3 3.3a1 1 0 0 1-.7 1.7H4.7a1 1 0 0 1-.7-1.7L7 14h-.3a1 1 0 0 1-.7-1.7L9 9h-.2A1 1 0 0 1 8 7.3L12 3l4 4.3a1 1 0 0 1-.8 1.7H15l3 3.3a1 1 0 0 1-.7 1.7H17Z"/><path d="M12 22v-3"/></g>"#
     ),
     solid!(
         GIFT_BOX,
