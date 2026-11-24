@@ -196,7 +196,7 @@ pub(super) fn keys() -> Vec<&'static str> {
     if cfg!(windows) {
         keys.push(ADD_TO_PATH.key);
     }
-    if cfg!(target_os = "linux") {
+    if cfg!(any(windows, target_os = "linux")) {
         keys.push(theme::COMPOSITOR_BLUR_KEY);
     }
     keys
@@ -689,6 +689,13 @@ impl Settings {
         }
         if !crate::blur::is_supported() {
             return "Your compositor does not offer it; Look stays clear glass";
+        }
+        if cfg!(windows) {
+            return if self.compositor_blur_on() {
+                "Frosted by Windows behind each card; turn off to see through"
+            } else {
+                "Clear glass: the desktop shows sharp behind the tint"
+            };
         }
         let niri = compositor_is("niri");
         match (self.compositor_blur_on(), niri) {
