@@ -321,7 +321,7 @@ extension LauncherView {
                 // selection. For a query with no local results selection is nil,
                 // so re-seed it onto the first suggestion, otherwise Enter on a
                 // suggestion-only list does nothing. NOT while the answer card
-                // is answering: a highlighted Google row would misread as what
+                // is answering: a highlighted web-search row would misread as what
                 // Enter does; arrow keys still reach the rows deliberately.
                 if selectedResultID == nil, !aiAnswer.isActive {
                     setInitialSelection()

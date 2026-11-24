@@ -265,7 +265,7 @@ Look can answer questions and look things up without leaving the launcher. These
 
 **Platform note.** The web answer card and search suggestions are available on macOS, Linux, and Windows. The on-device LLM - model interpretation and the Apple Intelligence answer fallback - is **macOS-only**; there is no on-device model on Linux/Windows, so there the card uses web sources (DuckDuckGo, Wikipedia, currency/weather/crypto) only. The `ai_enabled` toggle is shared across platforms.
 
-**Network note.** While AI features are on, the answer card's web sources and the search suggestions send your typed query to those services (DuckDuckGo, Wikipedia). An explicit web search goes to the engine you chose with `web_search_engine`. The on-device model makes no network calls of its own. Set `ai_enabled = false` to disable all of it and run fully offline.
+**Network note.** While AI features are on, the answer card's web sources and the search suggestions send your typed query to those services (DuckDuckGo, Wikipedia). The on-device model makes no network calls of its own. Set `ai_enabled = false` to turn off the answer card's web sources and the search suggestions. An explicit web search (`Cmd+Enter` / `Ctrl+Enter`) is separate: it still opens the engine you chose with `web_search_engine`, whatever the AI setting.
 
 ## Query prefixes
 

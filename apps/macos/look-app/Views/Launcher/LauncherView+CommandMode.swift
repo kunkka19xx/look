@@ -87,7 +87,7 @@ extension LauncherView {
     }
 
     /// Whether Enter should escalate over the current selection: yes when
-    /// nothing is selected or the selection is just the auto-seeded Google
+    /// nothing is selected or the selection is just the auto-seeded web-search
     /// suggestion row; a URL, calc, prefix, or real result row keeps Enter.
     private var escalationBeatsSelection: Bool {
         guard let selectedResultID,
@@ -228,7 +228,7 @@ extension LauncherView {
                 // answered question in chat is noise, not help.
                 // Dead-end Enter (nothing real to open): escalate to the AI
                 // surface - the same routing ladder with its confirm gates - so
-                // the `>` prefix stays optional knowledge. Auto-seeded Google
+                // the `>` prefix stays optional knowledge. Auto-seeded web-search
                 // rows don't count as "found something" (Cmd+Enter still
                 // web-searches); a URL/calc/prefix/result row keeps Enter.
                 // Deliberately NOT gated on backendResults: those lag a
