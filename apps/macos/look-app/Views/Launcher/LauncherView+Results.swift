@@ -61,10 +61,7 @@ extension LauncherView {
 
         switch selected.kind {
         case .app:
-            guard ensureTargetExists(selected) else { return }
-            launchApp(at: selected.path)
-            recordOpen(selected, action: "open_app")
-            hideLauncherWindow(restorePreviousApp: false)
+            openApp(path: selected.path, candidateID: selected.id)
         case .file:
             guard ensureTargetExists(selected) else { return }
             // A row a block produced answers to its block first: what Enter does
@@ -115,6 +112,13 @@ extension LauncherView {
             // Enter measures CPU on demand and keeps the launcher open.
             measureCPUForSelectedProcess()
         }
+    }
+
+    func openApp(path: String, candidateID: String) {
+        guard ensureTargetExists(path: path, kind: .app) else { return }
+        launchApp(at: path)
+        recordOpen(candidateID: candidateID, action: "open_app")
+        hideLauncherWindow(restorePreviousApp: false)
     }
 
     func openTargetAsync(_ target: String) {
@@ -290,7 +294,11 @@ extension LauncherView {
     }
 
     private func recordOpen(_ selected: LauncherResult, action: String) {
-        if let error = bridge.recordUsage(candidateID: selected.id, action: action) {
+        recordOpen(candidateID: selected.id, action: action)
+    }
+
+    private func recordOpen(candidateID: String, action: String) {
+        if let error = bridge.recordUsage(candidateID: candidateID, action: action) {
             showBanner(error.userFacingMessage, style: .info, duration: 1.4)
         }
     }
@@ -308,19 +316,23 @@ extension LauncherView {
     /// signal worth keeping.
     ///
     /// Returns `true` when the target is openable.
-    private func ensureTargetExists(_ selected: LauncherResult) -> Bool {
+    private func ensureTargetExists(path: String, kind: LauncherResultKind) -> Bool {
         // URL-scheme targets (settings panes, custom schemes) aren't filesystem
         // paths and can't be stat'd - treat them as openable.
-        if isURLScheme(selected.path) { return true }
-        if FileManager.default.fileExists(atPath: selected.path) { return true }
+        if isURLScheme(path) { return true }
+        if FileManager.default.fileExists(atPath: path) { return true }
 
         showBanner(
-            "This \(selected.kind.rawValue) no longer exists - refreshing index",
+            "This \(kind.rawValue) no longer exists - refreshing index",
             style: .error,
             duration: 1.6
         )
         _ = bridge.requestIndexRefresh()
         return false
+    }
+
+    private func ensureTargetExists(_ selected: LauncherResult) -> Bool {
+        ensureTargetExists(path: selected.path, kind: selected.kind)
     }
 
     /// The result eligible for a selection-scoped action (reveal, pick, copy)

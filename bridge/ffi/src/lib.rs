@@ -2,6 +2,7 @@
 
 mod ai_api;
 mod answers_api;
+mod bar_slot_api;
 mod calc_api;
 mod calling_api;
 mod clipboard_api;
@@ -202,6 +203,42 @@ pub extern "C" fn look_modes_parse_json(argv_json: *const c_char) -> *mut c_char
 pub extern "C" fn look_lunar_date_json(year: i64, month: i64, day: i64, tz: f64) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         lunar_api::look_lunar_date_json_impl(year, month, day, tz)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The search bar slot's settings from the config's key/value map (JSON
+/// object): `{slot, pinned, script}`. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_bar_config_json(entries_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        bar_slot_api::look_bar_config_json_impl(entries_json)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The most apps the bar holds pinned.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_bar_max_pinned() -> usize {
+    look_engine::bar_slot::MAX_PINNED
+}
+
+/// Each pinned id (JSON array) as `{id, title, path}`, title and path null
+/// when the index no longer has it. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_bar_pins_json(ids_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        bar_slot_api::look_bar_pins_json_impl(ids_json)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The first line `command` prints, as `{"line": ...}` or `{"error": ...}`.
+/// Blocks for up to two seconds. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_bar_script_line_json(command: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        bar_slot_api::look_bar_script_line_json_impl(command)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

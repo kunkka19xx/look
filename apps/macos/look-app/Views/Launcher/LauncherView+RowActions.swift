@@ -15,6 +15,7 @@ extension LauncherView {
         static let reveal = "\(prefix)reveal"
         static let copyPath = "\(prefix)copypath"
         static let deleteClipboard = "\(prefix)deleteclipboard"
+        static let togglePin = "\(prefix)togglepin"
 
         static func isOne(_ actionID: String) -> Bool {
             actionID.hasPrefix(prefix)
@@ -75,10 +76,19 @@ extension LauncherView {
         }
         let tools = resolvedTools(for: result, entries: offered)
 
-        return offered.map { entry in
+        var entries = offered.map { entry in
             Self.menuEntry(entry.id, title: Self.label(for: entry, tools: tools), chord: entry.chord)
         }
+        if isPinnable(result) {
+            let pinned = themeStore.pinnedAppIDs.contains(result.id)
+            entries.append(
+                Self.menuEntry(RowAction.togglePin, title: pinned ? Self.unpinTitle : Self.pinTitle, chord: nil))
+        }
+        return entries
     }
+
+    private static let pinTitle = "Pin to bar"
+    private static let unpinTitle = "Unpin from bar"
 
     /// A clipboard row's delete, which compact has no side panel to offer.
     var compactPanelDescriptors: [QuickActionDescriptor] {
@@ -94,7 +104,7 @@ extension LauncherView {
         displayedResults.first { $0.id == selectedResultID && $0.kind == .clipboard }
     }
 
-    private static func menuEntry(_ id: String, title: String, chord: String) -> QuickActionDescriptor {
+    private static func menuEntry(_ id: String, title: String, chord: String?) -> QuickActionDescriptor {
         QuickActionDescriptor(
             actionId: id, title: title, control: .button,
             onLabel: nil, offLabel: nil, info: [], shortcut: chord)
@@ -141,6 +151,8 @@ extension LauncherView {
             revealSelectedResult()
         case RowAction.copyPath:
             _ = copySelectedResultToPasteboard()
+        case RowAction.togglePin:
+            toggleSelectedPin()
         case RowAction.deleteClipboard:
             if let result = selectedClipboardResult {
                 deleteClipboardResult(resultID: result.id)
