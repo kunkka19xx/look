@@ -106,28 +106,44 @@ fn transparency_on() -> bool {
         .unwrap_or(false)
 }
 
+/// Lets a host backdrop brush on this window sample what is behind it.
+fn host_backdrop(hwnd: HWND, on: bool) -> Result<()> {
+    let on = BOOL::from(on);
+    unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_USE_HOSTBACKDROPBRUSH,
+            &on as *const BOOL as *const c_void,
+            size_of::<BOOL>() as u32,
+        )
+    }
+}
+
+impl Drop for Layer {
+    fn drop(&mut self) {
+        // The window may already be closed, which is fine.
+        let _ = host_backdrop(self.hwnd, false);
+    }
+}
+
 impl Layer {
-    /// `None` when Windows has transparency off, or when gpui draws through
-    /// a redirection bitmap (`GPUI_DISABLE_DIRECT_COMPOSITION`), which would
-    /// cover the layer.
+    /// `None` when gpui draws through a redirection bitmap
+    /// (`GPUI_DISABLE_DIRECT_COMPOSITION`), which would cover the layer.
     fn new(hwnd: HWND) -> Result<Option<Self>> {
-        if !transparency_on() {
-            return Ok(None);
-        }
         let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
         if ex_style & WS_EX_NOREDIRECTIONBITMAP.0 == 0 {
             return Ok(None);
         }
         // Windows 11 only: on 10 this fails and Look stays clear glass.
-        let on = BOOL::from(true);
-        unsafe {
-            DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_USE_HOSTBACKDROPBRUSH,
-                &on as *const BOOL as *const c_void,
-                size_of::<BOOL>() as u32,
-            )?;
-        }
+        host_backdrop(hwnd, true)?;
+        // From here the layer's drop takes the attribute back off; a failure
+        // before there is a layer has to do it by hand.
+        Self::build(hwnd).map(Some).inspect_err(|_| {
+            let _ = host_backdrop(hwnd, false);
+        })
+    }
+
+    fn build(hwnd: HWND) -> Result<Self> {
         QUEUE.with(|queue| {
             queue.get_or_init(|| {
                 let options = DispatcherQueueOptions {
@@ -148,7 +164,7 @@ impl Layer {
         let root = compositor.CreateContainerVisual()?;
         target.SetRoot(&root)?;
         let brush = compositor.CreateHostBackdropBrush()?;
-        Ok(Some(Self {
+        Ok(Self {
             hwnd,
             compositor,
             _target: target,
@@ -157,7 +173,7 @@ impl Layer {
             cards: Vec::new(),
             patches: Vec::new(),
             scale: 0.0,
-        }))
+        })
     }
 
     fn card(&self) -> Result<Card> {
@@ -198,27 +214,33 @@ impl Layer {
 }
 
 /// Call on every open, from the main thread. The window is kept across
-/// hides, so this builds the layer once.
+/// hides, so the layer is built once and lives as long as the window does.
+/// The transparency switch is read again each time: the user or battery
+/// saver can flip it while Look is hidden.
 pub fn attach_window(window: &Window) {
     let Some(hwnd) = crate::host::hwnd(window) else {
         return;
     };
     LAYER.with_borrow_mut(|layer| {
-        if layer.as_ref().is_some_and(|layer| layer.hwnd == hwnd) {
-            return;
+        if !transparency_on() {
+            *layer = None;
+        } else if !layer.as_ref().is_some_and(|layer| layer.hwnd == hwnd) {
+            // The old target goes first: a window carries one per slot.
+            *layer = None;
+            *layer = Layer::new(hwnd).unwrap_or_else(|err| {
+                eprintln!("frost: {err}");
+                None
+            });
         }
-        // The old target goes first: a window carries one per slot.
-        *layer = None;
-        *layer = Layer::new(hwnd).unwrap_or_else(|err| {
-            eprintln!("frost: {err}");
-            None
-        });
         SUPPORTED.store(layer.is_some(), Ordering::Relaxed);
     });
 }
 
+/// The launcher is gone and the window is kept, so the cards go and the layer
+/// stays. A relaunch attaches the new launcher before the old one drops:
+/// taking the layer here would take it from the new one.
 pub fn detach() {
-    LAYER.take();
+    set_region(Vec::new());
 }
 
 pub fn is_supported() -> bool {

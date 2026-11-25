@@ -3668,7 +3668,7 @@ dependencies = [
  "resvg 0.49.0",
  "uuid",
  "windows 0.62.2",
- "windows-numerics 0.3.1", 
+ "windows-numerics 0.3.1",
  "x11rb 0.14.0",
 ]
 

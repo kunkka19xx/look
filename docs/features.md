@@ -153,7 +153,7 @@ This document tracks what `look` supports today and what is planned next.
 - rebindable in-app shortcuts (macOS, and the gpui build on Linux and Windows): every modifier chord in `Settings > Shortcuts`, grouped as the help screen is - click a key capsule, press a new chord, Save Config. Stored as `shortcut_<group>_<action>` in `~/.look/config`, the same keys on every platform, and only what you changed is written. Structural keys (Enter, Esc, Tab, arrows, Y/N confirmations) stay fixed
 - 9 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, Custom)
 - two window layouts, `layout=split` (results beside a preview) and `layout=compact` (Spotlight-width, results list alone)
-- Behind-window blur requested from the compositor where it exists (macOS material; KDE / Hyprland / Niri on Linux), clear glass everywhere else
+- Behind-window blur requested from the compositor where it exists (macOS material; KDE / Hyprland / Niri on Linux; Windows 11 with transparency effects on), clear glass everywhere else
 - query alias presets in `~/.look/config` for app + System Settings intent expansion (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`)
 - in-app config reset (`Settings > Advanced > Create Fresh Config`) with confirmation popup
 - semantic color system with auto-derived text colors in Custom mode
