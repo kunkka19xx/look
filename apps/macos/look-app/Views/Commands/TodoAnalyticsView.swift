@@ -47,7 +47,7 @@ struct TodoAnalyticsPage: View {
         VStack(alignment: .leading, spacing: 8) {
             sectionLabel("chart.bar", "Completion trend · 30 days")
             VStack(spacing: 4) {
-                TodoLineChart(data: trend, themeStore: themeStore)
+                TodoLineChart(data: trend, floor: state.taskLimit, themeStore: themeStore)
                     .frame(height: 92)
                 HStack {
                     Text(axisLabel(daysAgo: 29))
@@ -284,6 +284,9 @@ struct TodoDonut: View {
 
 struct TodoLineChart: View {
     let data: [Int]
+    /// The y axis reaches at least this far, so a quiet month is not a
+    /// mountain range.
+    let floor: Int
     let themeStore: ThemeStore
 
     var body: some View {
@@ -295,7 +298,7 @@ struct TodoLineChart: View {
             let padB: CGFloat = 8
             let w = size.width - padL - padR
             let h = size.height - padT - padB
-            let maxV = CGFloat(max(TodoCommand.taskLimit, data.max() ?? TodoCommand.taskLimit))
+            let maxV = CGFloat(max(floor, data.max() ?? floor))
             let stepX = w / CGFloat(data.count - 1)
 
             let pts: [CGPoint] = data.enumerated().map { i, v in

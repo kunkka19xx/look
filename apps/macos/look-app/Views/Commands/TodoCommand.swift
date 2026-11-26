@@ -132,9 +132,27 @@ struct TodoStat: Equatable {
 }
 
 enum TodoCommand {
-    /// Max unfinished (todo) tasks per day. Completing a task frees a
-    /// slot; total tasks per day are unlimited. Spec allows 3 or 5.
-    static let taskLimit = 3
+    /// Max unfinished (todo) tasks per day, `todo_task_limit` in the config.
+    /// Completing a task frees a slot; total tasks per day are unlimited.
+    static let taskLimitConfigKey = "todo_task_limit"
+    static let taskLimitDefault = 3
+    static let taskLimitRange = 1...20
+
+    /// Missing, unparseable or out-of-range values fall back to the default,
+    /// as the clipboard limits do. Same key and range as linows.
+    static func resolveTaskLimit(from values: [String: String]) -> Int {
+        guard let raw = values[taskLimitConfigKey],
+            let parsed = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+            taskLimitRange.contains(parsed)
+        else { return taskLimitDefault }
+        return parsed
+    }
+
+    static func resolveTaskLimit() -> Int {
+        let path = ConfigPathResolver.resolvedPath()
+        let raw = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+        return resolveTaskLimit(from: ConfigFileLines.keyValues(raw))
+    }
     /// Max upcoming (future) date groups the user can add ahead.
     static let dateGroupLimit = 3
     /// Undo depth inside /todo. Mirrors linows UNDO_HISTORY_LIMIT.
@@ -182,6 +200,9 @@ enum TodoCommand {
 @Observable
 final class TodoState {
     private(set) var groups: [TodoGroup]
+    /// Re-read when the panel appears and on config reload, so a new
+    /// `todo_task_limit` applies without a relaunch.
+    private(set) var taskLimit = TodoCommand.resolveTaskLimit()
 
     private struct Snapshot {
         let groups: [TodoGroup]
@@ -206,6 +227,10 @@ final class TodoState {
     init() {
         groups = TodoPersistence.load()
         ensureTodayGroup()
+    }
+
+    func reloadTaskLimit() {
+        taskLimit = TodoCommand.resolveTaskLimit()
     }
 
     /// Keeps an empty Today group present. Groups derive from stored
@@ -323,7 +348,7 @@ final class TodoState {
         let trimmed = Self.clampName(name)
         guard !trimmed.isEmpty else { return false }
         guard let g = groups.first(where: { $0.key == key }),
-            g.openCount < TodoCommand.taskLimit
+            g.openCount < taskLimit
         else { return false }
         withGroup(key) { g in
             g.tasks.append(TodoTask(id: TodoTask.newID(), name: trimmed, done: false))
