@@ -315,7 +315,7 @@ final class ThemeStore: ObservableObject {
 
         // Apple Intelligence / AI features
         ConfigFileLines.upsert(&lines, key: "ai_enabled", value: settings.aiEnabled ? "true" : "false")
-        ConfigFileLines.upsert(&lines, key: "web_search_engine", value: settings.webSearchEngine.rawValue)
+        ConfigFileLines.upsert(&lines, key: "web_search_engine", value: settings.webSearchEngine)
         ConfigFileLines.upsert(&lines, key: "ai_provider", value: settings.aiProvider.rawValue)
         ConfigFileLines.upsert(&lines, key: "ollama_host", value: settings.ollamaHost)
         ConfigFileLines.upsert(&lines, key: "ollama_model", value: settings.ollamaModel)
@@ -669,9 +669,9 @@ final class ThemeStore: ObservableObject {
                     settings.aiEnabled = parsed
                 }
             case "web_search_engine":
-                if let parsed = WebSearchEngine(configValue: value) {
-                    settings.webSearchEngine = parsed
-                }
+                // Kept as written: an invalid hand edit must stay visible and
+                // be refused at search/Save time, not silently become Google.
+                settings.webSearchEngine = value
             case "ai_provider":
                 if let parsed = AIProviderKind(rawValue: value) {
                     settings.aiProvider = parsed
@@ -1067,7 +1067,8 @@ final class ThemeStore: ObservableObject {
         ai_allow_remote_context=false
 
         # Search engine for Cmd+Enter and web suggestion rows: google, duckduckgo,
-        # or bing. Unset or unknown uses google.
+        # bing, or an http(s) URL with {encoded}. Anything else is marked red in
+        # Settings and searches use google.
         web_search_engine=google
 
         # Super actions: empty-state launchpad of quick toggles / actions.
@@ -1128,7 +1129,7 @@ final class ThemeStore: ObservableObject {
             object["aiEnabled"] = ThemeSettings.default.aiEnabled
         }
         if object["webSearchEngine"] == nil {
-            object["webSearchEngine"] = ThemeSettings.default.webSearchEngine.rawValue
+            object["webSearchEngine"] = ThemeSettings.default.webSearchEngine
         }
         if object["aiProvider"] == nil {
             object["aiProvider"] = ThemeSettings.default.aiProvider.rawValue

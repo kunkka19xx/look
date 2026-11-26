@@ -1056,16 +1056,25 @@ pub extern "C" fn look_web_suggestions_json(query: *const c_char, limit: u32) ->
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// Web search URL for `query` on `engine_key` (`google` | `duckduckgo` |
-/// `bing`; unknown falls back to Google). Null when the trimmed query is empty.
-/// Free the result with `look_free_cstring`.
+/// Web search URL for `query` on the configured `value` (`google` |
+/// `duckduckgo` | `bing`, or an http(s) URL template with `{encoded}`; Google
+/// for anything else). Null when the trimmed query is empty. Free the result
+/// with `look_free_cstring`.
 #[unsafe(no_mangle)]
-pub extern "C" fn look_web_search_url(
-    engine_key: *const c_char,
-    query: *const c_char,
-) -> *mut c_char {
+pub extern "C" fn look_web_search_url(value: *const c_char, query: *const c_char) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        web_search_api::look_web_search_url_impl(engine_key, query)
+        web_search_api::look_web_search_url_impl(value, query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Null when `value` is a valid `web_search_engine`, else the shared error
+/// message; the Settings screens use it to mark the box. Free a non-null
+/// result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_web_search_validate(value: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        web_search_api::look_web_search_validate_impl(value)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

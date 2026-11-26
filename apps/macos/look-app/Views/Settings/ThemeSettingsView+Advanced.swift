@@ -10,17 +10,36 @@ extension ThemeSettingsView {
                     VStack(alignment: .leading, spacing: 10) {
                         AISettingsSection(settings: $settings)
 
+                        Divider()
+                            .overlay(themeStore.dividerColor())
+                            .padding(.vertical, 4)
+
+                        Text("Web search")
+                            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
+                            .foregroundStyle(themeStore.secondaryTextColor())
+
                         settingRow(
                             "Search Engine",
-                            hint: "Engine for Cmd+Enter and web suggestion rows"
+                            hint: "google, duckduckgo, bing, or a https:// URL with {encoded}",
+                            alignment: .top
                         ) {
-                            Picker("Search Engine", selection: $settings.webSearchEngine) {
-                                ForEach(WebSearchEngine.allCases) { engine in
-                                    Text(engine.label).tag(engine)
-                                }
+                            VStack(alignment: .leading, spacing: 4) {
+                                TextField("google", text: $webSearchEngineInput)
+                                    .textFieldStyle(.roundedBorder)
+                                    .foregroundStyle(webSearchEngineRefused ? themeStore.dangerColor() : Color.primary)
+                                    .overlay {
+                                        if webSearchEngineRefused {
+                                            RoundedRectangle(cornerRadius: 5)
+                                                .stroke(themeStore.dangerColor(), lineWidth: 1)
+                                        }
+                                    }
+                                    .onSubmit { applyWebSearchEngineInput() }
+                                // Example line under the field
+                                Text("e.g. https://search.yahoo.com/search?p={encoded}")
+                                    .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+                                    .foregroundStyle(themeStore.mutedTextColor())
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            .pickerStyle(.menu)
-                            .labelsHidden()
                         }
 
                         Divider()
@@ -259,7 +278,11 @@ extension ThemeSettingsView {
 
                     }
                 }
-                .onAppear { syncIndexingInputsFromSettings() }
+                .onAppear {
+                    syncIndexingInputsFromSettings()
+                    webSearchEngineInput = settings.webSearchEngine
+                    webSearchEngineLoaded = true
+                }
                 .onChange(of: settings.fileScanDepth) { _, _ in
                     fileScanDepthInput = String(settings.fileScanDepth)
                 }
@@ -335,6 +358,25 @@ extension ThemeSettingsView {
     func syncIndexingInputsFromSettings() {
         fileScanDepthInput = String(settings.fileScanDepth)
         fileScanLimitInput = String(settings.fileScanLimit)
+    }
+
+    /// Whether the core refuses what is in the box: it is drawn red, and the
+    /// user fixes it when they like. Searches use Google meanwhile.
+    var webSearchEngineRefused: Bool {
+        guard webSearchEngineLoaded else { return false }
+        let trimmed = webSearchEngineInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        return EngineBridge.shared.validateWebSearch(trimmed) != nil
+    }
+
+    /// Keeps what was typed, a refused value included: Save writes it as is.
+    func applyWebSearchEngineInput() {
+        // The box is filled when the Advanced tab appears. Before that, Save
+        // must not read its empty text as "google" over a saved engine.
+        guard webSearchEngineLoaded else { return }
+        let trimmed = webSearchEngineInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = trimmed.isEmpty ? "google" : trimmed
+        webSearchEngineInput = value
+        settings.webSearchEngine = value
     }
 
     func sanitizedNumericInput(_ value: String) -> String {

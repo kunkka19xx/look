@@ -408,6 +408,7 @@ impl Tab {
 pub(super) enum FieldKind {
     Font,
     Number(&'static advanced::Number),
+    WebSearch,
     /// Filters as typed, so Enter only closes the box.
     ShortcutSearch,
     LookbookFilter,
@@ -714,6 +715,7 @@ impl Settings {
                     KeyOutcome::Consumed
                 }
                 (FieldKind::Number(spec), "enter" | "tab") => self.commit_number(spec, cx),
+                (FieldKind::WebSearch, "enter" | "tab") => self.commit_web_search(cx),
                 (FieldKind::Setup { file, field }, "enter" | "tab") => {
                     self.commit_setup(file, field, cx);
                     KeyOutcome::Consumed
@@ -1017,14 +1019,25 @@ impl Settings {
         if !self.loaded {
             return;
         }
-        if let Some(field) = &self.field
-            && let FieldKind::Number(spec) = field.kind
-        {
-            self.commit_number(spec, cx);
+        if let Some(kind) = self.field.as_ref().map(|field| field.kind) {
+            match kind {
+                FieldKind::Number(spec) => {
+                    self.commit_number(spec, cx);
+                }
+                FieldKind::WebSearch => {
+                    self.commit_web_search(cx);
+                }
+                _ => {}
+            }
         }
         self.field = None;
         self.select = None;
-        let updates: Vec<ConfigUpdate> = KEYS
+
+        // An engine the core refuses is still saved as typed: the box is red
+        // and the user fixes it when they like; searches use Google meanwhile.
+        let web_search = self.web_search_value();
+
+        let mut updates: Vec<ConfigUpdate> = KEYS
             .iter()
             .copied()
             .chain(SLIDERS.iter().map(|s| s.key))
@@ -1035,10 +1048,15 @@ impl Settings {
                 value: self.get(key).unwrap_or_default().to_string(),
             })
             .collect();
+        if let Some(update) = updates
+            .iter_mut()
+            .find(|update| update.key == advanced::WEB_SEARCH_ENGINE_KEY)
+        {
+            update.value = web_search;
+        }
         let ai_on = self.ai_on();
         let launch = self.launch_at_login();
         let add_to_path = self.add_to_path();
-        let mut updates = updates;
         let (shortcut_updates, removals) = self.recorder.writes();
         updates.extend(shortcut_updates);
         self.recorder.stop();
@@ -1184,8 +1202,11 @@ impl Settings {
             .gap(px(HEADER_GAP))
             .children(pill)
             .child(
-                controls::button("settings-save", SAVE, th)
-                    .on_click(cx.listener(|this, _, _, cx| this.settings.save_all(cx))),
+                controls::button("settings-save", SAVE, th).on_click(cx.listener(
+                    |this, _, _, cx| {
+                        this.settings.save_all(cx);
+                    },
+                )),
             )
     }
 

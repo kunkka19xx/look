@@ -18,6 +18,7 @@ use gpui::prelude::*;
 use gpui::{Context, Div, FontWeight, Stateful, div, px};
 use linows_backend::look_engine::config::{ExtraRootProblem, RuntimeConfig};
 use linows_backend::look_storage::SearchEngine;
+use linows_backend::weburl;
 
 const NUMBER_BOX_W: f32 = 80.0;
 const ABOUT_PADDING_BOTTOM: f32 = 6.0;
@@ -112,16 +113,11 @@ const BG_LAYOUT_HINTS: [&str; 4] = [
     "Repeat as tiles",
 ];
 
-const WEB_SEARCH_ENGINE_KEY: &str = "web_search_engine";
-const WEB_SEARCH_ENGINES: &[Option_] = &[
-    (SearchEngine::Google.key(), SearchEngine::Google.label()),
-    (
-        SearchEngine::DuckDuckGo.key(),
-        SearchEngine::DuckDuckGo.label(),
-    ),
-    (SearchEngine::Bing.key(), SearchEngine::Bing.label()),
-];
-const WEB_SEARCH_HINT: &str = "Engine for Ctrl+Enter and web suggestion rows";
+pub(super) const WEB_SEARCH_ENGINE_KEY: &str = "web_search_engine";
+const WEB_SEARCH_BOX_W: f32 = 320.0;
+const WEB_SEARCH_NOTES_GAP: f32 = 4.0;
+const WEB_SEARCH_HINT: &str = "google, duckduckgo, bing, or a https:// URL with {encoded}";
+const WEB_SEARCH_EXAMPLE: &str = "e.g. https://search.yahoo.com/search?p={encoded}";
 
 const LOG_LEVEL_KEY: &str = "backend_log_level";
 const LOG_LEVELS: &[Option_] = &[
@@ -245,12 +241,13 @@ impl Settings {
         self.get(LOG_LEVEL_KEY).unwrap_or(LOG_LEVEL_DEFAULT)
     }
 
-    /// The configured engine's key; empty or unknown means Google.
-    fn web_search_engine(&self) -> &str {
+    /// The raw configured value, so an invalid hand edit stays visible and
+    /// Save can report it. Unset shows the default engine.
+    pub(super) fn web_search_value(&self) -> String {
         self.get(WEB_SEARCH_ENGINE_KEY)
-            .map(SearchEngine::from_key)
-            .unwrap_or(SearchEngine::Google)
-            .key()
+            .filter(|value| !value.is_empty())
+            .unwrap_or(SearchEngine::Google.key())
+            .to_string()
     }
 
     /// Set means what it says; unset is the compositor's default.
@@ -361,10 +358,33 @@ impl Settings {
         cx.notify();
     }
 
-    fn pick_web_search_engine(&mut self, engine: &str, cx: &mut Context<Launcher>) {
-        self.select = None;
-        self.set(WEB_SEARCH_ENGINE_KEY, engine);
+    fn open_web_search_field(&mut self, cx: &mut Context<Launcher>) {
+        let input = input_for(cx);
+        let text = self.web_search_value();
+        input.update(cx, |input, cx| {
+            input.set_text(&text, cx);
+            input.select_all(cx);
+        });
+        cx.subscribe(&input, |_, _, _: &Changed, cx| cx.notify())
+            .detach();
+        self.field = Some(Field {
+            input,
+            highlighted: None,
+            kind: FieldKind::WebSearch,
+        });
         cx.notify();
+    }
+
+    /// Enter, or a click away: keep what was typed, even an invalid value, so
+    /// it stays visible and Save can explain why it was refused.
+    pub(super) fn commit_web_search(&mut self, cx: &mut Context<Launcher>) -> KeyOutcome {
+        let Some(field) = self.field.take() else {
+            return KeyOutcome::Consumed;
+        };
+        let typed = field.input.read(cx).committed();
+        self.set(WEB_SEARCH_ENGINE_KEY, typed.trim());
+        cx.notify();
+        KeyOutcome::Consumed
     }
 
     fn flip_compositor_blur(&mut self, cx: &mut Context<Launcher>) {
@@ -425,19 +445,8 @@ impl Settings {
                     .child(controls::hint(AI_HINT, th)),
             )
             .child(controls::row("", th).child(controls::hint(AI_NOTE, th)))
-            .child(
-                controls::row("Search Engine", th)
-                    .child(self.select_control(
-                        "settings-web-search-engine",
-                        WEB_SEARCH_ENGINES,
-                        self.web_search_engine(),
-                        WEB_SEARCH_ENGINE_KEY,
-                        Settings::pick_web_search_engine,
-                        th,
-                        cx,
-                    ))
-                    .child(controls::hint(WEB_SEARCH_HINT, th)),
-            )
+            .child(controls::section("Web search", th))
+            .child(self.web_search_row(th, cx))
             .child(controls::divider(th))
             .child(controls::section("Background", th))
             .child(self.bg_rows(th, cx))
@@ -566,6 +575,59 @@ impl Settings {
             )
             .child(self.slider_row(&BG_OPACITY, th, cx))
             .child(self.slider_row(&BG_BLUR, th, cx))
+    }
+
+    fn web_search_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+        let editing = self
+            .field
+            .as_ref()
+            .filter(|field| matches!(field.kind, FieldKind::WebSearch));
+        let value = self.web_search_value();
+        let content = match editing {
+            Some(field) => search_field(field.input.clone(), "google").into_any_element(),
+            None => div()
+                .flex_1()
+                .min_w_0()
+                .child(middle_elided(value))
+                .into_any_element(),
+        };
+        let refused = weburl::web_search_is_refused(&self.web_search_value());
+        let boxed = controls::text_box(
+            "settings-web-search-engine",
+            WEB_SEARCH_BOX_W,
+            content,
+            editing.is_some(),
+            th,
+        )
+        .when(refused, |el| {
+            el.border_color(th.danger).text_color(th.danger)
+        })
+        .when(editing.is_none(), |el| {
+            el.on_click(cx.listener(|this, _, _, cx| {
+                this.settings.open_web_search_field(cx);
+            }))
+        })
+        .when(editing.is_some(), |el| {
+            el.on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                this.settings.commit_web_search(cx);
+            }))
+        });
+        // The box with its two notes stacked under it: beside it, they would
+        // squeeze the box in a row this narrow.
+        controls::row("Search Engine", th).items_start().child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .gap(px(WEB_SEARCH_NOTES_GAP))
+                .child(boxed.flex_shrink_0().overflow_hidden())
+                .child(
+                    controls::hint(WEB_SEARCH_HINT, th)
+                        .when(refused, |el| el.text_color(th.danger)),
+                )
+                .child(controls::hint(WEB_SEARCH_EXAMPLE, th)),
+        )
     }
 
     fn number_row(&self, spec: &'static Number, th: &Theme, cx: &mut Context<Launcher>) -> Div {
@@ -796,13 +858,10 @@ mod tests {
     }
 
     #[test]
-    fn web_search_options_match_the_core_engine_list() {
-        assert_eq!(WEB_SEARCH_ENGINES.len(), SearchEngine::ALL.len());
-        for ((value, label), engine) in WEB_SEARCH_ENGINES.iter().zip(SearchEngine::ALL) {
-            assert_eq!(*value, engine.key());
-            assert_eq!(*label, engine.label());
+    fn web_search_hint_lists_the_built_in_engines() {
+        for engine in SearchEngine::ALL {
+            assert!(WEB_SEARCH_HINT.contains(engine.key()), "{WEB_SEARCH_HINT}");
         }
-        assert_eq!(SearchEngine::from_key("").key(), "google");
-        assert_eq!(SearchEngine::from_key("unknown").key(), "google");
+        assert!(WEB_SEARCH_HINT.contains("{encoded}"), "{WEB_SEARCH_HINT}");
     }
 }

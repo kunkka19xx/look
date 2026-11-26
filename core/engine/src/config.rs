@@ -656,7 +656,8 @@ hints_enabled=true\n\
 search_placeholder=Type whatever you want\n\
 \n\
 # Search engine for Cmd+Enter / Ctrl+Enter and web suggestion rows: google,\n\
-# duckduckgo, or bing. Unset or unknown uses google.\n\
+# duckduckgo, bing, or an http(s) URL with {{encoded}}. Anything else is\n\
+# marked red in Settings and searches use google.\n\
 web_search_engine=google\n\
 \n\
 {launcher_hotkey_section}\

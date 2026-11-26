@@ -155,6 +155,122 @@ impl SearchEngine {
     }
 }
 
+/// Where an explicit web search goes: a built-in engine, or the user's own
+/// `https://...{encoded}` template.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WebSearchTarget {
+    Engine(SearchEngine),
+    Custom(String),
+}
+
+/// Why a `web_search_engine` value was refused. The message is user-facing and
+/// shared by both shells.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WebSearchError {
+    value: String,
+}
+
+impl WebSearchError {
+    pub fn message(&self) -> String {
+        let value = truncated_value(&self.value);
+        format!(
+            "Unknown search engine \"{value}\". Use google, duckduckgo, bing, or a https:// URL \
+             containing {{encoded}}."
+        )
+    }
+}
+
+/// The typed config value, trimmed to what fits in one message.
+fn truncated_value(value: &str) -> String {
+    const MAX_CHARS: usize = 40;
+    let mut out: String = value.chars().take(MAX_CHARS).collect();
+    if value.chars().count() > MAX_CHARS {
+        out.push('…');
+    }
+    out
+}
+
+/// Parse `web_search_engine`: a built-in name, an empty value (Google), or an
+/// http(s) URL template with `{encoded}` in its path or query.
+pub fn parse_web_search(value: &str) -> Result<WebSearchTarget, WebSearchError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(WebSearchTarget::Engine(SearchEngine::Google));
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    // Short names are accepted even with surrounding whitespace (the "trimmed" rule).
+    if lower == SEARCH_ENGINE_GOOGLE {
+        return Ok(WebSearchTarget::Engine(SearchEngine::Google));
+    } else if lower == SEARCH_ENGINE_DUCKDUCKGO {
+        return Ok(WebSearchTarget::Engine(SearchEngine::DuckDuckGo));
+    } else if lower == SEARCH_ENGINE_BING {
+        return Ok(WebSearchTarget::Engine(SearchEngine::Bing));
+    }
+    // Not a short name: check that the trimmed value has no whitespace or
+    // control characters. If it does, reject (the user typed a bad template).
+    if trimmed.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(WebSearchError {
+            value: trimmed.to_string(),
+        });
+    }
+    custom_template(trimmed).ok_or_else(|| WebSearchError {
+        value: trimmed.to_string(),
+    })
+}
+
+/// Only http(s) reaches the system opener, and only a placeholder after the
+/// host makes it a search URL rather than a fixed page.
+fn custom_template(value: &str) -> Option<WebSearchTarget> {
+    const MAX_CHARS: usize = 2048;
+    // Whitespace and control characters are refused by the caller.
+    if value.chars().count() > MAX_CHARS {
+        return None;
+    }
+
+    let lower = value.to_ascii_lowercase();
+    let scheme_len = if lower.starts_with("https://") {
+        "https://".len()
+    } else if lower.starts_with("http://") {
+        "http://".len()
+    } else {
+        return None;
+    };
+
+    let rest = &value[scheme_len..];
+    // A byte offset: it slices `rest` below, and a host may hold non-ASCII.
+    let host_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let host = &rest[..host_end];
+    if host.is_empty() || host.contains("{encoded}") {
+        return None;
+    }
+
+    // Path or query only: a placeholder in the fragment is not a search.
+    let searchable = rest[host_end..].split('#').next().unwrap_or_default();
+    if !searchable.contains("{encoded}") {
+        return None;
+    }
+
+    Some(WebSearchTarget::Custom(value.to_string()))
+}
+
+/// The target for `value`, or Google when it is not one the core accepts. A
+/// search never fails over a bad setting: the Settings screen marks it red and
+/// the user fixes it when they like.
+pub fn resolve_web_search(value: &str) -> WebSearchTarget {
+    parse_web_search(value).unwrap_or(WebSearchTarget::Engine(SearchEngine::Google))
+}
+
+impl WebSearchTarget {
+    pub fn build_url(&self, query: &str) -> String {
+        match self {
+            WebSearchTarget::Engine(engine) => engine.build_search_url(query),
+            WebSearchTarget::Custom(template) => {
+                template.replace("{encoded}", &form_encode_query(query))
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SearchSettings {
     pub web_search_enabled: bool,
@@ -1372,6 +1488,158 @@ mod tests {
         for engine in SearchEngine::ALL {
             assert_eq!(SearchEngine::from_key(engine.key()), engine);
         }
+    }
+
+    #[test]
+    fn parse_web_search_accepts_names_case_and_space() {
+        for (value, engine) in [
+            ("google", SearchEngine::Google),
+            ("  DUCKDUCKGO ", SearchEngine::DuckDuckGo),
+            ("Bing", SearchEngine::Bing),
+        ] {
+            assert_eq!(parse_web_search(value), Ok(WebSearchTarget::Engine(engine)));
+        }
+    }
+
+    #[test]
+    fn parse_web_search_empty_is_google() {
+        for value in ["", "   ", "\t\n"] {
+            assert_eq!(
+                parse_web_search(value),
+                Ok(WebSearchTarget::Engine(SearchEngine::Google))
+            );
+        }
+    }
+
+    #[test]
+    fn parse_web_search_accepts_http_templates() {
+        let yahoo = parse_web_search("https://search.yahoo.com/search?p={encoded}")
+            .expect("valid yahoo template");
+        assert_eq!(
+            yahoo.build_url("a b"),
+            "https://search.yahoo.com/search?p=a+b"
+        );
+
+        let brave = parse_web_search("http://search.brave.com/search?q={encoded}")
+            .expect("valid brave template");
+        assert_eq!(
+            brave.build_url("rust"),
+            "http://search.brave.com/search?q=rust"
+        );
+    }
+
+    #[test]
+    fn parse_web_search_replaces_every_placeholder() {
+        let target = parse_web_search("https://example.com/?q={encoded}&ref={encoded}")
+            .expect("valid template");
+        assert_eq!(
+            target.build_url("a b"),
+            "https://example.com/?q=a+b&ref=a+b"
+        );
+    }
+
+    #[test]
+    fn parse_web_search_rejects_placeholder_in_host() {
+        for value in [
+            "https://{encoded}.example.com/search?q={encoded}",
+            "https://{encoded}.example.com/",
+            "https://example.com{encoded}/search?q={encoded}",
+        ] {
+            assert!(
+                parse_web_search(value).is_err(),
+                "{value} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_web_search_accepts_a_non_ascii_host_without_panicking() {
+        let target = parse_web_search("https://bücher.de/s?q={encoded}")
+            .expect("a non-ASCII host is a valid template");
+        assert_eq!(target.build_url("a b"), "https://bücher.de/s?q=a+b");
+        // The placeholder in a non-ASCII host is still refused.
+        assert!(parse_web_search("https://bü{encoded}.de/s").is_err());
+    }
+
+    #[test]
+    fn resolve_web_search_falls_back_to_google_for_a_refused_value() {
+        let google = WebSearchTarget::Engine(SearchEngine::Google);
+        for value in ["yahoo", "ftp://x/?q={encoded}", "https://x.com/"] {
+            assert_eq!(resolve_web_search(value), google, "{value}");
+        }
+        assert_eq!(
+            resolve_web_search("bing"),
+            WebSearchTarget::Engine(SearchEngine::Bing)
+        );
+    }
+
+    #[test]
+    fn parse_web_search_rejects_template_without_placeholder() {
+        assert!(parse_web_search("https://example.com/search?q=rust").is_err());
+        assert!(parse_web_search("https://example.com/#{encoded}").is_err());
+    }
+
+    #[test]
+    fn parse_web_search_rejects_non_http_schemes() {
+        for value in [
+            "ftp://example.com/?q={encoded}",
+            "file:///tmp/{encoded}",
+            "javascript:alert({encoded})",
+            "data:text/html,{encoded}",
+        ] {
+            assert!(
+                parse_web_search(value).is_err(),
+                "{value} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_web_search_rejects_whitespace_and_control_characters() {
+        // Whitespace at the end is accepted after trim; only whitespace
+        // between the URL and {encoded} is rejected.
+        let bad = "https://example.com/search?q{encoded} x";
+        let good_nl = "https://example.com/search?q{encoded}\n";
+        let good_tab = "https://example.com/search?q{encoded}\t";
+        assert!(
+            parse_web_search(bad).is_err(),
+            "space before template placeholder should be rejected"
+        );
+        // Trailing newline/tab is accepted after trim.
+        assert!(
+            parse_web_search(good_nl).is_ok(),
+            "trailing newline should be accepted after trim"
+        );
+        assert!(
+            parse_web_search(good_tab).is_ok(),
+            "trailing tab should be accepted after trim"
+        );
+    }
+
+    #[test]
+    fn parse_web_search_rejects_over_length_templates() {
+        let tail = "a".repeat(2048);
+        let value = format!("https://example.com/?q={{encoded}}&x={tail}");
+        assert!(parse_web_search(&value).is_err());
+    }
+
+    #[test]
+    fn parse_web_search_encodes_unicode_queries() {
+        let target =
+            parse_web_search("https://example.com/search?q={encoded}").expect("valid template");
+        assert_eq!(
+            target.build_url("phở & tea"),
+            "https://example.com/search?q=ph%E1%BB%9F+%26+tea"
+        );
+    }
+
+    #[test]
+    fn web_search_error_message_names_the_value() {
+        let error = parse_web_search("yahoo").expect_err("unknown engine");
+        let message = error.message();
+        assert!(message.contains("yahoo"), "{message}");
+        assert!(message.contains("{encoded}"), "{message}");
+        assert!(!message.contains("github.com"), "{message}");
     }
 
     #[test]

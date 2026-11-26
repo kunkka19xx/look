@@ -278,12 +278,14 @@ extension LauncherView {
 
     /// Opens a web search for `text` in the default browser, on the engine from
     /// Settings. Shared by the Cmd+Enter shortcut and the suggestion rows.
+    /// An invalid configured value is reported instead of falling back.
     func performWebSearch(for text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        let engine = themeStore.settings.webSearchEngine
-        guard let url = bridge.webSearchURL(engine: engine.rawValue, query: trimmed) else { return }
+        // A value the core refuses searches on Google; Settings marks it red.
+        let value = themeStore.settings.webSearchEngine
+        guard let url = bridge.webSearchURL(value: value, query: trimmed) else { return }
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         NSWorkspace.shared.open(url, configuration: config, completionHandler: nil)

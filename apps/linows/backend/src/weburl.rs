@@ -7,17 +7,22 @@
 use crate::state::default_db_path;
 use look_answers::UrlMatch;
 use look_engine::url_history::{ScoredUrlEntry, ranked_url_history};
-use look_storage::{SearchEngine, SqliteStore};
+use look_storage::{SqliteStore, parse_web_search, resolve_web_search};
 
-/// URL for a web search of `query` on the engine named by `engine_key`.
-/// Missing or unknown keys fall back to Google, and an empty query has no URL.
-/// The shells pick the engine from `web_search_engine` in the config file.
-pub fn search_url(engine_key: &str, query: &str) -> Option<String> {
+/// URL for a web search of `query` on the configured engine/template, or
+/// `None` for an empty query. A `web_search_engine` the core refuses searches
+/// on Google; Settings marks it red so the user can fix it.
+pub fn search_url(value: &str, query: &str) -> Option<String> {
     let query = query.trim();
     if query.is_empty() {
         return None;
     }
-    Some(SearchEngine::from_key(engine_key).build_search_url(query))
+    Some(resolve_web_search(value).build_url(query))
+}
+
+/// Whether Settings should mark `value` red.
+pub fn web_search_is_refused(value: &str) -> bool {
+    parse_web_search(value).is_err()
 }
 
 /// Classify `query` as a URL to offer as an "Open <url>" row, or `None` to
@@ -70,11 +75,33 @@ mod tests {
     }
 
     #[test]
-    fn search_url_falls_back_to_google_and_skips_empty_queries() {
+    fn search_url_uses_a_custom_template() {
+        assert_eq!(
+            search_url("https://search.yahoo.com/search?p={encoded}", "rust & tea").as_deref(),
+            Some("https://search.yahoo.com/search?p=rust+%26+tea")
+        );
+    }
+
+    #[test]
+    fn search_url_falls_back_to_google_for_a_refused_value() {
         assert_eq!(
             search_url("yahoo", "rust").as_deref(),
             Some("https://www.google.com/search?q=rust")
         );
+    }
+
+    #[test]
+    fn search_url_skips_empty_queries() {
         assert_eq!(search_url("bing", "   "), None);
+        assert_eq!(search_url("yahoo", "   "), None);
+    }
+
+    #[test]
+    fn refused_values_are_flagged_for_settings() {
+        assert!(web_search_is_refused("yahoo"));
+        assert!(web_search_is_refused("https://example.com/"));
+        assert!(!web_search_is_refused("bing"));
+        assert!(!web_search_is_refused(""));
+        assert!(!web_search_is_refused("https://x.com/?q={encoded}"));
     }
 }

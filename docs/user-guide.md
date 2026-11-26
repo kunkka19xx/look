@@ -70,7 +70,7 @@ Useful actions:
 - `Cmd+Shift+P`: clear all picked items
 - `Cmd+I` (`Ctrl+I` on Linux and Windows): paste the selected file or folder, or every picked item, straight into the app you came from. A file manager or a chat app gets the items, a text field or terminal gets the paths. Same chord, permissions, and limits as pasting a clip (see [Clipboard and translation](#clipboard-and-translation))
 - `Cmd+D`: move the selected file/folder - or all picked items - to the Trash (macOS only for now). Like Finder's `Cmd+Delete`, this is immediate and unconfirmed because it's recoverable: the items go to the Trash, not permanent deletion. The rows disappear from results right away.
-- `Cmd+Enter`: web search current query, on the engine set in Settings (`web_search_engine`, Google by default)
+- `Cmd+Enter`: web search current query, on the engine or URL template set in Settings (`web_search_engine`, Google by default)
 
 Picked items show as pills above the results - each pill has an `X` to remove it, followed by **Open all** (`Shift+Enter`) and **Clear**. The preview stays on the right, so you can keep previewing while you pick. Picks stay across hiding and reopening Look until you clear or open them. File/folder copies (both `Cmd+C` and `Cmd+P`) are excluded from clipboard history.
 
@@ -260,7 +260,7 @@ A tile that fails says so and keeps what it last showed - one broken tile never 
 Look can answer questions and look things up without leaving the launcher. These features are **on by default** on macOS, Linux, and Windows. Toggle them in Settings or with `ai_enabled` in `~/.look/config`. The web search engine is separate: set `web_search_engine` in Settings or in `~/.look/config`.
 
 - **Answer card.** A question, an entity that has no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather, currency, crypto) shows a Spotlight-style card above the results. Sources resolve independently and each appears as it lands - **DuckDuckGo** and **Wikipedia**. Arithmetic doesn't answer here anymore - see the **Calculator row** under Query prefixes below. On macOS, when no web source has an answer it falls back to a streaming on-device **Apple Intelligence** answer. Click a source label to open it; the copy button copies that block.
-- **Search suggestions.** For plain text queries (2+ characters), DuckDuckGo autocomplete rows appear under the results. `Enter` on a suggestion (or `Cmd+Enter` on your query) runs a web search in your default browser on the engine chosen by `web_search_engine` (Google, DuckDuckGo, or Bing; Google by default).
+- **Search suggestions.** For plain text queries (2+ characters), DuckDuckGo autocomplete rows appear under the results. `Enter` on a suggestion (or `Cmd+Enter` on your query) runs a web search in your default browser on the engine or URL template chosen by `web_search_engine` (`google`, `duckduckgo`, `bing`, or an `http(s)://` URL containing `{encoded}`; Google by default).
 - **Model interpretation** _(macOS only)_. When a natural-language query finds nothing locally, the on-device model turns the phrasing into a structured file query - type, time, place - and searches again; it never rewrites your query string. Results say when they were interpreted, or when the search had to be relaxed to find near-misses. It never overrides results you can already see - it only runs when the raw query came up empty.
 
 **Platform note.** The web answer card and search suggestions are available on macOS, Linux, and Windows. The on-device LLM - model interpretation and the Apple Intelligence answer fallback - is **macOS-only**; there is no on-device model on Linux/Windows, so there the card uses web sources (DuckDuckGo, Wikipedia, currency/weather/crypto) only. The `ai_enabled` toggle is shared across platforms.
@@ -627,9 +627,11 @@ Backend-related keys:
 - `skip_dir_names`
 - `alias_<keyword>` (for app + System Settings query aliases, for example `alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq`)
 - `backend_log_level`, `launch_at_login`, `add_to_path` (Windows)
-- `web_search_engine` (`google`, `duckduckgo`, or `bing`; the engine behind `Cmd+Enter` / `Ctrl+Enter` and web suggestion rows. Missing, empty, or unknown means `google`)
+- `web_search_engine` (`google`, `duckduckgo`, `bing`, or an `http(s)://` URL template containing `{encoded}`; the engine behind `Cmd+Enter` / `Ctrl+Enter` and web suggestion rows. Missing or empty means `google`)
 
-An existing config that lacks `web_search_engine` gets `web_search_engine=google` added under `# Added by look update` the next time Look loads it. That is the default, so nothing changes until you pick another engine.
+For an engine Look does not ship, use a URL template with `{encoded}` in the path or query, for example `web_search_engine=https://search.yahoo.com/search?p={encoded}` or `https://search.brave.com/search?q={encoded}`. Every `{encoded}` becomes the form-encoded query, and only `http://` / `https://` templates are accepted. Any other value is shown in red in Settings so you can fix it; it is saved as you typed it, and searches use Google until it is fixed. Want an engine built in? Open a feature request at <https://github.com/kunkka19xx/look/issues/new?template=feature_request.md>.
+
+An existing config that lacks `web_search_engine` gets `web_search_engine=google` added under `# Added by look update` the next time Look loads it. That is the default, so nothing changes until you set another engine or template.
 
 File-only settings (no Settings UI):
 
