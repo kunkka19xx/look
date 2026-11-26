@@ -1,10 +1,10 @@
 //! The day planner's data, kept for the process: the tasks by day, the undo
 //! and redo stacks and what Save last wrote, since the window is rebuilt on
 //! every summon and an unsaved edit must not go with it. The rules are
-//! macOS's: three
-//! unfinished tasks a day at most, three upcoming days, a three-day window
-//! in which a late task can still be ticked. Nothing here saves by itself;
-//! the panel writes the whole set back on Save.
+//! macOS's: `todo_task_limit` unfinished tasks a day at most (three unless
+//! the config says otherwise), three upcoming days, a three-day window in
+//! which a late task can still be ticked. Nothing here saves by itself; the
+//! panel writes the whole set back on Save.
 
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard};
@@ -13,7 +13,6 @@ use chrono::{Datelike, Local, NaiveDate};
 use linows_backend::look_matching::normalize_for_search;
 use linows_backend::look_todo::TodoTask;
 
-pub const UNFINISHED_LIMIT: usize = 3;
 pub const FUTURE_GROUP_LIMIT: usize = 3;
 /// Days late an unfinished task stays completable before it locks.
 pub const EXTENSION_WINDOW_DAYS: i64 = 3;
@@ -91,6 +90,11 @@ static STATE: Mutex<Todo> = Mutex::new(Todo {
 
 pub fn lock() -> MutexGuard<'static, Todo> {
     STATE.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Unfinished tasks a day takes, from the config file.
+pub fn unfinished_limit() -> usize {
+    linows_backend::config::todo_task_limit()
 }
 
 pub fn today() -> NaiveDate {
@@ -287,10 +291,11 @@ impl Todo {
             .map_or(0, |list| list.iter().filter(|t| !t.done).count())
     }
 
-    /// True when the task went in; a blank name or a full day refuses.
-    pub fn add_task(&mut self, day: NaiveDate, raw: &str) -> bool {
+    /// True when the task went in; a blank name or a day with `limit` open
+    /// tasks refuses.
+    pub fn add_task(&mut self, day: NaiveDate, raw: &str, limit: usize) -> bool {
         let name: String = raw.trim().chars().take(NAME_MAX).collect();
-        if name.is_empty() || self.open_count(day) >= UNFINISHED_LIMIT {
+        if name.is_empty() || self.open_count(day) >= limit {
             return false;
         }
         self.remember(true);
@@ -522,17 +527,19 @@ mod tests {
     }
 
     #[test]
-    fn a_day_takes_three_open_tasks() {
+    fn a_day_takes_the_limit_in_open_tasks() {
         let mut todo = fresh();
         let day = today();
-        assert!(todo.add_task(day, "a"));
-        assert!(todo.add_task(day, "b"));
-        assert!(todo.add_task(day, "c"));
-        assert!(!todo.add_task(day, "d"));
-        assert!(!todo.add_task(day, "   "));
+        assert!(todo.add_task(day, "a", 3));
+        assert!(todo.add_task(day, "b", 3));
+        assert!(todo.add_task(day, "c", 3));
+        assert!(!todo.add_task(day, "d", 3));
+        assert!(todo.add_task(day, "d", 4));
+        todo.undo();
+        assert!(!todo.add_task(day, "   ", 3));
         let id = todo.days()[&day][0].id.clone();
         todo.toggle(day, &id);
-        assert!(todo.add_task(day, "d"));
+        assert!(todo.add_task(day, "d", 3));
         assert_eq!(todo.today_counts(), (1, 4));
     }
 
@@ -540,12 +547,12 @@ mod tests {
     fn undo_and_redo_walk_the_history_and_the_dirty_flag() {
         let mut todo = fresh();
         let day = today();
-        todo.add_task(day, "a");
+        todo.add_task(day, "a", 3);
         assert!(todo.is_dirty());
         let (_, revision) = todo.for_save();
         todo.mark_saved(revision);
         assert!(!todo.is_dirty());
-        todo.add_task(day, "b");
+        todo.add_task(day, "b", 3);
         assert!(todo.is_dirty());
         assert!(todo.undo());
         assert!(!todo.is_dirty());
