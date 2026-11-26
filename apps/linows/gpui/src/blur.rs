@@ -1,24 +1,14 @@
 //! Behind-window blur regions. The rectangles and the Wayland protocols are
 //! the backend's; this is only how gpui's window hands them its surface. On
-//! Windows the region clips the window instead, see blur/windows.rs.
+//! Windows the cards go to a composition layer, see blur/windows.rs.
 
-pub use linows_backend::platform::BlurRect;
-
-/// Whether a surface may fade in. A Wayland compositor's frost is on or
-/// off per region, never partial, so a card fading in over it either sits
-/// on a bare frosted patch or shows the sharp desktop until the frost pops
-/// in (swayfx frosts past an alpha threshold, the same pop). Under frost
-/// the surfaces arrive by motion alone, at full opacity.
+/// Whether a surface may fade in. The frost is on or off per region, never
+/// partial, so a card fading in over it either sits on a bare frosted patch
+/// or shows the sharp desktop until the frost pops in (swayfx frosts past an
+/// alpha threshold, the same pop). Under frost the surfaces arrive by motion
+/// alone, at full opacity.
 pub fn surfaces_fade(frosted: bool) -> bool {
-    #[cfg(target_os = "linux")]
-    {
-        !frosted
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = frosted;
-        true
-    }
+    !frosted
 }
 
 /// The compositor frosts behind the window one way or another: through a
@@ -40,20 +30,32 @@ pub fn can_frost() -> bool {
 mod backend;
 
 #[cfg(windows)]
-pub use backend::{attach_window, detach, is_supported, set_region};
+pub use backend::{Patch, attach_window, detach, is_supported, mark, set_region};
 
 #[cfg(target_os = "linux")]
 mod backend {
     use std::sync::Mutex;
 
-    use gpui::Window;
+    use gpui::{Bounds, Pixels, Window};
+    use linows_backend::platform::BlurRect;
     use linows_backend::platform::linux::blur_wayland;
     use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 
-    use super::BlurRect;
+    /// Wayland takes a card as the rectangles that fill its rounded shape.
+    pub type Patch = BlurRect;
+
+    pub fn mark(frame: &mut Vec<Patch>, card: &Bounds<Pixels>, radius: f32) {
+        frame.extend(BlurRect::rounded(
+            f32::from(card.origin.x).round() as i32,
+            f32::from(card.origin.y).round() as i32,
+            f32::from(card.size.width).round() as u32,
+            f32::from(card.size.height).round() as u32,
+            radius,
+        ));
+    }
 
     /// The last region sent, so a prepaint that moved nothing costs nothing.
-    static LAST: Mutex<Vec<BlurRect>> = Mutex::new(Vec::new());
+    static LAST: Mutex<Vec<Patch>> = Mutex::new(Vec::new());
 
     /// Bind the managers on first call and follow this window's surface. Call
     /// on every open, from the main thread. gpui makes a new `wl_surface` per
@@ -88,7 +90,7 @@ mod backend {
         blur_wayland::is_supported()
     }
 
-    pub fn set_region(rects: Vec<BlurRect>) {
+    pub fn set_region(rects: Vec<Patch>) {
         let mut last = LAST.lock().unwrap_or_else(|p| p.into_inner());
         if *last == rects {
             return;
@@ -99,4 +101,4 @@ mod backend {
 }
 
 #[cfg(target_os = "linux")]
-pub use backend::{attach_window, detach, is_supported, set_region};
+pub use backend::{Patch, attach_window, detach, is_supported, mark, set_region};

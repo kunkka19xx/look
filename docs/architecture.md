@@ -420,6 +420,8 @@ The region is the shell's to compute, because only it knows which surfaces are p
 
 The switch is `ui_compositor_blur` (Settings > Advanced > Rendering > Blur behind window): unset means on in a Plasma session (`XDG_CURRENT_DESKTOP` names KDE) and off on every other Linux desktop, since granting the request and drawing it well are two different things. With frost present, `Blur Opacity` thins the tint the way it does over a background image; with neither, tint opacity alone decides the window alpha.
 
+Windows has no protocol to ask through, and the DWM window backdrop blurs the whole window, so the shell builds the frost itself (`gpui/src/blur/windows.rs`): a `Windows.UI.Composition` layer on Look's hwnd, under gpui's swap chain, with one sprite per card painted by the host backdrop brush and clipped to the card's rounded shape. No rectangle strips are needed there, the clip is anti-aliased. The layer is built on the first open and lives as long as the window, which is kept across hides; a hide only clears the cards. It needs Windows 11 and the system `Transparency effects` setting, read again on every open. An unset `ui_compositor_blur` means on, and without the layer the switch is hidden.
+
 ### Motion
 
 Every animated surface reads its physics from `Support/UI/Motion.swift`, so the feel is tuned in one place: `Spawn` (the launchpad cascade), `Selection` (the gliding pill and the one-shot zoom), `Slide` (horizontal entrances), `Surface` (the panel arriving), `Press`, `Value` (digit rolls) and `Caret`.

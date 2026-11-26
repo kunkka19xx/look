@@ -510,6 +510,8 @@ On Linux and Windows, Liquid is clear glass rather than frosted: the same palett
 
 Blur behind the window is the compositor's to grant, and Look asks for it wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and niri through the `ext-background-effect-v1` protocol, older Plasma through KDE's own, and KWin on X11 through a window property. The switch is `Settings > Advanced > Rendering > Blur behind window` (`ui_compositor_blur`), and it is there on every Linux desktop. It starts on in a Plasma session, where the frost is what it says on the tin, and off everywhere else: taking the request and drawing it well are two different things, so the rest is opt-in until you have looked at it on your own setup. On a desktop that ignores the request the switch does nothing either way.
 
+On Windows 11 the frost comes from Windows itself, behind each card, with the gaps between cards left clear. It needs `Transparency effects` on in `Windows Settings > Personalization > Colors`, and it starts on; the same switch turns it off. With transparency effects off, or on Windows 10, the switch is not shown and Look stays clear glass. Look reads that Windows setting each time it opens, so a change there shows up on the next summon.
+
 With the frost on, `Blur Opacity` starts thinning the tint so more of it shows through. The compositor blurs all of that area or none of it, so thinning reveals more frost, never a sharp desktop; turning the switch off is what gives you a sharp view through. How strong the frost is belongs to the compositor too
 
 - on Plasma, `System Settings > Desktop Effects > Blur`.
@@ -530,7 +532,7 @@ window-rule {
 
 Then turn `Blur behind window` on. Look is a layer-shell surface on niri, so the layer rule is the one that applies; the window rule covers a session where it opened as a plain window, so keeping both covers either. Leave `blur` out of the block: Look already asks over the protocol, and niri's own `blur true` follows `geometry-corner-radius` instead of Look's shape, which frosts the gaps between the floating panes. Dropping xray costs GPU time, since the blur is then sampled every frame rather than once.
 
-Where there is no frost at all (GNOME 50 and earlier, plain sway, X11 without KWin) Look stays clear glass and `Blur Opacity` applies only when you have set a background image. Driving blur from your own compositor config still works; Look's request is additional, not exclusive.
+Where there is no frost at all (GNOME 50 and earlier, plain sway, X11 without KWin, Windows 10, Windows 11 with transparency effects off) Look stays clear glass and `Blur Opacity` applies only when you have set a background image. Driving blur from your own compositor config still works; Look's request is additional, not exclusive.
 
 **Search Bar**: a dropdown for what the right end of the search bar holds. With anything but **Nothing** the search field takes the left half and the slot the right.
 
