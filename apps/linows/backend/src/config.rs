@@ -164,6 +164,10 @@ const CLIPBOARD_IMAGE_LIMIT_KEY: &str = "clipboard_image_limit";
 pub const CLIPBOARD_IMAGE_LIMIT_DEFAULT: usize = 20;
 pub const CLIPBOARD_IMAGE_LIMIT_MIN: usize = 5;
 pub const CLIPBOARD_IMAGE_LIMIT_MAX: usize = 50;
+const TODO_TASK_LIMIT_KEY: &str = "todo_task_limit";
+pub const TODO_TASK_LIMIT_DEFAULT: usize = 3;
+pub const TODO_TASK_LIMIT_MIN: usize = 1;
+pub const TODO_TASK_LIMIT_MAX: usize = 20;
 const QUERY_RETENTION_SECONDS_KEY: &str = "query_retention_seconds";
 const TRANSLATE_LANGUAGES_KEY: &str = "translate_languages";
 pub const QUERY_RETENTION_SECONDS_DEFAULT: i64 = 5;
@@ -248,6 +252,7 @@ struct ShowValues {
     layout: LauncherLayout,
     retention_secs: i64,
     translate_languages: Vec<look_answers::TranslateLanguage>,
+    todo_task_limit: usize,
 }
 
 static SHOW_VALUES: std::sync::Mutex<Option<ShowValues>> = std::sync::Mutex::new(None);
@@ -261,6 +266,12 @@ fn show_values<T>(pick: impl FnOnce(&ShowValues) -> T) -> T {
             retention_secs: parse_query_retention_seconds(&contents),
             translate_languages: look_answers::translate_languages(
                 last_value(&contents, TRANSLATE_LANGUAGES_KEY).unwrap_or_default(),
+            ),
+            todo_task_limit: parse_limit(
+                &contents,
+                TODO_TASK_LIMIT_KEY,
+                TODO_TASK_LIMIT_MIN..=TODO_TASK_LIMIT_MAX,
+                TODO_TASK_LIMIT_DEFAULT,
             ),
         }
     });
@@ -319,6 +330,12 @@ pub fn query_retention_seconds() -> i64 {
 /// the label table live in `look_answers`, shared by the gpui and macOS shells.
 pub fn translate_languages() -> Vec<look_answers::TranslateLanguage> {
     show_values(|v| v.translate_languages.clone())
+}
+
+/// Unfinished tasks `/todo` takes per day, `todo_task_limit`. Same key and
+/// range as macOS.
+pub fn todo_task_limit() -> usize {
+    show_values(|v| v.todo_task_limit)
 }
 
 /// A count out of range is a typo, not a request, so the default stands rather
@@ -386,6 +403,25 @@ mod tests {
             parse_clipboard_history_limit("file_scan_limit=8000\nai_enabled=true\n"),
             CLIPBOARD_HISTORY_LIMIT_DEFAULT
         );
+    }
+
+    #[test]
+    fn todo_task_limit_takes_its_range_and_falls_back() {
+        let parse = |contents| {
+            parse_limit(
+                contents,
+                TODO_TASK_LIMIT_KEY,
+                TODO_TASK_LIMIT_MIN..=TODO_TASK_LIMIT_MAX,
+                TODO_TASK_LIMIT_DEFAULT,
+            )
+        };
+        assert_eq!(parse(""), 3);
+        assert_eq!(parse("todo_task_limit=10\n"), 10);
+        assert_eq!(parse("todo_task_limit=1\n"), 1);
+        assert_eq!(parse("todo_task_limit=20\n"), 20);
+        assert_eq!(parse("todo_task_limit=0\n"), 3);
+        assert_eq!(parse("todo_task_limit=21\n"), 3);
+        assert_eq!(parse("todo_task_limit=many\n"), 3);
     }
 
     #[test]
@@ -664,5 +700,6 @@ mod tests {
     #[test]
     fn reset_template_includes_translate_languages() {
         assert!(default_config_contents().contains("\ntranslate_languages=vi,en,ja\n"));
+        assert!(default_config_contents().contains("\ntodo_task_limit=3\n"));
     }
 }

@@ -640,6 +640,10 @@ skip_dir_names=node_modules,target,build,dist,library,applications,old firefox d
 # Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
 clipboard_history_limit=10\n\
 \n\
+# Unfinished tasks a day in /todo accepts (1-20). Completing one frees a slot.\n\
+# Out-of-range values fall back to 3.\n\
+todo_task_limit=3\n\
+\n\
 # How long the main query survives while Look is hidden, in seconds. 0 clears\n\
 # it on every hide; a negative value keeps it indefinitely.\n\
 query_retention_seconds=5\n\

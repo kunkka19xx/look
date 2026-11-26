@@ -357,7 +357,7 @@ Built-in commands:
 
 `todo` quick reference:
 
-- Tasks are grouped by day, newest on top. Up to 3 unfinished tasks per day (complete one to add more) and up to 3 upcoming date groups (`Add date + N`)
+- Tasks are grouped by day, newest on top. Up to 3 unfinished tasks per day (complete one to add more; `todo_task_limit` in the config raises or lowers it, see File-only settings below) and up to 3 upcoming date groups (`Add date + N`)
 - Past days are non-editable. Unfinished tasks 1-3 days late show an `EXTENDED` badge and can still be marked done; unfinished tasks more than 3 days late show `OVERDUE` and their completion state is locked
 - Search matches task names and dates (`jul 3`, `yesterday`); case- and diacritic-insensitive
 - Nothing autosaves: hit `Save` or `Cmd+S`; `Cmd+N` flips between the Tasks and Stats pages
@@ -634,6 +634,7 @@ These keys have no control in the Settings screens. Edit `~/.look/config` direct
 
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
 - `clipboard_image_limit` (how many copied images `ci"` keeps, range 5 to 50, default 20)
+- `todo_task_limit` (unfinished tasks `todo` accepts per day, range 1 to 20, default 3. Lowering it keeps the tasks already there; the day just stops taking new ones until enough are done)
 - `launcher_hotkey` (global shortcut that shows and hides Look; modifiers `cmd`/`win`, `ctrl`, `alt`/`option`, `shift` plus one key: a letter, digit, `space`, `enter`, `tab`, `esc`, `f1`-`f20`, or a symbol like `` ` ``. Examples: `ctrl+space`, `alt+shift+space`, `f13`. Default `cmd+space` on macOS, `alt+space` on Windows and Linux. `none` stops Look registering any key, so you can bind `lookapp --toggle` in your desktop or a tool like skhd/AutoHotkey instead; Linux accepts only `none` and applies it on restart. An invalid value falls back to the default and the reload banner says why)
 - `shortcut_<group>_<action>` (macOS, and the gpui build on Linux and Windows; an in-app shortcut, same grammar as `launcher_hotkey` plus Shift-only chords on keys that type nothing, like `shift+enter`. The name follows the row in `Settings > Shortcuts`: `shortcut_main_copy`, `shortcut_view_reload_config`. Several chords for one action are separated by `|`. Only rebound shortcuts appear in the file; a chord Look cannot parse is ignored and the shortcut keeps its default)
 - `query_retention_seconds` (how long the main query survives while Look is hidden, in seconds; the first open past it returns to the empty home screen; default 5, `0` clears on every hide, and any negative value keeps the query indefinitely)
