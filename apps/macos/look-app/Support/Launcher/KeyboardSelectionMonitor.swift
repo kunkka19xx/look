@@ -372,10 +372,12 @@ final class KeyboardSelectionMonitor {
             }
 
             // ⌃1-9 opens the result row wearing that digit. ⌘ digits stay with
-            // the running apps, which share the screen with the results.
+            // the running apps, which share the screen with the results. A
+            // shortcut bound to the same chord keeps it.
             if flags.contains(.control),
                 flags.isDisjoint(with: [.command, .option, .shift]),
                 let digit = KeyCode.digit(event.keyCode),
+                !shortcuts.claims(event),
                 onOpenResultRow(digit)
             {
                 Self.logger.debug("⌃+\(digit, privacy: .public) -> result row")

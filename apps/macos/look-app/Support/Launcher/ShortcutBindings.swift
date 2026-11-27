@@ -70,6 +70,11 @@ final class ShortcutBindings: ObservableObject {
         chords(shortcut).dropFirst().contains { $0.matches(event) }
     }
 
+    /// Whether any shortcut answers to this event, wherever it applies.
+    func claims(_ event: NSEvent) -> Bool {
+        resolved.values.contains { chords in chords.contains { $0.matches(event) } }
+    }
+
     func chords(_ shortcut: LocalShortcut) -> [LocalChord] {
         resolved[shortcut] ?? []
     }

@@ -269,6 +269,9 @@ pub struct Launcher {
     /// Bumped on every menu open and close, so a list still resolving when
     /// the user moved on cannot open behind them.
     menu_token: u64,
+    /// The top row in view when the rows were last built, the one whose
+    /// badge reads 1.
+    digit_base: usize,
     /// The footer's Todo tally is under the pointer, so its bubble shows.
     todo_hovered: bool,
     /// Bumped per keystroke; a search that comes back for an older one is dropped.
@@ -393,6 +396,7 @@ impl Launcher {
             navigated: None,
             unpicked: false,
             menu_token: 0,
+            digit_base: 0,
             backdrop_loading: None,
             backdrop_failed: None,
             pill: cx.new(|_| motion::rest(0.0)),
@@ -1303,8 +1307,9 @@ impl Launcher {
         let Some(digit) = digit_key(&ks.key) else {
             return false;
         };
-        let at = row_at_digit(digit, self.first_row_in_view());
+        let at = row_at_digit(digit, self.digit_base);
         if at < self.rows.len() {
+            self.close_menu();
             self.selected = at;
             self.unpicked = false;
             self.sync_preview(cx);
@@ -2935,6 +2940,7 @@ impl Launcher {
         let list = uniform_list("results", rows.len(), move |range, _window, cx| {
             launcher.update(cx, |this, cx| {
                 let first = this.first_row_in_view();
+                this.digit_base = first;
                 range
                     .map(|i| this.row(i, &rows[i], first, &row_theme, cx))
                     .collect()

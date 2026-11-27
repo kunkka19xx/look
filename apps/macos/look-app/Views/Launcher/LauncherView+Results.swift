@@ -17,7 +17,7 @@ extension LauncherView {
     /// the chord whenever the list shows, even with no row on that digit.
     func openResultRow(digit: Int) -> Bool {
         typealias RowDigits = AppConstants.Launcher.ResultRowDigits
-        guard showsResultRows, !isActionMenuOpen else { return false }
+        guard showsResultRows, !isActionMenuOpen, RowDigits.digits.contains(digit) else { return false }
         let rows = displayedResults
         let firstInView = RowDigits.firstInView(rows, id: firstResultRowInView)
         if let index = RowDigits.row(forDigit: digit, firstInView: firstInView),
