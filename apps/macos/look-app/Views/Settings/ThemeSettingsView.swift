@@ -95,6 +95,10 @@ struct ThemeSettingsView: View {
         }
     }
 
+    private var isSaveBlocked: Bool {
+        hasIndexingError || ConfigurableShortcut.digitRowsClash(in: settings.shortcutBindings)
+    }
+
     /// Save floats at the bottom right rather than taking a row of its own:
     /// the button sits where the eye ends, and the screen keeps the space.
     private var saveControls: some View {
@@ -124,8 +128,8 @@ struct ThemeSettingsView: View {
                 }
                 NotificationCenter.default.post(name: .lookFocusSettingsInputRequested, object: nil)
             }
-            .disabled(hasIndexingError)
-            .opacity(hasIndexingError ? 0.5 : 1)
+            .disabled(isSaveBlocked)
+            .opacity(isSaveBlocked ? 0.5 : 1)
             .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
         }
         .padding(Self.saveFloatInset)

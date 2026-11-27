@@ -200,6 +200,11 @@ fn build() -> Vec<Group> {
                     "Open the row whose icon shows that digit",
                 ),
                 Entry::new(
+                    APPS_FOCUS,
+                    "Alt+1..9",
+                    "Focus a running app by its badge number (strip at the right of the search bar)",
+                ),
+                Entry::new(
                     ACTIONS,
                     "Ctrl+K / Ctrl+J",
                     "Show the selected result's actions; inside it, Ctrl+J / Ctrl+K move, Esc closes",
@@ -253,11 +258,6 @@ fn build() -> Vec<Group> {
             title: "Running apps",
             topic: Topic::Main,
             entries: vec![
-                Entry::new(
-                    APPS_FOCUS,
-                    "Alt+1..9",
-                    "Focus a running app by its badge number (strip at the right of the search bar)",
-                ),
                 Entry::new(
                     "apps.click",
                     "Click icon",

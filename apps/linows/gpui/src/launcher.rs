@@ -13,9 +13,10 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Deferred, Div,
-    Entity, FontWeight, KeyDownEvent, PaintQuad, Pixels, Render, ScrollStrategy, SharedString,
-    Stateful, Task, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred,
-    div, point, prelude::*, px, relative, size, svg, uniform_list,
+    Entity, FontWeight, KeyDownEvent, ModifiersChangedEvent, PaintQuad, Pixels, Render,
+    ScrollStrategy, SharedString, Stateful, Task, Transition, TransitionState,
+    UniformListScrollHandle, Window, canvas, deferred, div, point, prelude::*, px, relative, size,
+    svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
@@ -782,6 +783,17 @@ impl Launcher {
 
     fn on_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         self.handle_key(&event.keystroke, cx);
+    }
+
+    fn on_modifiers_changed(
+        &mut self,
+        event: &ModifiersChangedEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.settings_open && self.settings.is_recording() {
+            self.settings.record_modifiers(event.modifiers, cx);
+        }
     }
 
     /// Ahead of the field's text input, so a stale repeat types nothing either.
@@ -2454,6 +2466,7 @@ impl Launcher {
             .track_focus(&focus_handle)
             .capture_key_down(cx.listener(Self::drop_stale_repeat))
             .on_key_down(cx.listener(Self::on_key_down))
+            .on_modifiers_changed(cx.listener(Self::on_modifiers_changed))
             .child(blur_commit(frosted))
             .flex()
             .flex_col()
@@ -3491,6 +3504,7 @@ impl Launcher {
             .track_focus(&focus_handle)
             .capture_key_down(cx.listener(Self::drop_stale_repeat))
             .on_key_down(cx.listener(Self::on_key_down))
+            .on_modifiers_changed(cx.listener(Self::on_modifiers_changed))
             .child(blur_commit(frosted))
             .child(div().size_full().child(body).with_animation(
                 "arrive",

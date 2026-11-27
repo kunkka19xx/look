@@ -75,7 +75,7 @@ struct ShortcutRecorderField: View {
                         .pointingHandCursor()
                 }
             }
-            if let error {
+            if let error = error ?? shortcut.digitClash(in: bindings) {
                 Text(error).foregroundStyle(themeStore.dangerColor())
             }
         }
@@ -114,17 +114,16 @@ struct ShortcutRecorderField: View {
             stopRecording()
             return
         }
-        // A digit row is set by its modifier alone.
+        // A digit row is set by its modifier alone, any other row by a key.
         let modifierAlone = event.type == .flagsChanged
-        if modifierAlone, !shortcut.isDigitRow || event.modifierFlags.isDisjoint(with: Self.digitRowModifiers) {
-            return
-        }
+        if modifierAlone != shortcut.isDigitRow { return }
+        if modifierAlone, event.modifierFlags.isDisjoint(with: Self.digitRowModifiers) { return }
         let key = modifierAlone ? LocalShortcut.digitRowKey : nil
         guard let check = CarbonHotkey.spec(for: event, key: key).flatMap(shortcut.check) else {
             error = Self.unknownKey
             return
         }
-        if let rejection = check.error ?? shortcut.unusableReason(check, in: bindings) {
+        if let rejection = check.error ?? shortcut.unusableReason(check) {
             error = rejection
             return
         }

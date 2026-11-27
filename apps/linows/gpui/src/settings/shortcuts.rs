@@ -23,6 +23,7 @@ use crate::theme::Theme;
 const LISTENING: &str = "Press a shortcut, Esc to cancel";
 const UNKNOWN_KEY: &str = "That key cannot be used";
 const DIGIT_ROW_KEY: &str = "1";
+const LISTENING_FOR_MODIFIER: &str = "Press Ctrl or Alt, Esc to cancel";
 const DIGIT_CLASH: &str = "The other digit row already holds that key";
 const RESET: &str = "Reset";
 const RESET_ALL: &str = "Reset all";
@@ -127,6 +128,11 @@ impl Recorder {
             };
         }
         self.pending.contains_key(id) && self.preview.specs(id) != bindings::get().specs(id)
+    }
+
+    /// Save Config waits until the digit rows are told apart.
+    pub fn blocks_save(&self) -> bool {
+        self.preview.digit_rows_clash()
     }
 
     fn unsaved_count(&self) -> usize {
@@ -234,39 +240,27 @@ impl Settings {
             return KeyOutcome::Pass;
         };
         let key = ks.key.as_str();
-        let m = ks.modifiers;
-        let digit_row = shortcuts::DIGIT_ROWS.contains(&id);
-        // A digit row is set by its modifier alone, and stored on its first digit.
-        let alone = MODIFIER_KEYS.contains(&key);
-        if alone && !(digit_row && (m.control || m.alt || m.platform)) {
+        if MODIFIER_KEYS.contains(&key) {
             return KeyOutcome::Consumed;
         }
+        let m = ks.modifiers;
         if key == "escape" && !(m.control || m.alt || m.shift || m.platform) {
             self.recorder.stop();
             cx.notify();
             return KeyOutcome::Consumed;
         }
-        let spec = if alone {
-            bindings::spec(&gpui::Keystroke {
-                key: DIGIT_ROW_KEY.into(),
-                ..ks.clone()
-            })
-        } else {
-            bindings::spec(ks)
-        };
+        if shortcuts::DIGIT_ROWS.contains(&id) {
+            return KeyOutcome::Consumed;
+        }
+        let spec = bindings::spec(ks);
         let check = if Recorder::is_hotkey(id) {
             hotkey::hotkey_check(&spec)
         } else {
             HotkeyCheck::local(&spec)
         };
-        let clash = digit_row
-            && shortcuts::DIGIT_ROWS
-                .iter()
-                .any(|other| *other != id && self.recorder.preview.holds_modifiers(other, ks));
         match &check.error {
             Some(error) => self.recorder.error = Some(error.clone()),
             None if check.display.is_none() => self.recorder.error = Some(UNKNOWN_KEY.into()),
-            None if clash => self.recorder.error = Some(DIGIT_CLASH.into()),
             None => {
                 self.recorder.set(id, check.spec);
                 self.recorder.stop();
@@ -274,6 +268,29 @@ impl Settings {
         }
         cx.notify();
         KeyOutcome::Consumed
+    }
+
+    /// A digit row is set by its modifiers alone. Super+digit is the compositor's.
+    pub fn record_modifiers(&mut self, m: gpui::Modifiers, cx: &mut Context<Launcher>) {
+        let Some(id) = self
+            .recorder
+            .listening
+            .filter(|id| shortcuts::DIGIT_ROWS.contains(id))
+        else {
+            return;
+        };
+        if m.platform || !(m.control || m.alt) {
+            return;
+        }
+        let ks = gpui::Keystroke {
+            modifiers: m,
+            key: DIGIT_ROW_KEY.into(),
+            ..Default::default()
+        };
+        self.recorder
+            .set(id, HotkeyCheck::local(&bindings::spec(&ks)).spec);
+        self.recorder.stop();
+        cx.notify();
     }
 
     fn toggle_listening(&mut self, id: &'static str, cx: &mut Context<Launcher>) {
@@ -629,7 +646,9 @@ impl Settings {
         let r = &self.recorder;
         let listening = r.listening == Some(id);
         let active = listening || r.unsaved(id);
-        let label = if listening {
+        let label = if listening && shortcuts::DIGIT_ROWS.contains(&id) {
+            LISTENING_FOR_MODIFIER.to_string()
+        } else if listening {
             LISTENING.to_string()
         } else {
             r.shown(id)
@@ -651,12 +670,18 @@ impl Settings {
                 .on_click(cx.listener(move |this, _, _, cx| this.settings.reset(id, cx)))
                 .child(RESET)
         });
-        let error = listening.then(|| r.error.clone()).flatten().map(|error| {
-            div()
-                .text_size(px(th.font_size - 2.0))
-                .text_color(th.danger)
-                .child(error)
-        });
+        let clash = (shortcuts::DIGIT_ROWS.contains(&id) && r.blocks_save())
+            .then(|| DIGIT_CLASH.to_string());
+        let error = listening
+            .then(|| r.error.clone())
+            .flatten()
+            .or(clash)
+            .map(|error| {
+                div()
+                    .text_size(px(th.font_size - 2.0))
+                    .text_color(th.danger)
+                    .child(error)
+            });
         let keys = div()
             .flex()
             .flex_col()

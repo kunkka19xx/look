@@ -58,7 +58,7 @@ struct ConfigurableShortcut {
 
     private static let chordJoin: Character = "+"
     private static let digitSpan = "1..9"
-    private static let digitClash = "The other digit row already holds that key"
+    private static let digitClashMessage = "The other digit row already holds that key"
 
     var isDigitRow: Bool { local?.isDigitRow ?? false }
 
@@ -68,16 +68,21 @@ struct ConfigurableShortcut {
         return display[...join] + Self.digitSpan
     }
 
-    /// The digit rows share a screen, so they cannot share modifiers.
+    /// The digit rows share a screen, so they cannot share modifiers. Save
+    /// Config waits until they are told apart.
     @MainActor
-    private func clashesWithOtherDigitRow(_ check: HotkeyCheck, in bindings: [String: String]) -> Bool {
-        guard isDigitRow else { return false }
-        return LocalShortcut.allCases.contains { other in
-            guard other.isDigitRow, other != local else { return false }
-            let pending = ShortcutBindings.specs(in: bindings[ShortcutBindingTable.definition(other).configKey] ?? "")
-            let specs = pending.isEmpty ? ShortcutBindings.shared.specs(other) : pending
-            return specs.contains { self.check($0)?.hotkey?.modifiers == check.hotkey?.modifiers }
+    static func digitRowsClash(in bindings: [String: String]) -> Bool {
+        let held = LocalShortcut.allCases.filter(\.isDigitRow).map { row in
+            let pending = ShortcutBindings.specs(in: bindings[ShortcutBindingTable.definition(row).configKey] ?? "")
+            let specs = pending.isEmpty ? ShortcutBindings.shared.specs(row) : pending
+            return Set(specs.compactMap { EngineBridge.shared.hotkeyCheckLocal($0)?.hotkey }.map { Set($0.modifiers) })
         }
+        return Set(held.joined()).count < held.map(\.count).reduce(0, +)
+    }
+
+    @MainActor
+    func digitClash(in bindings: [String: String]) -> String? {
+        isDigitRow && Self.digitRowsClash(in: bindings) ? Self.digitClashMessage : nil
     }
 
     /// The value Reset would write, or nil when already on the default.
@@ -101,8 +106,7 @@ struct ConfigurableShortcut {
     /// Why a just-captured chord cannot be used. A menu item draws its own key
     /// equivalent, and SwiftUI can only spell the keys it knows.
     @MainActor
-    func unusableReason(_ check: HotkeyCheck, in bindings: [String: String]) -> String? {
-        if clashesWithOtherDigitRow(check, in: bindings) { return Self.digitClash }
+    func unusableReason(_ check: HotkeyCheck) -> String? {
         guard let local, ShortcutBindingTable.definition(local).menuDriven,
             check.hotkey.map({ ShortcutBindings.menuKeyEquivalent($0.key) == nil }) ?? true
         else { return nil }

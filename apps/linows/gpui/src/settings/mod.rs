@@ -35,6 +35,7 @@ use crate::update::Update;
 const SAVE: &str = "Save Config";
 const SAVED: &str = "Saved";
 const SAVE_FAILED: &str = "Save failed";
+const SAVE_BLOCKED_OPACITY: f32 = 0.45;
 const SAVE_MESSAGE_MS: u64 = 1600;
 const SAVE_FAILED_BANNER_SECS: f32 = 4.0;
 pub const RELOADED: &str = "Config reloaded from file";
@@ -1023,7 +1024,7 @@ impl Settings {
     /// the file again and the OS takes the startup switches.
     fn save_all(&mut self, cx: &mut Context<Launcher>) {
         // Nothing to write until the file has been read.
-        if !self.loaded {
+        if !self.loaded || self.recorder.blocks_save() {
             return;
         }
         if let Some(field) = &self.field
@@ -1194,6 +1195,9 @@ impl Settings {
             .children(pill)
             .child(
                 controls::button("settings-save", SAVE, th)
+                    .when(self.recorder.blocks_save(), |b| {
+                        b.opacity(SAVE_BLOCKED_OPACITY)
+                    })
                     .on_click(cx.listener(|this, _, _, cx| this.settings.save_all(cx))),
             )
     }

@@ -210,9 +210,13 @@ impl Chord {
         }
     }
 
+    fn modifiers(&self) -> [bool; 4] {
+        [self.ctrl, self.alt, self.shift, self.win]
+    }
+
     fn same_modifiers(&self, ks: &Keystroke) -> bool {
         let m = ks.modifiers;
-        (m.control, m.alt, m.shift, m.platform) == (self.ctrl, self.alt, self.shift, self.win)
+        [m.control, m.alt, m.shift, m.platform] == self.modifiers()
     }
 
     pub fn matches(&self, ks: &Keystroke) -> bool {
@@ -306,6 +310,16 @@ impl Bindings {
     /// Whether the keystroke holds the modifiers `id` is bound with, on any key.
     pub fn holds_modifiers(&self, id: &str, ks: &Keystroke) -> bool {
         Self::index(id).is_some_and(|i| self.bound[i].iter().any(|b| b.chord.same_modifiers(ks)))
+    }
+
+    /// The digit rows share a screen, so they cannot share modifiers.
+    pub fn digit_rows_clash(&self) -> bool {
+        let [rows, apps] =
+            DIGIT_ROWS.map(|id| Self::index(id).map_or(&[][..], |i| &self.bound[i][..]));
+        rows.iter().any(|row| {
+            apps.iter()
+                .any(|app| app.chord.modifiers() == row.chord.modifiers())
+        })
     }
 
     /// The first definition in `scope` whose chord the keystroke is.
@@ -537,5 +551,14 @@ mod tests {
         // Across scopes an app-wide chord collides with everything.
         let wide = file.with(&HashMap::from([(HELP, "ctrl+z".to_string())]));
         assert_eq!(wide.conflicts().len(), 1);
+    }
+
+    #[test]
+    fn the_digit_rows_clash_on_shared_modifiers() {
+        assert!(!defaults().digit_rows_clash());
+        let same = defaults().with(&HashMap::from([(OPEN_BY_DIGIT, "alt+1".to_string())]));
+        assert!(same.digit_rows_clash());
+        let swapped = same.with(&HashMap::from([(APPS_FOCUS, "ctrl+1".to_string())]));
+        assert!(!swapped.digit_rows_clash());
     }
 }
