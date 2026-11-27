@@ -95,6 +95,11 @@ impl Recorder {
         id == shortcuts::TOGGLE_LAUNCHER
     }
 
+    /// The row whose binding `id` shows: a mirror row edits its owner's.
+    fn owner(id: &str) -> &str {
+        bindings::definition(id).map_or(id, |d| d.id)
+    }
+
     fn configurable(&self, id: &str) -> bool {
         if Self::is_hotkey(id) {
             self.state.as_ref().is_some_and(|s| s.configurable)
@@ -127,7 +132,8 @@ impl Recorder {
                 (None, _) => false,
             };
         }
-        self.pending.contains_key(id) && self.preview.specs(id) != bindings::get().specs(id)
+        self.pending.contains_key(Self::owner(id))
+            && self.preview.specs(id) != bindings::get().specs(id)
     }
 
     /// Save Config waits until the digit rows are told apart.
@@ -156,7 +162,7 @@ impl Recorder {
     }
 
     fn set(&mut self, id: &'static str, value: String) {
-        self.pending.insert(id, value);
+        self.pending.insert(Self::owner(id), value);
         self.refresh();
     }
 

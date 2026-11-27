@@ -884,7 +884,8 @@ impl Launcher {
             return;
         }
         // The bar's slot, on the modifiers its digits are bound with.
-        if bindings.holds_modifiers(shortcuts::APPS_FOCUS, ks)
+        if !self.command_mode
+            && bindings.holds_modifiers(shortcuts::APPS_FOCUS, ks)
             && let Some(digit) = digit_key(&ks.key)
             && theme::get().split()
             && self.bar.activate_key(digit, &self.shell, cx)
