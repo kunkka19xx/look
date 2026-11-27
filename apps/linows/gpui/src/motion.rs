@@ -48,20 +48,20 @@ pub fn rest<T: Lerp + Clone + PartialEq>(value: T) -> TransitionState<T> {
     TransitionState::new(value, Duration::ZERO)
 }
 
-pub const ARRIVE_MS: u64 = 340;
-pub const SPAWN_MS: u64 = 460;
+pub const ARRIVE_MS: u64 = 240;
+pub const SPAWN_MS: u64 = 280;
 pub const SPAWN_RISE: f32 = 8.0;
-pub const TILE_MS: u64 = 460;
-pub const TILE_STAGGER_MS: u64 = 35;
-pub const TILE_MAX_STAGGER_MS: u64 = 340;
+pub const TILE_MS: u64 = 280;
+pub const TILE_STAGGER_MS: u64 = 18;
+pub const TILE_MAX_STAGGER_MS: u64 = 120;
 pub const TILE_RISE: f32 = 10.0;
 
 /// Placeholder from the right, strip from the left, both landing just
 /// behind the bar they sit in.
-pub const SLIDE_MS: u64 = 800;
-pub const SLIDE_DELAY_MS: u64 = 90;
-pub const SLIDE_STAGGER_MS: u64 = 40;
-pub const SLIDE_MAX_STAGGER_MS: u64 = 280;
+pub const SLIDE_MS: u64 = 360;
+pub const SLIDE_DELAY_MS: u64 = 30;
+pub const SLIDE_STAGGER_MS: u64 = 20;
+pub const SLIDE_MAX_STAGGER_MS: u64 = 100;
 pub const PLACEHOLDER_SHIFT: f32 = 20.0;
 pub const STRIP_SHIFT: f32 = -18.0;
 
@@ -85,7 +85,7 @@ pub const BOUNCE_PEAK: f32 = 0.38;
 /// The search field's snowman as the bar spawns: it zooms up and settles
 /// back while it shakes side to side. macOS turns it; text cannot turn here,
 /// so it shakes by whole pixels instead.
-pub const SNOWMAN_MS: u64 = 500;
+pub const SNOWMAN_MS: u64 = 300;
 pub const SNOWMAN_ZOOM: f32 = 1.35;
 /// Where the zoom peaks, as the macOS spring does.
 pub const SNOWMAN_PEAK: f32 = 0.32;
@@ -260,8 +260,15 @@ mod tests {
 
     #[test]
     fn strip_tiles_wait_their_turn_up_to_the_cap() {
-        assert_eq!(slide_delay(0), Duration::from_millis(90));
-        assert_eq!(slide_delay(2), Duration::from_millis(170));
-        assert_eq!(slide_delay(20), Duration::from_millis(370));
+        let millis = Duration::from_millis;
+        assert_eq!(slide_delay(0), millis(SLIDE_DELAY_MS));
+        assert_eq!(
+            slide_delay(2),
+            millis(SLIDE_DELAY_MS + 2 * SLIDE_STAGGER_MS)
+        );
+        assert_eq!(
+            slide_delay(20),
+            millis(SLIDE_DELAY_MS + SLIDE_MAX_STAGGER_MS)
+        );
     }
 }

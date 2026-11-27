@@ -32,8 +32,6 @@ struct AppStripView: View {
     let tiles: [AppStripTile]
     let themeStore: ThemeStore
     let onActivate: (Int) -> Void
-    /// Changes each time the launcher opens, replaying the spawn cascade.
-    var revealToken: UInt64 = 0
 
     @State private var hoveredIndex: Int?
 
@@ -52,8 +50,6 @@ struct AppStripView: View {
                         hoveredIndex = hovering ? index : (hoveredIndex == index ? nil : hoveredIndex)
                     }
                 )
-                // Slides in from the left, leftmost first.
-                .stripReveal(index: index, token: revealToken)
             }
         }
     }
@@ -66,7 +62,6 @@ struct BarTextSlotView: View {
     let note: String?
     let themeStore: ThemeStore
     var onTap: (() -> Void)?
-    var revealToken: UInt64 = 0
 
     @State private var isHovered = false
 
@@ -93,7 +88,6 @@ struct BarTextSlotView: View {
             .onTapGesture { onTap?() }
             .onHover { isHovered = $0 }
             .help([lead, note].compactMap { $0 }.joined(separator: " "))
-            .stripReveal(index: 0, token: revealToken)
         }
     }
 

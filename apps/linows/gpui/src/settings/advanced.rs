@@ -196,7 +196,7 @@ pub(super) fn keys() -> Vec<&'static str> {
     if cfg!(windows) {
         keys.push(ADD_TO_PATH.key);
     }
-    if cfg!(target_os = "linux") {
+    if cfg!(any(windows, target_os = "linux")) {
         keys.push(theme::COMPOSITOR_BLUR_KEY);
     }
     keys
@@ -449,11 +449,14 @@ impl Settings {
                     )
                     .child(controls::hint(FRESH_CONFIG_HINT, th)),
             )
-            .when(cfg!(target_os = "linux"), |el| {
-                el.child(controls::divider(th))
-                    .child(controls::section("Rendering", th))
-                    .child(self.frost_row(th, cx))
-            })
+            .when(
+                cfg!(target_os = "linux") || crate::blur::is_supported(),
+                |el| {
+                    el.child(controls::divider(th))
+                        .child(controls::section("Rendering", th))
+                        .child(self.frost_row(th, cx))
+                },
+            )
             // About, at the foot of the scroll as on macOS.
             .child(controls::divider(th))
             .child(controls::section("About", th))
@@ -665,7 +668,7 @@ impl Settings {
             )
     }
 
-    /// Linux: the frost switch with what each side costs, since the tint
+    /// The frost switch with what each side costs, since the tint
     /// sliders cannot reach a sharp view through while the frost is on.
     fn frost_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         controls::row("Blur behind window", th)
@@ -684,11 +687,15 @@ impl Settings {
                 "Clear glass; card shadows on"
             };
         }
-        if cfg!(windows) {
-            return "Windows blur cannot follow rounded corners; Look stays clear glass";
-        }
         if !crate::blur::is_supported() {
             return "Your compositor does not offer it; Look stays clear glass";
+        }
+        if cfg!(windows) {
+            return if self.compositor_blur_on() {
+                "Frosted by Windows behind each card; turn off to see through"
+            } else {
+                "Clear glass: the desktop shows sharp behind the tint"
+            };
         }
         let niri = compositor_is("niri");
         match (self.compositor_blur_on(), niri) {

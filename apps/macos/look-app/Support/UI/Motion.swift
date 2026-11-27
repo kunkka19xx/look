@@ -3,25 +3,6 @@ import SwiftUI
 /// Shared motion constants for the launcher, so every animated surface reads with
 /// the same physics and the feel is tuned in one place.
 enum Motion {
-    /// The "materialize on open" reveal: tiles grow and rise into place,
-    /// staggered so the grid assembles rather than appearing at once.
-    enum Spawn {
-        static let startScale: CGFloat = 0.88
-        static let startOffsetY: CGFloat = 14
-        static let staggerSeconds: Double = 0.035
-        /// Ceiling on the cascade so a large grid never trails on too long.
-        static let maxStaggerSeconds: Double = 0.34
-        static let response: Double = 0.46
-        /// Under 1 to overshoot slightly and settle back.
-        static let dampingFraction: Double = 0.68
-
-        static func animation(index: Int) -> Animation {
-            staggered(
-                .spring(response: response, dampingFraction: dampingFraction),
-                index: index, delay: 0, step: staggerSeconds, cap: maxStaggerSeconds)
-        }
-    }
-
     /// The single highlight pill gliding between rows on keyboard navigation.
     enum Selection {
         static let geometryID = "look.selection.pill"
@@ -62,11 +43,11 @@ enum Motion {
         }
 
         static let peakScale: CGFloat = 1.35
-        static let zoomInSeconds: Double = 0.16
-        static let settleSeconds: Double = 0.34
+        static let zoomInSeconds: Double = 0.1
+        static let settleSeconds: Double = 0.2
         /// Degrees, each swing smaller than the last.
         static let shakeAngles: [Double] = [-14, 12, -8, 4, 0]
-        static let shakeStepSeconds: Double = 0.08
+        static let shakeStepSeconds: Double = 0.05
     }
 
     /// The press-down on an interactive surface (result rows, tiles), so a
@@ -120,62 +101,16 @@ enum Motion {
         }
     }
 
-    /// The whole panel arriving when the launcher opens. A content-layer effect
-    /// on purpose: animating the window would mean touching the
-    /// `makeKeyAndOrderFront` path the Cmd+Space cold-login bug lives in.
+    /// The launcher zooming up and fading in when it opens, and back down when
+    /// it closes. Played by the window server and the render server on
+    /// purpose, so no frame waits on a SwiftUI render.
     enum Surface {
-        static let arriveScale: CGFloat = 0.965
-        static let arriveResponse: Double = 0.34
-        static let arriveDamping: Double = 0.86
-
-        static var arrive: Animation {
-            .spring(response: arriveResponse, dampingFraction: arriveDamping)
-        }
-    }
-
-    /// Horizontal slide-ins on open: the search placeholder from the right, the
-    /// running-apps strip from the left.
-    enum Slide {
-        static let placeholderOffsetX: CGFloat = 20
-        static let stripOffsetX: CGFloat = -18
-        static let startScale: CGFloat = 0.92
-        /// The spring's period: the main dial for how fast these read.
-        static let response: Double = 0.8
-        /// Loose enough to carry a little past 1 and settle back.
-        static let dampingFraction: Double = 0.76
-        /// Lands just behind the bar these sit in.
-        static let delaySeconds: Double = 0.09
-        static let staggerSeconds: Double = 0.04
-        static let maxStaggerSeconds: Double = 0.28
-
-        static func arrive(index: Int) -> Animation {
-            staggered(
-                .spring(response: response, dampingFraction: dampingFraction),
-                index: index, delay: delaySeconds, step: staggerSeconds, cap: maxStaggerSeconds)
-        }
-
-        /// The strip is a switcher, so its icons settle in about half the
-        /// placeholder's time: people summon Look to jump to another app.
-        enum Strip {
-            static let response: Double = 0.42
-            static let dampingFraction: Double = 0.82
-            static let delaySeconds: Double = 0.02
-            static let staggerSeconds: Double = 0.02
-            static let maxStaggerSeconds: Double = 0.1
-
-            static func arrive(index: Int) -> Animation {
-                staggered(
-                    .spring(response: response, dampingFraction: dampingFraction),
-                    index: index, delay: delaySeconds, step: staggerSeconds, cap: maxStaggerSeconds)
-            }
-        }
-    }
-
-    /// `animation` after `delay`, plus `step` per place in a cascade, capped.
-    static func staggered(
-        _ animation: Animation, index: Int, delay: Double, step: Double, cap: Double
-    ) -> Animation {
-        animation.delay(delay + min(Double(max(0, index)) * step, cap))
+        static let arriveSeconds: TimeInterval = 0.24
+        static let leaveSeconds: TimeInterval = 0.14
+        static let restingScale: CGFloat = 1
+        static let awayScale: CGFloat = 0.92
+        /// One key for both directions, so an open replaces a close under way.
+        static let zoomKey = "look.surface.zoom"
     }
 
     /// The gliding search-field caret (see `SmoothCaretTextField`).
@@ -190,9 +125,14 @@ enum Motion {
         static let blinkResumeSeconds: TimeInterval = 0.4
     }
 
-    /// House easing as cubic-bezier control points, for the CoreAnimation caret
-    /// (the spring-driven motion above approximates the same feel natively).
+    /// House easing as cubic-bezier control points, for what Core Animation
+    /// plays: the caret and the window zoom.
     static let houseCurveControlPoints: (Float, Float, Float, Float) = (0.22, 1, 0.36, 1)
+
+    /// The one rule for whether motion plays, for SwiftUI and AppKit alike.
+    static func isReduced(bySystem systemReducesMotion: Bool, animationsEnabled: Bool) -> Bool {
+        systemReducesMotion || !animationsEnabled
+    }
 }
 
 private struct ReducesMotionKey: EnvironmentKey {
@@ -217,7 +157,10 @@ private struct MotionPreference: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .environment(\.reducesMotion, systemReducesMotion || !animationsEnabled)
+            .environment(
+                \.reducesMotion,
+                Motion.isReduced(bySystem: systemReducesMotion, animationsEnabled: animationsEnabled)
+            )
             .transaction { transaction in
                 guard !animationsEnabled else { return }
                 transaction.animation = nil
@@ -226,107 +169,6 @@ private struct MotionPreference: ViewModifier {
     }
 }
 
-/// Plays the spawn reveal on appear and whenever `token` changes. The launcher
-/// bumps `token` on every window show, so the cascade replays each open (the
-/// window is only ordered out, so `onAppear` alone fires once per process).
-private struct SpawnReveal: ViewModifier {
-    let index: Int
-    let token: UInt64
-    /// Off for surfaces holding an `NSViewRepresentable`: scaling the search
-    /// field softens its text for the length of the animation.
-    var scales: Bool = true
-    @Environment(\.reducesMotion) private var reduceMotion
-    @State private var shown = false
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(shown ? 1 : 0)
-            .scaleEffect(shown || !scales ? 1 : Motion.Spawn.startScale)
-            .offset(y: shown ? 0 : Motion.Spawn.startOffsetY)
-            .onAppear { rearm() }
-            .onChange(of: token) { _, _ in rearm() }
-    }
-
-    private func rearm() {
-        if reduceMotion {
-            shown = true
-            return
-        }
-        // Snap to hidden with no animation, then animate to shown on the next
-        // runloop tick: the two states need separate transactions to capture a
-        // "from" value and actually animate.
-        shown = false
-        DispatchQueue.main.async {
-            withAnimation(Motion.Spawn.animation(index: index)) {
-                shown = true
-            }
-        }
-    }
-}
-
-/// Fades and scales the whole panel in on every show. Keys off the same token
-/// as `SpawnReveal`, since the window is only ordered out and back in.
-private struct RootReveal: ViewModifier {
-    let token: UInt64
-    @Environment(\.reducesMotion) private var reduceMotion
-    @State private var shown = false
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(shown ? 1 : 0)
-            .scaleEffect(shown ? 1 : Motion.Surface.arriveScale)
-            .onAppear { rearm() }
-            .onChange(of: token) { _, _ in rearm() }
-    }
-
-    private func rearm() {
-        if reduceMotion {
-            shown = true
-            return
-        }
-        // Two transactions, same reason as `SpawnReveal`.
-        shown = false
-        DispatchQueue.main.async {
-            withAnimation(Motion.Surface.arrive) {
-                shown = true
-            }
-        }
-    }
-}
-
-/// Slides a view in horizontally and settles it, on every launcher open.
-/// `animation` carries its place in the stagger; a negative `startOffsetX`
-/// comes from the left, a positive one from the right.
-private struct SlideReveal: ViewModifier {
-    let token: UInt64
-    let startOffsetX: CGFloat
-    let animation: Animation
-    @Environment(\.reducesMotion) private var reduceMotion
-    @State private var shown = false
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(shown ? 1 : 0)
-            .scaleEffect(shown ? 1 : Motion.Slide.startScale)
-            .offset(x: shown ? 0 : startOffsetX)
-            .onAppear { rearm() }
-            .onChange(of: token) { _, _ in rearm() }
-    }
-
-    private func rearm() {
-        if reduceMotion {
-            shown = true
-            return
-        }
-        // Two transactions, same reason as `SpawnReveal`.
-        shown = false
-        DispatchQueue.main.async {
-            withAnimation(animation) {
-                shown = true
-            }
-        }
-    }
-}
 /// Scales a surface down while it is held, so clicks read as physical.
 struct PressableSurfaceStyle: ButtonStyle {
     @Environment(\.reducesMotion) private var reduceMotion
@@ -342,33 +184,5 @@ extension View {
     /// Applies the user's animation preference to the whole subtree.
     func motionPreference(animationsEnabled: Bool) -> some View {
         modifier(MotionPreference(animationsEnabled: animationsEnabled))
-    }
-
-    /// Reveals the view with the shared spawn cascade. `index` sets its place in the
-    /// stagger; changing `token` replays the reveal (the launcher bumps it on show).
-    func spawnReveal(index: Int, token: UInt64, scales: Bool = true) -> some View {
-        modifier(SpawnReveal(index: index, token: token, scales: scales))
-    }
-
-    /// Fades and scales the panel in on every launcher open.
-    func rootReveal(token: UInt64) -> some View {
-        modifier(RootReveal(token: token))
-    }
-    /// Slides the search placeholder in from the right on every launcher open.
-    func placeholderReveal(token: UInt64) -> some View {
-        modifier(
-            SlideReveal(
-                token: token,
-                startOffsetX: Motion.Slide.placeholderOffsetX,
-                animation: Motion.Slide.arrive(index: 0)))
-    }
-
-    /// Slides a running-apps icon in from the left, staggered by `index`.
-    func stripReveal(index: Int, token: UInt64) -> some View {
-        modifier(
-            SlideReveal(
-                token: token,
-                startOffsetX: Motion.Slide.stripOffsetX,
-                animation: Motion.Slide.Strip.arrive(index: index)))
     }
 }
