@@ -213,9 +213,6 @@ struct LauncherView: View {
     /// 0 = pure glass, and the bar goes white over a light page; 1 = opaque,
     /// and the blur is lost.
     static let searchBarSubstrateOpacity = 0.55
-    /// Legibility floor for surfaces that float on the bare desktop while the
-    /// material is Liquid Glass. Tune here: too low and light theme text
-    /// disappears over a white window, too high and the refraction is lost.
     /// Shorter than the stored title: a banner shares its line with the undo
     /// hint, and the pill is meant to read at a glance.
     static let bannerTitleLimit = 32

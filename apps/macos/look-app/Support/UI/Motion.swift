@@ -125,9 +125,14 @@ enum Motion {
         static let blinkResumeSeconds: TimeInterval = 0.4
     }
 
-    /// House easing as cubic-bezier control points, for the CoreAnimation caret
-    /// (the spring-driven motion above approximates the same feel natively).
+    /// House easing as cubic-bezier control points, for what Core Animation
+    /// plays: the caret and the window zoom.
     static let houseCurveControlPoints: (Float, Float, Float, Float) = (0.22, 1, 0.36, 1)
+
+    /// The one rule for whether motion plays, for SwiftUI and AppKit alike.
+    static func isReduced(bySystem systemReducesMotion: Bool, animationsEnabled: Bool) -> Bool {
+        systemReducesMotion || !animationsEnabled
+    }
 }
 
 private struct ReducesMotionKey: EnvironmentKey {
@@ -152,7 +157,10 @@ private struct MotionPreference: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .environment(\.reducesMotion, systemReducesMotion || !animationsEnabled)
+            .environment(
+                \.reducesMotion,
+                Motion.isReduced(bySystem: systemReducesMotion, animationsEnabled: animationsEnabled)
+            )
             .transaction { transaction in
                 guard !animationsEnabled else { return }
                 transaction.animation = nil

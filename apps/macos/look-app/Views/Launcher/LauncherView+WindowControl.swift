@@ -189,7 +189,9 @@ extension LauncherView {
     }
 
     private var reducesWindowMotion: Bool {
-        !themeStore.settings.animationsEnabled || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        Motion.isReduced(
+            bySystem: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            animationsEnabled: themeStore.settings.animationsEnabled)
     }
 
     /// Orders the launcher front, zooming and fading it in unless motion is reduced.
@@ -277,7 +279,7 @@ extension LauncherView {
     /// nils the pid when Look is already frontmost, and then Esc has nothing to
     /// hand focus back to and the terminal you typed in never returns.
     func revealLauncherWindowForLaunch() {
-        guard let window = launcherWindow(), window.isVisible else {
+        guard let window = launcherWindow(), window.isVisible, closingGeneration == nil else {
             revealLauncherWindowIfHidden()
             return
         }
@@ -289,7 +291,8 @@ extension LauncherView {
     }
 
     func revealLauncherWindowIfHidden() {
-        guard let window = launcherWindow(), !window.isVisible else { return }
+        // A window still zooming away counts as hidden: it is about to be.
+        guard let window = launcherWindow(), !window.isVisible || closingGeneration != nil else { return }
 
         // Only when nothing is stored yet: the launcher is frontmost whenever the
         // menu command fires, so recapturing here would drop the app the user
@@ -301,7 +304,7 @@ extension LauncherView {
         NSApplication.shared.unhide(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
         positionOnActiveScreen(window)
-        window.makeKeyAndOrderFront(nil)
+        orderFrontFading(window)
     }
 
     /// Places the launcher at its fixed position on whichever

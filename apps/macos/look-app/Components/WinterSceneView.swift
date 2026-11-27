@@ -33,7 +33,8 @@ struct WinterSceneView: View {
             if let figure {
                 figureView(figure)
             }
-            SnowLayer(color: NSColor(snowColor).cgColor, amount: snowAmount)
+            let color = NSColor(snowColor).cgColor
+            SceneLayer(makePainter: SnowPainter.init) { $0.configure(color: color, amount: snowAmount) }
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -87,9 +88,9 @@ struct BokehView: View {
 
     var body: some View {
         GeometryReader { geo in
-            BokehLayer(
-                origin: panel.map { geo.frame(in: .named($0.coordinateSpace)).origin } ?? .zero,
-                area: panel?.size ?? geo.size)
+            let origin = panel.map { geo.frame(in: .named($0.coordinateSpace)).origin } ?? .zero
+            let area = panel?.size ?? geo.size
+            SceneLayer(makePainter: BokehPainter.init) { $0.place(origin: origin, area: area) }
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -98,29 +99,13 @@ struct BokehView: View {
 
 // MARK: - Layer scenes
 
-private struct SnowLayer: NSViewRepresentable {
-    let color: CGColor
-    let amount: Double
+/// A painter's scene as a view. `configure` hands the painter this render's
+/// inputs and answers whether any of them changed.
+private struct SceneLayer<Painter: ScenePainter>: NSViewRepresentable {
+    let makePainter: () -> Painter
+    let configure: (Painter) -> Bool
 
-    func makeCoordinator() -> SnowPainter { SnowPainter() }
-
-    func makeNSView(context: Context) -> SceneLayerView {
-        SceneLayerView(painter: context.coordinator)
-    }
-
-    func updateNSView(_ view: SceneLayerView, context: Context) {
-        view.reducesMotion = context.environment.reducesMotion
-        if context.coordinator.configure(color: color, amount: amount) {
-            view.refresh()
-        }
-    }
-}
-
-private struct BokehLayer: NSViewRepresentable {
-    let origin: CGPoint
-    let area: CGSize
-
-    func makeCoordinator() -> BokehPainter { BokehPainter() }
+    func makeCoordinator() -> Painter { makePainter() }
 
     func makeNSView(context: Context) -> SceneLayerView {
         SceneLayerView(painter: context.coordinator)
@@ -128,7 +113,7 @@ private struct BokehLayer: NSViewRepresentable {
 
     func updateNSView(_ view: SceneLayerView, context: Context) {
         view.reducesMotion = context.environment.reducesMotion
-        if context.coordinator.place(origin: origin, area: area) {
+        if configure(context.coordinator) {
             view.refresh()
         }
     }
