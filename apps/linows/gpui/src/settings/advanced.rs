@@ -17,7 +17,7 @@ use crate::update::Update;
 use gpui::prelude::*;
 use gpui::{Context, Div, FontWeight, Stateful, div, px};
 use linows_backend::look_engine::config::{ExtraRootProblem, RuntimeConfig};
-use linows_backend::look_storage::SearchEngine;
+use linows_backend::look_storage::{SearchEngine, WebSearchTarget, parse_web_search};
 use linows_backend::weburl;
 
 const NUMBER_BOX_W: f32 = 80.0;
@@ -378,9 +378,9 @@ impl Settings {
     /// The URL box, empty when coming from a built-in engine.
     fn open_web_search_field(&mut self, cx: &mut Context<Launcher>) {
         let value = self.web_search_value();
-        let text = match weburl::built_in_engine(value) {
-            Some(_) => String::new(),
-            None => value.to_string(),
+        let text = match parse_web_search(value) {
+            Some(WebSearchTarget::Engine(_)) => String::new(),
+            _ => value.to_string(),
         };
         let input = input_for(cx);
         input.update(cx, |input, cx| {
@@ -609,7 +609,17 @@ impl Settings {
     fn web_search_rows(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let value = self.web_search_value();
         let editing = self.web_search_field();
-        let built_in = weburl::built_in_engine(value).filter(|_| editing.is_none());
+        let (built_in, refused) = match editing {
+            Some(field) => {
+                let typed = field.input.read(cx).text().trim();
+                (None, !typed.is_empty() && parse_web_search(typed).is_none())
+            }
+            None => match parse_web_search(value) {
+                Some(WebSearchTarget::Engine(engine)) => (Some(engine.key()), false),
+                Some(WebSearchTarget::Custom(_)) => (None, false),
+                None => (None, true),
+            },
+        };
         let rows = div()
             .flex()
             .flex_col()
@@ -627,7 +637,6 @@ impl Settings {
         if built_in.is_some() {
             return rows;
         }
-        let refused = editing.is_none() && weburl::web_search_is_refused(value);
         let content = match editing {
             Some(field) => {
                 search_field(field.input.clone(), WEB_SEARCH_URL_EXAMPLE).into_any_element()
@@ -874,8 +883,10 @@ mod tests {
 
     #[test]
     fn the_url_example_is_a_template_the_core_accepts() {
-        assert!(!weburl::web_search_is_refused(WEB_SEARCH_URL_EXAMPLE));
-        assert_eq!(weburl::built_in_engine(WEB_SEARCH_URL_EXAMPLE), None);
+        assert!(matches!(
+            parse_web_search(WEB_SEARCH_URL_EXAMPLE),
+            Some(WebSearchTarget::Custom(_))
+        ));
     }
 
     #[test]

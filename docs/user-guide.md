@@ -633,7 +633,7 @@ Backend-related keys:
 - `backend_log_level`, `launch_at_login`, `add_to_path` (Windows)
 - `web_search_engine` (`google`, `duckduckgo`, `bing`, or an `http(s)://` URL template containing `%s`; the engine behind `Cmd+Enter` / `Ctrl+Enter` and web suggestion rows. Missing or empty means `google`)
 
-For an engine Look does not ship, use a URL template with `%s` in the path or query, for example `web_search_engine=https://search.yahoo.com/search?p=%s` or `https://search.brave.com/search?q=%s`. Every `%s` becomes the form-encoded query, and only `http://` / `https://` templates are accepted. Any other value is shown in red in Settings so you can fix it; it is saved as you typed it, and searches use Google until it is fixed. Want an engine built in? Open a feature request at <https://github.com/kunkka19xx/look/issues/new?template=feature_request.md>.
+For an engine Look does not ship, use a URL template with `%s` in the path or query, for example `web_search_engine=https://search.yahoo.com/search?p=%s` or `https://search.brave.com/search?q=%s`. Every `%s` becomes the percent-encoded query (the same `%s` browsers use for custom search engines), and only `http://` / `https://` templates are accepted. Any other value is shown in red in Settings so you can fix it; it is saved as you typed it, and searches use Google until it is fixed. Want an engine built in? Open a feature request at <https://github.com/kunkka19xx/look/issues/new?template=feature_request.md>.
 
 An existing config that lacks `web_search_engine` gets `web_search_engine=google` added under `# Added by look update` the next time Look loads it. That is the default, so nothing changes until you set another engine or template.
 

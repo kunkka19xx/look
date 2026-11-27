@@ -7,7 +7,7 @@
 use crate::state::default_db_path;
 use look_answers::UrlMatch;
 use look_engine::url_history::{ScoredUrlEntry, ranked_url_history};
-use look_storage::{SqliteStore, WebSearchTarget, parse_web_search, resolve_web_search};
+use look_storage::{SqliteStore, resolve_web_search};
 
 pub const WEB_SEARCH_ENGINE_KEY: &str = "web_search_engine";
 
@@ -16,20 +16,6 @@ pub const WEB_SEARCH_ENGINE_KEY: &str = "web_search_engine";
 pub fn search_url(value: &str, query: &str) -> Option<String> {
     let query = query.trim();
     (!query.is_empty()).then(|| resolve_web_search(value).build_url(query))
-}
-
-/// The built-in engine `value` names, an unset value being the default one.
-/// `None` for a URL template and for a refused value.
-pub fn built_in_engine(value: &str) -> Option<&'static str> {
-    match parse_web_search(value)? {
-        WebSearchTarget::Engine(engine) => Some(engine.key()),
-        WebSearchTarget::Custom(_) => None,
-    }
-}
-
-/// Whether Settings should mark `value` red.
-pub fn web_search_is_refused(value: &str) -> bool {
-    parse_web_search(value).is_none()
 }
 
 /// Classify `query` as a URL to offer as an "Open <url>" row, or `None` to
@@ -69,18 +55,12 @@ mod tests {
     fn search_url_follows_the_setting_and_skips_empty_queries() {
         assert_eq!(
             search_url("https://search.yahoo.com/search?p=%s", " rust & tea ").as_deref(),
-            Some("https://search.yahoo.com/search?p=rust+%26+tea")
+            Some("https://search.yahoo.com/search?p=rust%20%26%20tea")
         );
         assert_eq!(
             search_url("yahoo", "rust").as_deref(),
             Some("https://www.google.com/search?q=rust")
         );
         assert_eq!(search_url("bing", "   "), None);
-        assert!(web_search_is_refused("yahoo"));
-        assert!(!web_search_is_refused("bing"));
-        assert_eq!(built_in_engine(" Bing "), Some("bing"));
-        assert_eq!(built_in_engine(""), Some("google"));
-        assert_eq!(built_in_engine("https://x.com/?q=%s"), None);
-        assert_eq!(built_in_engine("yahoo"), None);
     }
 }

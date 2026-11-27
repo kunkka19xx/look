@@ -529,6 +529,7 @@ final class ThemeStore: ObservableObject {
         settings.shortcutBindings = [:]
         hintsEnabled = true
         searchPlaceholder = ""
+        settings.webSearchEngine = ThemeSettings.default.webSearchEngine
 
         // Base, not override: the ui_* keys below win. Applied last, it threw
         // away tuned values on every load. Accepted cost: a hand-written

@@ -44,7 +44,7 @@ mod tests {
     fn builds_the_url_or_null_for_a_blank_query() {
         assert_eq!(
             url_for("https://search.yahoo.com/search?p=%s", "rust & tea").as_deref(),
-            Some("https://search.yahoo.com/search?p=rust+%26+tea")
+            Some("https://search.yahoo.com/search?p=rust%20%26%20tea")
         );
         assert_eq!(
             url_for("yahoo", "rust").as_deref(),

@@ -1029,20 +1029,18 @@ impl Settings {
         if !self.loaded || self.recorder.blocks_save() {
             return;
         }
-        if let Some(kind) = self.field.as_ref().map(|field| field.kind) {
-            match kind {
-                FieldKind::Number(spec) => {
-                    self.commit_number(spec, cx);
-                }
-                FieldKind::WebSearch => {
-                    self.commit_web_search(cx);
-                }
-                _ => {}
+        match self.field.as_ref().map(|field| field.kind) {
+            Some(FieldKind::Number(spec)) => {
+                self.commit_number(spec, cx);
             }
+            Some(FieldKind::WebSearch) => {
+                self.commit_web_search(cx);
+            }
+            _ => {}
         }
         self.field = None;
         self.select = None;
-        let mut updates: Vec<ConfigUpdate> = KEYS
+        let updates: Vec<ConfigUpdate> = KEYS
             .iter()
             .copied()
             .chain(SLIDERS.iter().map(|s| s.key))
@@ -1056,6 +1054,7 @@ impl Settings {
         let ai_on = self.ai_on();
         let launch = self.launch_at_login();
         let add_to_path = self.add_to_path();
+        let mut updates = updates;
         let (shortcut_updates, removals) = self.recorder.writes();
         updates.extend(shortcut_updates);
         self.recorder.stop();

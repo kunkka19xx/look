@@ -114,6 +114,12 @@ pub enum SearchEngine {
 }
 
 impl SearchEngine {
+    const ALL: [SearchEngine; 3] = [
+        SearchEngine::Google,
+        SearchEngine::DuckDuckGo,
+        SearchEngine::Bing,
+    ];
+
     pub const fn key(self) -> &'static str {
         match self {
             SearchEngine::DuckDuckGo => SEARCH_ENGINE_DUCKDUCKGO,
@@ -124,12 +130,10 @@ impl SearchEngine {
 
     /// A built-in engine by name, ignoring case and surrounding space.
     fn from_name(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            SEARCH_ENGINE_DUCKDUCKGO => Some(SearchEngine::DuckDuckGo),
-            SEARCH_ENGINE_GOOGLE => Some(SearchEngine::Google),
-            SEARCH_ENGINE_BING => Some(SearchEngine::Bing),
-            _ => None,
-        }
+        let value = value.trim();
+        Self::ALL
+            .into_iter()
+            .find(|engine| value.eq_ignore_ascii_case(engine.key()))
     }
 
     pub fn from_key(value: &str) -> Self {
@@ -146,8 +150,8 @@ impl SearchEngine {
     }
 }
 
-/// Where a custom template takes the form-encoded query, as in a browser's
-/// own custom search engines.
+/// Where a custom template takes the query, as in a browser's own custom
+/// search engines. Percent-encoded, so it is safe in a path and in a query.
 pub const WEB_SEARCH_PLACEHOLDER: &str = "%s";
 /// Only these reach the system opener.
 const WEB_SEARCH_SCHEMES: [&str; 2] = ["https://", "http://"];
@@ -165,7 +169,7 @@ impl WebSearchTarget {
         match self {
             WebSearchTarget::Engine(engine) => engine.build_search_url(query),
             WebSearchTarget::Custom(template) => {
-                template.replace(WEB_SEARCH_PLACEHOLDER, &form_encode_query(query))
+                template.replace(WEB_SEARCH_PLACEHOLDER, &percent_encode(query))
             }
         }
     }
@@ -1427,15 +1431,15 @@ mod tests {
         for (template, url) in [
             (
                 "https://search.yahoo.com/search?p=%s",
-                "https://search.yahoo.com/search?p=ph%E1%BB%9F+%26+tea",
+                "https://search.yahoo.com/search?p=ph%E1%BB%9F%20%26%20tea",
             ),
             (
                 "HTTP://example.com/%s?q=%s\n",
-                "HTTP://example.com/ph%E1%BB%9F+%26+tea?q=ph%E1%BB%9F+%26+tea",
+                "HTTP://example.com/ph%E1%BB%9F%20%26%20tea?q=ph%E1%BB%9F%20%26%20tea",
             ),
             (
                 "https://bücher.de/s?q=%s#top",
-                "https://bücher.de/s?q=ph%E1%BB%9F+%26+tea#top",
+                "https://bücher.de/s?q=ph%E1%BB%9F%20%26%20tea#top",
             ),
         ] {
             let target = parse_web_search(template).expect(template);

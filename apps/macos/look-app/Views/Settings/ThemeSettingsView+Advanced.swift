@@ -21,16 +21,16 @@ extension ThemeSettingsView {
                         }
 
                         if webSearchChoice.wrappedValue == .custom {
+                            let refused = webSearchURLRefused
                             settingRow(nil, controlWidth: Self.webSearchURLWidth) {
                                 TextField(Self.webSearchURLExample, text: $webSearchURLInput)
                                     .textFieldStyle(.roundedBorder)
-                                    .foregroundStyle(webSearchURLRefused ? themeStore.dangerColor() : Color.primary)
+                                    .foregroundStyle(refused ? themeStore.dangerColor() : Color.primary)
                                     .onSubmit { applyWebSearchURLInput() }
                             } trailing: {
                                 Text(Self.webSearchURLHint)
                                     .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
-                                    .foregroundStyle(
-                                        webSearchURLRefused ? themeStore.dangerColor() : themeStore.mutedTextColor())
+                                    .foregroundStyle(refused ? themeStore.dangerColor() : themeStore.mutedTextColor())
                             }
                         }
 
