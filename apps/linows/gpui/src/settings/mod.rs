@@ -1334,17 +1334,23 @@ impl Settings {
             .when(split && slot == BarSlot::Pinned, |el| {
                 el.child(self.pinned_row(th, cx))
             })
-            .child(self.switches_row(split, th, cx))
+            .child(if split {
+                self.switches_row(&SUPER_ACTIONS, &[&ANIMATIONS], th, cx)
+            } else {
+                self.switches_row(&ANIMATIONS, &[], th, cx)
+            })
+            .child(self.decoration_switches_row(th, cx))
             .child(controls::divider(th))
     }
 
     /// One line: the first in the label column, the rest after it.
-    fn switches_row(&self, split: bool, th: &Theme, cx: &mut Context<Launcher>) -> Div {
-        let (first, rest): (_, &[&'static Switch]) = if split {
-            (&SUPER_ACTIONS, &[&ANIMATIONS, &ROW_DIGITS, &CHRISTMAS])
-        } else {
-            (&ANIMATIONS, &[&ROW_DIGITS, &CHRISTMAS])
-        };
+    fn switches_row(
+        &self,
+        first: &'static Switch,
+        rest: &[&'static Switch],
+        th: &Theme,
+        cx: &mut Context<Launcher>,
+    ) -> Div {
         self.switch_row(first, th, cx)
             .children(rest.iter().map(|&sw| {
                 div()
@@ -1355,6 +1361,10 @@ impl Settings {
                     .child(controls::label(sw.label, th))
                     .child(self.switch(sw, th, cx))
             }))
+    }
+
+    fn decoration_switches_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+        self.switches_row(&ROW_DIGITS, &[&CHRISTMAS], th, cx)
             .when(self.is_on(&CHRISTMAS), |el| {
                 el.child(
                     self.select_control(
