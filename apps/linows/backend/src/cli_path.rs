@@ -1,6 +1,11 @@
 //! "Add lookapp to PATH". Windows-only work: the Linux packages already
 //! drop the binary somewhere on PATH, and macOS symlinks it at install time.
+/// No-op in Windows debug builds: a PATH entry would point at `target\debug`.
 pub fn set_cli_path(enabled: bool) -> Result<(), String> {
+    if cfg!(all(windows, debug_assertions)) {
+        let _ = enabled;
+        return Ok(());
+    }
     #[cfg(target_os = "windows")]
     {
         crate::platform::windows::path_env::set(enabled)
