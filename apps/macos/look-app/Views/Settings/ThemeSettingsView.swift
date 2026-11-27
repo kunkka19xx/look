@@ -33,8 +33,8 @@ struct ThemeSettingsView: View {
     @State var fileScanLimitInput = ""
     @State var fileScanDepthError: String?
     @State var fileScanLimitError: String?
-    @State var webSearchEngineInput = ""
-    @State var webSearchEngineLoaded = false
+    @State var webSearchURLInput = ""
+    @State var webSearchCustomPicked = false
     @State var extraScanDirectoryMessage: String?
     @State var showFreshConfigConfirm = false
     @State var freshConfigMessage: String?
@@ -116,7 +116,7 @@ struct ThemeSettingsView: View {
             Button("Save Config") {
                 applyFileScanDepthInput()
                 applyFileScanLimitInput()
-                applyWebSearchEngineInput()
+                applyWebSearchURLInput()
                 let ok = themeStore.saveCurrentConfigToFile()
                 saveMessage = SaveMessage(text: ok ? "Saved" : "Save failed", succeeded: ok)
                 if ok {

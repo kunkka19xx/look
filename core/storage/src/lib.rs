@@ -114,7 +114,7 @@ pub enum SearchEngine {
 }
 
 impl SearchEngine {
-    pub fn key(self) -> &'static str {
+    pub const fn key(self) -> &'static str {
         match self {
             SearchEngine::DuckDuckGo => SEARCH_ENGINE_DUCKDUCKGO,
             SearchEngine::Google => SEARCH_ENGINE_GOOGLE,
@@ -146,8 +146,9 @@ impl SearchEngine {
     }
 }
 
-/// Where a custom template takes the form-encoded query.
-pub const WEB_SEARCH_PLACEHOLDER: &str = "{encoded}";
+/// Where a custom template takes the form-encoded query, as in a browser's
+/// own custom search engines.
+pub const WEB_SEARCH_PLACEHOLDER: &str = "%s";
 /// Only these reach the system opener.
 const WEB_SEARCH_SCHEMES: [&str; 2] = ["https://", "http://"];
 
@@ -1425,15 +1426,15 @@ mod tests {
     fn parse_web_search_fills_every_placeholder_of_a_template() {
         for (template, url) in [
             (
-                "https://search.yahoo.com/search?p={encoded}",
+                "https://search.yahoo.com/search?p=%s",
                 "https://search.yahoo.com/search?p=ph%E1%BB%9F+%26+tea",
             ),
             (
-                "HTTP://example.com/{encoded}?q={encoded}\n",
+                "HTTP://example.com/%s?q=%s\n",
                 "HTTP://example.com/ph%E1%BB%9F+%26+tea?q=ph%E1%BB%9F+%26+tea",
             ),
             (
-                "https://bücher.de/s?q={encoded}#top",
+                "https://bücher.de/s?q=%s#top",
                 "https://bücher.de/s?q=ph%E1%BB%9F+%26+tea#top",
             ),
         ] {
@@ -1447,14 +1448,14 @@ mod tests {
         for value in [
             "yahoo",
             "https://example.com/search?q=rust",
-            "https://example.com/#{encoded}",
-            "https://{encoded}.example.com/?q={encoded}",
-            "https://bü{encoded}.de/s",
-            "https:///?q={encoded}",
-            "https://example.com/?q={encoded} x",
-            "ftp://example.com/?q={encoded}",
-            "file:///tmp/{encoded}",
-            "javascript:alert({encoded})",
+            "https://example.com/#%s",
+            "https://%s.example.com/?q=%s",
+            "https://bü%s.de/s",
+            "https:///?q=%s",
+            "https://example.com/?q=%s x",
+            "ftp://example.com/?q=%s",
+            "file:///tmp/%s",
+            "javascript:alert(%s)",
         ] {
             assert_eq!(parse_web_search(value), None, "{value}");
         }

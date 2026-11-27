@@ -113,10 +113,16 @@ const BG_LAYOUT_HINTS: [&str; 4] = [
     "Repeat as tiles",
 ];
 
-const WEB_SEARCH_BOX_W: f32 = 320.0;
-const WEB_SEARCH_NOTES_GAP: f32 = 4.0;
-const WEB_SEARCH_HINT: &str = "google, duckduckgo, bing, or a https:// URL with {encoded}";
-const WEB_SEARCH_EXAMPLE: &str = "e.g. https://search.yahoo.com/search?p={encoded}";
+const WEB_SEARCH_CUSTOM: &str = "custom";
+const WEB_SEARCH_ENGINES: &[Option_] = &[
+    (SearchEngine::Google.key(), "Google"),
+    (SearchEngine::DuckDuckGo.key(), "DuckDuckGo"),
+    (SearchEngine::Bing.key(), "Bing"),
+    (WEB_SEARCH_CUSTOM, "Custom"),
+];
+const WEB_SEARCH_URL_BOX_W: f32 = 320.0;
+const WEB_SEARCH_URL_EXAMPLE: &str = "https://search.brave.com/search?q=%s";
+const WEB_SEARCH_URL_HINT: &str = "%s is the query";
 
 const LOG_LEVEL_KEY: &str = "backend_log_level";
 const LOG_LEVELS: &[Option_] = &[
@@ -240,12 +246,15 @@ impl Settings {
         self.get(LOG_LEVEL_KEY).unwrap_or(LOG_LEVEL_DEFAULT)
     }
 
-    /// As written in the file, so a refused hand edit stays visible. Unset
-    /// shows the default engine.
+    /// As written in the file, so a refused hand edit stays visible.
     fn web_search_value(&self) -> &str {
-        self.get(weburl::WEB_SEARCH_ENGINE_KEY)
-            .filter(|value| !value.is_empty())
-            .unwrap_or(SearchEngine::Google.key())
+        self.get(weburl::WEB_SEARCH_ENGINE_KEY).unwrap_or_default()
+    }
+
+    fn web_search_field(&self) -> Option<&Field> {
+        self.field
+            .as_ref()
+            .filter(|field| matches!(field.kind, FieldKind::WebSearch))
     }
 
     /// Set means what it says; unset is the compositor's default.
@@ -356,9 +365,24 @@ impl Settings {
         cx.notify();
     }
 
+    fn pick_web_search(&mut self, engine: &str, cx: &mut Context<Launcher>) {
+        self.select = None;
+        if engine == WEB_SEARCH_CUSTOM {
+            self.open_web_search_field(cx);
+        } else {
+            self.set(weburl::WEB_SEARCH_ENGINE_KEY, engine);
+            cx.notify();
+        }
+    }
+
+    /// The URL box, empty when coming from a built-in engine.
     fn open_web_search_field(&mut self, cx: &mut Context<Launcher>) {
+        let value = self.web_search_value();
+        let text = match weburl::built_in_engine(value) {
+            Some(_) => String::new(),
+            None => value.to_string(),
+        };
         let input = input_for(cx);
-        let text = self.web_search_value().to_string();
         input.update(cx, |input, cx| {
             input.set_text(&text, cx);
             input.select_all(cx);
@@ -373,14 +397,17 @@ impl Settings {
         cx.notify();
     }
 
-    /// Enter, or a click away: keep what was typed, a refused value included,
-    /// so the box shows it in red.
+    /// Enter, or a click away: keep what was typed, a refused URL included,
+    /// so the box shows it in red. Nothing typed leaves the engine as it was.
     pub(super) fn commit_web_search(&mut self, cx: &mut Context<Launcher>) -> KeyOutcome {
         let Some(field) = self.field.take() else {
             return KeyOutcome::Consumed;
         };
         let typed = field.input.read(cx).committed();
-        self.set(weburl::WEB_SEARCH_ENGINE_KEY, typed.trim());
+        let typed = typed.trim();
+        if !typed.is_empty() {
+            self.set(weburl::WEB_SEARCH_ENGINE_KEY, typed);
+        }
         cx.notify();
         KeyOutcome::Consumed
     }
@@ -437,14 +464,13 @@ impl Settings {
         div()
             .flex()
             .flex_col()
-            .child(controls::section("Web answers", th))
+            .child(controls::section("Web", th))
             .child(
                 self.switch_row(&AI, th, cx)
                     .child(controls::hint(AI_HINT, th)),
             )
             .child(controls::row("", th).child(controls::hint(AI_NOTE, th)))
-            .child(controls::section("Web search", th))
-            .child(self.web_search_row(th, cx))
+            .child(self.web_search_rows(th, cx))
             .child(controls::divider(th))
             .child(controls::section("Background", th))
             .child(self.bg_rows(th, cx))
@@ -575,15 +601,33 @@ impl Settings {
             .child(self.slider_row(&BG_BLUR, th, cx))
     }
 
-    fn web_search_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
-        let editing = self
-            .field
-            .as_ref()
-            .filter(|field| matches!(field.kind, FieldKind::WebSearch));
+    /// The engine select, and under it the URL box while the choice is Custom:
+    /// the saved value is a template, or the box is open to type one.
+    fn web_search_rows(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
         let value = self.web_search_value();
+        let editing = self.web_search_field();
+        let built_in = weburl::built_in_engine(value).filter(|_| editing.is_none());
+        let rows = div()
+            .flex()
+            .flex_col()
+            .child(
+                controls::row("Search Engine", th).child(self.select_control(
+                    "settings-web-search-engine",
+                    WEB_SEARCH_ENGINES,
+                    built_in.unwrap_or(WEB_SEARCH_CUSTOM),
+                    weburl::WEB_SEARCH_ENGINE_KEY,
+                    Settings::pick_web_search,
+                    th,
+                    cx,
+                )),
+            );
+        if built_in.is_some() {
+            return rows;
+        }
+        let refused = editing.is_none() && weburl::web_search_is_refused(value);
         let content = match editing {
             Some(field) => {
-                search_field(field.input.clone(), SearchEngine::Google.key()).into_any_element()
+                search_field(field.input.clone(), WEB_SEARCH_URL_EXAMPLE).into_any_element()
             }
             None => div()
                 .flex_1()
@@ -591,14 +635,15 @@ impl Settings {
                 .child(middle_elided(value.to_string()))
                 .into_any_element(),
         };
-        let refused = weburl::web_search_is_refused(value);
         let boxed = controls::text_box(
-            "settings-web-search-engine",
-            WEB_SEARCH_BOX_W,
+            "settings-web-search-url",
+            WEB_SEARCH_URL_BOX_W,
             content,
             editing.is_some(),
             th,
         )
+        .flex_shrink_0()
+        .overflow_hidden()
         .when(refused, |el| {
             el.border_color(th.danger).text_color(th.danger)
         })
@@ -612,22 +657,9 @@ impl Settings {
                 this.settings.commit_web_search(cx);
             }))
         });
-        // The box with its two notes stacked under it: beside it, they would
-        // squeeze the box in a row this narrow.
-        controls::row("Search Engine", th).items_start().child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .gap(px(WEB_SEARCH_NOTES_GAP))
-                .child(boxed.flex_shrink_0().overflow_hidden())
-                .child(
-                    controls::hint(WEB_SEARCH_HINT, th)
-                        .when(refused, |el| el.text_color(th.danger)),
-                )
-                .child(controls::hint(WEB_SEARCH_EXAMPLE, th)),
-        )
+        rows.child(controls::row("", th).child(boxed).child(
+            controls::hint(WEB_SEARCH_URL_HINT, th).when(refused, |el| el.text_color(th.danger)),
+        ))
     }
 
     fn number_row(&self, spec: &'static Number, th: &Theme, cx: &mut Context<Launcher>) -> Div {
@@ -832,6 +864,12 @@ fn compositor_is(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_url_example_is_a_template_the_core_accepts() {
+        assert!(!weburl::web_search_is_refused(WEB_SEARCH_URL_EXAMPLE));
+        assert_eq!(weburl::built_in_engine(WEB_SEARCH_URL_EXAMPLE), None);
+    }
 
     #[test]
     fn numbers_snap_into_range() {

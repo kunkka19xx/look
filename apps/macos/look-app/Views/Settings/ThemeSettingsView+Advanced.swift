@@ -10,34 +10,27 @@ extension ThemeSettingsView {
                     VStack(alignment: .leading, spacing: 10) {
                         AISettingsSection(settings: $settings)
 
-                        Divider()
-                            .overlay(themeStore.dividerColor())
-                            .padding(.vertical, 4)
+                        settingRow("Search Engine") {
+                            Picker("Search Engine", selection: webSearchChoice) {
+                                ForEach(WebSearchChoice.allCases) { choice in
+                                    Text(choice.title).tag(choice)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                        }
 
-                        Text("Web search")
-                            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
-                            .foregroundStyle(themeStore.secondaryTextColor())
-
-                        settingRow(
-                            "Search Engine",
-                            hint: "google, duckduckgo, bing, or a https:// URL with {encoded}",
-                            alignment: .top
-                        ) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                TextField(ThemeSettings.default.webSearchEngine, text: $webSearchEngineInput)
+                        if webSearchChoice.wrappedValue == .custom {
+                            settingRow(nil, controlWidth: Self.webSearchURLWidth) {
+                                TextField(Self.webSearchURLExample, text: $webSearchURLInput)
                                     .textFieldStyle(.roundedBorder)
-                                    .foregroundStyle(webSearchEngineRefused ? themeStore.dangerColor() : Color.primary)
-                                    .overlay {
-                                        if webSearchEngineRefused {
-                                            RoundedRectangle(cornerRadius: 5)
-                                                .stroke(themeStore.dangerColor(), lineWidth: 1)
-                                        }
-                                    }
-                                    .onSubmit { applyWebSearchEngineInput() }
-                                Text("e.g. https://search.yahoo.com/search?p={encoded}")
+                                    .foregroundStyle(webSearchURLRefused ? themeStore.dangerColor() : Color.primary)
+                                    .onSubmit { applyWebSearchURLInput() }
+                            } trailing: {
+                                Text(Self.webSearchURLHint)
                                     .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
-                                    .foregroundStyle(themeStore.mutedTextColor())
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    .foregroundStyle(
+                                        webSearchURLRefused ? themeStore.dangerColor() : themeStore.mutedTextColor())
                             }
                         }
 
@@ -279,8 +272,7 @@ extension ThemeSettingsView {
                 }
                 .onAppear {
                     syncIndexingInputsFromSettings()
-                    webSearchEngineInput = settings.webSearchEngine
-                    webSearchEngineLoaded = true
+                    syncWebSearchInputFromSettings()
                 }
                 .onChange(of: settings.fileScanDepth) { _, _ in
                     fileScanDepthInput = String(settings.fileScanDepth)
@@ -359,23 +351,47 @@ extension ThemeSettingsView {
         fileScanLimitInput = String(settings.fileScanLimit)
     }
 
-    /// Whether the core refuses what is in the box: it is drawn red, and the
-    /// user fixes it when they like. Searches use Google meanwhile.
-    var webSearchEngineRefused: Bool {
-        guard webSearchEngineLoaded else { return false }
-        let trimmed = webSearchEngineInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !EngineBridge.shared.isValidWebSearch(trimmed)
+    static let webSearchURLWidth: CGFloat = 320
+    static let webSearchURLExample = "https://search.brave.com/search?q=%s"
+    static let webSearchURLHint = "%s is the query"
+
+    /// Custom while the saved value is a URL template, or once it is picked
+    /// and the URL is still to be typed.
+    var webSearchChoice: Binding<WebSearchChoice> {
+        Binding(
+            get: { webSearchCustomPicked ? .custom : WebSearchChoice(configValue: settings.webSearchEngine) },
+            set: { choice in
+                webSearchCustomPicked = choice == .custom
+                if choice != .custom {
+                    webSearchURLInput = ""
+                    settings.webSearchEngine = choice.rawValue
+                }
+            }
+        )
     }
 
-    /// Keeps what was typed, a refused value included: Save writes it as is.
-    func applyWebSearchEngineInput() {
-        // The box is filled when the Advanced tab appears. Before that, Save
-        // must not read its empty text as the default over a saved engine.
-        guard webSearchEngineLoaded else { return }
-        let trimmed = webSearchEngineInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        let value = trimmed.isEmpty ? ThemeSettings.default.webSearchEngine : trimmed
-        webSearchEngineInput = value
-        settings.webSearchEngine = value
+    func syncWebSearchInputFromSettings() {
+        let isCustom = WebSearchChoice(configValue: settings.webSearchEngine) == .custom
+        webSearchURLInput = isCustom ? settings.webSearchEngine : ""
+        webSearchCustomPicked = false
+    }
+
+    var trimmedWebSearchURLInput: String {
+        webSearchURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Whether the core refuses the typed URL. Searches use Google meanwhile.
+    var webSearchURLRefused: Bool {
+        let url = trimmedWebSearchURLInput
+        return !url.isEmpty && !EngineBridge.shared.isValidWebSearch(url)
+    }
+
+    /// Keeps what was typed, a refused URL included: Save writes it as is.
+    /// An empty box leaves the engine as it was.
+    func applyWebSearchURLInput() {
+        let url = trimmedWebSearchURLInput
+        guard !url.isEmpty else { return }
+        settings.webSearchEngine = url
     }
 
     func sanitizedNumericInput(_ value: String) -> String {

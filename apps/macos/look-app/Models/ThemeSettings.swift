@@ -189,6 +189,33 @@ enum BackendLogLevel: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+/// What the Search Engine picker offers. The built-in cases are the names the
+/// core accepts in `web_search_engine`; `custom` stands for a URL template.
+enum WebSearchChoice: String, CaseIterable, Identifiable {
+    case google
+    case duckduckgo
+    case bing
+    case custom
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .google: return "Google"
+        case .duckduckgo: return "DuckDuckGo"
+        case .bing: return "Bing"
+        case .custom: return "Custom"
+        }
+    }
+
+    /// The choice a config value shows as: unset is the default engine, and
+    /// anything that is not a built-in name is a custom URL.
+    init(configValue: String) {
+        let name = configValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        self = name.isEmpty ? .google : WebSearchChoice(rawValue: name) ?? .custom
+    }
+}
+
 struct ThemeSettings: Codable, Equatable {
     var tintRed: Double = 0.08
     var tintGreen: Double = 0.10
@@ -256,10 +283,10 @@ struct ThemeSettings: Codable, Equatable {
     var aiEnabled: Bool = true
 
     /// Engine for Cmd+Enter and web suggestion rows: `google`, `duckduckgo`,
-    /// `bing`, or an http(s) URL template with `{encoded}`. Persisted in
+    /// `bing`, or an http(s) URL template with `%s`. Persisted in
     /// `~/.look/config` under `web_search_engine`. A value the core refuses is
     /// kept as written: Settings marks it red and searches use Google.
-    var webSearchEngine: String = "google"
+    var webSearchEngine: String = WebSearchChoice.google.rawValue
 
     /// Which AI backend powers query understanding when `aiEnabled` is on.
     var aiProvider: AIProviderKind = .appleIntelligence

@@ -1057,7 +1057,7 @@ pub extern "C" fn look_web_suggestions_json(query: *const c_char, limit: u32) ->
 }
 
 /// Web search URL for `query` on the configured `value` (`google` |
-/// `duckduckgo` | `bing`, or an http(s) URL template with `{encoded}`; Google
+/// `duckduckgo` | `bing`, or an http(s) URL template with `%s`; Google
 /// for anything else). Null when the trimmed query is empty. Free the result
 /// with `look_free_cstring`.
 #[unsafe(no_mangle)]

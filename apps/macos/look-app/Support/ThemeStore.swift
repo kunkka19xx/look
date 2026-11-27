@@ -1066,7 +1066,7 @@ final class ThemeStore: ObservableObject {
         ai_allow_remote_context=false
 
         # Search engine for Cmd+Enter and web suggestion rows: google, duckduckgo,
-        # bing, or an http(s) URL with {encoded}. Anything else is marked red in
+        # bing, or an http(s) URL with %s. Anything else is marked red in
         # Settings and searches use google.
         web_search_engine=google
 

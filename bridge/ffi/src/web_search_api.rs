@@ -43,7 +43,7 @@ mod tests {
     #[test]
     fn builds_the_url_or_null_for_a_blank_query() {
         assert_eq!(
-            url_for("https://search.yahoo.com/search?p={encoded}", "rust & tea").as_deref(),
+            url_for("https://search.yahoo.com/search?p=%s", "rust & tea").as_deref(),
             Some("https://search.yahoo.com/search?p=rust+%26+tea")
         );
         assert_eq!(
@@ -60,7 +60,7 @@ mod tests {
             look_web_search_is_valid_impl(value.as_ptr())
         };
         assert!(valid("  BING "));
-        assert!(valid("https://search.yahoo.com/search?p={encoded}"));
+        assert!(valid("https://search.yahoo.com/search?p=%s"));
         assert!(!valid("yahoo"));
     }
 }
