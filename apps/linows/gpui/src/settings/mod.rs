@@ -35,6 +35,7 @@ use crate::update::Update;
 const SAVE: &str = "Save Config";
 const SAVED: &str = "Saved";
 const SAVE_FAILED: &str = "Save failed";
+const SAVE_BLOCKED_OPACITY: f32 = 0.45;
 const SAVE_MESSAGE_MS: u64 = 1600;
 const SAVE_FAILED_BANNER_SECS: f32 = 4.0;
 pub const RELOADED: &str = "Config reloaded from file";
@@ -160,6 +161,14 @@ const SUPER_ACTIONS: Switch = Switch {
     on: "true",
     off: "false",
     default_on: false,
+};
+const ROW_DIGITS: Switch = Switch {
+    id: "settings-row-digits",
+    key: theme::ROW_DIGITS_KEY,
+    label: "Row Digits",
+    on: "true",
+    off: "false",
+    default_on: true,
 };
 /// Saved only: the motion pass (M7) reads it.
 const ANIMATIONS: Switch = Switch {
@@ -347,7 +356,7 @@ static SLIDERS: [&Slider; 18] = [
 ];
 
 /// The keys this screen owns besides the sliders'.
-const KEYS: [&str; 10] = [
+const KEYS: [&str; 11] = [
     THEME_KEY,
     SURFACE_KEY,
     LAYOUT_KEY,
@@ -355,6 +364,7 @@ const KEYS: [&str; 10] = [
     BLUR_STYLE_KEY,
     bar_slot::SLOT_KEY,
     SUPER_ACTIONS.key,
+    ROW_DIGITS.key,
     ANIMATIONS.key,
     CHRISTMAS.key,
     theme::SNOW_AMOUNT_KEY,
@@ -1016,7 +1026,7 @@ impl Settings {
     /// the file again and the OS takes the startup switches.
     fn save_all(&mut self, cx: &mut Context<Launcher>) {
         // Nothing to write until the file has been read.
-        if !self.loaded {
+        if !self.loaded || self.recorder.blocks_save() {
             return;
         }
         if let Some(kind) = self.field.as_ref().map(|field| field.kind) {
@@ -1191,11 +1201,11 @@ impl Settings {
             .gap(px(HEADER_GAP))
             .children(pill)
             .child(
-                controls::button("settings-save", SAVE, th).on_click(cx.listener(
-                    |this, _, _, cx| {
-                        this.settings.save_all(cx);
-                    },
-                )),
+                controls::button("settings-save", SAVE, th)
+                    .when(self.recorder.blocks_save(), |b| {
+                        b.opacity(SAVE_BLOCKED_OPACITY)
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| this.settings.save_all(cx))),
             )
     }
 
@@ -1331,17 +1341,23 @@ impl Settings {
             .when(split && slot == BarSlot::Pinned, |el| {
                 el.child(self.pinned_row(th, cx))
             })
-            .child(self.switches_row(split, th, cx))
+            .child(if split {
+                self.switches_row(&SUPER_ACTIONS, &[&ANIMATIONS], th, cx)
+            } else {
+                self.switches_row(&ANIMATIONS, &[], th, cx)
+            })
+            .child(self.decoration_switches_row(th, cx))
             .child(controls::divider(th))
     }
 
     /// One line: the first in the label column, the rest after it.
-    fn switches_row(&self, split: bool, th: &Theme, cx: &mut Context<Launcher>) -> Div {
-        let (first, rest): (_, &[&'static Switch]) = if split {
-            (&SUPER_ACTIONS, &[&ANIMATIONS, &CHRISTMAS])
-        } else {
-            (&ANIMATIONS, &[&CHRISTMAS])
-        };
+    fn switches_row(
+        &self,
+        first: &'static Switch,
+        rest: &[&'static Switch],
+        th: &Theme,
+        cx: &mut Context<Launcher>,
+    ) -> Div {
         self.switch_row(first, th, cx)
             .children(rest.iter().map(|&sw| {
                 div()
@@ -1352,6 +1368,10 @@ impl Settings {
                     .child(controls::label(sw.label, th))
                     .child(self.switch(sw, th, cx))
             }))
+    }
+
+    fn decoration_switches_row(&self, th: &Theme, cx: &mut Context<Launcher>) -> Div {
+        self.switches_row(&ROW_DIGITS, &[&CHRISTMAS], th, cx)
             .when(self.is_on(&CHRISTMAS), |el| {
                 el.child(
                     self.select_control(

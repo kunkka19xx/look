@@ -121,7 +121,6 @@ struct ResultPreviewView: View {
                 pendingItems: pendingQuickActionItems,
                 busyActionIds: busyQuickActionIds,
                 themeStore: themeStore,
-                revealToken: quickActionsRevealToken,
                 onRun: onRunQuickAction,
                 onActivateItem: onActivateQuickActionItem
             )

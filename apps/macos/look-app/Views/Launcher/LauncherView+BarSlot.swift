@@ -22,10 +22,10 @@ extension LauncherView {
             let line = todayLine
             BarTextSlotView(
                 lead: line.task, note: line.note, themeStore: themeStore,
-                onTap: openTodo, revealToken: appearanceRevealToken)
+                onTap: openTodo)
         case .script:
             if let line = barSlotService.scriptLine(for: themeStore.barScript) {
-                BarTextSlotView(lead: line, note: nil, themeStore: themeStore, revealToken: appearanceRevealToken)
+                BarTextSlotView(lead: line, note: nil, themeStore: themeStore)
             }
         case .none:
             EmptyView()
@@ -36,8 +36,7 @@ extension LauncherView {
         AppStripView(
             tiles: tiles,
             themeStore: themeStore,
-            onActivate: { key in _ = activateBarSlot(forKey: key) },
-            revealToken: appearanceRevealToken)
+            onActivate: { key in _ = activateBarSlot(forKey: key) })
     }
 
     private var runningAppTiles: [AppStripTile] {

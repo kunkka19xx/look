@@ -11,8 +11,6 @@ struct EmptyStateLaunchpadView: View {
     var shape: LaunchpadGrid.Shape?
     var controller: LaunchpadController
     var themeStore: ThemeStore
-    /// Changes each time the launcher opens, replaying the spawn cascade.
-    var revealToken: UInt64 = 0
 
     private typealias Const = AppConstants.Launcher.Launchpad
 
@@ -58,16 +56,11 @@ struct EmptyStateLaunchpadView: View {
     private func layout(width: CGFloat) -> some View {
         let grid = self.grid
         return ZStack(alignment: .topLeading) {
-            // Reading order, because that is the order the core sends. It is
-            // also the order the entrance cascade wants, so the index is the
-            // cascade position - no second table of who animates when.
-            ForEach(Array(tiles.enumerated()), id: \.element.actionId) { index, model in
+            // Reading order, because that is the order the core sends.
+            ForEach(tiles, id: \.actionId) { model in
                 let box = grid.frame(for: model, totalWidth: width)
                 tileContent(model)
                     .frame(width: box.width, height: box.height)
-                    // On the container: symbol effects reach the images inside.
-                    .symbolEffect(.bounce, value: revealToken)
-                    .spawnReveal(index: index, token: revealToken)
                     .offset(x: box.minX, y: box.minY)
             }
         }

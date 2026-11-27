@@ -16,6 +16,8 @@ struct ShortcutRecorderField: View {
     @State private var monitor: Any?
 
     private static let listening = "Press a shortcut, Esc to cancel"
+    private static let listeningForModifier = "Press Cmd, Ctrl or Option, Esc to cancel"
+    private static let digitRowModifiers: NSEvent.ModifierFlags = [.command, .control, .option]
     private static let unknownKey = "That key cannot be used"
     private static let deafRecorder = "Could not listen for keys"
     private static let fillOpacity = 0.14
@@ -29,7 +31,7 @@ struct ShortcutRecorderField: View {
     }
 
     private var defaultSpec: String? {
-        guard let spec = shortcut.resetSpec, shortcut.check(spec)?.display != shown else {
+        guard let spec = shortcut.resetSpec, shortcut.pendingDisplay(in: [shortcut.configKey: spec]) != shown else {
             return nil
         }
         return spec
@@ -43,8 +45,12 @@ struct ShortcutRecorderField: View {
             : themeStore.liftColor(opacity: Self.restingOutlineOpacity)
     }
 
+    private var prompt: String {
+        shortcut.isDigitRow ? Self.listeningForModifier : Self.listening
+    }
+
     private var capsule: some View {
-        Text(isRecording ? Self.listening : shown)
+        Text(isRecording ? prompt : shown)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(themeStore.liftColor(opacity: Self.fillOpacity), in: Capsule())
@@ -69,7 +75,7 @@ struct ShortcutRecorderField: View {
                         .pointingHandCursor()
                 }
             }
-            if let error {
+            if let error = error ?? shortcut.digitClash(in: bindings) {
                 Text(error).foregroundStyle(themeStore.dangerColor())
             }
         }
@@ -79,7 +85,7 @@ struct ShortcutRecorderField: View {
 
     private func startRecording() {
         shortcut.suspend()
-        let installed = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        let installed = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
             record(event)
             return nil
         }
@@ -108,7 +114,12 @@ struct ShortcutRecorderField: View {
             stopRecording()
             return
         }
-        guard let check = CarbonHotkey.spec(for: event).flatMap(shortcut.check) else {
+        // A digit row is set by its modifier alone, any other row by a key.
+        let modifierAlone = event.type == .flagsChanged
+        if modifierAlone != shortcut.isDigitRow { return }
+        if modifierAlone, event.modifierFlags.isDisjoint(with: Self.digitRowModifiers) { return }
+        let key = modifierAlone ? LocalShortcut.digitRowKey : nil
+        guard let check = CarbonHotkey.spec(for: event, key: key).flatMap(shortcut.check) else {
             error = Self.unknownKey
             return
         }

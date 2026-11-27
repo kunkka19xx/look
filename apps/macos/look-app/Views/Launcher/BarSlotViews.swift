@@ -32,8 +32,6 @@ struct AppStripView: View {
     let tiles: [AppStripTile]
     let themeStore: ThemeStore
     let onActivate: (Int) -> Void
-    /// Changes each time the launcher opens, replaying the spawn cascade.
-    var revealToken: UInt64 = 0
 
     @State private var hoveredIndex: Int?
 
@@ -52,8 +50,6 @@ struct AppStripView: View {
                         hoveredIndex = hovering ? index : (hoveredIndex == index ? nil : hoveredIndex)
                     }
                 )
-                // Slides in from the left, leftmost first.
-                .stripReveal(index: index, token: revealToken)
             }
         }
     }
@@ -66,7 +62,6 @@ struct BarTextSlotView: View {
     let note: String?
     let themeStore: ThemeStore
     var onTap: (() -> Void)?
-    var revealToken: UInt64 = 0
 
     @State private var isHovered = false
 
@@ -93,7 +88,6 @@ struct BarTextSlotView: View {
             .onTapGesture { onTap?() }
             .onHover { isHovered = $0 }
             .help([lead, note].compactMap { $0 }.joined(separator: " "))
-            .stripReveal(index: 0, token: revealToken)
         }
     }
 
@@ -116,7 +110,7 @@ private struct AppStripIconItem: View {
     var body: some View {
         ZStack {
             iconView
-                .overlay(alignment: .topTrailing) { badge }
+                .keyDigitBadge(shortcutNumber, themeStore: themeStore)
                 .overlay { activeRing }
                 .scaleEffect(isHovered ? 1.12 : 1.0)
                 .opacity(tile.isActive ? 1.0 : (isHovered ? 0.95 : 0.75))
@@ -148,23 +142,6 @@ private struct AppStripIconItem: View {
                         .foregroundStyle(themeStore.fontColor())
                 }
         }
-    }
-
-    @ViewBuilder
-    private var badge: some View {
-        Text("\(shortcutNumber)")
-            .font(.system(size: 9, weight: .bold, design: .monospaced))
-            .foregroundStyle(themeStore.fontColor())
-            .frame(width: 14, height: 14)
-            .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(themeStore.scrimColor(opacity: 0.72))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7)
-                    .strokeBorder(themeStore.fontColor(opacityMultiplier: 0.45), lineWidth: 1)
-            )
-            .offset(x: 5, y: -3)
     }
 
     @ViewBuilder

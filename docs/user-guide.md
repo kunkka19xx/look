@@ -357,7 +357,7 @@ Built-in commands:
 
 `todo` quick reference:
 
-- Tasks are grouped by day, newest on top. Up to 3 unfinished tasks per day (complete one to add more) and up to 3 upcoming date groups (`Add date + N`)
+- Tasks are grouped by day, newest on top. Up to 3 unfinished tasks per day (complete one to add more; `todo_task_limit` in the config raises or lowers it, see File-only settings below) and up to 3 upcoming date groups (`Add date + N`)
 - Past days are non-editable. Unfinished tasks 1-3 days late show an `EXTENDED` badge and can still be marked done; unfinished tasks more than 3 days late show `OVERDUE` and their completion state is locked
 - Search matches task names and dates (`jul 3`, `yesterday`); case- and diacritic-insensitive
 - Nothing autosaves: hit `Save` or `Cmd+S`; `Cmd+N` flips between the Tasks and Stats pages
@@ -510,6 +510,8 @@ On Linux and Windows, Liquid is clear glass rather than frosted: the same palett
 
 Blur behind the window is the compositor's to grant, and Look asks for it wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and niri through the `ext-background-effect-v1` protocol, older Plasma through KDE's own, and KWin on X11 through a window property. The switch is `Settings > Advanced > Rendering > Blur behind window` (`ui_compositor_blur`), and it is there on every Linux desktop. It starts on in a Plasma session, where the frost is what it says on the tin, and off everywhere else: taking the request and drawing it well are two different things, so the rest is opt-in until you have looked at it on your own setup. On a desktop that ignores the request the switch does nothing either way.
 
+On Windows 11 the frost comes from Windows itself, behind each card, with the gaps between cards left clear. It needs `Transparency effects` on in `Windows Settings > Personalization > Colors`, and it starts on; the same switch turns it off. With transparency effects off, or on Windows 10, the switch is not shown and Look stays clear glass. Look reads that Windows setting each time it opens, so a change there shows up on the next summon.
+
 With the frost on, `Blur Opacity` starts thinning the tint so more of it shows through. The compositor blurs all of that area or none of it, so thinning reveals more frost, never a sharp desktop; turning the switch off is what gives you a sharp view through. How strong the frost is belongs to the compositor too
 
 - on Plasma, `System Settings > Desktop Effects > Blur`.
@@ -530,7 +532,7 @@ window-rule {
 
 Then turn `Blur behind window` on. Look is a layer-shell surface on niri, so the layer rule is the one that applies; the window rule covers a session where it opened as a plain window, so keeping both covers either. Leave `blur` out of the block: Look already asks over the protocol, and niri's own `blur true` follows `geometry-corner-radius` instead of Look's shape, which frosts the gaps between the floating panes. Dropping xray costs GPU time, since the blur is then sampled every frame rather than once.
 
-Where there is no frost at all (GNOME 50 and earlier, plain sway, X11 without KWin) Look stays clear glass and `Blur Opacity` applies only when you have set a background image. Driving blur from your own compositor config still works; Look's request is additional, not exclusive.
+Where there is no frost at all (GNOME 50 and earlier, plain sway, X11 without KWin, Windows 10, Windows 11 with transparency effects off) Look stays clear glass and `Blur Opacity` applies only when you have set a background image. Driving blur from your own compositor config still works; Look's request is additional, not exclusive.
 
 **Search Bar**: a dropdown for what the right end of the search bar holds. With anything but **Nothing** the search field takes the left half and the slot the right.
 
@@ -549,6 +551,8 @@ Running Apps and Pinned Apps take the digits; the others leave them free. AI mod
 **Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`; off by default. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/super-actions.toml`; see [Rearranging the strip](#rearranging-the-strip).
 
 **Animations**: a switch for the launcher's motion, the arrival cascade, the entrance staggers, the selection glide and the caret glide. Off shows every change instantly; the caret still blinks and the answer spinner still turns, since those read as state rather than motion. With it on, the OS preference is still respected (macOS Reduce Motion, the desktop's reduce-motion setting on Linux), except on Windows, where the flag tracks the "best performance" visual-effects preset rather than motion sensitivity. Saved as `animations_enabled=true|false`.
+
+**Row Digits**: a switch for the digit badges on the result rows. Off hides them; `Ctrl+1`..`Ctrl+9` still open the rows. Saved as `row_digits=true|false`; on by default.
 
 ### Indexing Settings
 
@@ -639,6 +643,7 @@ These keys have no control in the Settings screens. Edit `~/.look/config` direct
 
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
 - `clipboard_image_limit` (how many copied images `ci"` keeps, range 5 to 50, default 20)
+- `todo_task_limit` (unfinished tasks `todo` accepts per day, range 1 to 20, default 3. Lowering it keeps the tasks already there; the day just stops taking new ones until enough are done)
 - `launcher_hotkey` (global shortcut that shows and hides Look; modifiers `cmd`/`win`, `ctrl`, `alt`/`option`, `shift` plus one key: a letter, digit, `space`, `enter`, `tab`, `esc`, `f1`-`f20`, or a symbol like `` ` ``. Examples: `ctrl+space`, `alt+shift+space`, `f13`. Default `cmd+space` on macOS, `alt+space` on Windows and Linux. `none` stops Look registering any key, so you can bind `lookapp --toggle` in your desktop or a tool like skhd/AutoHotkey instead; Linux accepts only `none` and applies it on restart. An invalid value falls back to the default and the reload banner says why)
 - `shortcut_<group>_<action>` (macOS, and the gpui build on Linux and Windows; an in-app shortcut, same grammar as `launcher_hotkey` plus Shift-only chords on keys that type nothing, like `shift+enter`. The name follows the row in `Settings > Shortcuts`: `shortcut_main_copy`, `shortcut_view_reload_config`. Several chords for one action are separated by `|`. Only rebound shortcuts appear in the file; a chord Look cannot parse is ignored and the shortcut keeps its default)
 - `query_retention_seconds` (how long the main query survives while Look is hidden, in seconds; the first open past it returns to the empty home screen; default 5, `0` clears on every hide, and any negative value keeps the query indefinitely)
@@ -698,7 +703,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 
 ## Keyboard shortcuts (quick reference)
 
-Every modifier chord below is the default. On macOS, and in the gpui build on Linux and Windows, you can rebind them in `Settings > Shortcuts`: click a key capsule, press the chord you want, then Save Config (or set `shortcut_<group>_<action>` in `~/.look/config`). The keys that structure navigation - `Enter`, `Tab`, `Escape`, the arrows, the `Y`/`N` confirmations - stay fixed, since each means something different in the main bar, AI mode, command mode and a confirmation. Quit (`Cmd+Option+Q` / `Alt+Shift+Q`) and the running-app digits (`Cmd+1`..`Cmd+9` / `Alt+1`..`Alt+9`) are fixed too. A super action's letter is set by its `mnemonic` in `~/.look/super-actions.toml`, not here.
+Every modifier chord below is the default. On macOS, and in the gpui build on Linux and Windows, you can rebind them in `Settings > Shortcuts`: click a key capsule, press the chord you want, then Save Config (or set `shortcut_<group>_<action>` in `~/.look/config`). The keys that structure navigation - `Enter`, `Tab`, `Escape`, the arrows, the `Y`/`N` confirmations - stay fixed, since each means something different in the main bar, AI mode, command mode and a confirmation. Quit (`Cmd+Option+Q` / `Alt+Shift+Q`) is fixed too. The running-app digits and the result-row digits each take one modifier for all of `1`..`9`: click the row and press that modifier alone. The two rows cannot hold the same one. A super action's letter is set by its `mnemonic` in `~/.look/super-actions.toml`, not here.
 
 - `Enter`: open selected result / run command
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
@@ -707,6 +712,7 @@ Every modifier chord below is the default. On macOS, and in the gpui build on Li
 - `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:todo`, `:speed`): jump to a command directly from the home screen
 - `Cmd+1`..`Cmd+7`: in command mode, direct command switch (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`)
 - `Cmd+1`..`Cmd+9` (macOS) / `Alt+1`..`Alt+9` (Linux, Windows): on the home screen, activate the running or pinned app whose badge shows that digit, when the `Search Bar` holds one of them. Badge labels are ergonomic, not strictly positional - see Settings → Appearance → Search Bar
+- `Ctrl+1`..`Ctrl+9`: open that row of the result list, as `Enter` would on it. Rows count from the top one in view, so after scrolling `Ctrl+1` is still the first row you see; a row more than half scrolled off the top no longer counts. Each of those rows shows its digit on its icon, the same badge the search bar's apps wear; `Settings > Appearance > Row Digits` hides the badges and leaves the chords working (`row_digits=true|false`). On macOS the chord is `Ctrl`, not `Cmd`, because `Cmd+1`..`Cmd+9` already switch the search bar's apps; if you turned on Mission Control's "Switch to Desktop N" shortcuts (System Settings > Keyboard > Keyboard Shortcuts), macOS takes those chords before Look sees them
 - `Option+Up` / `Option+Down` in AI mode (`>`): walk your recent prompts, like a shell history. `Shift+Up` / `Shift+Down` select text in the message instead
 - `Shift+Enter` in AI mode (`>`): new line in the message instead of sending. The box grows to 6 lines and stops there. Elsewhere `Shift+Enter` still opens all picked files
 - `join` (or `join meeting`, `join my next meeting`, or `join <meeting name>`): pins a "Join <meeting>" row for the next Teams / Zoom / Meet / Webex / Jitsi / GoToMeeting / Whereby meeting in your calendar; Enter opens the link. Works in the main bar and in `>` AI mode. Looks two days ahead. Needs the account in macOS Calendar (System Settings → Internet Accounts), since Look reads the OS's calendar and makes no network call of its own

@@ -95,7 +95,6 @@ struct SearchInputBar: View {
                         ? themeStore.accentColor() : themeStore.secondaryTextColor()
                 )
                 .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: revealToken)
             }
 
             if let breadcrumb {
@@ -138,7 +137,6 @@ struct SearchInputBar: View {
                         // `allowsHitTesting` does not remove it from the
                         // accessibility tree.
                         .accessibilityHidden(true)
-                        .placeholderReveal(token: revealToken)
                 }
             }
 
@@ -324,10 +322,14 @@ struct CommandHeaderBar: View {
 }
 
 struct ResultsListView: View {
+    typealias RowDigits = AppConstants.Launcher.ResultRowDigits
+
     let results: [LauncherResult]
     let selectedID: String?
     let pickedKeys: Set<String>
     let themeStore: ThemeStore
+    /// The top row in view, which ⌃1 opens. Reported as the list scrolls.
+    @Binding var firstRowInView: String?
     /// See `LauncherRowView.liveDetail`; shown on the selected row only.
     var selectedRowDetail: String? = nil
     let onSelect: (String) -> Void
@@ -337,10 +339,11 @@ struct ResultsListView: View {
     @Namespace private var selectionNamespace
 
     var body: some View {
+        let firstInView = RowDigits.firstInView(results, id: firstRowInView)
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 4) {
-                    ForEach(results) { result in
+                    ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
                         LauncherRowView(
                             result: result,
                             isSelected: selectedID == result.id,
@@ -348,6 +351,7 @@ struct ResultsListView: View {
                             isLast: result.id == results.last?.id,
                             selectionNamespace: selectionNamespace,
                             liveDetail: selectedID == result.id ? selectedRowDetail : nil,
+                            digit: RowDigits.digit(forRow: index, firstInView: firstInView),
                             onOpen: {
                                 onSelect(result.id)
                                 onOpen(result.id)
@@ -357,8 +361,15 @@ struct ResultsListView: View {
                         .id(result.id)
                     }
                 }
+                .scrollTargetLayout()
                 .padding(2)
             }
+            .onScrollTargetVisibilityChange(idType: String.self, threshold: RowDigits.visibleThreshold) { ids in
+                let inView = Set(ids)
+                firstRowInView = results.first { inView.contains($0.id) }?.id
+            }
+            // A list shown again starts at its top, not where the last one was.
+            .onDisappear { firstRowInView = nil }
             .onChange(of: selectedID) { _, newID in
                 guard let newID else { return }
                 // No anchor, so this scrolls the minimum needed to bring the row

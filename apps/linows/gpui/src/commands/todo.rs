@@ -24,7 +24,6 @@ use crate::shortcuts;
 use crate::theme::{self, Theme};
 use crate::todo::{
     self, EXTENSION_WINDOW_DAYS, FUTURE_GROUP_LIMIT, HEATMAP_WEEKS, Period, TREND_DAYS,
-    UNFINISHED_LIMIT,
 };
 
 pub const ID: &str = "todo";
@@ -291,8 +290,8 @@ impl Panel {
         let mut todo = todo::lock();
         match &field.task {
             None => {
-                if todo.add_task(field.day, &text) && todo.open_count(field.day) < UNFINISHED_LIMIT
-                {
+                let limit = todo::unfinished_limit();
+                if todo.add_task(field.day, &text, limit) && todo.open_count(field.day) < limit {
                     drop(todo);
                     self.open_add(field.day, cx);
                     return;
@@ -819,9 +818,10 @@ fn add_row(
                     .child(ADD_HINT),
             );
     }
-    if open >= UNFINISHED_LIMIT {
+    let limit = todo::unfinished_limit();
+    if open >= limit {
         return base.child(format!(
-            "{UNFINISHED_LIMIT} unfinished \u{b7} complete one to add more"
+            "{limit} unfinished \u{b7} complete one to add more"
         ));
     }
     base.child(
@@ -1181,7 +1181,7 @@ fn trend_chart(data: Vec<usize>, th: &Theme) -> impl IntoElement {
                 .copied()
                 .max()
                 .unwrap_or(0)
-                .max(UNFINISHED_LIMIT) as f32;
+                .max(todo::unfinished_limit()) as f32;
             let step = (w - TREND_PAD_X * 2.0) / (data.len().max(2) - 1) as f32;
             let x = |i: usize| left + TREND_PAD_X + i as f32 * step;
             let y = |v: usize| top + h - TREND_PAD_Y - (v as f32 / max) * (h - TREND_PAD_Y * 2.0);

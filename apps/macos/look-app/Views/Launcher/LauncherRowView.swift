@@ -14,6 +14,9 @@ struct LauncherRowView: View, Equatable {
     let selectionNamespace: Namespace.ID
     /// Live facts appended to the context line (a process's memory and CPU).
     var liveDetail: String? = nil
+    /// The ⌃digit that opens this row, worn on its icon unless `row_digits`
+    /// is off.
+    var digit: Int? = nil
     let onOpen: () -> Void
 
     /// Ignores `onOpen`: a closure never compares equal, so every visible row
@@ -25,6 +28,7 @@ struct LauncherRowView: View, Equatable {
             && lhs.isLast == rhs.isLast
             && lhs.selectionNamespace == rhs.selectionNamespace
             && lhs.liveDetail == rhs.liveDetail
+            && lhs.digit == rhs.digit
     }
 
     private enum Layout {
@@ -234,7 +238,9 @@ struct LauncherRowView: View, Equatable {
                         image: rowIcon,
                         isSelected: isSelected,
                         isDeclared: result.isSourceRow,
-                        themeStore: themeStore)
+                        themeStore: themeStore
+                    )
+                    .keyDigitBadge(themeStore.settings.rowDigits ? digit : nil, themeStore: themeStore)
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             Text(result.title)

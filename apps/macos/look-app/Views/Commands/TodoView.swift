@@ -87,7 +87,11 @@ struct TodoView: View {
         // resident (state loads once, at first access).
         .onAppear {
             state.ensureTodayGroup()
+            state.reloadTaskLimit()
             focusSearchIfTasks()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .lookConfigReloaded)) { _ in
+            state.reloadTaskLimit()
         }
         .onChange(of: page) { _, _ in focusSearchIfTasks() }
     }
@@ -352,7 +356,7 @@ struct TodoDateGroupCard: View {
 
     private var isPast: Bool { group.kind == .past }
     private var isToday: Bool { group.kind == .today }
-    private var atLimit: Bool { group.openCount >= TodoCommand.taskLimit }
+    private var atLimit: Bool { group.openCount >= state.taskLimit }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             header
@@ -377,6 +381,7 @@ struct TodoDateGroupCard: View {
                 if !isPast {
                     TodoAddRow(
                         themeStore: themeStore,
+                        limit: state.taskLimit,
                         atLimit: atLimit,
                         onAdd: { name in state.addTask(group: group.key, name: name) }
                     )
@@ -535,6 +540,7 @@ struct TodoTaskRow: View {
 
 struct TodoAddRow: View {
     let themeStore: ThemeStore
+    let limit: Int
     let atLimit: Bool
     let onAdd: (String) -> Void
 
@@ -549,7 +555,7 @@ struct TodoAddRow: View {
                     .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
                     .frame(width: 16, height: 16)
                     .foregroundStyle(themeStore.mutedTextColor())
-                Text("\(TodoCommand.taskLimit) unfinished · complete one to add more")
+                Text("\(limit) unfinished · complete one to add more")
                     .font(themeStore.uiFont(size: 11.5))
                     .foregroundStyle(themeStore.mutedTextColor())
                 Spacer(minLength: 0)

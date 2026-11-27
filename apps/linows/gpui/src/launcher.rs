@@ -13,9 +13,10 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, Deferred, Div,
-    Entity, FontWeight, KeyDownEvent, PaintQuad, Pixels, Render, ScrollStrategy, SharedString,
-    Stateful, Task, Transition, TransitionState, UniformListScrollHandle, Window, canvas, deferred,
-    div, point, prelude::*, px, relative, size, svg, uniform_list,
+    Entity, FontWeight, KeyDownEvent, ModifiersChangedEvent, PaintQuad, Pixels, Render,
+    ScrollStrategy, SharedString, Stateful, Task, Transition, TransitionState,
+    UniformListScrollHandle, Window, canvas, deferred, div, point, prelude::*, px, relative, size,
+    svg, uniform_list,
 };
 use linows_backend::health::HealthIssue;
 use linows_backend::host::LauncherWindow;
@@ -35,7 +36,7 @@ use crate::bg;
 use crate::bgimage::{self, Backdrop};
 use crate::bindings::{self, Scope};
 use crate::blocks;
-use crate::blur::{self, BlurRect};
+use crate::blur;
 use crate::commands::{self, Commands, KeyOutcome};
 use crate::config_list;
 use crate::confirm::{Confirm, OnYes};
@@ -81,6 +82,8 @@ const NOT_ELEVATABLE: &str = "Only apps or scripts can run as administrator";
 /// Told to run, not reported on yet.
 const VERB_STARTED: &str = "started";
 const VERB_FAILED: &str = "failed";
+/// The number keys a digit chord answers to, for running apps and rows alike.
+const DIGIT_KEYS: std::ops::RangeInclusive<u8> = 1..=9;
 
 #[derive(Default)]
 struct SourcesReload {
@@ -266,6 +269,9 @@ pub struct Launcher {
     /// Bumped on every menu open and close, so a list still resolving when
     /// the user moved on cannot open behind them.
     menu_token: u64,
+    /// The top row in view when the rows were last built, the one whose
+    /// badge reads 1.
+    digit_base: usize,
     /// The footer's Todo tally is under the pointer, so its bubble shows.
     todo_hovered: bool,
     /// Bumped per keystroke; a search that comes back for an older one is dropped.
@@ -390,6 +396,7 @@ impl Launcher {
             navigated: None,
             unpicked: false,
             menu_token: 0,
+            digit_base: 0,
             backdrop_loading: None,
             backdrop_failed: None,
             pill: cx.new(|_| motion::rest(0.0)),
@@ -777,6 +784,17 @@ impl Launcher {
         self.handle_key(&event.keystroke, cx);
     }
 
+    fn on_modifiers_changed(
+        &mut self,
+        event: &ModifiersChangedEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.settings_open && self.settings.is_recording() {
+            self.settings.record_modifiers(event.modifiers, cx);
+        }
+    }
+
     /// Ahead of the field's text input, so a stale repeat types nothing either.
     fn drop_stale_repeat(
         &mut self,
@@ -864,14 +882,12 @@ impl Launcher {
             }
             return;
         }
-        // Alt+digit: the bar's slot.
-        if ks.modifiers.alt
-            && !ctrl
-            && !shift
-            && let Some(digit) = ks.key.chars().next().and_then(|c| c.to_digit(10))
-            && (1..=9).contains(&digit)
+        // The bar's slot, on the modifiers its digits are bound with.
+        if !self.command_mode
+            && bindings.holds_modifiers(shortcuts::APPS_FOCUS, ks)
+            && let Some(digit) = digit_key(&ks.key)
             && theme::get().split()
-            && self.bar.activate_key(digit as u8, &self.shell, cx)
+            && self.bar.activate_key(digit, &self.shell, cx)
         {
             cx.stop_propagation();
             return;
@@ -969,7 +985,7 @@ impl Launcher {
                 "up" => self.move_selection(-1, cx),
                 "tab" => self.move_selection(if shift { -1 } else { 1 }, cx),
                 "n" if ctrl => self.move_selection(1, cx),
-                _ => false,
+                _ => self.open_row_digit(ks, cx),
             },
         };
         if handled || self.field_key(ks, cx) {
@@ -1290,6 +1306,32 @@ impl Launcher {
             _ => return self.open_selected(cx),
         }
         true
+    }
+
+    /// Enter on the row a digit names, counted from the top one in view.
+    fn open_row_digit(&mut self, ks: &gpui::Keystroke, cx: &mut Context<Self>) -> bool {
+        if self.menu.is_some() || !bindings::get().holds_modifiers(shortcuts::OPEN_BY_DIGIT, ks) {
+            return false;
+        }
+        let Some(digit) = digit_key(&ks.key) else {
+            return false;
+        };
+        let at = row_at_digit(digit, self.digit_base);
+        if at < self.rows.len() {
+            self.close_menu();
+            self.selected = at;
+            self.unpicked = false;
+            self.sync_preview(cx);
+            cx.notify();
+            self.enter(cx);
+        }
+        true
+    }
+
+    /// A row cut by the top edge counts when most of it shows.
+    fn first_row_in_view(&self) -> usize {
+        let scrolled = -f32::from(self.scroll.0.borrow().base_handle.offset().y);
+        (scrolled / theme::ROW_PITCH).round() as usize
     }
 
     fn move_selection(&mut self, delta: isize, cx: &mut Context<Self>) -> bool {
@@ -2434,6 +2476,7 @@ impl Launcher {
             .track_focus(&focus_handle)
             .capture_key_down(cx.listener(Self::drop_stale_repeat))
             .on_key_down(cx.listener(Self::on_key_down))
+            .on_modifiers_changed(cx.listener(Self::on_modifiers_changed))
             .child(blur_commit(frosted))
             .flex()
             .flex_col()
@@ -2679,8 +2722,16 @@ impl Launcher {
         !self.command_mode && !self.settings_open && self.input.read(cx).text().is_empty()
     }
 
-    fn row(&self, i: usize, row: &Row, th: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn row(
+        &self,
+        i: usize,
+        row: &Row,
+        first: usize,
+        th: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let selected = self.picked() == Some(i);
+        let digit = digit_of_row(i, first).filter(|_| th.row_digits);
         // Compact has no panel, so the selected process shows its facts here.
         let facts = match &row.open {
             Open::Process(p) if selected && !th.split() => {
@@ -2725,7 +2776,9 @@ impl Launcher {
             "icon",
             i,
             selected,
-            icon_chip(picture, row.declared(), th),
+            icon_chip(picture, row.declared(), th)
+                .relative()
+                .children(digit.map(|digit| crate::running::key_badge(digit, th))),
             -motion::ICON_SHIFT,
         );
         let last = i + 1 == self.rows.len();
@@ -2906,8 +2959,10 @@ impl Launcher {
         let launcher = cx.entity();
         let list = uniform_list("results", rows.len(), move |range, _window, cx| {
             launcher.update(cx, |this, cx| {
+                let first = this.first_row_in_view();
+                this.digit_base = first;
                 range
-                    .map(|i| this.row(i, &rows[i], &row_theme, cx))
+                    .map(|i| this.row(i, &rows[i], first, &row_theme, cx))
                     .collect()
             })
         })
@@ -3459,6 +3514,7 @@ impl Launcher {
             .track_focus(&focus_handle)
             .capture_key_down(cx.listener(Self::drop_stale_repeat))
             .on_key_down(cx.listener(Self::on_key_down))
+            .on_modifiers_changed(cx.listener(Self::on_modifiers_changed))
             .child(blur_commit(frosted))
             .child(div().size_full().child(body).with_animation(
                 "arrive",
@@ -3528,7 +3584,7 @@ struct Frost {
 thread_local! {
     /// Card bounds gathered during one prepaint pass; the root hands them to
     /// the compositor once every card is placed.
-    static BLUR_FRAME: RefCell<Vec<BlurRect>> = const { RefCell::new(Vec::new()) };
+    static BLUR_FRAME: RefCell<Vec<blur::Patch>> = const { RefCell::new(Vec::new()) };
     static FROST: Cell<Frost> = const { Cell::new(Frost { cards: false, tiles: false }) };
 }
 
@@ -3547,14 +3603,8 @@ fn mark_cards(cards: &[Bounds<Pixels>], radius: f32) {
 
 fn mark_region(cards: &[Bounds<Pixels>], radius: f32) {
     BLUR_FRAME.with_borrow_mut(|frame| {
-        for b in cards {
-            frame.extend(BlurRect::rounded(
-                f32::from(b.origin.x).round() as i32,
-                f32::from(b.origin.y).round() as i32,
-                f32::from(b.size.width).round() as u32,
-                f32::from(b.size.height).round() as u32,
-                radius,
-            ));
+        for card in cards {
+            blur::mark(frame, card, radius);
         }
     });
 }
@@ -3854,6 +3904,22 @@ fn clip_write(open: &Open) -> Option<(ClipWrite, &'static str)> {
     }
 }
 
+/// The digit a number key names, None past `DIGIT_KEYS`.
+fn digit_key(key: &str) -> Option<u8> {
+    key.parse().ok().filter(|d| DIGIT_KEYS.contains(d))
+}
+
+/// The row Ctrl+`digit` opens, counted from `first`, the top one in view.
+fn row_at_digit(digit: u8, first: usize) -> usize {
+    first + usize::from(digit) - 1
+}
+
+/// The digit that opens row `i`, None past the nine from `first`.
+fn digit_of_row(i: usize, first: usize) -> Option<u8> {
+    let digit = u8::try_from((i + 1).checked_sub(first)?).ok()?;
+    DIGIT_KEYS.contains(&digit).then_some(digit)
+}
+
 /// Files and folders go out in every form at once, so a file manager pastes
 /// the items and a text field pastes the paths.
 fn files_write(paths: Vec<String>) -> ClipWrite {
@@ -3891,4 +3957,26 @@ fn pace_probe() -> impl IntoElement {
             probe.opacity(t)
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nine_rows_from_the_top_one_in_view_take_a_digit() {
+        assert_eq!(digit_of_row(1, 2), None);
+        assert_eq!(digit_of_row(2, 2), Some(1));
+        assert_eq!(digit_of_row(10, 2), Some(9));
+        assert_eq!(digit_of_row(11, 2), None);
+        assert_eq!(row_at_digit(1, 2), 2);
+        assert_eq!(row_at_digit(9, 2), 10);
+    }
+
+    #[test]
+    fn only_number_keys_one_to_nine_name_a_digit() {
+        assert_eq!(digit_key("9"), Some(9));
+        assert_eq!(digit_key("0"), None);
+        assert_eq!(digit_key("a"), None);
+    }
 }
