@@ -260,8 +260,15 @@ mod tests {
 
     #[test]
     fn strip_tiles_wait_their_turn_up_to_the_cap() {
-        assert_eq!(slide_delay(0), Duration::from_millis(90));
-        assert_eq!(slide_delay(2), Duration::from_millis(170));
-        assert_eq!(slide_delay(20), Duration::from_millis(370));
+        let millis = Duration::from_millis;
+        assert_eq!(slide_delay(0), millis(SLIDE_DELAY_MS));
+        assert_eq!(
+            slide_delay(2),
+            millis(SLIDE_DELAY_MS + 2 * SLIDE_STAGGER_MS)
+        );
+        assert_eq!(
+            slide_delay(20),
+            millis(SLIDE_DELAY_MS + SLIDE_MAX_STAGGER_MS)
+        );
     }
 }

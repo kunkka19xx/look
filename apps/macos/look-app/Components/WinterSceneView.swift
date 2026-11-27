@@ -176,6 +176,7 @@ private final class SceneLayerView: NSView {
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         canvas.contentsScale = window?.backingScaleFactor ?? canvas.contentsScale
+        refresh()
     }
 
     override func viewDidMoveToWindow() {
