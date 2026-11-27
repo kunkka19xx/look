@@ -22,6 +22,8 @@ use crate::theme::Theme;
 
 const LISTENING: &str = "Press a shortcut, Esc to cancel";
 const UNKNOWN_KEY: &str = "That key cannot be used";
+const DIGIT_ROW_KEY: &str = "1";
+const DIGIT_CLASH: &str = "The other digit row already holds that key";
 const RESET: &str = "Reset";
 const RESET_ALL: &str = "Reset all";
 const ALL_LABEL: &str = "All";
@@ -232,24 +234,39 @@ impl Settings {
             return KeyOutcome::Pass;
         };
         let key = ks.key.as_str();
-        if MODIFIER_KEYS.contains(&key) {
+        let m = ks.modifiers;
+        let digit_row = shortcuts::DIGIT_ROWS.contains(&id);
+        // A digit row is set by its modifier alone, and stored on its first digit.
+        let alone = MODIFIER_KEYS.contains(&key);
+        if alone && !(digit_row && (m.control || m.alt || m.platform)) {
             return KeyOutcome::Consumed;
         }
-        let m = ks.modifiers;
         if key == "escape" && !(m.control || m.alt || m.shift || m.platform) {
             self.recorder.stop();
             cx.notify();
             return KeyOutcome::Consumed;
         }
-        let spec = bindings::spec(ks);
+        let spec = if alone {
+            bindings::spec(&gpui::Keystroke {
+                key: DIGIT_ROW_KEY.into(),
+                ..ks.clone()
+            })
+        } else {
+            bindings::spec(ks)
+        };
         let check = if Recorder::is_hotkey(id) {
             hotkey::hotkey_check(&spec)
         } else {
             HotkeyCheck::local(&spec)
         };
+        let clash = digit_row
+            && shortcuts::DIGIT_ROWS
+                .iter()
+                .any(|other| *other != id && self.recorder.preview.holds_modifiers(other, ks));
         match &check.error {
             Some(error) => self.recorder.error = Some(error.clone()),
             None if check.display.is_none() => self.recorder.error = Some(UNKNOWN_KEY.into()),
+            None if clash => self.recorder.error = Some(DIGIT_CLASH.into()),
             None => {
                 self.recorder.set(id, check.spec);
                 self.recorder.stop();

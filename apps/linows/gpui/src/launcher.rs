@@ -871,10 +871,8 @@ impl Launcher {
             }
             return;
         }
-        // Alt+digit: the bar's slot.
-        if ks.modifiers.alt
-            && !ctrl
-            && !shift
+        // The bar's slot, on the modifiers its digits are bound with.
+        if bindings.holds_modifiers(shortcuts::APPS_FOCUS, ks)
             && let Some(digit) = digit_key(&ks.key)
             && theme::get().split()
             && self.bar.activate_key(digit, &self.shell, cx)
@@ -1298,10 +1296,9 @@ impl Launcher {
         true
     }
 
-    /// Ctrl+digit: Enter on that row, counted from the top one in view.
+    /// Enter on the row a digit names, counted from the top one in view.
     fn open_row_digit(&mut self, ks: &gpui::Keystroke, cx: &mut Context<Self>) -> bool {
-        let held = ks.modifiers;
-        if self.menu.is_some() || !held.control || held.shift || held.alt {
+        if self.menu.is_some() || !bindings::get().holds_modifiers(shortcuts::OPEN_BY_DIGIT, ks) {
             return false;
         }
         let Some(digit) = digit_key(&ks.key) else {
