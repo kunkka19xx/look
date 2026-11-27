@@ -1032,11 +1032,6 @@ impl Settings {
         }
         self.field = None;
         self.select = None;
-
-        // An engine the core refuses is still saved as typed: the box is red
-        // and the user fixes it when they like; searches use Google meanwhile.
-        let web_search = self.web_search_value();
-
         let mut updates: Vec<ConfigUpdate> = KEYS
             .iter()
             .copied()
@@ -1048,12 +1043,6 @@ impl Settings {
                 value: self.get(key).unwrap_or_default().to_string(),
             })
             .collect();
-        if let Some(update) = updates
-            .iter_mut()
-            .find(|update| update.key == advanced::WEB_SEARCH_ENGINE_KEY)
-        {
-            update.value = web_search;
-        }
         let ai_on = self.ai_on();
         let launch = self.launch_at_login();
         let add_to_path = self.add_to_path();

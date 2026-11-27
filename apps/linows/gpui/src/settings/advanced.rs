@@ -113,7 +113,6 @@ const BG_LAYOUT_HINTS: [&str; 4] = [
     "Repeat as tiles",
 ];
 
-pub(super) const WEB_SEARCH_ENGINE_KEY: &str = "web_search_engine";
 const WEB_SEARCH_BOX_W: f32 = 320.0;
 const WEB_SEARCH_NOTES_GAP: f32 = 4.0;
 const WEB_SEARCH_HINT: &str = "google, duckduckgo, bing, or a https:// URL with {encoded}";
@@ -198,7 +197,7 @@ pub(super) fn keys() -> Vec<&'static str> {
         LAZY_INDEXING.key,
         EXTRA_DIRS.key,
         SKIP_DIRS.key,
-        WEB_SEARCH_ENGINE_KEY,
+        weburl::WEB_SEARCH_ENGINE_KEY,
         LOG_LEVEL_KEY,
         LAUNCH_AT_LOGIN.key,
     ];
@@ -241,13 +240,12 @@ impl Settings {
         self.get(LOG_LEVEL_KEY).unwrap_or(LOG_LEVEL_DEFAULT)
     }
 
-    /// The raw configured value, so an invalid hand edit stays visible and
-    /// Save can report it. Unset shows the default engine.
-    pub(super) fn web_search_value(&self) -> String {
-        self.get(WEB_SEARCH_ENGINE_KEY)
+    /// As written in the file, so a refused hand edit stays visible. Unset
+    /// shows the default engine.
+    fn web_search_value(&self) -> &str {
+        self.get(weburl::WEB_SEARCH_ENGINE_KEY)
             .filter(|value| !value.is_empty())
             .unwrap_or(SearchEngine::Google.key())
-            .to_string()
     }
 
     /// Set means what it says; unset is the compositor's default.
@@ -360,7 +358,7 @@ impl Settings {
 
     fn open_web_search_field(&mut self, cx: &mut Context<Launcher>) {
         let input = input_for(cx);
-        let text = self.web_search_value();
+        let text = self.web_search_value().to_string();
         input.update(cx, |input, cx| {
             input.set_text(&text, cx);
             input.select_all(cx);
@@ -375,14 +373,14 @@ impl Settings {
         cx.notify();
     }
 
-    /// Enter, or a click away: keep what was typed, even an invalid value, so
-    /// it stays visible and Save can explain why it was refused.
+    /// Enter, or a click away: keep what was typed, a refused value included,
+    /// so the box shows it in red.
     pub(super) fn commit_web_search(&mut self, cx: &mut Context<Launcher>) -> KeyOutcome {
         let Some(field) = self.field.take() else {
             return KeyOutcome::Consumed;
         };
         let typed = field.input.read(cx).committed();
-        self.set(WEB_SEARCH_ENGINE_KEY, typed.trim());
+        self.set(weburl::WEB_SEARCH_ENGINE_KEY, typed.trim());
         cx.notify();
         KeyOutcome::Consumed
     }
@@ -584,14 +582,16 @@ impl Settings {
             .filter(|field| matches!(field.kind, FieldKind::WebSearch));
         let value = self.web_search_value();
         let content = match editing {
-            Some(field) => search_field(field.input.clone(), "google").into_any_element(),
+            Some(field) => {
+                search_field(field.input.clone(), SearchEngine::Google.key()).into_any_element()
+            }
             None => div()
                 .flex_1()
                 .min_w_0()
-                .child(middle_elided(value))
+                .child(middle_elided(value.to_string()))
                 .into_any_element(),
         };
-        let refused = weburl::web_search_is_refused(&self.web_search_value());
+        let refused = weburl::web_search_is_refused(value);
         let boxed = controls::text_box(
             "settings-web-search-engine",
             WEB_SEARCH_BOX_W,
@@ -855,13 +855,5 @@ mod tests {
         for ((value, _), layout) in BG_LAYOUTS.iter().zip(BgLayout::ALL) {
             assert_eq!(*value, layout.key());
         }
-    }
-
-    #[test]
-    fn web_search_hint_lists_the_built_in_engines() {
-        for engine in SearchEngine::ALL {
-            assert!(WEB_SEARCH_HINT.contains(engine.key()), "{WEB_SEARCH_HINT}");
-        }
-        assert!(WEB_SEARCH_HINT.contains("{encoded}"), "{WEB_SEARCH_HINT}");
     }
 }

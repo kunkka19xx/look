@@ -669,8 +669,7 @@ final class ThemeStore: ObservableObject {
                     settings.aiEnabled = parsed
                 }
             case "web_search_engine":
-                // Kept as written: an invalid hand edit must stay visible and
-                // be refused at search/Save time, not silently become Google.
+                // Kept as written, so Settings can show a refused hand edit.
                 settings.webSearchEngine = value
             case "ai_provider":
                 if let parsed = AIProviderKind(rawValue: value) {

@@ -1437,11 +1437,10 @@ impl Launcher {
     }
 
     /// Read the engine per search, so a Settings save applies without a restart.
-    /// A value the core refuses searches on Google.
     fn web_search_url(&self, query: &str) -> Option<String> {
         let entries = theme::entries();
         let value = entries
-            .get("web_search_engine")
+            .get(weburl::WEB_SEARCH_ENGINE_KEY)
             .map(String::as_str)
             .unwrap_or_default();
         weburl::search_url(value, query)

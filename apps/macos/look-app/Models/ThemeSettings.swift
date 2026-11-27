@@ -257,8 +257,8 @@ struct ThemeSettings: Codable, Equatable {
 
     /// Engine for Cmd+Enter and web suggestion rows: `google`, `duckduckgo`,
     /// `bing`, or an http(s) URL template with `{encoded}`. Persisted in
-    /// `~/.look/config` under `web_search_engine`; an invalid value is kept as
-    /// written and refused at search/Save time instead of falling back.
+    /// `~/.look/config` under `web_search_engine`. A value the core refuses is
+    /// kept as written: Settings marks it red and searches use Google.
     var webSearchEngine: String = "google"
 
     /// Which AI backend powers query understanding when `aiEnabled` is on.

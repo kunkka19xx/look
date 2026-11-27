@@ -252,11 +252,9 @@ private func look_web_search_url(
     _ value: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?
 ) -> UnsafeMutablePointer<CChar>?
 
-@_silgen_name("look_web_search_validate")
+@_silgen_name("look_web_search_is_valid")
 nonisolated
-private func look_web_search_validate(
-    _ value: UnsafePointer<CChar>?
-) -> UnsafeMutablePointer<CChar>?
+private func look_web_search_is_valid(_ value: UnsafePointer<CChar>?) -> Bool
 
 @_silgen_name("look_duckduckgo_answer_json")
 nonisolated
@@ -1402,11 +1400,9 @@ final class EngineBridge: @unchecked Sendable {
         return list
     }
 
-    /// The URL for a web search of `query` with `value` (`google`,
-    /// `duckduckgo`, `bing`, or an http(s) URL template with `{encoded}`).
-    /// Google when `value` is not one the core accepts; nil when the query is
-    /// blank. Shares the core's
-    /// URL builder and encoding with linows.
+    /// The URL for a web search of `query` on the `web_search_engine` value.
+    /// Google when the core refuses `value`; nil when the query is blank.
+    /// Shares the core's URL builder and encoding with linows.
     nonisolated func webSearchURL(value: String, query: String) -> URL? {
         let ptr = value.withCString { valueC in
             query.withCString { look_web_search_url(valueC, $0) }
@@ -1416,13 +1412,9 @@ final class EngineBridge: @unchecked Sendable {
         return URL(string: String(cString: ptr))
     }
 
-    /// Nil when `value` is a valid `web_search_engine`, else the shared error
-    /// message from core.
-    nonisolated func validateWebSearch(_ value: String) -> String? {
-        let ptr = value.withCString { look_web_search_validate($0) }
-        guard let ptr else { return nil }
-        defer { look_free_cstring(ptr) }
-        return String(cString: ptr)
+    /// Whether the core accepts `value` as a `web_search_engine`.
+    nonisolated func isValidWebSearch(_ value: String) -> Bool {
+        value.withCString { look_web_search_is_valid($0) }
     }
 
     /// Classifies `query` as a URL, or nil to leave it as a search term.

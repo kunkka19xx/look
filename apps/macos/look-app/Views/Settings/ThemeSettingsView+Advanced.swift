@@ -24,7 +24,7 @@ extension ThemeSettingsView {
                             alignment: .top
                         ) {
                             VStack(alignment: .leading, spacing: 4) {
-                                TextField("google", text: $webSearchEngineInput)
+                                TextField(ThemeSettings.default.webSearchEngine, text: $webSearchEngineInput)
                                     .textFieldStyle(.roundedBorder)
                                     .foregroundStyle(webSearchEngineRefused ? themeStore.dangerColor() : Color.primary)
                                     .overlay {
@@ -34,7 +34,6 @@ extension ThemeSettingsView {
                                         }
                                     }
                                     .onSubmit { applyWebSearchEngineInput() }
-                                // Example line under the field
                                 Text("e.g. https://search.yahoo.com/search?p={encoded}")
                                     .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
                                     .foregroundStyle(themeStore.mutedTextColor())
@@ -365,16 +364,16 @@ extension ThemeSettingsView {
     var webSearchEngineRefused: Bool {
         guard webSearchEngineLoaded else { return false }
         let trimmed = webSearchEngineInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        return EngineBridge.shared.validateWebSearch(trimmed) != nil
+        return !EngineBridge.shared.isValidWebSearch(trimmed)
     }
 
     /// Keeps what was typed, a refused value included: Save writes it as is.
     func applyWebSearchEngineInput() {
         // The box is filled when the Advanced tab appears. Before that, Save
-        // must not read its empty text as "google" over a saved engine.
+        // must not read its empty text as the default over a saved engine.
         guard webSearchEngineLoaded else { return }
         let trimmed = webSearchEngineInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        let value = trimmed.isEmpty ? "google" : trimmed
+        let value = trimmed.isEmpty ? ThemeSettings.default.webSearchEngine : trimmed
         webSearchEngineInput = value
         settings.webSearchEngine = value
     }

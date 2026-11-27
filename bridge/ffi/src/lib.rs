@@ -1068,15 +1068,14 @@ pub extern "C" fn look_web_search_url(value: *const c_char, query: *const c_char
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// Null when `value` is a valid `web_search_engine`, else the shared error
-/// message; the Settings screens use it to mark the box. Free a non-null
-/// result with `look_free_cstring`.
+/// Whether `value` is a `web_search_engine` the core accepts; Settings marks
+/// the box when it is not.
 #[unsafe(no_mangle)]
-pub extern "C" fn look_web_search_validate(value: *const c_char) -> *mut c_char {
+pub extern "C" fn look_web_search_is_valid(value: *const c_char) -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        web_search_api::look_web_search_validate_impl(value)
+        web_search_api::look_web_search_is_valid_impl(value)
     }))
-    .unwrap_or(std::ptr::null_mut())
+    .unwrap_or(false)
 }
 
 /// DuckDuckGo instant-answer JSON for `query` (an `Answer` object or `null`).
