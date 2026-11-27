@@ -186,9 +186,11 @@ struct LauncherView: View {
     /// first keystroke replaces it, but only if the field still holds exactly
     /// this: anything typed since means the user has already started.
     @State var queryToSelectOnFocus: String?
-    /// Bumped every time the launcher window is shown, so the empty state tiles and
-    /// quick actions replay their spawn cascade on each open (see `Motion.Spawn`).
+    /// Bumped every time the launcher window is shown: the per-open refreshes
+    /// and the snowman key off it.
     @State var appearanceRevealToken: UInt64 = 0
+    /// Set while the close animation runs; cleared by its end or by a reopen.
+    @State var closingGeneration: UInt64?
     @State var lookupDefinition: LookupDefinition?
     @State var pidToRestoreOnHide: pid_t?
     /// Read at launch and on config reload, so the show path never touches the
@@ -211,11 +213,6 @@ struct LauncherView: View {
     /// 0 = pure glass, and the bar goes white over a light page; 1 = opaque,
     /// and the blur is lost.
     static let searchBarSubstrateOpacity = 0.55
-    /// Legibility floor for surfaces that float on the bare desktop while the
-    /// material is Liquid Glass. Tune here: too low and light theme text
-    /// disappears over a white window, too high and the refraction is lost.
-    /// First position in the spawn cascade, ahead of the launchpad grid.
-    static let searchBarRevealIndex = 0
     /// Shorter than the stored title: a banner shares its line with the undo
     /// hint, and the pill is meant to read at a glance.
     static let bannerTitleLimit = 32
@@ -930,9 +927,6 @@ struct LauncherView: View {
         borderedPanel(
             windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding
         )
-        // No `.rootReveal`: its opacity rasterized the panel on every show, and
-        // the bar's backdrop must draw straight through. The spawnReveal
-        // cascade still animates the open.
         .ignoresSafeArea()
         .onAppear {
             refreshSearchResults()
@@ -1506,8 +1500,7 @@ struct LauncherView: View {
                         tiles: launchpadTiles,
                         shape: launchpadLayout.shape,
                         controller: launchpadController,
-                        themeStore: themeStore,
-                        revealToken: appearanceRevealToken
+                        themeStore: themeStore
                     )
                     // Two floating tiles: they must not touch.
                     .padding(.top, stackedContentGap)
@@ -2635,9 +2628,6 @@ struct LauncherView: View {
         let barRadius = spansWindow ? themeStore.panelRadius : themeStore.tileRadius
         let lifts = floats && !spansWindow
         return content()
-            // Wraps the content, not the chrome: the reveal leaves an opacity
-            // in the tree, which would rasterize the backdrop below.
-            .spawnReveal(index: Self.searchBarRevealIndex, token: appearanceRevealToken, scales: false)
             .padding(.horizontal, spansWindow ? contentPadding : 0)
             .background {
                 // Seated, the panel's backdrop already backs the bar; a fill of

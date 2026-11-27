@@ -18,8 +18,6 @@ struct QuickActionsSection: View {
     /// clickable that the guard in `runQuickAction` would silently swallow.
     let busyActionIds: Set<String>
     let themeStore: ThemeStore
-    /// Changes each time the launcher opens, replaying the spawn cascade.
-    var revealToken: UInt64 = 0
     /// A control was activated by click (Cmd+O runs the same path).
     var onRun: (QuickActionDescriptor, ActionIntent) -> Void = { _, _ in }
     /// A list item (e.g. a device row) was clicked to connect/disconnect.
@@ -31,7 +29,7 @@ struct QuickActionsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Layout.rowSpacing) {
-            ForEach(Array(descriptors.enumerated()), id: \.element.id) { index, descriptor in
+            ForEach(descriptors, id: \.id) { descriptor in
                 QuickActionControl(
                     descriptor: descriptor,
                     state: states[descriptor.actionId],
@@ -42,7 +40,6 @@ struct QuickActionsSection: View {
                     onRun: { intent in onRun(descriptor, intent) },
                     onActivateItem: { item in onActivateItem(descriptor, item) }
                 )
-                .spawnReveal(index: index, token: revealToken)
             }
         }
     }

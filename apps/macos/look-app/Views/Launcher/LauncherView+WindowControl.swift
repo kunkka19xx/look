@@ -1,5 +1,6 @@
 import AppKit
 import OSLog
+import QuartzCore
 import SwiftUI
 
 private let hotkeyLog = Logger(subsystem: "noah-code.Look", category: "hotkey")
@@ -144,7 +145,7 @@ extension LauncherView {
             "toggle: isActive=\(isActive) windowCount=\(NSApplication.shared.windows.count) visibleCount=\(visibleWindowCount) keyWindow=\(NSApplication.shared.keyWindow != nil) winIsVisible=\(win?.isVisible ?? false) winIsHidden=\(NSApp.isHidden)"
         )
 
-        if let window = win, window.isVisible && isActive {
+        if let window = win, window.isVisible && isActive && closingGeneration == nil {
             hotkeyLog.notice("toggle: -> HIDE branch")
             hideLauncherWindow()
             return
@@ -154,8 +155,6 @@ extension LauncherView {
         // Before the window is ordered front, so a dropped query is never painted.
         clearQueryIfRetentionExpired()
         queryToSelectOnFocus = query
-        // Re-arm the spawn cascade so the launchpad tiles and quick actions
-        // settle in fresh on every open, not just the first per process.
         appearanceRevealToken &+= 1
         captureFrontmostAppForRestoreIfNeeded()
         _ = bridge.requestIndexRefresh()
@@ -169,7 +168,7 @@ extension LauncherView {
 
         if let window = launcherWindow() {
             positionOnActiveScreen(window)
-            window.makeKeyAndOrderFront(nil)
+            orderFrontFading(window)
             activateLauncherModeAndFocus()
             let frameStr = NSStringFromRect(window.frame)
             hotkeyLog.notice(
@@ -189,6 +188,81 @@ extension LauncherView {
         }
     }
 
+    private var reducesWindowMotion: Bool {
+        Motion.isReduced(
+            bySystem: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            animationsEnabled: themeStore.settings.animationsEnabled)
+    }
+
+    /// Orders the launcher front, zooming and fading it in unless motion is reduced.
+    private func orderFrontFading(_ window: NSWindow) {
+        closingGeneration = nil
+        guard !reducesWindowMotion else {
+            window.contentView?.layer?.removeAnimation(forKey: Motion.Surface.zoomKey)
+            window.alphaValue = 1
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        window.alphaValue = 0
+        window.makeKeyAndOrderFront(nil)
+        animateSurface(
+            of: window, alpha: 1, fromScale: Motion.Surface.awayScale, toScale: Motion.Surface.restingScale,
+            seconds: Motion.Surface.arriveSeconds, holdsEnd: false)
+    }
+
+    /// Zooms and fades the launcher away, then orders it out. A reopen in the
+    /// meantime keeps the window: its generation no longer matches.
+    private func orderOutFading(_ window: NSWindow) {
+        guard !reducesWindowMotion else {
+            window.orderOut(nil)
+            return
+        }
+        let generation = (closingGeneration ?? 0) &+ 1
+        closingGeneration = generation
+        animateSurface(
+            of: window, alpha: 0, fromScale: Motion.Surface.restingScale, toScale: Motion.Surface.awayScale,
+            seconds: Motion.Surface.leaveSeconds, holdsEnd: true
+        ) {
+            guard closingGeneration == generation else { return }
+            closingGeneration = nil
+            window.orderOut(nil)
+            window.contentView?.layer?.removeAnimation(forKey: Motion.Surface.zoomKey)
+            window.alphaValue = 1
+            refreshClipboardMonitoringMode()
+        }
+    }
+
+    private func animateSurface(
+        of window: NSWindow, alpha: CGFloat, fromScale: CGFloat, toScale: CGFloat, seconds: TimeInterval,
+        holdsEnd: Bool, completion: (@MainActor () -> Void)? = nil
+    ) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = seconds
+            window.animator().alphaValue = alpha
+        } completionHandler: {
+            MainActor.assumeIsolated { completion?() }
+        }
+        guard let layer = window.contentView?.layer else { return }
+        // About the panel's centre: a view's layer is anchored at its corner.
+        let center = CGPoint(x: layer.bounds.midX, y: layer.bounds.midY)
+        let scaled = { (scale: CGFloat) in
+            CATransform3DConcat(
+                CATransform3DMakeScale(scale, scale, 1),
+                CATransform3DMakeTranslation(center.x * (1 - scale), center.y * (1 - scale), 0))
+        }
+        let zoom = CABasicAnimation(keyPath: #keyPath(CALayer.transform))
+        zoom.fromValue = scaled(fromScale)
+        zoom.toValue = scaled(toScale)
+        zoom.duration = seconds
+        let curve = Motion.houseCurveControlPoints
+        zoom.timingFunction = CAMediaTimingFunction(controlPoints: curve.0, curve.1, curve.2, curve.3)
+        if holdsEnd {
+            zoom.fillMode = .forwards
+            zoom.isRemovedOnCompletion = false
+        }
+        layer.add(zoom, forKey: Motion.Surface.zoomKey)
+    }
+
     /// The settings panel is a page of the AppKit-owned launcher window, so the
     /// menu command has to bring that window up itself. The SwiftUI Settings
     /// scene is only a command carrier and must not open a window of its own.
@@ -205,7 +279,7 @@ extension LauncherView {
     /// nils the pid when Look is already frontmost, and then Esc has nothing to
     /// hand focus back to and the terminal you typed in never returns.
     func revealLauncherWindowForLaunch() {
-        guard let window = launcherWindow(), window.isVisible else {
+        guard let window = launcherWindow(), window.isVisible, closingGeneration == nil else {
             revealLauncherWindowIfHidden()
             return
         }
@@ -217,7 +291,8 @@ extension LauncherView {
     }
 
     func revealLauncherWindowIfHidden() {
-        guard let window = launcherWindow(), !window.isVisible else { return }
+        // A window still zooming away counts as hidden: it is about to be.
+        guard let window = launcherWindow(), !window.isVisible || closingGeneration != nil else { return }
 
         // Only when nothing is stored yet: the launcher is frontmost whenever the
         // menu command fires, so recapturing here would drop the app the user
@@ -229,7 +304,7 @@ extension LauncherView {
         NSApplication.shared.unhide(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
         positionOnActiveScreen(window)
-        window.makeKeyAndOrderFront(nil)
+        orderFrontFading(window)
     }
 
     /// Places the launcher at its fixed position on whichever
@@ -294,7 +369,7 @@ extension LauncherView {
         if wasVisible {
             lastHiddenAt = Date()
         }
-        window.orderOut(nil)
+        orderOutFading(window)
         hotkeyLog.notice("hide: orderOut wasVisible=\(wasVisible) restore=\(restorePreviousApp)")
 
         // Preview bitmaps and highlighted text are the largest resident

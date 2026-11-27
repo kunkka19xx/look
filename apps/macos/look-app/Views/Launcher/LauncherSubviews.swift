@@ -95,7 +95,6 @@ struct SearchInputBar: View {
                         ? themeStore.accentColor() : themeStore.secondaryTextColor()
                 )
                 .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: revealToken)
             }
 
             if let breadcrumb {
@@ -138,7 +137,6 @@ struct SearchInputBar: View {
                         // `allowsHitTesting` does not remove it from the
                         // accessibility tree.
                         .accessibilityHidden(true)
-                        .placeholderReveal(token: revealToken)
                 }
             }
 
