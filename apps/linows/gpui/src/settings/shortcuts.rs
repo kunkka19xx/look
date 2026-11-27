@@ -22,6 +22,9 @@ use crate::theme::Theme;
 
 const LISTENING: &str = "Press a shortcut, Esc to cancel";
 const UNKNOWN_KEY: &str = "That key cannot be used";
+const DIGIT_ROW_KEY: &str = "1";
+const LISTENING_FOR_MODIFIER: &str = "Press Ctrl or Alt, Esc to cancel";
+const DIGIT_CLASH: &str = "The other digit row already holds that key";
 const RESET: &str = "Reset";
 const RESET_ALL: &str = "Reset all";
 const ALL_LABEL: &str = "All";
@@ -92,6 +95,11 @@ impl Recorder {
         id == shortcuts::TOGGLE_LAUNCHER
     }
 
+    /// The row whose binding `id` shows: a mirror row edits its owner's.
+    fn owner(id: &str) -> &str {
+        bindings::definition(id).map_or(id, |d| d.id)
+    }
+
     fn configurable(&self, id: &str) -> bool {
         if Self::is_hotkey(id) {
             self.state.as_ref().is_some_and(|s| s.configurable)
@@ -124,7 +132,13 @@ impl Recorder {
                 (None, _) => false,
             };
         }
-        self.pending.contains_key(id) && self.preview.specs(id) != bindings::get().specs(id)
+        self.pending.contains_key(Self::owner(id))
+            && self.preview.specs(id) != bindings::get().specs(id)
+    }
+
+    /// Save Config waits until the digit rows are told apart.
+    pub fn blocks_save(&self) -> bool {
+        self.preview.digit_rows_clash()
     }
 
     fn unsaved_count(&self) -> usize {
@@ -148,7 +162,7 @@ impl Recorder {
     }
 
     fn set(&mut self, id: &'static str, value: String) {
-        self.pending.insert(id, value);
+        self.pending.insert(Self::owner(id), value);
         self.refresh();
     }
 
@@ -241,6 +255,9 @@ impl Settings {
             cx.notify();
             return KeyOutcome::Consumed;
         }
+        if shortcuts::DIGIT_ROWS.contains(&id) {
+            return KeyOutcome::Consumed;
+        }
         let spec = bindings::spec(ks);
         let check = if Recorder::is_hotkey(id) {
             hotkey::hotkey_check(&spec)
@@ -257,6 +274,29 @@ impl Settings {
         }
         cx.notify();
         KeyOutcome::Consumed
+    }
+
+    /// A digit row is set by its modifiers alone. Super+digit is the compositor's.
+    pub fn record_modifiers(&mut self, m: gpui::Modifiers, cx: &mut Context<Launcher>) {
+        let Some(id) = self
+            .recorder
+            .listening
+            .filter(|id| shortcuts::DIGIT_ROWS.contains(id))
+        else {
+            return;
+        };
+        if m.platform || !(m.control || m.alt) {
+            return;
+        }
+        let ks = gpui::Keystroke {
+            modifiers: m,
+            key: DIGIT_ROW_KEY.into(),
+            ..Default::default()
+        };
+        self.recorder
+            .set(id, HotkeyCheck::local(&bindings::spec(&ks)).spec);
+        self.recorder.stop();
+        cx.notify();
     }
 
     fn toggle_listening(&mut self, id: &'static str, cx: &mut Context<Launcher>) {
@@ -612,7 +652,9 @@ impl Settings {
         let r = &self.recorder;
         let listening = r.listening == Some(id);
         let active = listening || r.unsaved(id);
-        let label = if listening {
+        let label = if listening && shortcuts::DIGIT_ROWS.contains(&id) {
+            LISTENING_FOR_MODIFIER.to_string()
+        } else if listening {
             LISTENING.to_string()
         } else {
             r.shown(id)
@@ -634,12 +676,18 @@ impl Settings {
                 .on_click(cx.listener(move |this, _, _, cx| this.settings.reset(id, cx)))
                 .child(RESET)
         });
-        let error = listening.then(|| r.error.clone()).flatten().map(|error| {
-            div()
-                .text_size(px(th.font_size - 2.0))
-                .text_color(th.danger)
-                .child(error)
-        });
+        let clash = (shortcuts::DIGIT_ROWS.contains(&id) && r.blocks_save())
+            .then(|| DIGIT_CLASH.to_string());
+        let error = listening
+            .then(|| r.error.clone())
+            .flatten()
+            .or(clash)
+            .map(|error| {
+                div()
+                    .text_size(px(th.font_size - 2.0))
+                    .text_color(th.danger)
+                    .child(error)
+            });
         let keys = div()
             .flex()
             .flex_col()

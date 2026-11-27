@@ -298,6 +298,11 @@ struct ThemeSettings: Codable, Equatable {
     /// `animations_enabled`.
     var animationsEnabled: Bool = true
 
+    /// Whether the result rows wear the digit ⌃1-9 opens them with. Off hides
+    /// the badges; the chords still work. Persisted in `~/.look/config` under
+    /// `row_digits`.
+    var rowDigits: Bool = true
+
     /// Christmas over whatever theme is active: falling snow, glowing lights
     /// behind the panels, a tree behind the results and a snowman search icon.
     /// Persisted in `~/.look/config` under `christmas_decorations`.

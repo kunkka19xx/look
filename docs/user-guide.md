@@ -552,6 +552,8 @@ Running Apps and Pinned Apps take the digits; the others leave them free. AI mod
 
 **Animations**: a switch for the launcher's motion, the arrival cascade, the entrance staggers, the selection glide and the caret glide. Off shows every change instantly; the caret still blinks and the answer spinner still turns, since those read as state rather than motion. With it on, the OS preference is still respected (macOS Reduce Motion, the desktop's reduce-motion setting on Linux), except on Windows, where the flag tracks the "best performance" visual-effects preset rather than motion sensitivity. Saved as `animations_enabled=true|false`.
 
+**Row Digits**: a switch for the digit badges on the result rows. Off hides them; `Ctrl+1`..`Ctrl+9` still open the rows. Saved as `row_digits=true|false`; on by default.
+
 ### Indexing Settings
 
 Default values:
@@ -696,7 +698,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 
 ## Keyboard shortcuts (quick reference)
 
-Every modifier chord below is the default. On macOS, and in the gpui build on Linux and Windows, you can rebind them in `Settings > Shortcuts`: click a key capsule, press the chord you want, then Save Config (or set `shortcut_<group>_<action>` in `~/.look/config`). The keys that structure navigation - `Enter`, `Tab`, `Escape`, the arrows, the `Y`/`N` confirmations - stay fixed, since each means something different in the main bar, AI mode, command mode and a confirmation. Quit (`Cmd+Option+Q` / `Alt+Shift+Q`) and the running-app digits (`Cmd+1`..`Cmd+9` / `Alt+1`..`Alt+9`) are fixed too. A super action's letter is set by its `mnemonic` in `~/.look/super-actions.toml`, not here.
+Every modifier chord below is the default. On macOS, and in the gpui build on Linux and Windows, you can rebind them in `Settings > Shortcuts`: click a key capsule, press the chord you want, then Save Config (or set `shortcut_<group>_<action>` in `~/.look/config`). The keys that structure navigation - `Enter`, `Tab`, `Escape`, the arrows, the `Y`/`N` confirmations - stay fixed, since each means something different in the main bar, AI mode, command mode and a confirmation. Quit (`Cmd+Option+Q` / `Alt+Shift+Q`) is fixed too. The running-app digits and the result-row digits each take one modifier for all of `1`..`9`: click the row and press that modifier alone. The two rows cannot hold the same one. A super action's letter is set by its `mnemonic` in `~/.look/super-actions.toml`, not here.
 
 - `Enter`: open selected result / run command
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
@@ -705,6 +707,7 @@ Every modifier chord below is the default. On macOS, and in the gpui build on Li
 - `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:todo`, `:speed`): jump to a command directly from the home screen
 - `Cmd+1`..`Cmd+7`: in command mode, direct command switch (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`)
 - `Cmd+1`..`Cmd+9` (macOS) / `Alt+1`..`Alt+9` (Linux, Windows): on the home screen, activate the running or pinned app whose badge shows that digit, when the `Search Bar` holds one of them. Badge labels are ergonomic, not strictly positional - see Settings → Appearance → Search Bar
+- `Ctrl+1`..`Ctrl+9`: open that row of the result list, as `Enter` would on it. Rows count from the top one in view, so after scrolling `Ctrl+1` is still the first row you see; a row more than half scrolled off the top no longer counts. Each of those rows shows its digit on its icon, the same badge the search bar's apps wear; `Settings > Appearance > Row Digits` hides the badges and leaves the chords working (`row_digits=true|false`). On macOS the chord is `Ctrl`, not `Cmd`, because `Cmd+1`..`Cmd+9` already switch the search bar's apps; if you turned on Mission Control's "Switch to Desktop N" shortcuts (System Settings > Keyboard > Keyboard Shortcuts), macOS takes those chords before Look sees them
 - `Option+Up` / `Option+Down` in AI mode (`>`): walk your recent prompts, like a shell history. `Shift+Up` / `Shift+Down` select text in the message instead
 - `Shift+Enter` in AI mode (`>`): new line in the message instead of sending. The box grows to 6 lines and stops there. Elsewhere `Shift+Enter` still opens all picked files
 - `join` (or `join meeting`, `join my next meeting`, or `join <meeting name>`): pins a "Join <meeting>" row for the next Teams / Zoom / Meet / Webex / Jitsi / GoToMeeting / Whereby meeting in your calendar; Enter opens the link. Works in the main bar and in `>` AI mode. Looks two days ahead. Needs the account in macOS Calendar (System Settings → Internet Accounts), since Look reads the OS's calendar and makes no network call of its own

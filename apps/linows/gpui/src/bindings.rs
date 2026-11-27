@@ -10,10 +10,10 @@ use gpui::Keystroke;
 use linows_backend::look_engine::hotkey::{Hotkey, HotkeyCheck, Key, Modifier};
 
 use crate::shortcuts::{
-    ACTIONS, CLEAR_PICKS, CLIP_PASTE, CLIP_REMOVE, COMMAND_MODE, COPY, EDIT, HELP, HIDE_APP,
-    OPEN_PICKED, PASTE, PICK, PROCESS_COPY_PID, PROCESS_KILL, QUICK_TOGGLE, RELOAD_CONFIG, REVEAL,
-    SETTINGS, SWITCH_LAYOUT, TERMINAL, TODO_REDO, TODO_SAVE, TODO_TOGGLE_PAGE, TODO_UNDO, TRASH,
-    WEB_SEARCH,
+    ACTIONS, APPS_FOCUS, CLEAR_PICKS, CLIP_PASTE, CLIP_REMOVE, COMMAND_MODE, COPY, DIGIT_ROWS,
+    EDIT, HELP, HIDE_APP, OPEN_BY_DIGIT, OPEN_PICKED, PASTE, PICK, PROCESS_COPY_PID, PROCESS_KILL,
+    QUICK_TOGGLE, RELOAD_CONFIG, REVEAL, SETTINGS, SWITCH_LAYOUT, TERMINAL, TODO_REDO, TODO_SAVE,
+    TODO_TOGGLE_PAGE, TODO_UNDO, TRASH, WEB_SEARCH,
 };
 
 pub const CONFIG_KEY_PREFIX: &str = "shortcut_";
@@ -22,6 +22,7 @@ pub const SPEC_SEPARATOR: &str = " | ";
 const SPEC_SPLIT: char = '|';
 const DISPLAY_SEPARATOR: &str = " / ";
 const CHORD_JOIN: &str = "+";
+const DIGIT_SPAN: &str = "1..9";
 const ARROW_PREFIX: &str = "Arrow";
 
 /// Where a chord is live, which decides whether two of them collide.
@@ -90,6 +91,9 @@ pub const DEFINITIONS: &[Definition] = &[
     def(COMMAND_MODE, &["ctrl+/", "ctrl+shift+/"], Scope::Launcher),
     def(HIDE_APP, &["ctrl+shift+h"], Scope::Launcher),
     def(QUICK_TOGGLE, &["ctrl+o"], Scope::Launcher),
+    // Bound on 1; the same modifiers answer on every digit.
+    def(OPEN_BY_DIGIT, &["ctrl+1"], Scope::Launcher),
+    def(APPS_FOCUS, &["alt+1"], Scope::Launcher),
     def(CLIP_PASTE, &["ctrl+i"], Scope::Launcher).mirrors(&[PASTE]),
     def(HELP, &["ctrl+h"], Scope::AppWide),
     // Ctrl+, mirrors the macOS Cmd+,; the chord Look shipped with still answers.
@@ -206,6 +210,15 @@ impl Chord {
         }
     }
 
+    fn modifiers(&self) -> [bool; 4] {
+        [self.ctrl, self.alt, self.shift, self.win]
+    }
+
+    fn same_modifiers(&self, ks: &Keystroke) -> bool {
+        let m = ks.modifiers;
+        [m.control, m.alt, m.shift, m.platform] == self.modifiers()
+    }
+
     pub fn matches(&self, ks: &Keystroke) -> bool {
         let m = ks.modifiers;
         if m.control != self.ctrl || m.alt != self.alt || m.platform != self.win {
@@ -294,6 +307,21 @@ impl Bindings {
         DEFINITIONS.iter().position(|d| d.documents(id))
     }
 
+    /// Whether the keystroke holds the modifiers `id` is bound with, on any key.
+    pub fn holds_modifiers(&self, id: &str, ks: &Keystroke) -> bool {
+        Self::index(id).is_some_and(|i| self.bound[i].iter().any(|b| b.chord.same_modifiers(ks)))
+    }
+
+    /// The digit rows share a screen, so they cannot share modifiers.
+    pub fn digit_rows_clash(&self) -> bool {
+        let [rows, apps] =
+            DIGIT_ROWS.map(|id| Self::index(id).map_or(&[][..], |i| &self.bound[i][..]));
+        rows.iter().any(|row| {
+            apps.iter()
+                .any(|app| app.chord.modifiers() == row.chord.modifiers())
+        })
+    }
+
     /// The first definition in `scope` whose chord the keystroke is.
     pub fn hit(&self, ks: &Keystroke, scope: Scope) -> Option<&'static str> {
         DEFINITIONS
@@ -304,16 +332,19 @@ impl Bindings {
             .map(|(d, _)| d.id)
     }
 
-    /// Every chord the row answers to; None for a row with no binding.
+    /// Every chord the row answers to; None for a row with no binding. A
+    /// digit row answers on every digit, so its key reads as the span.
     pub fn display(&self, id: &str) -> Option<String> {
         let i = Self::index(id)?;
-        Some(
-            self.bound[i]
-                .iter()
-                .map(|b| b.display.as_str())
-                .collect::<Vec<_>>()
-                .join(DISPLAY_SEPARATOR),
-        )
+        let shown = self.bound[i]
+            .iter()
+            .map(|b| b.display.as_str())
+            .collect::<Vec<_>>()
+            .join(DISPLAY_SEPARATOR);
+        Some(match shown.rfind(CHORD_JOIN) {
+            Some(join) if DIGIT_ROWS.contains(&id) => format!("{}{DIGIT_SPAN}", &shown[..=join]),
+            _ => shown,
+        })
     }
 
     pub fn specs(&self, id: &str) -> Vec<&str> {
@@ -520,5 +551,14 @@ mod tests {
         // Across scopes an app-wide chord collides with everything.
         let wide = file.with(&HashMap::from([(HELP, "ctrl+z".to_string())]));
         assert_eq!(wide.conflicts().len(), 1);
+    }
+
+    #[test]
+    fn the_digit_rows_clash_on_shared_modifiers() {
+        assert!(!defaults().digit_rows_clash());
+        let same = defaults().with(&HashMap::from([(OPEN_BY_DIGIT, "alt+1".to_string())]));
+        assert!(same.digit_rows_clash());
+        let swapped = same.with(&HashMap::from([(APPS_FOCUS, "ctrl+1".to_string())]));
+        assert!(!swapped.digit_rows_clash());
     }
 }

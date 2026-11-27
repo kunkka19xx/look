@@ -70,6 +70,19 @@ final class ShortcutBindings: ObservableObject {
         chords(shortcut).dropFirst().contains { $0.matches(event) }
     }
 
+    /// Whether a shortcut other than the digit rows answers to this event.
+    func claims(_ event: NSEvent) -> Bool {
+        resolved.contains { shortcut, chords in
+            !shortcut.isDigitRow && chords.contains { $0.matches(event) }
+        }
+    }
+
+    /// Whether the event holds the modifiers `shortcut` is bound with, on any key.
+    func holdsModifiers(of shortcut: LocalShortcut, _ event: NSEvent) -> Bool {
+        let held = event.modifierFlags.intersection(CarbonHotkey.modifierMask)
+        return chords(shortcut).contains { $0.hotkey.eventModifiers == held }
+    }
+
     func chords(_ shortcut: LocalShortcut) -> [LocalChord] {
         resolved[shortcut] ?? []
     }

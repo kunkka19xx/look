@@ -22,6 +22,8 @@ enum LocalShortcut: String, CaseIterable {
     case mainHelp = "main.help"
     case mainHideLauncher = "main.hideLauncher"
     case mainQuickActionToggle = "main.quickActionToggle"
+    case mainOpenByDigit = "main.openByDigit"
+    case appsFocusByDigit = "apps.focusByDigit"
     case clipboardPaste = "clipboard.paste"
     case viewSettings = "view.settings"
     case viewReloadConfig = "view.reloadConfig"
@@ -37,6 +39,10 @@ enum LocalShortcut: String, CaseIterable {
     case todoSave = "todo.save"
     case todoUndo = "todo.undo"
     case todoRedo = "todo.redo"
+
+    /// Bound on `digitRowKey`; the same modifiers answer on every digit.
+    static let digitRowKey = "1"
+    var isDigitRow: Bool { self == .mainOpenByDigit || self == .appsFocusByDigit }
 }
 
 /// Where a chord is live, which decides whether two of them collide. `/todo`
@@ -118,6 +124,8 @@ enum ShortcutBindingTable {
         ShortcutDefinition(.mainHelp, ["cmd+h"], .launcher, mirrors: ["ai.help"]),
         ShortcutDefinition(.mainHideLauncher, ["shift+esc"], .launcher, mirrors: ["ai.leave"]),
         ShortcutDefinition(.mainQuickActionToggle, ["cmd+o"], .launcher),
+        ShortcutDefinition(.mainOpenByDigit, ["ctrl+1"], .launcher),
+        ShortcutDefinition(.appsFocusByDigit, ["cmd+1"], .launcher),
         ShortcutDefinition(.clipboardPaste, ["cmd+i"], .launcher),
         // ⌘, is the macOS convention; ⌘⇧, is what Look shipped with. The menu
         // item draws the first chord, the launcher monitor answers the rest.

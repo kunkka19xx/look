@@ -66,9 +66,10 @@ struct CarbonHotkey: Equatable {
             && event.modifierFlags.intersection(Self.modifierMask) == eventModifiers
     }
 
-    /// A pressed key in core's grammar, for core to check.
-    static func spec(for event: NSEvent) -> String? {
-        guard let key = HotkeyKeyCodes.token(for: event) else { return nil }
+    /// A pressed key in core's grammar, for core to check. `key` stands in
+    /// when the event is a modifier alone.
+    static func spec(for event: NSEvent, key: String? = nil) -> String? {
+        guard let key = key ?? HotkeyKeyCodes.token(for: event) else { return nil }
         let flags = event.modifierFlags
         let names = modifiers.filter { flags.contains($0.value.flag) }.map(\.key)
         return (names + [key]).joined(separator: "+")

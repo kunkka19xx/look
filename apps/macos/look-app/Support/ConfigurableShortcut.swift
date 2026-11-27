@@ -53,7 +53,36 @@ struct ConfigurableShortcut {
     @MainActor
     var display: String {
         if let registration { return registration.display }
-        return local.map { ShortcutBindings.shared.display($0) } ?? catalogID
+        return local.map { spanned(ShortcutBindings.shared.display($0)) } ?? catalogID
+    }
+
+    private static let chordJoin: Character = "+"
+    private static let digitSpan = "1..9"
+    private static let digitClashMessage = "The other digit row already holds that key"
+
+    var isDigitRow: Bool { local?.isDigitRow ?? false }
+
+    /// A digit row answers on every digit, so its key reads as the span.
+    private func spanned(_ display: String) -> String {
+        guard isDigitRow, let join = display.lastIndex(of: Self.chordJoin) else { return display }
+        return display[...join] + Self.digitSpan
+    }
+
+    /// The digit rows share a screen, so they cannot share modifiers. Save
+    /// Config waits until they are told apart.
+    @MainActor
+    static func digitRowsClash(in bindings: [String: String]) -> Bool {
+        let held = LocalShortcut.allCases.filter(\.isDigitRow).map { row in
+            let pending = ShortcutBindings.specs(in: bindings[ShortcutBindingTable.definition(row).configKey] ?? "")
+            let specs = pending.isEmpty ? ShortcutBindings.shared.specs(row) : pending
+            return Set(specs.compactMap { EngineBridge.shared.hotkeyCheckLocal($0)?.hotkey }.map { Set($0.modifiers) })
+        }
+        return Set(held.joined()).count < held.map(\.count).reduce(0, +)
+    }
+
+    @MainActor
+    func digitClash(in bindings: [String: String]) -> String? {
+        isDigitRow && Self.digitRowsClash(in: bindings) ? Self.digitClashMessage : nil
     }
 
     /// The value Reset would write, or nil when already on the default.
@@ -97,7 +126,7 @@ struct ConfigurableShortcut {
     func pendingDisplay(in bindings: [String: String]) -> String? {
         guard let value = bindings[configKey], !value.isEmpty else { return nil }
         let displays = ShortcutBindings.specs(in: value).compactMap { check($0)?.display }
-        return displays.isEmpty ? nil : displays.joined(separator: " / ")
+        return displays.isEmpty ? nil : spanned(displays.joined(separator: " / "))
     }
 
     /// True when the value is what the shortcut ships with, so saving leaves

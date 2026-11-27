@@ -41,7 +41,7 @@ extension ThemeSettingsView {
                     }
                 }
 
-                switchesRow
+                switchesRows
 
                 Divider()
                     .overlay(themeStore.dividerColor())
@@ -301,29 +301,40 @@ extension ThemeSettingsView {
     private static let animationsSwitch = LauncherSwitch(
         title: "Animations", isOn: \.animationsEnabled,
         help: "Animate the launcher when it opens and as the selection moves. Off shows every change instantly.")
+    private static let rowDigitsSwitch = LauncherSwitch(
+        title: "Row Digits", isOn: \.rowDigits,
+        help: "Show on each result row the digit that opens it (⌃1-9). Off keeps the chords working.")
     private static let christmasSwitch = LauncherSwitch(
         title: "Christmas", isOn: \.christmasDecorations,
         help:
             "Falling snow, glowing lights behind the panels, a tree behind the results and a snowman search icon, over any theme."
     )
 
-    /// One line: the first switch in the label column, the rest after it.
-    private var switchesRow: some View {
-        let switches =
+    @ViewBuilder
+    private var switchesRows: some View {
+        switchesLine(
             themeStore.effectiveLayout == .split
-            ? [Self.superActionsSwitch, Self.animationsSwitch, Self.christmasSwitch]
-            : [Self.animationsSwitch, Self.christmasSwitch]
-        return settingRow(switches[0].title, controlWidth: nil) {
+                ? [Self.superActionsSwitch, Self.animationsSwitch] : [Self.animationsSwitch],
+            snow: false)
+        switchesLine([Self.rowDigitsSwitch, Self.christmasSwitch], snow: true)
+    }
+
+    /// The first switch sits in the label column, the rest after it.
+    private func switchesLine(_ switches: [LauncherSwitch], snow: Bool) -> some View {
+        settingRow(switches.first?.title, controlWidth: nil) {
             HStack(spacing: Self.switchGap) {
-                launcherToggle(switches[0])
-                ForEach(switches.dropFirst(), id: \.title) { item in
-                    HStack(spacing: Self.switchLabelGap) {
-                        settingLabel(item.title)
-                            .fixedSize()
+                ForEach(switches, id: \.title) { item in
+                    if item.title == switches.first?.title {
                         launcherToggle(item)
+                    } else {
+                        HStack(spacing: Self.switchLabelGap) {
+                            settingLabel(item.title)
+                                .fixedSize()
+                            launcherToggle(item)
+                        }
                     }
                 }
-                if settings.christmasDecorations {
+                if snow, settings.christmasDecorations {
                     Picker("Snow", selection: $settings.christmasSnowAmount) {
                         ForEach(AppConstants.ThemeUI.snowAmounts, id: \.self) { amount in
                             Text("Snow \(amount.formatted())x").tag(amount)

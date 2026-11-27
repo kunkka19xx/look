@@ -69,6 +69,10 @@ pub const REVEAL: &str = "main.reveal";
 pub const RUN_AS_ADMIN: &str = "main.runAsAdmin";
 pub const WEB_SEARCH: &str = "main.webSearch";
 pub const QUICK_TOGGLE: &str = "main.quickActionToggle";
+pub const OPEN_BY_DIGIT: &str = "main.openByDigit";
+pub const APPS_FOCUS: &str = "apps.focus";
+/// They share a screen, so they cannot share modifiers.
+pub const DIGIT_ROWS: [&str; 2] = [OPEN_BY_DIGIT, APPS_FOCUS];
 pub const COMMAND_MODE: &str = "main.commandMode";
 pub const SETTINGS: &str = "view.settings";
 pub const RELOAD_CONFIG: &str = "view.reloadConfig";
@@ -191,6 +195,16 @@ fn build() -> Vec<Group> {
                 ),
                 Entry::new(MOVE_ARROWS, "Up / Down", "Move selection"),
                 Entry::new(
+                    OPEN_BY_DIGIT,
+                    "Ctrl+1..9",
+                    "Open the row whose icon shows that digit",
+                ),
+                Entry::new(
+                    APPS_FOCUS,
+                    "Alt+1..9",
+                    "Focus a running app by its badge number (strip at the right of the search bar)",
+                ),
+                Entry::new(
                     ACTIONS,
                     "Ctrl+K / Ctrl+J",
                     "Show the selected result's actions; inside it, Ctrl+J / Ctrl+K move, Esc closes",
@@ -244,11 +258,6 @@ fn build() -> Vec<Group> {
             title: "Running apps",
             topic: Topic::Main,
             entries: vec![
-                Entry::new(
-                    "apps.focus",
-                    "Alt+1..9",
-                    "Focus a running app by its badge number (strip at the right of the search bar)",
-                ),
                 Entry::new(
                     "apps.click",
                     "Click icon",
