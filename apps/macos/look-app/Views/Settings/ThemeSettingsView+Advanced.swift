@@ -381,14 +381,9 @@ extension ThemeSettingsView {
         )
     }
 
-    /// The custom URL in effect, empty under a built-in engine.
-    var currentWebSearchURL: String {
-        let isCustom = WebSearchChoice(configValue: settings.webSearchEngine) == .custom
-        return isCustom ? settings.webSearchEngine : ""
-    }
-
     func syncWebSearchInputFromSettings() {
-        webSearchURLInput = currentWebSearchURL
+        let isCustom = WebSearchChoice(configValue: settings.webSearchEngine) == .custom
+        webSearchURLInput = isCustom ? settings.webSearchEngine : ""
         webSearchCustomPicked = false
     }
 
@@ -402,15 +397,14 @@ extension ThemeSettingsView {
         return !url.isEmpty && !EngineBridge.shared.isValidWebSearch(url)
     }
 
-    /// On Enter, Save, or leaving the box: a refused URL goes back to the one
-    /// in effect. An empty box leaves the engine as it was.
+    /// On Enter, Save, or leaving the box: a refused or empty URL falls back
+    /// to the engine in effect, picker included.
     func applyWebSearchURLInput() {
-        guard !webSearchURLRefused else {
-            webSearchURLInput = currentWebSearchURL
+        let url = trimmedWebSearchURLInput
+        guard !url.isEmpty, !webSearchURLRefused else {
+            syncWebSearchInputFromSettings()
             return
         }
-        let url = trimmedWebSearchURLInput
-        guard !url.isEmpty else { return }
         settings.webSearchEngine = url
     }
 
