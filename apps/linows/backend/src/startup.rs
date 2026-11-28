@@ -64,9 +64,10 @@ pub fn setup_dev_env() {
 ///
 /// Debug builds live under target/debug and may load the frontend from a dev
 /// server. Registering them would launch or shadow the installed binary with
-/// one that fails without it, so skip.
+/// one that fails without it, so skip, and drop what an earlier one left.
 pub fn sync_integrations() {
     if cfg!(debug_assertions) {
+        autostart::unregister_own_dir();
         return;
     }
 

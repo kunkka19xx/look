@@ -2,9 +2,11 @@
 
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_VALUE_TYPE, RegCloseKey, RegOpenKeyExW,
-    RegSetValueExW,
+    RegQueryValueExW, RegSetValueExW,
 };
 use windows::core::PCWSTR;
+
+pub(crate) const ERROR_FILE_NOT_FOUND: u32 = 2;
 
 pub(crate) struct OwnedHKey(pub(crate) HKEY);
 
@@ -66,6 +68,60 @@ pub(crate) fn set_string(
         return Err(format!("RegSetValueExW({name}) failed: {}", err.0));
     }
     Ok(())
+}
+
+/// Reads a string value and the type it is stored as. `None` when the value
+/// does not exist.
+pub(crate) fn read_string(
+    key: &OwnedHKey,
+    name: &str,
+) -> Result<Option<(String, REG_VALUE_TYPE)>, String> {
+    let name_w = to_wide(name);
+    let mut value_type = REG_VALUE_TYPE::default();
+    let mut size: u32 = 0;
+    let err = unsafe {
+        RegQueryValueExW(
+            key.0,
+            PCWSTR(name_w.as_ptr()),
+            None,
+            Some(&mut value_type),
+            None,
+            Some(&mut size),
+        )
+    };
+    if err.0 == ERROR_FILE_NOT_FOUND {
+        return Ok(None);
+    }
+    if err.0 != 0 {
+        return Err(format!("RegQueryValueExW({name}) failed: {}", err.0));
+    }
+    let mut bytes = vec![0u8; size as usize];
+    let err = unsafe {
+        RegQueryValueExW(
+            key.0,
+            PCWSTR(name_w.as_ptr()),
+            None,
+            Some(&mut value_type),
+            Some(bytes.as_mut_ptr()),
+            Some(&mut size),
+        )
+    };
+    if err.0 != 0 {
+        return Err(format!("RegQueryValueExW({name}) failed: {}", err.0));
+    }
+    bytes.truncate(size as usize);
+    Ok(Some((decode_wide(&bytes), value_type)))
+}
+
+fn decode_wide(bytes: &[u8]) -> String {
+    let units: Vec<u16> = bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u16::from_le_bytes(*pair))
+        .take_while(|unit| *unit != 0)
+        .collect();
+    String::from_utf16_lossy(&units)
 }
 
 pub(crate) fn to_wide(s: &str) -> Vec<u16> {
