@@ -26,6 +26,7 @@ extension ThemeSettingsView {
                                 TextField(Self.webSearchURLExample, text: $webSearchURLInput)
                                     .textFieldStyle(.roundedBorder)
                                     .foregroundStyle(refused ? themeStore.dangerColor() : Color.primary)
+                                    .focused($focusedField, equals: .webSearchURL)
                                     .onSubmit { applyWebSearchURLInput() }
                             } trailing: {
                                 Text(Self.webSearchURLHint)
@@ -269,10 +270,20 @@ extension ThemeSettingsView {
                             .id(Self.aboutAnchorID)
 
                     }
+                    .background {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { focusedField = nil }
+                    }
                 }
                 .onAppear {
                     syncIndexingInputsFromSettings()
                     syncWebSearchInputFromSettings()
+                }
+                .onChange(of: focusedField) { previous, _ in
+                    if previous == .webSearchURL {
+                        applyWebSearchURLInput()
+                    }
                 }
                 .onChange(of: settings.fileScanDepth) { _, _ in
                     fileScanDepthInput = String(settings.fileScanDepth)
@@ -370,9 +381,14 @@ extension ThemeSettingsView {
         )
     }
 
-    func syncWebSearchInputFromSettings() {
+    /// The custom URL in effect, empty under a built-in engine.
+    var currentWebSearchURL: String {
         let isCustom = WebSearchChoice(configValue: settings.webSearchEngine) == .custom
-        webSearchURLInput = isCustom ? settings.webSearchEngine : ""
+        return isCustom ? settings.webSearchEngine : ""
+    }
+
+    func syncWebSearchInputFromSettings() {
+        webSearchURLInput = currentWebSearchURL
         webSearchCustomPicked = false
     }
 
@@ -380,15 +396,19 @@ extension ThemeSettingsView {
         webSearchURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Whether the core refuses the typed URL. Searches use Google meanwhile.
+    /// Whether the core refuses the typed URL.
     var webSearchURLRefused: Bool {
         let url = trimmedWebSearchURLInput
         return !url.isEmpty && !EngineBridge.shared.isValidWebSearch(url)
     }
 
-    /// Keeps what was typed, a refused URL included: Save writes it as is.
-    /// An empty box leaves the engine as it was.
+    /// On Enter, Save, or leaving the box: a refused URL goes back to the one
+    /// in effect. An empty box leaves the engine as it was.
     func applyWebSearchURLInput() {
+        guard !webSearchURLRefused else {
+            webSearchURLInput = currentWebSearchURL
+            return
+        }
         let url = trimmedWebSearchURLInput
         guard !url.isEmpty else { return }
         settings.webSearchEngine = url

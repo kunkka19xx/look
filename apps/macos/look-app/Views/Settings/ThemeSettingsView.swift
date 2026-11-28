@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ThemeSettingsView: View {
     enum Field {
         case fontName
+        case webSearchURL
     }
 
     /// Outcome carried with the text so a failed save cannot be styled as a
