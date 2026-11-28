@@ -15,7 +15,7 @@ const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const VALUE_NAME: &str = "Look";
 
 pub(crate) fn set(enabled: bool) -> Result<(), String> {
-    let key = open_hkcu(RUN_KEY, enabled)?;
+    let key = open_hkcu(RUN_KEY, true)?;
     let value_name = to_wide(VALUE_NAME);
 
     if enabled {
