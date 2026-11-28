@@ -27,7 +27,7 @@ let
 
   # macOS matches `ui_theme` against the Swift preset names, which are
   # camelCase for these two, while Linux and Windows use the hyphenated
-  # spelling (docs/user-guide.md). The option takes one name either way and
+  # spelling (noah-code.com/docs/look, Configuration). The option takes one name either way and
   # writes whichever the installed app understands.
   darwinThemeIds = {
     "tokyo-night" = "tokyoNight";

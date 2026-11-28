@@ -114,7 +114,7 @@ This document tracks what `look` supports today and what is planned next.
 - `file_manager` retargets `Cmd+F` to the containing folder; left undeclared, the platform's own manager selects the file itself
 - declare nothing and nothing changes: every undeclared key means the system default
 - a value that cannot work explains itself (a terminal editor with no `terminal`, a terminal named as `text_editor`, Warp/Hyper which cannot be told to run a command)
-- shared `core/tools` catalog and command composition on macOS, Linux, and Windows; resolving a tool to an installed app and spawning it are native per shell. See [`docs/user-guide.md`](user-guide.md#preferred-tools)
+- shared `core/tools` catalog and command composition on macOS, Linux, and Windows; resolving a tool to an installed app and spawning it are native per shell. See [Preferred tools](https://noah-code.com/docs/look#configuration-preferred-tools)
 
 ### User-declared sources (v0.6.12)
 
@@ -152,6 +152,7 @@ This document tracks what `look` supports today and what is planned next.
 - rebindable launcher hotkey: record one in `Settings > Shortcuts` (macOS, Windows) or set `launcher_hotkey` in `~/.look/config`; `none` frees the key for your own binding of `lookapp --toggle`
 - rebindable in-app shortcuts (macOS, and the gpui build on Linux and Windows): every modifier chord in `Settings > Shortcuts`, grouped as the help screen is - click a key capsule, press a new chord, Save Config. Stored as `shortcut_<group>_<action>` in `~/.look/config`, the same keys on every platform, and only what you changed is written. Structural keys (Enter, Esc, Tab, arrows, Y/N confirmations) stay fixed
 - 9 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, Custom)
+- Christmas decorations over any theme: snow, lights, a snowman in the search bar (`christmas_decorations`, amount of snow in `christmas_snow`)
 - two window layouts, `layout=split` (results beside a preview) and `layout=compact` (Spotlight-width, results list alone)
 - Behind-window blur requested from the compositor where it exists (macOS material; KDE / Hyprland / Niri on Linux; Windows 11 with transparency effects on), clear glass everywhere else
 - query alias presets in `~/.look/config` for app + System Settings intent expansion (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`)

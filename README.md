@@ -278,13 +278,13 @@ open "/Applications/Look.app"
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
 
-Every chord in the table is a default. Rebind the in-app ones (all but `Enter`, `Escape`, Quit and the running-app and result-row digits, which stay fixed) in `Settings > Shortcuts` on all three platforms, or set `shortcut_<group>_<action>` in `~/.look/config`; the launcher toggle records there too on macOS and Windows, while Linux takes `launcher_hotkey=none` and your own binding of `lookapp --toggle`. A super action's letter is its `mnemonic` in `~/.look/super-actions.toml`. Details in [Keyboard shortcuts](docs/user-guide.md#keyboard-shortcuts-quick-reference).
+Every chord in the table is a default. Rebind the in-app ones (all but `Enter`, `Escape` and Quit; the running-app and result-row digits take one modifier each for all of `1`..`9`) in `Settings > Shortcuts` on all three platforms, or set `shortcut_<group>_<action>` in `~/.look/config`; the launcher toggle records there too on macOS and Windows, while Linux takes `launcher_hotkey=none` and your own binding of `lookapp --toggle`. A super action's letter is its `mnemonic` in `~/.look/super-actions.toml`. Details in [Keyboard shortcuts](https://noah-code.com/docs/look#keyboard-shortcuts).
 
-`Cmd+E` and `Cmd+T` need a tool named in `~/.look/config` (`text_editor`, `code_editor`, `terminal`), and `file_manager` retargets `Cmd+F`. Declare nothing and each falls back to the system default: see [Preferred tools](docs/user-guide.md#preferred-tools).
+`Cmd+E` and `Cmd+T` need a tool named in `~/.look/config` (`text_editor`, `code_editor`, `terminal`), and `file_manager` retargets `Cmd+F`. Declare nothing and each falls back to the system default: see [Preferred tools](https://noah-code.com/docs/look#configuration-preferred-tools).
 
-Which super actions are on the strip, where they sit, and any tiles of your own is a drawing in `~/.look/super-actions.toml`, seeded on first run: see [Super actions](docs/user-guide.md#super-actions).
+Which super actions are on the strip, where they sit, and any tiles of your own is a drawing in `~/.look/super-actions.toml`, seeded on first run: see [Super actions](https://noah-code.com/docs/look#home-screen-super-actions).
 
-Full reference: [docs/user-guide.md](docs/user-guide.md).
+Full reference: [the docs site](https://noah-code.com/docs/look).
 
 ## Extend it with lookbook
 
@@ -303,7 +303,7 @@ Switch in `Settings > Appearance`.
 
 - 📘 [Docs site](https://noah-code.com/docs/look) - hosted, searchable user guide and reference
 - 💬 [Discord](https://discord.gg/vJSpNpeFBn) - ask for help, show your setup, share sources and tiles
-- [User guide (in-repo)](docs/user-guide.md) - full feature reference, shortcuts, configuration, permissions, troubleshooting
+- [User guide (in-repo)](docs/user-guide.md) - the short version, and a map to the docs site
 - [Architecture](docs/architecture.md) - how the Swift app + Rust core fit together
 - [Integrating your app](docs/integrating.md) - the connector contract, for shipping an app that puts its own rows in Look
 - [Features](docs/features.md) - what's shipped, what's planned
