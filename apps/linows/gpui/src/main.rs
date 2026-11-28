@@ -674,7 +674,7 @@ fn main() {
     linows_backend::startup::setup_dev_env();
     linows_backend::startup::sync_integrations();
 
-    let start_hidden = std::env::args().any(|a| a == "--hidden");
+    let start_hidden = std::env::args().any(|a| a == linows_backend::autostart::HIDDEN_ARG);
     let (tx, rx) = async_channel::unbounded();
     let shell = Shell {
         tx,

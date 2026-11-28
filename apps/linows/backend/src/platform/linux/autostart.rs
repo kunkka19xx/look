@@ -2,6 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::autostart::HIDDEN_ARG;
+
+const EXEC_KEY: &str = "Exec=";
+
 fn autostart_dir() -> PathBuf {
     let config = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
@@ -111,7 +115,7 @@ pub(crate) fn set(enabled: bool) -> Result<(), String> {
             "[Desktop Entry]\n\
              Type=Application\n\
              Name=Look\n\
-             Exec={exe}\n\
+             {EXEC_KEY}{exe} {HIDDEN_ARG}\n\
              Icon=lookapp\n\
              Comment=Desktop launcher\n\
              X-GNOME-Autostart-enabled=true\n\
@@ -127,6 +131,15 @@ pub(crate) fn set(enabled: bool) -> Result<(), String> {
 
 pub(crate) fn get() -> bool {
     desktop_entry_path().exists()
+}
+
+/// The `Exec` value of the entry, if there is one.
+pub(crate) fn registered_command() -> Option<String> {
+    let entry = std::fs::read_to_string(desktop_entry_path()).ok()?;
+    entry
+        .lines()
+        .find_map(|line| line.strip_prefix(EXEC_KEY))
+        .map(str::to_owned)
 }
 
 #[cfg(test)]

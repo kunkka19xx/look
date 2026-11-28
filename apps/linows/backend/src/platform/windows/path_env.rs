@@ -7,13 +7,12 @@
 //! PATH, so writing that back would copy every machine entry into the user's.
 
 use windows::Win32::Foundation::{LPARAM, WPARAM};
-use windows::Win32::System::Registry::{REG_EXPAND_SZ, REG_VALUE_TYPE, RegQueryValueExW};
+use windows::Win32::System::Registry::{REG_EXPAND_SZ, REG_VALUE_TYPE};
 use windows::Win32::UI::WindowsAndMessaging::{
     HWND_BROADCAST, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_SETTINGCHANGE,
 };
-use windows::core::PCWSTR;
 
-use super::registry::{OwnedHKey, open_hkcu, set_string, to_wide};
+use super::registry::{OwnedHKey, open_hkcu, read_string, set_string, to_wide};
 
 const ENV_KEY: &str = "Environment";
 const VALUE_NAME: &str = "Path";
@@ -57,42 +56,7 @@ pub(crate) fn get() -> bool {
 /// an empty `REG_EXPAND_SZ`: the entries Windows itself seeds there use
 /// `%USERPROFILE%`, so expansion has to survive our rewrite.
 fn read_path(key: &OwnedHKey) -> Result<(String, REG_VALUE_TYPE), String> {
-    let name = to_wide(VALUE_NAME);
-    let mut value_type = REG_VALUE_TYPE::default();
-    let mut size: u32 = 0;
-    let err = unsafe {
-        RegQueryValueExW(
-            key.0,
-            PCWSTR(name.as_ptr()),
-            None,
-            Some(&mut value_type),
-            None,
-            Some(&mut size),
-        )
-    };
-    // ERROR_FILE_NOT_FOUND (2): no user PATH yet.
-    if err.0 == 2 {
-        return Ok((String::new(), REG_EXPAND_SZ));
-    }
-    if err.0 != 0 {
-        return Err(format!("RegQueryValueExW({VALUE_NAME}) failed: {}", err.0));
-    }
-    let mut bytes = vec![0u8; size as usize];
-    let err = unsafe {
-        RegQueryValueExW(
-            key.0,
-            PCWSTR(name.as_ptr()),
-            None,
-            Some(&mut value_type),
-            Some(bytes.as_mut_ptr()),
-            Some(&mut size),
-        )
-    };
-    if err.0 != 0 {
-        return Err(format!("RegQueryValueExW({VALUE_NAME}) failed: {}", err.0));
-    }
-    bytes.truncate(size as usize);
-    Ok((decode_wide(&bytes), value_type))
+    Ok(read_string(key, VALUE_NAME)?.unwrap_or((String::new(), REG_EXPAND_SZ)))
 }
 
 fn broadcast_change() {
@@ -108,17 +72,6 @@ fn broadcast_change() {
             None,
         );
     }
-}
-
-fn decode_wide(bytes: &[u8]) -> String {
-    let units: Vec<u16> = bytes
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|pair| u16::from_le_bytes(*pair))
-        .take_while(|unit| *unit != 0)
-        .collect();
-    String::from_utf16_lossy(&units)
 }
 
 /// Case- and trailing-separator-insensitive: `C:\X`, `c:\x\` and `C:\X ` are
