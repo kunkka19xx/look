@@ -154,7 +154,7 @@ manifest cannot put the machine's Bluetooth under a row that looks like a note.
 A user can also put your control on the home-screen strip, by naming it
 `<block>#<control>` in their own `~/.look/super-actions.toml`. Nothing is
 needed from you: declare it once and it works in both places. See
-[Tiles of your own](user-guide.md#tiles-of-your-own).
+[Tiles of your own](https://noah-code.com/docs/look#home-screen-tiles-of-your-own).
 
 ## The rules
 

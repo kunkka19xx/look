@@ -142,7 +142,7 @@ ai_enabled=true\n\
 animations_enabled=true\n\
 \n\
 # Christmas decorations over any theme - falling snow, glowing lights\n\
-# behind the panels (dark themes), a tree behind the results and a\n\
+# behind the panels (dark themes), Santa behind the results and a\n\
 # snowman search icon. Same key as macOS.\n\
 christmas_decorations=false\n\
 # How much snow falls with them: 1, 1.25, 1.5 or 2 times the default.\n\

@@ -170,25 +170,7 @@ lookapp                                    # launch from terminal to see logs
 
 **Keyboard shortcuts:**
 
-| Shortcut         | Action                                         |
-| ---------------- | ---------------------------------------------- |
-| Alt+Space        | Toggle Look window                             |
-| Esc              | Hide Look                                      |
-| Alt+Shift+Q      | Quit Look                                      |
-| Tab/Shift+Tab    | Navigate results                               |
-| Enter            | Open selected                                  |
-| Ctrl+Enter       | Search web                                     |
-| Ctrl+C           | Copy path to clipboard                         |
-| Ctrl+F           | Reveal in file manager                         |
-| Ctrl+P           | Pick (multi-select)                            |
-| Ctrl+Shift+P     | Clear all picks                                |
-| Ctrl+/           | Toggle command mode                            |
-| Ctrl+,           | Open settings                                  |
-| Ctrl+Shift+;     | Reload config from file                        |
-| Ctrl+H           | Help screen                                    |
-| Ctrl+Shift+H     | Hide selected app from Look                    |
-| Ctrl+Shift+Enter | Run selected app as admin (Windows)            |
-| Ctrl+D           | Remove selected clipboard entry (in `c"` mode) |
+`Alt+Space` toggles Look and `Alt+Shift+Q` quits it. The rest is in the [shortcut table](../../README.md#essential-shortcuts).
 
 **Known issues on Ubuntu:**
 

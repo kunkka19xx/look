@@ -451,7 +451,7 @@ Four verbs have one key each across the whole app, so the same chord means the s
 | `terminal` | `Cmd+T` / `Ctrl+T` | Open a terminal there             |
 | `reveal`   | `Cmd+F` / `Ctrl+F` | Show in Finder / Explorer / Files |
 
-Declare only what differs from your global [preferred tools](user-guide.md#preferred-tools) in `~/.look/config`:
+Declare only what differs from your global [preferred tools](https://noah-code.com/docs/look#configuration-preferred-tools) in `~/.look/config`:
 
 ```toml
 [projects]

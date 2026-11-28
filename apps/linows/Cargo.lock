@@ -3438,7 +3438,7 @@ checksum = "7e57c38c1e860fd37c604281cdfb1dd2216977fd76a50f85ba2f388ef3219616"
 
 [[package]]
 name = "linows-backend"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "arboard",
  "base64",
@@ -3651,7 +3651,7 @@ dependencies = [
 
 [[package]]
 name = "lookapp"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "anyhow",
  "ashpd 0.14.0",
