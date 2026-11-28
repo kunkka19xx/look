@@ -3658,6 +3658,7 @@ dependencies = [
  "async-channel",
  "base64",
  "chrono",
+ "embed-resource",
  "global-hotkey",
  "gpui-ce",
  "gpui_ce_platform",
