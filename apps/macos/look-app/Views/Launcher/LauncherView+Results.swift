@@ -42,7 +42,7 @@ extension LauncherView {
             isQueryFocused = true
             return
         case .webSuggestion(let suggestion):
-            // Google autocomplete row: run the web search for that suggestion.
+            // Search autocomplete row: run the web search for that suggestion.
             performWebSearch(for: suggestion)
             hideLauncherWindow(restorePreviousApp: false)
             return

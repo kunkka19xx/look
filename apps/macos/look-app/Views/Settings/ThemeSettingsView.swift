@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ThemeSettingsView: View {
     enum Field {
         case fontName
+        case webSearchURL
     }
 
     /// Outcome carried with the text so a failed save cannot be styled as a
@@ -33,6 +34,8 @@ struct ThemeSettingsView: View {
     @State var fileScanLimitInput = ""
     @State var fileScanDepthError: String?
     @State var fileScanLimitError: String?
+    @State var webSearchURLInput = ""
+    @State var webSearchCustomPicked = false
     @State var extraScanDirectoryMessage: String?
     @State var showFreshConfigConfirm = false
     @State var freshConfigMessage: String?
@@ -118,6 +121,7 @@ struct ThemeSettingsView: View {
             Button("Save Config") {
                 applyFileScanDepthInput()
                 applyFileScanLimitInput()
+                applyWebSearchURLInput()
                 let ok = themeStore.saveCurrentConfigToFile()
                 saveMessage = SaveMessage(text: ok ? "Saved" : "Save failed", succeeded: ok)
                 if ok {

@@ -315,6 +315,7 @@ final class ThemeStore: ObservableObject {
 
         // Apple Intelligence / AI features
         ConfigFileLines.upsert(&lines, key: "ai_enabled", value: settings.aiEnabled ? "true" : "false")
+        ConfigFileLines.upsert(&lines, key: "web_search_engine", value: settings.webSearchEngine)
         ConfigFileLines.upsert(&lines, key: "ai_provider", value: settings.aiProvider.rawValue)
         ConfigFileLines.upsert(&lines, key: "ollama_host", value: settings.ollamaHost)
         ConfigFileLines.upsert(&lines, key: "ollama_model", value: settings.ollamaModel)
@@ -528,6 +529,7 @@ final class ThemeStore: ObservableObject {
         settings.shortcutBindings = [:]
         hintsEnabled = true
         searchPlaceholder = ""
+        settings.webSearchEngine = ThemeSettings.default.webSearchEngine
 
         // Base, not override: the ui_* keys below win. Applied last, it threw
         // away tuned values on every load. Accepted cost: a hand-written
@@ -669,6 +671,9 @@ final class ThemeStore: ObservableObject {
                 if let parsed = parseBool(value) {
                     settings.aiEnabled = parsed
                 }
+            case "web_search_engine":
+                // Kept as written, so Settings can show a refused hand edit.
+                settings.webSearchEngine = value
             case "ai_provider":
                 if let parsed = AIProviderKind(rawValue: value) {
                     settings.aiProvider = parsed
@@ -1067,6 +1072,11 @@ final class ThemeStore: ObservableObject {
         # context and say so.
         ai_allow_remote_context=false
 
+        # Search engine for Cmd+Enter and web suggestion rows: google, duckduckgo,
+        # bing, or an http(s) URL with %s. Anything else is marked red in
+        # Settings and searches use google.
+        web_search_engine=google
+
         # Super actions: empty-state launchpad of quick toggles / actions.
         # false hides the strip and disables its keyboard accelerators.
         super_actions_enabled=false
@@ -1127,6 +1137,9 @@ final class ThemeStore: ObservableObject {
         }
         if object["aiEnabled"] == nil {
             object["aiEnabled"] = ThemeSettings.default.aiEnabled
+        }
+        if object["webSearchEngine"] == nil {
+            object["webSearchEngine"] = ThemeSettings.default.webSearchEngine
         }
         if object["aiProvider"] == nil {
             object["aiProvider"] = ThemeSettings.default.aiProvider.rawValue

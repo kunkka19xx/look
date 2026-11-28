@@ -7,7 +7,16 @@
 use crate::state::default_db_path;
 use look_answers::UrlMatch;
 use look_engine::url_history::{ScoredUrlEntry, ranked_url_history};
-use look_storage::SqliteStore;
+use look_storage::{SqliteStore, resolve_web_search};
+
+pub const WEB_SEARCH_ENGINE_KEY: &str = "web_search_engine";
+
+/// URL for a web search of `query` on the configured engine or template
+/// (Google when the core refuses `value`), or `None` for an empty query.
+pub fn search_url(value: &str, query: &str) -> Option<String> {
+    let query = query.trim();
+    (!query.is_empty()).then(|| resolve_web_search(value).build_url(query))
+}
 
 /// Classify `query` as a URL to offer as an "Open <url>" row, or `None` to
 /// leave it as a search term. Pure and network-free, stays on the calling
@@ -36,4 +45,22 @@ pub fn recent_urls(query: &str, limit: u32) -> Vec<ScoredUrlEntry> {
         .and_then(|store| store.recent_urls(query, limit as usize).ok())
         .map(|entries| ranked_url_history(entries, query))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_url_follows_the_setting_and_skips_empty_queries() {
+        assert_eq!(
+            search_url("https://search.yahoo.com/search?p=%s", " rust & tea ").as_deref(),
+            Some("https://search.yahoo.com/search?p=rust%20%26%20tea")
+        );
+        assert_eq!(
+            search_url("yahoo", "rust").as_deref(),
+            Some("https://www.google.com/search?q=rust")
+        );
+        assert_eq!(search_url("bing", "   "), None);
+    }
 }

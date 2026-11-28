@@ -226,7 +226,7 @@ fn build() -> Vec<Group> {
                     "Ctrl+Shift+Enter",
                     "Run selected app or script as administrator",
                 ),
-                Entry::new(WEB_SEARCH, "Ctrl+Enter", "Search query on Google"),
+                Entry::new(WEB_SEARCH, "Ctrl+Enter", "Search query on the web"),
                 Entry::new(
                     QUICK_TOGGLE,
                     "Ctrl+O",

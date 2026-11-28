@@ -418,6 +418,7 @@ impl Tab {
 pub(super) enum FieldKind {
     Font,
     Number(&'static advanced::Number),
+    WebSearch,
     /// Filters as typed, so Enter only closes the box.
     ShortcutSearch,
     LookbookFilter,
@@ -724,6 +725,7 @@ impl Settings {
                     KeyOutcome::Consumed
                 }
                 (FieldKind::Number(spec), "enter" | "tab") => self.commit_number(spec, cx),
+                (FieldKind::WebSearch, "enter" | "tab") => self.commit_web_search(cx),
                 (FieldKind::Setup { file, field }, "enter" | "tab") => {
                     self.commit_setup(file, field, cx);
                     KeyOutcome::Consumed
@@ -1027,10 +1029,14 @@ impl Settings {
         if !self.loaded || self.recorder.blocks_save() {
             return;
         }
-        if let Some(field) = &self.field
-            && let FieldKind::Number(spec) = field.kind
-        {
-            self.commit_number(spec, cx);
+        match self.field.as_ref().map(|field| field.kind) {
+            Some(FieldKind::Number(spec)) => {
+                self.commit_number(spec, cx);
+            }
+            Some(FieldKind::WebSearch) => {
+                self.commit_web_search(cx);
+            }
+            _ => {}
         }
         self.field = None;
         self.select = None;

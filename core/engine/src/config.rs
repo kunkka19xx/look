@@ -659,6 +659,11 @@ hints_enabled=true\n\
 # Search bar placeholder. Empty shows none.\n\
 search_placeholder=Type whatever you want\n\
 \n\
+# Search engine for Cmd+Enter / Ctrl+Enter and web suggestion rows: google,\n\
+# duckduckgo, bing, or an http(s) URL with %s. Anything else is\n\
+# marked red in Settings and searches use google.\n\
+web_search_engine=google\n\
+\n\
 {launcher_hotkey_section}\
 # Preferred tools, by name (nvim, zed, ghostty, nautilus), not a command.\n\
 # Empty changes nothing. Editing uses text_editor on a file and code_editor on\n\
@@ -1393,6 +1398,21 @@ mod tests {
             missing_default_entries(&format!("{with_examples}{added}"), &defaults),
             ""
         );
+    }
+
+    #[test]
+    fn update_backfills_the_web_search_engine_into_an_older_config() {
+        let defaults = default_config_contents();
+        let older = defaults.replace("web_search_engine=google\n", "");
+
+        let added = missing_default_entries(&older, &defaults);
+
+        assert!(added.contains("web_search_engine=google\n"), "{added}");
+        // A config that picked an engine, or commented the key out, is left alone.
+        let chosen = defaults.replace("web_search_engine=google", "web_search_engine=bing");
+        assert_eq!(missing_default_entries(&chosen, &defaults), "");
+        let commented = defaults.replace("web_search_engine=google", "# web_search_engine=google");
+        assert_eq!(missing_default_entries(&commented, &defaults), "");
     }
 
     #[cfg(unix)]

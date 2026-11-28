@@ -27,6 +27,7 @@ mod tools_api;
 mod translate_api;
 mod url_history_api;
 mod usage_api;
+mod web_search_api;
 
 use look_engine::QueryEngine;
 use search_api::FfiSearchResult;
@@ -1053,6 +1054,28 @@ pub extern "C" fn look_web_suggestions_json(query: *const c_char, limit: u32) ->
         answers_api::look_web_suggestions_json_impl(query, limit)
     }))
     .unwrap_or(std::ptr::null_mut())
+}
+
+/// Web search URL for `query` on the configured `value` (`google` |
+/// `duckduckgo` | `bing`, or an http(s) URL template with `%s`; Google
+/// for anything else). Null when the trimmed query is empty. Free the result
+/// with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_web_search_url(value: *const c_char, query: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        web_search_api::look_web_search_url_impl(value, query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Whether `value` is a `web_search_engine` the core accepts; Settings marks
+/// the box when it is not.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_web_search_is_valid(value: *const c_char) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        web_search_api::look_web_search_is_valid_impl(value)
+    }))
+    .unwrap_or(false)
 }
 
 /// DuckDuckGo instant-answer JSON for `query` (an `Answer` object or `null`).

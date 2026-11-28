@@ -114,7 +114,13 @@ pub enum SearchEngine {
 }
 
 impl SearchEngine {
-    pub fn key(self) -> &'static str {
+    const ALL: [SearchEngine; 3] = [
+        SearchEngine::Google,
+        SearchEngine::DuckDuckGo,
+        SearchEngine::Bing,
+    ];
+
+    pub const fn key(self) -> &'static str {
         match self {
             SearchEngine::DuckDuckGo => SEARCH_ENGINE_DUCKDUCKGO,
             SearchEngine::Google => SEARCH_ENGINE_GOOGLE,
@@ -122,13 +128,16 @@ impl SearchEngine {
         }
     }
 
+    /// A built-in engine by name, ignoring case and surrounding space.
+    fn from_name(value: &str) -> Option<Self> {
+        let value = value.trim();
+        Self::ALL
+            .into_iter()
+            .find(|engine| value.eq_ignore_ascii_case(engine.key()))
+    }
+
     pub fn from_key(value: &str) -> Self {
-        match value {
-            SEARCH_ENGINE_DUCKDUCKGO => SearchEngine::DuckDuckGo,
-            SEARCH_ENGINE_GOOGLE => SearchEngine::Google,
-            SEARCH_ENGINE_BING => SearchEngine::Bing,
-            _ => SearchEngine::Google,
-        }
+        Self::from_name(value).unwrap_or(SearchEngine::Google)
     }
 
     pub fn build_search_url(self, query: &str) -> String {
@@ -139,6 +148,69 @@ impl SearchEngine {
             SearchEngine::Bing => format!("https://www.bing.com/search?q={encoded}"),
         }
     }
+}
+
+/// Where a custom template takes the query, as in a browser's own custom
+/// search engines. Percent-encoded, so it is safe in a path and in a query.
+pub const WEB_SEARCH_PLACEHOLDER: &str = "%s";
+/// Only these reach the system opener.
+const WEB_SEARCH_SCHEMES: [&str; 2] = ["https://", "http://"];
+
+/// Where an explicit web search goes: a built-in engine, or the user's own
+/// URL template.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WebSearchTarget {
+    Engine(SearchEngine),
+    Custom(String),
+}
+
+impl WebSearchTarget {
+    pub fn build_url(&self, query: &str) -> String {
+        match self {
+            WebSearchTarget::Engine(engine) => engine.build_search_url(query),
+            WebSearchTarget::Custom(template) => {
+                template.replace(WEB_SEARCH_PLACEHOLDER, &percent_encode(query))
+            }
+        }
+    }
+}
+
+/// Parse `web_search_engine`: a built-in name, an empty value (Google), or an
+/// http(s) URL template. `None` is a value Settings should mark as refused.
+pub fn parse_web_search(value: &str) -> Option<WebSearchTarget> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Some(WebSearchTarget::Engine(SearchEngine::Google));
+    }
+    if let Some(engine) = SearchEngine::from_name(value) {
+        return Some(WebSearchTarget::Engine(engine));
+    }
+    is_search_template(value).then(|| WebSearchTarget::Custom(value.to_string()))
+}
+
+/// The target for `value`, or Google when it is refused, so a search never
+/// fails over a bad setting.
+pub fn resolve_web_search(value: &str) -> WebSearchTarget {
+    parse_web_search(value).unwrap_or(WebSearchTarget::Engine(SearchEngine::Google))
+}
+
+/// An http(s) URL with the placeholder in its path or query: in the host it
+/// would pick the site, in the fragment it never reaches the server.
+fn is_search_template(value: &str) -> bool {
+    if value.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return false;
+    }
+    let Some(rest) = WEB_SEARCH_SCHEMES.iter().find_map(|scheme| {
+        let (head, rest) = value.split_at_checked(scheme.len())?;
+        head.eq_ignore_ascii_case(scheme).then_some(rest)
+    }) else {
+        return false;
+    };
+    let (host, after_host) = rest.split_at(rest.find(['/', '?', '#']).unwrap_or(rest.len()));
+    let before_fragment = after_host.split('#').next().unwrap_or_default();
+    !host.is_empty()
+        && !host.contains(WEB_SEARCH_PLACEHOLDER)
+        && before_fragment.contains(WEB_SEARCH_PLACEHOLDER)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1319,6 +1391,90 @@ mod tests {
     fn form_encode_query_encodes_spaces_as_plus() {
         assert_eq!(form_encode_query("hello world"), "hello+world");
         assert_eq!(form_encode_query("a&b"), "a%26b");
+    }
+
+    #[test]
+    fn search_engine_builds_urls_for_each_engine() {
+        assert_eq!(
+            SearchEngine::Google.build_search_url("a&b #c"),
+            "https://www.google.com/search?q=a%26b+%23c"
+        );
+        assert_eq!(
+            SearchEngine::DuckDuckGo.build_search_url("rust"),
+            "https://duckduckgo.com/?q=rust"
+        );
+        assert_eq!(
+            SearchEngine::Bing.build_search_url("rust"),
+            "https://www.bing.com/search?q=rust"
+        );
+    }
+
+    #[test]
+    fn parse_web_search_accepts_names_and_empty() {
+        for (value, engine) in [
+            ("google", SearchEngine::Google),
+            ("  DUCKDUCKGO ", SearchEngine::DuckDuckGo),
+            ("Bing", SearchEngine::Bing),
+            ("", SearchEngine::Google),
+            (" \t", SearchEngine::Google),
+        ] {
+            assert_eq!(
+                parse_web_search(value),
+                Some(WebSearchTarget::Engine(engine)),
+                "{value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_web_search_fills_every_placeholder_of_a_template() {
+        for (template, url) in [
+            (
+                "https://search.yahoo.com/search?p=%s",
+                "https://search.yahoo.com/search?p=ph%E1%BB%9F%20%26%20tea",
+            ),
+            (
+                "HTTP://example.com/%s?q=%s\n",
+                "HTTP://example.com/ph%E1%BB%9F%20%26%20tea?q=ph%E1%BB%9F%20%26%20tea",
+            ),
+            (
+                "https://bücher.de/s?q=%s#top",
+                "https://bücher.de/s?q=ph%E1%BB%9F%20%26%20tea#top",
+            ),
+        ] {
+            let target = parse_web_search(template).expect(template);
+            assert_eq!(target.build_url("phở & tea"), url);
+        }
+    }
+
+    #[test]
+    fn parse_web_search_refuses_what_is_not_a_search_template() {
+        for value in [
+            "yahoo",
+            "https://example.com/search?q=rust",
+            "https://example.com/#%s",
+            "https://%s.example.com/?q=%s",
+            "https://bü%s.de/s",
+            "https:///?q=%s",
+            "https://example.com/?q=%s x",
+            "ftp://example.com/?q=%s",
+            "file:///tmp/%s",
+            "javascript:alert(%s)",
+        ] {
+            assert_eq!(parse_web_search(value), None, "{value}");
+        }
+    }
+
+    #[test]
+    fn resolve_web_search_falls_back_to_google_for_a_refused_value() {
+        assert_eq!(
+            resolve_web_search("yahoo"),
+            WebSearchTarget::Engine(SearchEngine::Google)
+        );
+        assert_eq!(
+            resolve_web_search("bing"),
+            WebSearchTarget::Engine(SearchEngine::Bing)
+        );
     }
 
     #[test]

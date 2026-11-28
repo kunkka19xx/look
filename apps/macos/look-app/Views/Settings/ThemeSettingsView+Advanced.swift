@@ -10,6 +10,31 @@ extension ThemeSettingsView {
                     VStack(alignment: .leading, spacing: 10) {
                         AISettingsSection(settings: $settings)
 
+                        settingRow("Search Engine") {
+                            Picker("Search Engine", selection: webSearchChoice) {
+                                ForEach(WebSearchChoice.allCases) { choice in
+                                    Text(choice.title).tag(choice)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                        }
+
+                        if webSearchChoice.wrappedValue == .custom {
+                            let refused = webSearchURLRefused
+                            settingRow(nil, controlWidth: Self.webSearchURLWidth) {
+                                TextField(Self.webSearchURLExample, text: $webSearchURLInput)
+                                    .textFieldStyle(.roundedBorder)
+                                    .foregroundStyle(refused ? themeStore.dangerColor() : Color.primary)
+                                    .focused($focusedField, equals: .webSearchURL)
+                                    .onSubmit { applyWebSearchURLInput() }
+                            } trailing: {
+                                Text(Self.webSearchURLHint)
+                                    .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+                                    .foregroundStyle(refused ? themeStore.dangerColor() : themeStore.mutedTextColor())
+                            }
+                        }
+
                         Divider()
                             .overlay(themeStore.dividerColor())
                             .padding(.vertical, 4)
@@ -245,8 +270,21 @@ extension ThemeSettingsView {
                             .id(Self.aboutAnchorID)
 
                     }
+                    .background {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { focusedField = nil }
+                    }
                 }
-                .onAppear { syncIndexingInputsFromSettings() }
+                .onAppear {
+                    syncIndexingInputsFromSettings()
+                    syncWebSearchInputFromSettings()
+                }
+                .onChange(of: focusedField) { previous, _ in
+                    if previous == .webSearchURL {
+                        applyWebSearchURLInput()
+                    }
+                }
                 .onChange(of: settings.fileScanDepth) { _, _ in
                     fileScanDepthInput = String(settings.fileScanDepth)
                 }
@@ -322,6 +360,52 @@ extension ThemeSettingsView {
     func syncIndexingInputsFromSettings() {
         fileScanDepthInput = String(settings.fileScanDepth)
         fileScanLimitInput = String(settings.fileScanLimit)
+    }
+
+    static let webSearchURLWidth: CGFloat = 320
+    static let webSearchURLExample = "https://search.brave.com/search?q=%s"
+    static let webSearchURLHint = "%s is the query"
+
+    /// Custom while the saved value is a URL template, or once it is picked
+    /// and the URL is still to be typed.
+    var webSearchChoice: Binding<WebSearchChoice> {
+        Binding(
+            get: { webSearchCustomPicked ? .custom : WebSearchChoice(configValue: settings.webSearchEngine) },
+            set: { choice in
+                webSearchCustomPicked = choice == .custom
+                if choice != .custom {
+                    webSearchURLInput = ""
+                    settings.webSearchEngine = choice.rawValue
+                }
+            }
+        )
+    }
+
+    func syncWebSearchInputFromSettings() {
+        let isCustom = WebSearchChoice(configValue: settings.webSearchEngine) == .custom
+        webSearchURLInput = isCustom ? settings.webSearchEngine : ""
+        webSearchCustomPicked = false
+    }
+
+    var trimmedWebSearchURLInput: String {
+        webSearchURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Whether the core refuses the typed URL.
+    var webSearchURLRefused: Bool {
+        let url = trimmedWebSearchURLInput
+        return !url.isEmpty && !EngineBridge.shared.isValidWebSearch(url)
+    }
+
+    /// On Enter, Save, or leaving the box: a refused or empty URL falls back
+    /// to the engine in effect, picker included.
+    func applyWebSearchURLInput() {
+        let url = trimmedWebSearchURLInput
+        guard !url.isEmpty, !webSearchURLRefused else {
+            syncWebSearchInputFromSettings()
+            return
+        }
+        settings.webSearchEngine = url
     }
 
     func sanitizedNumericInput(_ value: String) -> String {
